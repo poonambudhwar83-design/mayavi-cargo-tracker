@@ -28,45 +28,10 @@ function statusClass(status=''){
   if(t.includes('early')) return 'pink';
   return 'white';
 }
-function parseManifestDate(v=''){
-  const m=String(v).match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/);
-  if(!m) return '';
-  return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
-}
-function parseManifestTime(v=''){
-  const m=String(v).match(/\b(\d{1,2})[:.](\d{2})\s*(AM|PM)?\b/i);
-  if(!m) return '';
-  let h=Number(m[1]); const min=Number(m[2]); const ap=(m[3]||'').toUpperCase();
-  if(ap==='PM' && h<12) h+=12;
-  if(ap==='AM' && h===12) h=0;
-  if(h>23||min>59) return '';
-  return `${pad(h)}:${pad(min)}`;
-}
-function extractFields(text=''){
+function extractMawb(text=''){
   const flat = text.replace(/\s+/g,' ');
   const mawbMatch = flat.match(/(?:MAWB(?:\s*No\.?)?\s*[:#-]*\s*)?(\d{3})[-\s]?(\d{8})\b/i);
-  const bagsMatch =
-    flat.match(/(?:No\.?\s*of\s*)?(?:PKT\/?Bag|bags?|pcs?|pieces?)\s*[:#-]?\s*(\d{1,5})(?:\s*\/\s*\d{1,5})?/i) ||
-    flat.match(/(\d{1,5})\s*(?:bags?|pcs?|pieces?)\b/i);
-  const weightMatch =
-    flat.match(/(?:gross\s*)?(?:weight|wt)\s*[:#-]?\s*([\d,.]+)\s*(?:kg|kgs|kilograms?)?/i) ||
-    flat.match(/([\d,.]+)\s*(?:kg|kgs)\b/i);
-  const flightMatch = flat.match(/(?:Flight\s*No\.?)\s*[:#-]*\s*([A-Z]{2,3})\s*[- ]?\s*(\d{2,4})\b/i);
-  const flightDateMatch = flat.match(/(?:Flight\s*Date|Arrival\s*Date|Expected\s*Date\s*of\s*Arrival)\s*[:#-]*\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/i);
-  const arrivalTimeMatch = flat.match(/(?:Expected\s*Time\s*of\s*Arrival(?:\s*\([^)]*\))?|Arrival\s*Time|ETA)\s*[:#-]*\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)/i);
-  const explicitRoute = flat.match(/(?:Origin(?:ating)?(?:\/Destined\s*City)?\s*[-:]?\s*)([A-Z]{3})\s*(?:\/|TO|>|-|\s+Destination\s*[-:]?\s*)([A-Z]{3})\b/i);
-  const genericRoute = flat.match(/\b([A-Z]{3})\s*(?:-|\/|TO|>)\s*([A-Z]{3})\b/);
-  const routeMatch = explicitRoute || genericRoute;
-  return {
-    mawb: mawbMatch ? `${mawbMatch[1]}-${mawbMatch[2]}` : '',
-    bags: bagsMatch ? bagsMatch[1] : '',
-    weight: weightMatch ? weightMatch[1].replace(/,/g,'') : '',
-    origin: routeMatch ? routeMatch[1].toUpperCase() : '',
-    destination: routeMatch ? routeMatch[2].toUpperCase() : '',
-    arrivalDate: flightDateMatch ? parseManifestDate(flightDateMatch[1]) : '',
-    arrivalTime: arrivalTimeMatch ? parseManifestTime(arrivalTimeMatch[1]) : '',
-    flightNo: flightMatch ? `${flightMatch[1].toUpperCase()} ${flightMatch[2]}` : ''
-  };
+  return mawbMatch ? `${mawbMatch[1]}-${mawbMatch[2]}` : '';
 }
 
 export default function Home(){
@@ -86,13 +51,15 @@ export default function Home(){
 
   const activeCount=useMemo(()=>shipments.filter(s=>!String(s.status||'').toLowerCase().includes('arriv')).length,[shipments]);
 
-  function upsertShipment(item){
+  function upsertMawbOnly(mawb, sourceLabel=''){
+    const key=normalizeMawb(mawb);
     setShipments(v=>{
-      const key=normalizeMawb(item.mawb);
       const idx=v.findIndex(x=>normalizeMawb(x.mawb)===key);
-      if(idx<0) return [item,...v];
+      if(idx<0){
+        return [{...EMPTY,mawb:key,id:crypto.randomUUID(),status:'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:'',updatedAt:new Date().toISOString()},...v];
+      }
       const copy=[...v];
-      copy[idx]={...copy[idx],...Object.fromEntries(Object.entries(item).filter(([,val])=>val!==''&&val!==null&&val!==undefined)),id:copy[idx].id};
+      copy[idx]={...copy[idx],mawb:key,status:copy[idx].status||'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:copy[idx].remarks,updatedAt:new Date().toISOString()};
       return copy;
     });
   }
@@ -100,8 +67,8 @@ export default function Home(){
   function saveManual(e){
     e.preventDefault();
     if(!form.mawb) return setNotice('Enter a MAWB number.');
-    const item={...form,mawb:normalizeMawb(form.mawb),id:crypto.randomUUID(),status:'Saved — live status not fetched yet',remarks:'',updatedAt:new Date().toISOString()};
-    upsertShipment(item); setForm(EMPTY); setManualOpen(false); setNotice('Shipment saved. Click Track Live.');
+    upsertMawbOnly(form.mawb);
+    setForm(EMPTY); setManualOpen(false); setNotice('MAWB saved. Click Track Live.');
   }
 
   async function trackOne(id, forceRefresh=false){
@@ -114,12 +81,20 @@ export default function Home(){
       const d=await r.json();
       if(!r.ok) throw new Error(d.error || JSON.stringify(d.details||d));
       const live=d.shipment||{}; const p=localParts(live.eta||live.actualArrival);
-      setShipments(v=>v.map(x=>x.id===id?{...x,
-        status:live.status||x.status, carrierCode:live.carrierCode||x.carrierCode,
-        origin:live.origin||x.origin,destination:live.destination||x.destination,
-        arrivalDate:p.date||x.arrivalDate,arrivalTime:p.time||x.arrivalTime,
-        flightNo:live.flightNo||x.flightNo,rawTrack123:live.raw,
-        updatedAt:new Date().toISOString(),remarks:'LIVE — Track123 response received'
+      setShipments(v=>v.map(x=>x.id===id?{
+        ...x,
+        bags: live.bags ?? live.pieces ?? live.pcs ?? '',
+        weight: live.weight ?? live.grossWeight ?? '',
+        status:live.status||x.status,
+        carrierCode:live.carrierCode||x.carrierCode,
+        origin:live.origin||'',
+        destination:live.destination||'',
+        arrivalDate:p.date||'',
+        arrivalTime:p.time||'',
+        flightNo:live.flightNo||'',
+        rawTrack123:live.raw,
+        updatedAt:new Date().toISOString(),
+        remarks:'LIVE — Track123 response received'
       }:x));
       setNotice(`Live Track123 response received for ${s.mawb}.`);
     }catch(e){ setNotice(`Live tracking error: ${e.message}`); }
@@ -158,12 +133,10 @@ export default function Home(){
       let text;
       if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf')) text=await readPdf(file);
       else text=await runOcr(file);
-      const found=extractFields(text);
-      if(!found.mawb) throw new Error('I could read the file, but could not confidently find an 11-digit MAWB. Use Manual Entry and type the MAWB.');
-      const item={...EMPTY,...found,id:crypto.randomUUID(),status:'Document read — ready for live tracking',remarks:'Extracted from '+file.name,updatedAt:new Date().toISOString()};
-      upsertShipment(item);
-      const extras=[found.flightNo,found.arrivalDate,found.arrivalTime,found.bags&&`${found.bags} bags`,found.weight&&`${found.weight} kg`].filter(Boolean).join(' · ');
-      setNotice(`Document read successfully. MAWB found: ${found.mawb}${extras?' · '+extras:''}`);
+      const mawb=extractMawb(text);
+      if(!mawb) throw new Error('I could read the file, but could not confidently find an 11-digit MAWB. Use Manual Entry and type the MAWB.');
+      upsertMawbOnly(mawb,file.name);
+      setNotice(`MAWB found: ${mawb}. Other shipment details will come only from live tracking.`);
     }catch(e){ setNotice(`Upload/OCR error: ${e.message}`); }
     finally{ setBusy(false); setOcrProgress(''); }
   }
@@ -188,14 +161,10 @@ export default function Home(){
         <td><b>{s.mawb}</b>{s.flightNo&&<small>{s.flightNo}</small>}</td><td>{s.bags||'—'}</td><td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
       </tr>)}</tbody></table>
     </section>
-    <section className="help"><b>Document + live tracking.</b> The uploaded manifest supplies MAWB, bags, weight, flight, scheduled arrival date/time and route when present. “Track Live” then uses Track123 to update live milestones without erasing document data if Track123 omits ETA.</section>
+    <section className="help"><b>MAWB-only document reading.</b> Uploaded PDF/photo is used only to identify the MAWB. Origin, destination, flight, arrival date/time, status, bags and weight are populated only from live Track123 data when Track123 provides them.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
-      <label>Carrier code<input value={form.carrierCode} onChange={e=>setForm({...form,carrierCode:e.target.value})} placeholder="optional Track123 carrier code"/></label>
-      <label>Bags<input value={form.bags} onChange={e=>setForm({...form,bags:e.target.value})}/></label><label>Weight (kg)<input value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}/></label>
-      <label>Origin<input value={form.origin} onChange={e=>setForm({...form,origin:e.target.value.toUpperCase()})} placeholder="DEL"/></label><label>Destination<input value={form.destination} onChange={e=>setForm({...form,destination:e.target.value.toUpperCase()})} placeholder="LHR"/></label>
-      <label>Arrival date<input type="date" value={form.arrivalDate} onChange={e=>setForm({...form,arrivalDate:e.target.value})}/></label><label>Arrival time<input type="time" value={form.arrivalTime} onChange={e=>setForm({...form,arrivalTime:e.target.value})}/></label>
-    </div><div className="modalBtns"><button type="button" onClick={()=>setManualOpen(false)}>Cancel</button><button className="primary" type="submit">Save Shipment</button></div></form></div>}
+    </div><div className="modalBtns"><button type="button" onClick={()=>setManualOpen(false)}>Cancel</button><button className="primary" type="submit">Save MAWB</button></div></form></div>}
   </main>
 }
