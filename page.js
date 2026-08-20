@@ -21,6 +21,17 @@ function arrivalDateObj(s){
   return Number.isNaN(d.getTime()) ? null : d;
 }
 function mailDue(s){ const d=arrivalDateObj(s); if(!d) return ''; return new Date(d.getTime()-6*3600000).toLocaleString(); }
+function mailAlert(s){
+  const arrival=arrivalDateObj(s);
+  if(!arrival) return 'WAITING FOR LIVE ETA';
+  const now=Date.now();
+  const diff=arrival.getTime()-now;
+  const status=String(s.status||'').toLowerCase();
+  if(status.includes('arriv')||status.includes('rcf')||diff<=0) return 'ARRIVED';
+  if(diff<=60*60*1000) return 'LANDING SOON — MAIL NOW';
+  if(diff<=6*60*60*1000) return 'MAIL NOW';
+  return `MAIL AT ${new Date(arrival.getTime()-6*3600000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+}
 function statusClass(status=''){
   const t=status.toLowerCase();
   if(t.includes('arriv')||t.includes('delivered')||t.includes('rcf')) return 'green';
@@ -42,6 +53,8 @@ export default function Home(){
   const [notice,setNotice]=useState('');
   const [apiConfigured,setApiConfigured]=useState(null);
   const [ocrProgress,setOcrProgress]=useState('');
+  const [bagEditId,setBagEditId]=useState('');
+  const [bagEditValue,setBagEditValue]=useState('');
 
   useEffect(()=>{
     try { setShipments(JSON.parse(localStorage.getItem('mayaviShipments')||'[]')); } catch{}
@@ -71,6 +84,14 @@ export default function Home(){
     setForm(EMPTY); setManualOpen(false); setNotice('MAWB saved. Click Track Live.');
   }
 
+  function startBagEdit(s){ setBagEditId(s.id); setBagEditValue(s.bags||''); }
+  function saveBags(id){
+    const value=String(bagEditValue).replace(/\D/g,'');
+    setShipments(v=>v.map(x=>x.id===id?{...x,bags:value,updatedAt:new Date().toISOString()}:x));
+    setBagEditId(''); setBagEditValue('');
+    setNotice('Number of bags saved manually. Live tracking will not erase it unless Track123 returns a bags value.');
+  }
+
   async function trackOne(id, forceRefresh=false){
     const s=shipments.find(x=>x.id===id); if(!s) return;
     setBusy(true); setNotice(`Checking ${s.mawb} with Track123…`);
@@ -81,17 +102,19 @@ export default function Home(){
       const d=await r.json();
       if(!r.ok) throw new Error(d.error || JSON.stringify(d.details||d));
       const live=d.shipment||{}; const p=localParts(live.eta||live.actualArrival);
+      const liveBags=live.bags ?? live.pieces ?? live.pcs ?? '';
+      const liveWeight=live.weight ?? live.grossWeight ?? '';
       setShipments(v=>v.map(x=>x.id===id?{
         ...x,
-        bags: live.bags ?? live.pieces ?? live.pcs ?? '',
-        weight: live.weight ?? live.grossWeight ?? '',
+        bags: liveBags!=='' ? liveBags : x.bags,
+        weight: liveWeight!=='' ? liveWeight : x.weight,
         status:live.status||x.status,
         carrierCode:live.carrierCode||x.carrierCode,
-        origin:live.origin||'',
-        destination:live.destination||'',
-        arrivalDate:p.date||'',
-        arrivalTime:p.time||'',
-        flightNo:live.flightNo||'',
+        origin:live.origin||x.origin,
+        destination:live.destination||x.destination,
+        arrivalDate:p.date||x.arrivalDate,
+        arrivalTime:p.time||x.arrivalTime,
+        flightNo:live.flightNo||x.flightNo,
         rawTrack123:live.raw,
         updatedAt:new Date().toISOString(),
         remarks:'LIVE — Track123 response received'
@@ -156,12 +179,14 @@ export default function Home(){
     </section>
     {(notice||ocrProgress)&&<div className="notice">{ocrProgress||notice}</div>}
     <section className="tableWrap">
-      <table><thead><tr><th>MAWB</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Destination</th><th>Arrival Date</th><th>Arrival Time</th><th>Mail Due</th><th>Status</th><th>Remarks</th><th></th></tr></thead>
-      <tbody>{!shipments.length?<tr><td colSpan="11" className="empty">No shipments yet. Add a MAWB or upload a MAWB PDF/photo.</td></tr>:shipments.map(s=><tr key={s.id} className={statusClass(s.status)}>
-        <td><b>{s.mawb}</b>{s.flightNo&&<small>{s.flightNo}</small>}</td><td>{s.bags||'—'}</td><td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
+      <table><thead><tr><th>MAWB</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Destination</th><th>Arrival Date</th><th>Arrival Time</th><th>Mail Due</th><th>Mail Alert</th><th>Status</th><th>Remarks</th><th></th></tr></thead>
+      <tbody>{!shipments.length?<tr><td colSpan="12" className="empty">No shipments yet. Add a MAWB or upload a MAWB PDF/photo.</td></tr>:shipments.map(s=><tr key={s.id} className={statusClass(s.status)}>
+        <td><b>{s.mawb}</b>{s.flightNo&&<small>{s.flightNo}</small>}</td>
+        <td>{bagEditId===s.id?<span><input style={{width:'65px'}} inputMode="numeric" value={bagEditValue} onChange={e=>setBagEditValue(e.target.value)}/><button onClick={()=>saveBags(s.id)}>Save</button></span>:<span>{s.bags||'—'} <button onClick={()=>startBagEdit(s)}>Edit</button></span>}</td>
+        <td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{mailAlert(s)}</b></td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
       </tr>)}</tbody></table>
     </section>
-    <section className="help"><b>MAWB-only document reading.</b> Uploaded PDF/photo is used only to identify the MAWB. Origin, destination, flight, arrival date/time, status, bags and weight are populated only from live Track123 data when Track123 provides them.</section>
+    <section className="help"><b>MAWB-only document reading + manual bags.</b> PDF/photo is used only to identify the MAWB. Bags can be entered or corrected manually. Arrival date/time, route, flight and live status still come from live tracking. When a live ETA is available, Mayavi shows when to send the mail 6 hours before arrival and highlights MAIL NOW / LANDING SOON.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
