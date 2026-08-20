@@ -20,6 +20,13 @@ function walkObjects(value, out = []) {
   else Object.values(value).forEach(v => walkObjects(v, out));
   return out;
 }
+function firstAnywhere(raw, names) {
+  for (const node of walkObjects(raw)) {
+    const v = pickFirst(node, names);
+    if (v !== null && v !== undefined && v !== '') return v;
+  }
+  return null;
+}
 async function readJson(r) {
   const text = await r.text();
   try { return text ? JSON.parse(text) : {}; } catch { return { raw: text }; }
@@ -60,27 +67,99 @@ function findBestShipment(raw, fallbackMawb) {
     return t && String(t).replace(/\D/g, '') === targetDigits;
   }) || nodes.find(n => pickFirst(n, ['aviationStatus','status','events','flightInfo','origin','destination'])) || raw;
 }
+
+const EVENT_TIME_FIELDS = [
+  'actualTime','actualDateTime','eventTime','eventDateTime','dateTime','timestamp','time','occurredAt',
+  'actualArrivalTime','arrivalActualTime','flightActualArrivalTime',
+  'estimatedTime','estimatedDateTime','estimatedArrivalTime','flightEstimatedArrivalTime',
+  'scheduledTime','scheduledDateTime','scheduledArrivalTime','flightScheduledArrivalTime'
+];
+const EVENT_LABEL_FIELDS = [
+  'eventCode','milestoneCode','code','eventDetail','eventName','milestone','statusName','status','description','remark','activity'
+];
+
+function eventLabel(node) {
+  return EVENT_LABEL_FIELDS.map(k => node && node[k] != null ? String(node[k]) : '').filter(Boolean).join(' ').toUpperCase();
+}
+function eventTime(node) {
+  return pickFirst(node, EVENT_TIME_FIELDS);
+}
+function validDateValue(v) {
+  if (!v) return false;
+  const d = new Date(v);
+  return !Number.isNaN(d.getTime());
+}
+function findArrivalMilestone(raw) {
+  const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
+  const arrivalLike = nodes.filter(n => {
+    const label = eventLabel(n);
+    return /(^|\W)ARR($|\W)|ARRIVED|ACTUAL ARRIVAL|FLIGHT ARRIVAL|RECEIVED FROM FLIGHT|(^|\W)RCF($|\W)/i.test(label);
+  });
+  arrivalLike.sort((a, b) => {
+    const ta = new Date(eventTime(a)).getTime();
+    const tb = new Date(eventTime(b)).getTime();
+    return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+  });
+  return arrivalLike[0] || null;
+}
 function findLatestEvent(raw) {
-  const nodes = walkObjects(raw).filter(n => pickFirst(n, ['eventTime','time','dateTime','timestamp','actualTime']) && pickFirst(n, ['status','eventCode','eventDetail','description']));
-  nodes.sort((a,b) => new Date(pickFirst(b,['eventTime','time','dateTime','timestamp','actualTime'])).getTime() - new Date(pickFirst(a,['eventTime','time','dateTime','timestamp','actualTime'])).getTime());
+  const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
+  nodes.sort((a,b) => {
+    const ta = new Date(eventTime(a)).getTime();
+    const tb = new Date(eventTime(b)).getTime();
+    return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+  });
   return nodes[0] || null;
+}
+function findArrivalEstimate(raw) {
+  const preferred = [
+    'estimatedArrivalTime','estimatedArrival','eta','flightEstimatedArrivalTime','arrivalEstimatedTime',
+    'scheduledArrivalTime','scheduledArrival','flightScheduledArrivalTime','arrivalScheduledTime',
+    'arrivalTime','estimatedArrivalDate','scheduledArrivalDate'
+  ];
+  const direct = firstAnywhere(raw, preferred);
+  if (validDateValue(direct)) return direct;
+
+  const candidates = walkObjects(raw).filter(n => {
+    const label = eventLabel(n);
+    const t = eventTime(n);
+    return t && /ARRIVAL|ARRIVED|(^|\W)ARR($|\W)/i.test(label);
+  });
+  const timed = candidates.map(n => eventTime(n)).filter(validDateValue);
+  timed.sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+  return timed[0] || null;
 }
 function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
   const best = findBestShipment(raw, fallbackMawb);
   const latest = findLatestEvent(best) || findLatestEvent(raw);
-  const status = pickFirst(best, ['aviationStatus','statusName','status','latestStatus','trackingStatus','state']) || pickFirst(latest, ['status','statusName','eventDetail','eventCode','description']);
-  const eta = pickFirst(best, ['estimatedArrivalTime','estimatedArrival','eta','arrivalTime','scheduledArrivalTime','estimatedArrivalDate']);
-  const actualArrival = pickFirst(best, ['actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate']);
+  const arrivalEvent = findArrivalMilestone(best) || findArrivalMilestone(raw);
+
+  const summaryStatus = pickFirst(best, ['aviationStatus','statusName','status','latestStatus','trackingStatus','state']) ||
+    pickFirst(latest, ['status','statusName','eventDetail','eventCode','description']);
+
+  const actualArrivalDirect = firstAnywhere(best, [
+    'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
+  ]) || firstAnywhere(raw, [
+    'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
+  ]);
+  const actualArrival = validDateValue(actualArrivalDirect) ? actualArrivalDirect : (arrivalEvent && validDateValue(eventTime(arrivalEvent)) ? eventTime(arrivalEvent) : null);
+  const eta = actualArrival || findArrivalEstimate(best) || findArrivalEstimate(raw) || null;
+
+  const status = actualArrival || arrivalEvent ? 'ARRIVED' : (summaryStatus ? String(summaryStatus) : 'Tracking record found');
+
   return {
     mawb: normalizeMawb(pickFirst(best, ['trackingNo','trackNo','mawb','awbNo','waybillNo','trackingNumber']) || fallbackMawb),
-    status: status ? String(status) : 'Tracking record found',
-    carrierCode: String(pickFirst(best, ['carrierCode','courierCode','carrier','airlineCode']) || detectedCarrier || ''),
-    origin: String(pickFirst(best, ['origin','originAirport','departureAirport','from','departure']) || ''),
-    destination: String(pickFirst(best, ['destination','destinationAirport','arrivalAirport','to','arrival']) || ''),
-    eta: eta || actualArrival || null,
+    status,
+    carrierCode: String(firstAnywhere(best, ['carrierCode','courierCode','carrier','airlineCode']) || detectedCarrier || ''),
+    origin: String(firstAnywhere(best, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || firstAnywhere(raw, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || ''),
+    destination: String(firstAnywhere(best, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || firstAnywhere(raw, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || ''),
+    eta,
     actualArrival: actualArrival || null,
-    flightNo: String(pickFirst(best, ['flightNo','flightNumber','flight']) || ''),
+    flightNo: String(firstAnywhere(best, ['flightNo','flightNumber','flight','flightCode']) || firstAnywhere(raw, ['flightNo','flightNumber','flight','flightCode']) || ''),
+    bags: firstAnywhere(best, ['pieces','pieceCount','piecesCount','pcs','bags','bagCount']) || firstAnywhere(raw, ['pieces','pieceCount','piecesCount','pcs','bags','bagCount']) || '',
+    weight: firstAnywhere(best, ['weight','grossWeight','totalWeight','chargeableWeight']) || firstAnywhere(raw, ['weight','grossWeight','totalWeight','chargeableWeight']) || '',
     latestEvent: latest,
+    arrivalEvent,
     raw
   };
 }
