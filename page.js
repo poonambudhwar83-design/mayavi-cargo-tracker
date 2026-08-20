@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const EMPTY = { mawb:'', bags:'', weight:'', origin:'', destination:'', arrivalDate:'', arrivalTime:'', carrierCode:'' };
+const EMPTY = { mawb:'', bags:'', weight:'', origin:'', destination:'', arrivalDate:'', arrivalTime:'', carrierCode:'', flightNo:'' };
 
 function normalizeMawb(v='') {
   const d = String(v).replace(/\D/g,'');
@@ -28,18 +28,44 @@ function statusClass(status=''){
   if(t.includes('early')) return 'pink';
   return 'white';
 }
+function parseManifestDate(v=''){
+  const m=String(v).match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/);
+  if(!m) return '';
+  return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+}
+function parseManifestTime(v=''){
+  const m=String(v).match(/\b(\d{1,2})[:.](\d{2})\s*(AM|PM)?\b/i);
+  if(!m) return '';
+  let h=Number(m[1]); const min=Number(m[2]); const ap=(m[3]||'').toUpperCase();
+  if(ap==='PM' && h<12) h+=12;
+  if(ap==='AM' && h===12) h=0;
+  if(h>23||min>59) return '';
+  return `${pad(h)}:${pad(min)}`;
+}
 function extractFields(text=''){
   const flat = text.replace(/\s+/g,' ');
-  const mawbMatch = flat.match(/\b(\d{3})[-\s]?(\d{8})\b/);
-  const bagsMatch = flat.match(/(?:bags?|pcs?|pieces?)\s*[:#-]?\s*(\d{1,5})/i) || flat.match(/(\d{1,5})\s*(?:bags?|pcs?|pieces?)\b/i);
-  const weightMatch = flat.match(/(?:gross\s*)?(?:weight|wt)\s*[:#-]?\s*([\d,.]+)\s*(kg|kgs|kilograms?)?/i) || flat.match(/([\d,.]+)\s*(kg|kgs)\b/i);
-  const routeMatch = flat.match(/\b([A-Z]{3})\s*(?:-|\/|TO|>)\s*([A-Z]{3})\b/);
+  const mawbMatch = flat.match(/(?:MAWB(?:\s*No\.?)?\s*[:#-]*\s*)?(\d{3})[-\s]?(\d{8})\b/i);
+  const bagsMatch =
+    flat.match(/(?:No\.?\s*of\s*)?(?:PKT\/?Bag|bags?|pcs?|pieces?)\s*[:#-]?\s*(\d{1,5})(?:\s*\/\s*\d{1,5})?/i) ||
+    flat.match(/(\d{1,5})\s*(?:bags?|pcs?|pieces?)\b/i);
+  const weightMatch =
+    flat.match(/(?:gross\s*)?(?:weight|wt)\s*[:#-]?\s*([\d,.]+)\s*(?:kg|kgs|kilograms?)?/i) ||
+    flat.match(/([\d,.]+)\s*(?:kg|kgs)\b/i);
+  const flightMatch = flat.match(/(?:Flight\s*No\.?)\s*[:#-]*\s*([A-Z]{2,3})\s*[- ]?\s*(\d{2,4})\b/i);
+  const flightDateMatch = flat.match(/(?:Flight\s*Date|Arrival\s*Date|Expected\s*Date\s*of\s*Arrival)\s*[:#-]*\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/i);
+  const arrivalTimeMatch = flat.match(/(?:Expected\s*Time\s*of\s*Arrival(?:\s*\([^)]*\))?|Arrival\s*Time|ETA)\s*[:#-]*\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)/i);
+  const explicitRoute = flat.match(/(?:Origin(?:ating)?(?:\/Destined\s*City)?\s*[-:]?\s*)([A-Z]{3})\s*(?:\/|TO|>|-|\s+Destination\s*[-:]?\s*)([A-Z]{3})\b/i);
+  const genericRoute = flat.match(/\b([A-Z]{3})\s*(?:-|\/|TO|>)\s*([A-Z]{3})\b/);
+  const routeMatch = explicitRoute || genericRoute;
   return {
     mawb: mawbMatch ? `${mawbMatch[1]}-${mawbMatch[2]}` : '',
     bags: bagsMatch ? bagsMatch[1] : '',
     weight: weightMatch ? weightMatch[1].replace(/,/g,'') : '',
-    origin: routeMatch ? routeMatch[1] : '',
-    destination: routeMatch ? routeMatch[2] : ''
+    origin: routeMatch ? routeMatch[1].toUpperCase() : '',
+    destination: routeMatch ? routeMatch[2].toUpperCase() : '',
+    arrivalDate: flightDateMatch ? parseManifestDate(flightDateMatch[1]) : '',
+    arrivalTime: arrivalTimeMatch ? parseManifestTime(arrivalTimeMatch[1]) : '',
+    flightNo: flightMatch ? `${flightMatch[1].toUpperCase()} ${flightMatch[2]}` : ''
   };
 }
 
@@ -60,11 +86,22 @@ export default function Home(){
 
   const activeCount=useMemo(()=>shipments.filter(s=>!String(s.status||'').toLowerCase().includes('arriv')).length,[shipments]);
 
+  function upsertShipment(item){
+    setShipments(v=>{
+      const key=normalizeMawb(item.mawb);
+      const idx=v.findIndex(x=>normalizeMawb(x.mawb)===key);
+      if(idx<0) return [item,...v];
+      const copy=[...v];
+      copy[idx]={...copy[idx],...Object.fromEntries(Object.entries(item).filter(([,val])=>val!==''&&val!==null&&val!==undefined)),id:copy[idx].id};
+      return copy;
+    });
+  }
+
   function saveManual(e){
     e.preventDefault();
     if(!form.mawb) return setNotice('Enter a MAWB number.');
     const item={...form,mawb:normalizeMawb(form.mawb),id:crypto.randomUUID(),status:'Saved — live status not fetched yet',remarks:'',updatedAt:new Date().toISOString()};
-    setShipments(v=>[item,...v]); setForm(EMPTY); setManualOpen(false); setNotice('Shipment saved. Click Track Live.');
+    upsertShipment(item); setForm(EMPTY); setManualOpen(false); setNotice('Shipment saved. Click Track Live.');
   }
 
   async function trackOne(id, forceRefresh=false){
@@ -72,7 +109,6 @@ export default function Home(){
     setBusy(true); setNotice(`Checking ${s.mawb} with Track123…`);
     try{
       const reg = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mawb:s.mawb,carrierCode:s.carrierCode})});
-      // Registration may say already exists; query anyway.
       await reg.json().catch(()=>({}));
       const r=await fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mawb:s.mawb,carrierCode:s.carrierCode,forceRefresh})});
       const d=await r.json();
@@ -90,9 +126,7 @@ export default function Home(){
     finally{ setBusy(false); }
   }
 
-  async function refreshAll(){
-    for(const s of shipments) await trackOne(s.id,false);
-  }
+  async function refreshAll(){ for(const s of shipments) await trackOne(s.id,false); }
 
   async function readPdf(file){
     setOcrProgress('Reading PDF text…');
@@ -127,7 +161,9 @@ export default function Home(){
       const found=extractFields(text);
       if(!found.mawb) throw new Error('I could read the file, but could not confidently find an 11-digit MAWB. Use Manual Entry and type the MAWB.');
       const item={...EMPTY,...found,id:crypto.randomUUID(),status:'Document read — ready for live tracking',remarks:'Extracted from '+file.name,updatedAt:new Date().toISOString()};
-      setShipments(v=>[item,...v]); setNotice(`Document read successfully. MAWB found: ${found.mawb}`);
+      upsertShipment(item);
+      const extras=[found.flightNo,found.arrivalDate,found.arrivalTime,found.bags&&`${found.bags} bags`,found.weight&&`${found.weight} kg`].filter(Boolean).join(' · ');
+      setNotice(`Document read successfully. MAWB found: ${found.mawb}${extras?' · '+extras:''}`);
     }catch(e){ setNotice(`Upload/OCR error: ${e.message}`); }
     finally{ setBusy(false); setOcrProgress(''); }
   }
@@ -152,7 +188,7 @@ export default function Home(){
         <td><b>{s.mawb}</b>{s.flightNo&&<small>{s.flightNo}</small>}</td><td>{s.bags||'—'}</td><td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
       </tr>)}</tbody></table>
     </section>
-    <section className="help"><b>This version is not a dummy screen.</b> Upload/OCR runs in the browser; shipment rows are saved in this browser; and “Track Live” calls the server-side Track123 aviation API. If the key is missing, the top-right indicator says so clearly instead of showing invented shipment data.</section>
+    <section className="help"><b>Document + live tracking.</b> The uploaded manifest supplies MAWB, bags, weight, flight, scheduled arrival date/time and route when present. “Track Live” then uses Track123 to update live milestones without erasing document data if Track123 omits ETA.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
