@@ -40,6 +40,7 @@ function statusFromText(t = '') {
   if (/\breceived\b|\brcs\b|\bbooked\b/i.test(t)) return 'RECEIVED';
   return 'TRACKING';
 }
+
 function parseCarrierText(raw, mawb, iata = '') {
   const t = clean(raw);
   const compact = mawb.replace(/\D/g, '');
@@ -165,14 +166,22 @@ async function getClickCandidates(page) {
     return els.map(el => {
       const r = el.getBoundingClientRect();
       const visible = r.width > 4 && r.height > 4 && !el.disabled;
+      if (!visible) return null;
       const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim();
       const href = el.href || el.getAttribute('href') || '';
       const dataUrl = el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-target-url') || el.getAttribute('formaction') || '';
       const onclick = el.getAttribute('onclick') || '';
-      if (!visible) return null;
       const id = `mayavi-${n++}`;
       el.setAttribute('data-mayavi-click-id', id);
-      return {id,text,href,dataUrl,onclick,tag:el.tagName || ''};
+
+      let p = el;
+      const chunks = [];
+      for (let i = 0; i < 5 && p; i++, p = p.parentElement) {
+        const t = (p.innerText || '').replace(/\s+/g, ' ').trim();
+        if (t && !chunks.includes(t)) chunks.push(t.slice(0, 1000));
+      }
+      const context = chunks.join(' | ').slice(0, 2400);
+      return {id,text,href,dataUrl,onclick,tag:el.tagName || '',context,y:Math.round(r.top + window.scrollY)};
     }).filter(Boolean);
   });
 }
@@ -186,18 +195,27 @@ function embeddedExternalUrl(candidate = {}) {
   return urls.find(isExternalHttp) || '';
 }
 
-function handoffScore(c = {}) {
+function targetScore(c = {}, prefix = '') {
   const s = `${c.text || ''} ${c.href || ''} ${c.dataUrl || ''}`.toLowerCase();
+  const ctx = String(c.context || '').toLowerCase();
+  const prefixRe = new RegExp(`(?:prefix\\s*)?\\b${esc(prefix)}\\b`, 'i');
   let score = 0;
+
+  if (prefixRe.test(c.context || '')) score += 500;
+  if (/^open\s+tracking\s+on\b/i.test(c.text || '')) score += 420;
+  if (/^visit\b/i.test(c.text || '')) score += 260;
+  if (/official\s+(?:carrier|airline|tracking)|track(?:ing)?\s+(?:on|with|at)/i.test(c.text || '')) score += 240;
+  if (/\/airline\//i.test(c.href || c.dataUrl || '')) score += 180;
   if (embeddedExternalUrl(c)) score += 120;
-  if (/open\s+tracking/.test(s)) score += 100;
-  if (/official/.test(s)) score += 80;
-  if (/track(?:ing)?\s+(?:on|with|at)/.test(s)) score += 75;
-  if (/visit/.test(s)) score += 55;
-  if (/track|tracking|shipment/.test(s)) score += 45;
-  if (/cargo|airline|carrier/.test(s)) score += 30;
-  if (/\/airline\//.test(s)) score += 35;
-  if (/privacy|terms|cookie|about|contact|login|sign in|facebook|instagram|linkedin|youtube/.test(s)) score -= 150;
+  if (/track|tracking|shipment/.test(s)) score += 80;
+  if (/cargo|airline|carrier/.test(s)) score += 40;
+
+  if (/other major carriers|other airlines|popular carriers|top airlines/.test(ctx)) score -= 1000;
+  if (/privacy|terms|cookie|about|contact|login|sign in|facebook|instagram|linkedin|youtube/.test(s)) score -= 1000;
+
+  const otherPrefix = (c.context || '').match(/\b(\d{3})\b/);
+  if (otherPrefix && otherPrefix[1] !== prefix && !prefixRe.test(c.context || '')) score -= 300;
+  if (Number.isFinite(c.y)) score += Math.max(0, 80 - Math.floor(c.y / 40));
   return score;
 }
 
@@ -223,74 +241,124 @@ async function clickCandidate(page, candidate) {
   try { await h.click({delay:90}); return true; } catch { return false; }
 }
 
-// Generic TrackJet router: do not hard-code Qatar, Saudia, Emirates, etc.
-// It follows whatever official/track/visit button or external carrier link TrackJet exposes.
+async function submitTrackJetForm(page, browser, mawb, debug) {
+  const input = await findTrackingInput(page, 'trackjet');
+  if (!input) return null;
+  await setInput(page, input.h, mawb);
+  const candidates = await getClickCandidates(page);
+  const button = candidates.find(c => /^track$/i.test(c.text || '') || /track shipment|track cargo/i.test(c.text || ''));
+  const before = page.url();
+  if (button) {
+    await clickCandidate(page, button);
+    debug.directoryTrack = {text:button.text};
+  } else {
+    try { await page.evaluate(el => el.form?.requestSubmit?.(), input.h); } catch {}
+  }
+
+  const ext = await waitForExternalPage(browser, page, 12000);
+  if (ext) return ext;
+  try {
+    if (page.url() !== before && isTrackJetUrl(page.url())) return page;
+  } catch {}
+  return null;
+}
+
+// Generic TrackJet router, but carrier-safe: every choice must match the MAWB prefix/card.
+// This prevents unrelated links such as "Other major carriers" from being selected.
 async function genericTrackJetHandoff(page, browser, mawb, debug) {
-  for (let hop = 0; hop < 4; hop++) {
+  const prefix = mawb.replace(/\D/g, '').slice(0,3);
+
+  for (let hop = 0; hop < 5; hop++) {
     debug.stage = `TRACKJET_HANDOFF_${hop + 1}`;
     await sleep(700);
-
     if (isExternalHttp(page.url())) return page;
 
+    const bodyText = clean(await page.evaluate(() => document.body?.innerText || ''));
+    const iataHere = (bodyText.match(/\bIATA\s+([A-Z0-9]{2})\b/i) || [])[1] || '';
+    if (iataHere) debug.iata = iataHere;
+
+    // On a TrackJet airline directory page, use its MAWB form first. This keeps
+    // the correct carrier identity and usually carries the MAWB into the carrier site.
+    if (/\/airline\//i.test(page.url())) {
+      const formResult = await submitTrackJetForm(page, browser, mawb, debug);
+      if (formResult) {
+        if (isExternalHttp(formResult.url())) {
+          debug.handoffMethod = 'TARGET_AIRLINE_DIRECTORY_FORM';
+          return formResult;
+        }
+        if (formResult === page && isTrackJetUrl(page.url())) continue;
+      }
+    }
+
     const candidates = (await getClickCandidates(page))
-      .map(c => ({...c, score: handoffScore(c)}))
-      .filter(c => c.score > 0)
+      .map(c => ({...c, score:targetScore(c, prefix)}))
       .sort((a,b) => b.score - a.score);
 
-    debug[`handoffCandidates${hop + 1}`] = candidates.slice(0,6).map(c => ({text:c.text, href:c.href, dataUrl:c.dataUrl, score:c.score}));
+    debug[`handoffCandidates${hop + 1}`] = candidates.slice(0,8).map(c => ({
+      text:c.text, href:c.href, dataUrl:c.dataUrl, score:c.score, context:(c.context || '').slice(0,180)
+    }));
 
-    // Best case: TrackJet exposes the official carrier URL directly.
-    const direct = candidates.map(embeddedExternalUrl).find(Boolean);
-    if (direct) {
-      debug.handoffMethod = 'DIRECT_EXTERNAL_LINK';
-      debug.handoffUrl = direct;
-      try {
-        await page.goto(direct, {waitUntil:'domcontentloaded', timeout:25000});
-        return page;
-      } catch (e) {
-        debug.directNavigationError = e?.message || String(e);
+    // Prefer the explicit primary action on the matched carrier card.
+    const primary = candidates.find(c =>
+      c.score >= 250 &&
+      !/other major carriers|other airlines|popular carriers/i.test(c.context || '') &&
+      (/^open\s+tracking\s+on\b/i.test(c.text || '') || /^visit\b/i.test(c.text || '') || /official\s+(?:tracking|carrier|airline)|track(?:ing)?\s+(?:on|with|at)/i.test(c.text || ''))
+    );
+
+    if (primary) {
+      debug.handoff = {text:primary.text, href:primary.href, dataUrl:primary.dataUrl};
+      const direct = embeddedExternalUrl(primary);
+      if (direct) {
+        debug.handoffMethod = 'MATCHED_PRIMARY_DIRECT';
+        try {
+          await page.goto(direct, {waitUntil:'domcontentloaded', timeout:25000});
+          return page;
+        } catch (e) {
+          debug.directNavigationError = e?.message || String(e);
+        }
+      }
+
+      const before = page.url();
+      if (await clickCandidate(page, primary)) {
+        debug.handoffMethod = 'MATCHED_PRIMARY_CLICK';
+        const external = await waitForExternalPage(browser, page, 12000);
+        if (external) return external;
+        try {
+          if (page.url() !== before && isTrackJetUrl(page.url())) continue;
+        } catch {}
       }
     }
 
-    // Otherwise use a real browser click on the best TrackJet button/link.
-    let advancedInsideTrackJet = false;
-    for (const candidate of candidates.slice(0,6)) {
-      const beforeUrl = page.url();
-      const beforePages = (await browser.pages()).length;
-      const clicked = await clickCandidate(page, candidate);
-      if (!clicked) continue;
-      debug.handoffMethod = 'REAL_BROWSER_CLICK';
-      debug.handoff = {text:candidate.text, href:candidate.href, dataUrl:candidate.dataUrl};
-
-      const external = await waitForExternalPage(browser, page, 6500);
-      if (external) return external;
-
-      const pages = await browser.pages();
-      debug.pageUrls = pages.map(p => { try { return p.url(); } catch { return ''; } }).slice(-8);
-
-      const afterUrl = page.url();
-      if (afterUrl !== beforeUrl && isTrackJetUrl(afterUrl)) {
-        advancedInsideTrackJet = true;
-        break;
-      }
-
-      // A blank popup may later be populated by TrackJet JS. Give it one more chance.
-      if (pages.length > beforePages && pages.some(p => p.url() === 'about:blank')) {
-        const ext2 = await waitForExternalPage(browser, page, 5000);
-        if (ext2) return ext2;
-      }
-    }
-
-    if (advancedInsideTrackJet) continue;
-
-    // If the current page has an airline-directory link, use it as another generic TrackJet hop.
-    const airlineDir = candidates.find(c => /\/airline\//i.test(c.href || c.dataUrl || ''));
-    if (airlineDir) {
-      const url = airlineDir.href || airlineDir.dataUrl;
-      debug.handoffMethod = 'TRACKJET_AIRLINE_DIRECTORY';
+    // If there is no primary handoff button, enter only the airline directory link
+    // whose surrounding card contains this MAWB's 3-digit prefix.
+    const airlineDirs = candidates.filter(c => /\/airline\//i.test(c.href || c.dataUrl || ''));
+    const matchedDir = airlineDirs.find(c => c.score >= 350 && new RegExp(`(?:prefix\\s*)?\\b${esc(prefix)}\\b`, 'i').test(c.context || ''));
+    if (matchedDir) {
+      const url = matchedDir.href || matchedDir.dataUrl;
+      debug.handoffMethod = 'MATCHED_PREFIX_AIRLINE_DIRECTORY';
+      debug.handoff = {text:matchedDir.text, href:url};
       try {
         await page.goto(url, {waitUntil:'domcontentloaded', timeout:25000});
         continue;
+      } catch (e) {
+        debug.directoryNavigationError = e?.message || String(e);
+      }
+    }
+
+    // Last safe option: a high-scoring matched external link. Never use arbitrary
+    // external links from footer/"Other major carriers" sections.
+    const matchedExternal = candidates.find(c =>
+      c.score >= 450 &&
+      embeddedExternalUrl(c) &&
+      !/other major carriers|other airlines|popular carriers/i.test(c.context || '')
+    );
+    if (matchedExternal) {
+      const direct = embeddedExternalUrl(matchedExternal);
+      debug.handoffMethod = 'MATCHED_PREFIX_EXTERNAL';
+      debug.handoff = {text:matchedExternal.text, href:direct};
+      try {
+        await page.goto(direct, {waitUntil:'domcontentloaded', timeout:25000});
+        return page;
       } catch {}
     }
 
@@ -309,9 +377,9 @@ async function maybeSubmitCarrier(page, mawb) {
   }
 
   const inputs = await visibleInputs(page);
-  let pre = inputs.find(x => x.m.max === 3 || /prefix/i.test(x.m.label));
-  let num = inputs.find(x => x.m.max === 8 || /awb|mawb|waybill|shipment|tracking number/i.test(x.m.label));
-  let one = inputs.find(x => /awb|mawb|waybill|shipment|tracking|track/i.test(x.m.label));
+  const pre = inputs.find(x => x.m.max === 3 || /prefix/i.test(x.m.label));
+  const num = inputs.find(x => x.m.max === 8 || /awb|mawb|waybill|shipment|tracking number/i.test(x.m.label));
+  const one = inputs.find(x => /awb|mawb|waybill|shipment|tracking|track/i.test(x.m.label));
 
   try {
     if (pre && num && pre.h !== num.h) {
@@ -392,16 +460,15 @@ async function runTrackJet(mawb) {
     const trackJetText = clean(await page.evaluate(() => document.body?.innerText || ''));
     debug.trackjetUrl = page.url();
     debug.trackjetHint = trackJetText.slice(0,900);
-    const iata = (trackJetText.match(/\bIATA\s+([A-Z0-9]{2})\b/i) || [])[1] || '';
-    debug.iata = iata;
+    debug.iata = (trackJetText.match(/\bIATA\s+([A-Z0-9]{2})\b/i) || [])[1] || '';
 
     debug.stage = 'TRACKJET_HANDOFF';
     const carrierPage = await genericTrackJetHandoff(page, browser, mawb, debug);
     if (!carrierPage) {
       return {
         ok:false,
-        error:'TrackJet identified the carrier, but no official-carrier button/link produced a usable handoff.',
-        debug:{...debug, stage:'TRACKJET_HANDOFF_UNAVAILABLE'}
+        error:'TrackJet identified the carrier, but Mayavi could not find a handoff belonging to this MAWB prefix. Unrelated carrier links were ignored.',
+        debug:{...debug, stage:'TRACKJET_MATCHED_HANDOFF_UNAVAILABLE'}
       };
     }
 
@@ -433,7 +500,7 @@ async function runTrackJet(mawb) {
     carrierText = clean(await carrierPage.evaluate(() => document.body?.innerText || ''));
     debug.carrierHint = carrierText.slice(0,1200);
 
-    const parsed = parseCarrierText(carrierText, mawb, iata);
+    const parsed = parseCarrierText(carrierText, mawb, debug.iata || '');
     if (!parsed.useful) {
       return {
         ok:false,
@@ -477,7 +544,7 @@ async function handleMawb(mawb) {
     ok:true,
     configured:true,
     provider:'TrackJet → official carrier',
-    source:'TrackJet generic handoff diagnostic',
+    source:'TrackJet matched-carrier handoff diagnostic',
     airlinePrimary:true,
     trackingError:r.error,
     trackingDebug:r.debug,
@@ -488,7 +555,7 @@ async function handleMawb(mawb) {
 export async function GET(request) {
   const u = new URL(request.url);
   const q = u.searchParams.get('mawb');
-  if (!q) return Response.json({configured:true, provider:'TrackJet → official carrier', apiKeyRequired:false, mode:'generic TrackJet official-button handoff'});
+  if (!q) return Response.json({configured:true, provider:'TrackJet → official carrier', apiKeyRequired:false, mode:'TrackJet matched-carrier handoff by MAWB prefix'});
   const m = normalizeMawb(q);
   if (!m) return Response.json({ok:false, error:'Enter a valid 11-digit MAWB.'}, {status:400});
   return handleMawb(m);
