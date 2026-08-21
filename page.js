@@ -19,6 +19,7 @@ function airlineFromMawb(mawb=''){
     '023':{name:'FedEx Express',iata:'FX',official:'https://www.fedex.com/en-us/tracking.html'},
     '057':{name:'Air France KLM Martinair Cargo',iata:'AF',official:'https://www.afklcargo.com/'},
     '065':{name:'Saudia Cargo',iata:'SV',official:'https://www.saudiacargo.com/'},
+    '071':{name:'Ethiopian Cargo',iata:'ET',official:'https://cargo.ethiopianairlines.com/my-cargo/track-your-shipment'},
     '074':{name:'KLM Cargo',iata:'KL',official:'https://www.afklcargo.com/'},
     '075':{name:'Iberia Cargo',iata:'IB',official:'https://www.iberia.com/cargo/'},
     '081':{name:'Qantas Freight',iata:'QF',official:'https://freight.qantas.com/'},
@@ -230,7 +231,7 @@ export default function Home(){
         <td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{mailAlert(s)}</b></td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
       </tr>})}</tbody></table>
     </section>
-    <section className="help"><b>Airline-aware MAWB tracking.</b> Mayavi detects many major cargo airlines directly from the MAWB prefix and opens their official cargo tracker. If a prefix is not yet in the built-in list, Mayavi gives an airline-prefix search link instead of guessing. Automatic website extraction will only be enabled where an airline provides a stable machine-readable endpoint; Mayavi will not invent ETA data.</section>
+    <section className="help"><b>Airline-aware MAWB tracking.</b> Mayavi detects the airline from the MAWB prefix and provides the official airline cargo tracker link. Automatic extraction from airline websites is enabled only where a stable machine-readable endpoint is available; Mayavi will not invent ETA data.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
