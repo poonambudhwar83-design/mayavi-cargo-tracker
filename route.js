@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 const QUERY_URL = 'https://api.track123.com/gateway/open-api/tk/v2.1/aviation/track/query';
 const REFRESH_URL = 'https://api.track123.com/gateway/open-api/tk/v2.1/aviation/track/refresh';
 const CARRIERS_URL = 'https://api.track123.com/gateway/open-api/tk/v2.1/aviation/carrier/list';
+const EMIRATES_TRACK_URL = 'https://scekprd.emirates.com/skychain/app';
 
 function normalizeMawb(v = '') {
   const digits = String(v).replace(/\D/g, '');
@@ -81,9 +82,7 @@ const EVENT_LABEL_FIELDS = [
 function eventLabel(node) {
   return EVENT_LABEL_FIELDS.map(k => node && node[k] != null ? String(node[k]) : '').filter(Boolean).join(' ').toUpperCase();
 }
-function eventTime(node) {
-  return pickFirst(node, EVENT_TIME_FIELDS);
-}
+function eventTime(node) { return pickFirst(node, EVENT_TIME_FIELDS); }
 function toDateValue(v) {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') {
@@ -105,8 +104,7 @@ function combineDateAndTime(dateValue, timeValue) {
   if (!dateValue || !timeValue) return null;
   const ds = String(dateValue).trim();
   const ts = String(timeValue).trim();
-  const candidates = [`${ds} ${ts}`, `${ds}T${ts}`];
-  for (const c of candidates) {
+  for (const c of [`${ds} ${ts}`, `${ds}T${ts}`]) {
     const d = toDateValue(c);
     if (d) return d.toISOString();
   }
@@ -114,34 +112,19 @@ function combineDateAndTime(dateValue, timeValue) {
 }
 function siblingArrivalDateTime(node) {
   if (!node || typeof node !== 'object') return null;
-  const dateKeys = ['arrivalDate','estimatedArrivalDate','scheduledArrivalDate','etaDate','flightArrivalDate','arrDate'];
-  const timeKeys = ['arrivalTime','estimatedArrivalTime','scheduledArrivalTime','etaTime','flightArrivalTime','arrTime'];
-  const dateVal = pickFirst(node, dateKeys);
-  const timeVal = pickFirst(node, timeKeys);
-  const combined = combineDateAndTime(dateVal, timeVal);
-  if (combined) return combined;
-  return null;
+  const dateVal = pickFirst(node, ['arrivalDate','estimatedArrivalDate','scheduledArrivalDate','etaDate','flightArrivalDate','arrDate']);
+  const timeVal = pickFirst(node, ['arrivalTime','estimatedArrivalTime','scheduledArrivalTime','etaTime','flightArrivalTime','arrTime']);
+  return combineDateAndTime(dateVal, timeVal);
 }
 function findArrivalMilestone(raw) {
   const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
-  const arrivalLike = nodes.filter(n => {
-    const label = eventLabel(n);
-    return /(^|\W)ARR($|\W)|ARRIVED|ACTUAL ARRIVAL|FLIGHT ARRIVAL|RECEIVED FROM FLIGHT|(^|\W)RCF($|\W)/i.test(label);
-  });
-  arrivalLike.sort((a, b) => {
-    const ta = toDateValue(eventTime(a))?.getTime() || 0;
-    const tb = toDateValue(eventTime(b))?.getTime() || 0;
-    return tb - ta;
-  });
+  const arrivalLike = nodes.filter(n => /(^|\W)ARR($|\W)|ARRIVED|ACTUAL ARRIVAL|FLIGHT ARRIVAL|RECEIVED FROM FLIGHT|(^|\W)RCF($|\W)/i.test(eventLabel(n)));
+  arrivalLike.sort((a, b) => (toDateValue(eventTime(b))?.getTime() || 0) - (toDateValue(eventTime(a))?.getTime() || 0));
   return arrivalLike[0] || null;
 }
 function findLatestEvent(raw) {
   const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
-  nodes.sort((a,b) => {
-    const ta = toDateValue(eventTime(a))?.getTime() || 0;
-    const tb = toDateValue(eventTime(b))?.getTime() || 0;
-    return tb - ta;
-  });
+  nodes.sort((a,b) => (toDateValue(eventTime(b))?.getTime() || 0) - (toDateValue(eventTime(a))?.getTime() || 0));
   return nodes[0] || null;
 }
 function findArrivalEstimate(raw, destination = '') {
@@ -153,31 +136,26 @@ function findArrivalEstimate(raw, destination = '') {
   const now = Date.now();
   const dest = String(destination || '').toUpperCase();
   const candidates = [];
-
   for (const node of walkObjects(raw)) {
     const nodeDest = String(pickFirst(node, ['destination','destinationAirport','arrivalAirport','to','destinationCode','arrivalCode','airportCode','station']) || '').toUpperCase();
     const destMatch = !dest || !nodeDest || nodeDest === dest;
-
     for (const key of preferred) {
       if (node[key] !== undefined && node[key] !== null && node[key] !== '') {
         const d = toDateValue(node[key]);
         if (d && destMatch) candidates.push({ value: node[key], time: d.getTime(), score: 5 });
       }
     }
-
     const combined = siblingArrivalDateTime(node);
     if (combined && destMatch) {
       const d = toDateValue(combined);
       if (d) candidates.push({ value: combined, time: d.getTime(), score: 6 });
     }
-
     for (const [key, value] of Object.entries(node)) {
       const k = key.toLowerCase();
       if (!/(arrival|arrive|eta)/.test(k) || /(departure|origin)/.test(k)) continue;
       const d = toDateValue(value);
       if (d && destMatch) candidates.push({ value, time: d.getTime(), score: /(estimated|schedule|planned|eta)/.test(k) ? 7 : 3 });
     }
-
     const label = eventLabel(node);
     const t = eventTime(node);
     if (t && /ARRIVAL|ARRIVED|(^|\W)ARR($|\W)/i.test(label) && destMatch) {
@@ -185,7 +163,6 @@ function findArrivalEstimate(raw, destination = '') {
       if (d) candidates.push({ value: t, time: d.getTime(), score: /ESTIMAT|SCHEDUL|PLANNED/.test(label) ? 8 : 2 });
     }
   }
-
   if (!candidates.length) return null;
   candidates.sort((a,b) => {
     const af = a.time >= now - 6 * 3600000 ? 1 : 0;
@@ -200,23 +177,13 @@ function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
   const best = findBestShipment(raw, fallbackMawb);
   const latest = findLatestEvent(best) || findLatestEvent(raw);
   const arrivalEvent = findArrivalMilestone(best) || findArrivalMilestone(raw);
-
-  const summaryStatus = pickFirst(best, ['aviationStatus','statusName','status','latestStatus','trackingStatus','state']) ||
-    pickFirst(latest, ['status','statusName','eventDetail','eventCode','description']);
-
+  const summaryStatus = pickFirst(best, ['aviationStatus','statusName','status','latestStatus','trackingStatus','state']) || pickFirst(latest, ['status','statusName','eventDetail','eventCode','description']);
   const origin = String(firstAnywhere(best, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || firstAnywhere(raw, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || '');
   const destination = String(firstAnywhere(best, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || firstAnywhere(raw, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || '');
-
-  const actualArrivalDirect = firstAnywhere(best, [
-    'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
-  ]) || firstAnywhere(raw, [
-    'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
-  ]);
+  const actualArrivalDirect = firstAnywhere(best, ['actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime']) || firstAnywhere(raw, ['actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime']);
   const actualArrival = validDateValue(actualArrivalDirect) ? actualArrivalDirect : (arrivalEvent && validDateValue(eventTime(arrivalEvent)) ? eventTime(arrivalEvent) : null);
   const eta = actualArrival || findArrivalEstimate(best, destination) || findArrivalEstimate(raw, destination) || null;
-
   const status = actualArrival || arrivalEvent ? 'ARRIVED' : (summaryStatus ? String(summaryStatus) : 'Tracking record found');
-
   return {
     mawb: normalizeMawb(pickFirst(best, ['trackingNo','trackNo','mawb','awbNo','waybillNo','trackingNumber']) || fallbackMawb),
     status,
@@ -234,6 +201,91 @@ function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
   };
 }
 
+function stripHtml(html='') {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi,' ')
+    .replace(/<style[\s\S]*?<\/style>/gi,' ')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/&nbsp;/gi,' ')
+    .replace(/&amp;/gi,'&')
+    .replace(/&#39;/g,"'")
+    .replace(/&quot;/g,'"')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function findAirport(text, labels) {
+  for (const label of labels) {
+    const re = new RegExp(`${label}\\s*[:\\-]?\\s*([A-Z]{3})`, 'i');
+    const m = text.match(re);
+    if (m) return m[1].toUpperCase();
+  }
+  return '';
+}
+function parseEmiratesHtml(html, trackingNo) {
+  const text = stripHtml(html);
+  const digits = trackingNo.replace(/\D/g,'');
+  const suffix = digits.slice(3);
+  if (!text.includes(digits) && !text.includes(`176-${suffix}`) && !text.includes(suffix)) return null;
+
+  const etaPatterns = [
+    /(?:estimated\s+arrival|eta|scheduled\s+arrival|arrival\s+date\/time)\s*[:\-]?\s*([0-3]?\d[\/-][0-1]?\d[\/-]\d{2,4}[ ,T]+[0-2]?\d[:.]\d{2}(?:\s*[AP]M)?)/i,
+    /(?:estimated\s+arrival|eta|scheduled\s+arrival)\s*[:\-]?\s*([A-Za-z]{3,9}\s+[0-3]?\d,?\s+\d{4}\s+[0-2]?\d:\d{2}(?:\s*[AP]M)?)/i,
+    /(?:estimated\s+arrival|eta|scheduled\s+arrival)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2})/i
+  ];
+  let eta = null;
+  for (const re of etaPatterns) {
+    const m = text.match(re);
+    if (m && toDateValue(m[1])) { eta = toDateValue(m[1]).toISOString(); break; }
+  }
+
+  const actualPatterns = [
+    /(?:actual\s+arrival|arrived(?:\s+at)?|flight\s+arrived)\s*[:\-]?\s*([0-3]?\d[\/-][0-1]?\d[\/-]\d{2,4}[ ,T]+[0-2]?\d[:.]\d{2}(?:\s*[AP]M)?)/i,
+    /(?:actual\s+arrival|arrived(?:\s+at)?|flight\s+arrived)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2})/i
+  ];
+  let actualArrival = null;
+  for (const re of actualPatterns) {
+    const m = text.match(re);
+    if (m && toDateValue(m[1])) { actualArrival = toDateValue(m[1]).toISOString(); break; }
+  }
+
+  const flight = (text.match(/\bEK\s?\d{2,4}\b/i)?.[0] || '').replace(/\s+/g,'').toUpperCase();
+  const pieces = text.match(/(?:pieces?|pcs?)\s*[:\-]?\s*(\d{1,5})/i)?.[1] || text.match(/(\d{1,5})\s*(?:pieces?|pcs?)\b/i)?.[1] || '';
+  const weight = text.match(/(?:gross\s+weight|weight)\s*[:\-]?\s*([\d,.]+)\s*kg/i)?.[1]?.replace(/,/g,'') || '';
+  const origin = findAirport(text, ['origin','from','departure']);
+  const destination = findAirport(text, ['destination','to','arrival station']);
+  const arrived = /\bARRIVED\b|\bRCF\b|actual\s+arrival/i.test(text) || Boolean(actualArrival);
+  const inTransit = /\bIN\s*TRANSIT\b|\bDEPARTED\b|\bDEP\b/i.test(text);
+  const status = arrived ? 'ARRIVED' : (inTransit ? 'IN_TRANSIT' : '');
+
+  if (!eta && !actualArrival && !flight && !pieces && !weight && !status) return null;
+  return { source:'Emirates SkyCargo', mawb:trackingNo, eta:actualArrival || eta, actualArrival, flightNo:flight, bags:pieces, weight, origin, destination, status, rawText:text.slice(0,12000) };
+}
+async function fetchEmirates(trackingNo) {
+  const digits = trackingNo.replace(/\D/g,'');
+  if (!digits.startsWith('176') || digits.length !== 11) return null;
+  const suffix = digits.slice(3);
+  const variants = [
+    `${EMIRATES_TRACK_URL}?service=page%2Fnwp%3ATrackshipmt&NOTUSERACCEPTEDPAGE=Y&docPrefix=176&docNumber=${suffix}&docType=MAWB`,
+    `${EMIRATES_TRACK_URL}?initial=y&service=page%2Fnwp%3ATrackshipmt&docPrefix=176&docNumber=${suffix}&docType=MAWB`,
+    `${EMIRATES_TRACK_URL}?service=page%2Fnwp%3ATrackshipmt&documentNo=${digits}&NOTUSERACCEPTEDPAGE=Y`
+  ];
+  for (const url of variants) {
+    try {
+      const r = await fetch(url, { headers:{ 'User-Agent':'Mozilla/5.0', Accept:'text/html,application/xhtml+xml' }, cache:'no-store', redirect:'follow' });
+      if (!r.ok) continue;
+      const parsed = parseEmiratesHtml(await r.text(), trackingNo);
+      if (parsed) return parsed;
+    } catch {}
+  }
+  return null;
+}
+function usefulStatus(s='') {
+  const t = String(s).toUpperCase().trim();
+  if (!t || t.length > 60) return '';
+  if (/ARRIVED|IN_TRANSIT|IN TRANSIT|DEPARTED|BOOKED|RECEIVED|RCF|NFD|DELIVERED|MANIFESTED|ACCEPTED|PENDING|NOTIFIED|DELAY/.test(t)) return t;
+  return '';
+}
+
 export async function GET() {
   return NextResponse.json({ configured: Boolean(process.env.TRACK123_API_KEY) });
 }
@@ -241,29 +293,60 @@ export async function GET() {
 export async function POST(request) {
   try {
     const apiKey = process.env.TRACK123_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'TRACK123_API_KEY is not configured in Vercel Environment Variables.' }, { status: 503 });
     const { mawb, carrierCode: suppliedCarrier = '', forceRefresh = false } = await request.json();
     if (!mawb) return NextResponse.json({ error: 'MAWB is required.' }, { status: 400 });
-
     const trackingNo = normalizeMawb(mawb);
-    const carrierCode = await detectCarrier(apiKey, trackingNo, suppliedCarrier);
+    const prefix = trackingNo.replace(/\D/g,'').slice(0,3);
 
-    if (forceRefresh && carrierCode) await postTrack123(REFRESH_URL, apiKey, { trackingNo, carrierCode });
+    let direct = null;
+    if (prefix === '176') direct = await fetchEmirates(trackingNo);
 
-    const item = { trackingNo, ...(carrierCode ? { carrierCode } : {}) };
-    let result = await postTrack123(QUERY_URL, apiKey, [item]);
-    if (!result.ok) result = await postTrack123(QUERY_URL, apiKey, { trackNoInfos: [item] });
-
-    if (!result.ok) {
-      return NextResponse.json({
-        error: rejectionReason(result.data, `Track123 HTTP ${result.status}`),
-        track123Status: result.status,
-        carrierCode,
-        details: result.data
-      }, { status: 502 });
+    let track123 = null;
+    let carrierCode = suppliedCarrier;
+    if (apiKey) {
+      carrierCode = await detectCarrier(apiKey, trackingNo, suppliedCarrier);
+      if (forceRefresh && carrierCode) await postTrack123(REFRESH_URL, apiKey, { trackingNo, carrierCode });
+      const item = { trackingNo, ...(carrierCode ? { carrierCode } : {}) };
+      let result = await postTrack123(QUERY_URL, apiKey, [item]);
+      if (!result.ok) result = await postTrack123(QUERY_URL, apiKey, { trackNoInfos: [item] });
+      if (result.ok) track123 = normalizeResponse(result.data, trackingNo, carrierCode);
     }
 
-    return NextResponse.json({ ok: true, carrierCode, shipment: normalizeResponse(result.data, trackingNo, carrierCode) });
+    if (direct) {
+      return NextResponse.json({
+        ok:true,
+        carrierCode: carrierCode || 'EK',
+        source:'Emirates SkyCargo',
+        shipment:{
+          mawb:trackingNo,
+          status: direct.status || usefulStatus(track123?.status) || 'Tracking record found',
+          carrierCode: carrierCode || 'EK',
+          origin: direct.origin || '',
+          destination: direct.destination || '',
+          eta: direct.eta || track123?.eta || null,
+          actualArrival: direct.actualArrival || track123?.actualArrival || null,
+          flightNo: direct.flightNo || track123?.flightNo || '',
+          bags: direct.bags || track123?.bags || '',
+          weight: direct.weight || track123?.weight || '',
+          source:'Emirates SkyCargo',
+          direct,
+          rawTrack123:track123?.raw || null
+        }
+      });
+    }
+
+    if (track123) {
+      const safeTrack123 = prefix === '176' ? {
+        ...track123,
+        origin:'',
+        destination:'',
+        status: usefulStatus(track123.status) || 'Tracking record found',
+        source:'Track123 fallback'
+      } : { ...track123, source:'Track123' };
+      return NextResponse.json({ ok:true, carrierCode, source:safeTrack123.source, shipment:safeTrack123 });
+    }
+
+    return NextResponse.json({ error: prefix === '176' ? 'Emirates SkyCargo did not expose machine-readable shipment details, and Track123 fallback was unavailable.' : 'No live tracking source returned shipment details.' }, { status:502 });
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Tracking request failed.' }, { status: 500 });
   }
