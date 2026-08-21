@@ -11,14 +11,43 @@ function normalizeMawb(v='') {
 function airlineFromMawb(mawb=''){
   const prefix=String(mawb).replace(/\D/g,'').slice(0,3);
   const map={
-    '157':{name:'Qatar Airways Cargo',iata:'QR',official:'https://www.qrcargo.com/s/track-your-shipment'},
-    '176':{name:'Emirates SkyCargo',iata:'EK',official:'https://www.skycargo.com/'},
+    '001':{name:'American Airlines Cargo',iata:'AA',official:'https://www.aacargo.com/'},
+    '006':{name:'Delta Cargo',iata:'DL',official:'https://www.deltacargo.com/'},
+    '014':{name:'Air Canada Cargo',iata:'AC',official:'https://www.aircanada.com/cargo/'},
+    '016':{name:'United Cargo',iata:'UA',official:'https://www.unitedcargo.com/'},
     '020':{name:'Lufthansa Cargo',iata:'LH',official:'https://www.lufthansa-cargo.com/'},
+    '023':{name:'FedEx Express',iata:'FX',official:'https://www.fedex.com/en-us/tracking.html'},
+    '057':{name:'Air France KLM Martinair Cargo',iata:'AF',official:'https://www.afklcargo.com/'},
+    '065':{name:'Saudia Cargo',iata:'SV',official:'https://www.saudiacargo.com/'},
+    '074':{name:'KLM Cargo',iata:'KL',official:'https://www.afklcargo.com/'},
+    '075':{name:'Iberia Cargo',iata:'IB',official:'https://www.iberia.com/cargo/'},
+    '081':{name:'Qantas Freight',iata:'QF',official:'https://freight.qantas.com/'},
     '098':{name:'Air India Cargo',iata:'AI',official:'https://cargo.airindia.com/'},
+    '105':{name:'Finnair Cargo',iata:'AY',official:'https://cargo.finnair.com/'},
+    '125':{name:'British Airways / IAG Cargo',iata:'BA',official:'https://www.iagcargo.com/'},
+    '131':{name:'Japan Airlines Cargo',iata:'JL',official:'https://www.jal.co.jp/jalcargo/'},
+    '157':{name:'Qatar Airways Cargo',iata:'QR',official:'https://www.qrcargo.com/s/track-your-shipment'},
     '160':{name:'Cathay Cargo',iata:'CX',official:'https://www.cathaycargo.com/'},
-    '065':{name:'Saudia Cargo',iata:'SV',official:'https://www.saudiacargo.com/'}
+    '176':{name:'Emirates SkyCargo',iata:'EK',official:'https://www.skycargo.com/'},
+    '180':{name:'Korean Air Cargo',iata:'KE',official:'https://cargo.koreanair.com/'},
+    '205':{name:'ANA Cargo',iata:'NH',official:'https://www.anacargo.jp/en/'},
+    '217':{name:'Thai Airways Cargo',iata:'TG',official:'https://www.thaicargo.com/'},
+    '232':{name:'Malaysia Airlines Cargo',iata:'MH',official:'https://www.maskargo.com/'},
+    '235':{name:'Turkish Cargo',iata:'TK',official:'https://www.turkishcargo.com.tr/'},
+    '297':{name:'China Airlines Cargo',iata:'CI',official:'https://cargo.china-airlines.com/'},
+    '406':{name:'UPS Airlines',iata:'5X',official:'https://www.ups.com/track'},
+    '607':{name:'Etihad Cargo',iata:'EY',official:'https://www.etihadcargo.com/'},
+    '618':{name:'Singapore Airlines Cargo',iata:'SQ',official:'https://www.singaporeair.com/'},
+    '724':{name:'SWISS WorldCargo',iata:'LX',official:'https://www.swissworldcargo.com/'},
+    '988':{name:'Asiana Cargo',iata:'OZ',official:'https://www.asiana-cargo.com/'},
+    '999':{name:'Air China Cargo',iata:'CA',official:'https://www.airchinacargo.com/' }
   };
-  return map[prefix]||{name:prefix?`Airline prefix ${prefix}`:'Unknown airline',iata:'',official:''};
+  if(map[prefix]) return map[prefix];
+  return {
+    name:prefix?`Airline prefix ${prefix}`:'Unknown airline',
+    iata:'',
+    official:prefix?`https://www.google.com/search?q=${encodeURIComponent('AWB prefix '+prefix+' official airline cargo tracking')}`:''
+  };
 }
 function pad(n){ return String(n).padStart(2,'0'); }
 function localParts(value){
@@ -201,7 +230,7 @@ export default function Home(){
         <td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{mailAlert(s)}</b></td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
       </tr>})}</tbody></table>
     </section>
-    <section className="help"><b>Airline-aware MAWB tracking.</b> Mayavi now detects the airline from the MAWB prefix and provides the official airline cargo tracker link. Qatar (157) routes to Qatar Airways Cargo. Automatic extraction from airline websites will only be enabled where the airline exposes a stable machine-readable endpoint; Mayavi will not invent ETA data.</section>
+    <section className="help"><b>Airline-aware MAWB tracking.</b> Mayavi detects many major cargo airlines directly from the MAWB prefix and opens their official cargo tracker. If a prefix is not yet in the built-in list, Mayavi gives an airline-prefix search link instead of guessing. Automatic website extraction will only be enabled where an airline provides a stable machine-readable endpoint; Mayavi will not invent ETA data.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
