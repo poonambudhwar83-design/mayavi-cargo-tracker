@@ -30,10 +30,8 @@ function firstMatch(text, patterns) {
 function normalizeDateTime(value = '') {
   const v = String(value).trim();
   if (!v) return null;
-
   const native = new Date(v);
   if (!Number.isNaN(native.getTime())) return native.toISOString();
-
   const m = v.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})[^\d]?(\d{1,2})[:.](\d{2})(?:\s*(AM|PM))?/i);
   if (!m) return null;
   let [, dd, mm, yy, hh, min, ap] = m;
@@ -51,45 +49,39 @@ function normalizeDateTime(value = '') {
 
 function parseEmiratesHtml(html, mawb) {
   const text = cleanText(html);
+  const digits = String(mawb).replace(/\D/g, '');
+  const serial = digits.slice(3);
+  const pageHasAwb = text.replace(/\D/g, '').includes(digits) || text.includes(serial);
+
   const flightNo = firstMatch(text, [
     /(?:Flight(?:\s*No\.?|\s*Number)?|FLT)\s*[:#-]?\s*(EK\s*\d{2,4})/i,
     /\b(EK\s*\d{2,4})\b/i
   ]).replace(/\s+/g, '');
 
   const origin = firstMatch(text, [
-    /(?:Origin|From)\s*[:#-]?\s*([A-Z]{3})\b/i,
+    /(?:Origin|From|Departure\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
     /\b([A-Z]{3})\s*(?:-|→|TO)\s*[A-Z]{3}\b/i
   ]).toUpperCase();
 
   const destination = firstMatch(text, [
-    /(?:Destination|To)\s*[:#-]?\s*([A-Z]{3})\b/i,
+    /(?:Destination|To|Arrival\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
     /\b[A-Z]{3}\s*(?:-|→|TO)\s*([A-Z]{3})\b/i
   ]).toUpperCase();
 
-  const pieces = firstMatch(text, [
-    /(?:Pieces|Piece|Pcs|Pkgs|Packages)\s*[:#-]?\s*(\d{1,6})/i
-  ]);
-
-  const weight = firstMatch(text, [
-    /(?:Gross\s*Weight|Weight)\s*[:#-]?\s*([\d,.]+)\s*(?:KG|KGS|KILOGRAMS?)?/i
-  ]).replace(/,/g, '');
+  const pieces = firstMatch(text, [/(?:Pieces|Piece|Pcs|Pkgs|Packages)\s*[:#-]?\s*(\d{1,6})/i]);
+  const weight = firstMatch(text, [/(?:Gross\s*Weight|Weight)\s*[:#-]?\s*([\d,.]+)\s*(?:KG|KGS|KILOGRAMS?)?/i]).replace(/,/g, '');
 
   const actualArrivalRaw = firstMatch(text, [
-    /(?:Actual\s*Arrival|Arrived(?:\s*At)?|Arrival\s*Actual)\s*[:#-]?\s*([^|]{6,35})/i
+    /(?:Actual\s*Arrival(?:\s*Time)?|Arrived(?:\s*At)?|Arrival\s*Actual)\s*[:#-]?\s*([^|]{6,35})/i
   ]);
-
   const etaRaw = firstMatch(text, [
     /(?:Estimated\s*Arrival(?:\s*Time)?|ETA|Expected\s*Arrival(?:\s*Time)?|Scheduled\s*Arrival(?:\s*Time)?)\s*[:#-]?\s*([^|]{6,35})/i
   ]);
-
-  const status = firstMatch(text, [
-    /(?:Shipment\s*Status|Current\s*Status|Status)\s*[:#-]?\s*([A-Za-z][A-Za-z _-]{2,40})/i
-  ]);
+  const status = firstMatch(text, [/(?:Shipment\s*Status|Current\s*Status|Status)\s*[:#-]?\s*([A-Za-z][A-Za-z _-]{2,40})/i]);
 
   const actualArrival = normalizeDateTime(actualArrivalRaw);
   const eta = actualArrival || normalizeDateTime(etaRaw);
-
-  const useful = Boolean(flightNo || origin || destination || pieces || weight || eta || status);
+  const useful = pageHasAwb && Boolean(flightNo || origin || destination || pieces || weight || eta || actualArrival || status);
 
   return {
     useful,
@@ -106,57 +98,67 @@ function parseEmiratesHtml(html, mawb) {
       weight,
       source: 'Emirates SkyCargo official tracker'
     },
-    debug: {
-      pageHasMawb: text.replace(/\D/g, '').includes(String(mawb).replace(/\D/g, '')),
-      pageTitleHint: text.slice(0, 180)
-    }
+    debug: { pageHasAwb, pageTitleHint: text.slice(0, 220) }
   };
 }
 
 async function fetchEmirates(mawb) {
   const digits = String(mawb).replace(/\D/g, '');
-  if (!digits.startsWith('176') || digits.length < 11) return { useful: false };
+  if (!digits.startsWith('176') || digits.length !== 11) return { useful: false };
   const serial = digits.slice(3, 11);
+  const variants = [
+    `${EMIRATES_TRACK_URL}?service=page%2Fnwp%3ATrackshipmt&doc_typ=AWB&awb_pre=176&awb_no=${serial}`,
+    `${EMIRATES_TRACK_URL}?initial=y&service=page%2Fnwp%3ATrackshipmt&docPrefix=176&docNumber=${serial}&docType=MAWB`,
+    `${EMIRATES_TRACK_URL}?service=page%2Fnwp%3ATrackshipmt&NOTUSERACCEPTEDPAGE=Y&docPrefix=176&docNumber=${serial}&docType=MAWB`,
+    `${EMIRATES_TRACK_URL}?service=page%2Fnwp%3ATrackshipmt&documentNo=${digits}&NOTUSERACCEPTEDPAGE=Y`
+  ];
 
-  const url = new URL(EMIRATES_TRACK_URL);
-  url.searchParams.set('service', 'page/nwp:Trackshipmt');
-  url.searchParams.set('doc_typ', 'AWB');
-  url.searchParams.set('awb_pre', '176');
-  url.searchParams.set('awb_no', serial);
-
-  try {
-    const r = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; MayaviCargo/1.0)',
-        Accept: 'text/html,application/xhtml+xml'
-      },
-      cache: 'no-store',
-      redirect: 'follow'
-    });
-    if (!r.ok) return { useful: false, error: `Emirates HTTP ${r.status}` };
-    const html = await r.text();
-    return parseEmiratesHtml(html, `${digits.slice(0, 3)}-${serial}`);
-  } catch (e) {
-    return { useful: false, error: e?.message || 'Emirates tracker fetch failed' };
+  let lastError = '';
+  for (const url of variants) {
+    try {
+      const r = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml'
+        },
+        cache: 'no-store',
+        redirect: 'follow'
+      });
+      if (!r.ok) { lastError = `Emirates HTTP ${r.status}`; continue; }
+      const parsed = parseEmiratesHtml(await r.text(), `${digits.slice(0, 3)}-${serial}`);
+      if (parsed.useful) return parsed;
+    } catch (e) {
+      lastError = e?.message || 'Emirates tracker fetch failed';
+    }
   }
+  return { useful: false, error: lastError || 'Emirates public tracker did not expose the result to server-side requests.' };
 }
 
-function mergeShipment(fallback = {}, primary = {}) {
-  const out = { ...fallback };
-  for (const [k, v] of Object.entries(primary || {})) {
-    if (v !== undefined && v !== null && v !== '') out[k] = v;
-  }
-  return out;
+function safeFallbackForEmirates(track = {}, mawb = '') {
+  return {
+    mawb,
+    carrierCode: track.carrierCode || 'EK',
+    bags: track.bags || '',
+    weight: track.weight || '',
+    flightNo: track.flightNo || '',
+    origin: '',
+    destination: '',
+    eta: null,
+    actualArrival: null,
+    status: 'WAITING FOR EMIRATES LIVE DATA',
+    source: 'Track123 fallback — ETA/origin not trusted for Emirates'
+  };
 }
 
 export async function POST(request) {
   const body = await request.json();
   const mawb = body?.mawb || '';
   const digits = String(mawb).replace(/\D/g, '');
+  const isEmirates = digits.startsWith('176');
 
   let emirates = { useful: false };
-  if (digits.startsWith('176')) emirates = await fetchEmirates(mawb);
+  if (isEmirates) emirates = await fetchEmirates(mawb);
 
   const fallbackReq = new Request(request.url, {
     method: 'POST',
@@ -167,26 +169,38 @@ export async function POST(request) {
   let trackData = {};
   try { trackData = await trackResp.json(); } catch {}
 
-  if (emirates.useful) {
-    const merged = mergeShipment(trackData?.shipment || {}, emirates.shipment || {});
+  if (isEmirates && emirates.useful) {
+    const official = emirates.shipment || {};
+    const track = trackData?.shipment || {};
     return Response.json({
       ok: true,
-      source: 'Emirates SkyCargo official tracker first; Track123 fallback',
-      shipment: merged,
+      source: 'Emirates SkyCargo official tracker',
       airlinePrimary: true,
+      shipment: {
+        mawb: official.mawb || mawb,
+        carrierCode: 'EK',
+        origin: official.origin || '',
+        destination: official.destination || '',
+        eta: official.eta || null,
+        actualArrival: official.actualArrival || null,
+        status: official.status || 'EMIRATES SHIPMENT FOUND',
+        flightNo: official.flightNo || track.flightNo || '',
+        bags: official.bags || track.bags || '',
+        weight: official.weight || track.weight || '',
+        source: 'Emirates SkyCargo official tracker'
+      },
       airlineDebug: emirates.debug || null
     });
   }
 
-  if (trackResp.ok) {
+  if (isEmirates) {
     return Response.json({
-      ...trackData,
-      source: digits.startsWith('176')
-        ? 'Track123 fallback (Emirates official tracker returned no machine-readable shipment details)'
-        : (trackData?.source || 'Track123'),
+      ok: true,
+      source: 'Emirates official tracker unavailable to server; sanitized fallback',
       airlinePrimary: false,
-      airlineError: emirates.error || null
-    }, { status: trackResp.status });
+      airlineError: emirates.error || null,
+      shipment: safeFallbackForEmirates(trackData?.shipment || {}, mawb)
+    });
   }
 
   return Response.json(trackData, { status: trackResp.status });
