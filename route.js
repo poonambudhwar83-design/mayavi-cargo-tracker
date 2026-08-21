@@ -84,10 +84,43 @@ function eventLabel(node) {
 function eventTime(node) {
   return pickFirst(node, EVENT_TIME_FIELDS);
 }
-function validDateValue(v) {
-  if (!v) return false;
-  const d = new Date(v);
-  return !Number.isNaN(d.getTime());
+function toDateValue(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') {
+    const n = v < 1e12 ? v * 1000 : v;
+    const d = new Date(n);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(v).trim();
+  if (/^\d{10,13}$/.test(s)) {
+    const n = Number(s.length === 10 ? `${s}000` : s);
+    const d = new Date(n);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function validDateValue(v) { return Boolean(toDateValue(v)); }
+function combineDateAndTime(dateValue, timeValue) {
+  if (!dateValue || !timeValue) return null;
+  const ds = String(dateValue).trim();
+  const ts = String(timeValue).trim();
+  const candidates = [`${ds} ${ts}`, `${ds}T${ts}`];
+  for (const c of candidates) {
+    const d = toDateValue(c);
+    if (d) return d.toISOString();
+  }
+  return null;
+}
+function siblingArrivalDateTime(node) {
+  if (!node || typeof node !== 'object') return null;
+  const dateKeys = ['arrivalDate','estimatedArrivalDate','scheduledArrivalDate','etaDate','flightArrivalDate','arrDate'];
+  const timeKeys = ['arrivalTime','estimatedArrivalTime','scheduledArrivalTime','etaTime','flightArrivalTime','arrTime'];
+  const dateVal = pickFirst(node, dateKeys);
+  const timeVal = pickFirst(node, timeKeys);
+  const combined = combineDateAndTime(dateVal, timeVal);
+  if (combined) return combined;
+  return null;
 }
 function findArrivalMilestone(raw) {
   const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
@@ -96,38 +129,72 @@ function findArrivalMilestone(raw) {
     return /(^|\W)ARR($|\W)|ARRIVED|ACTUAL ARRIVAL|FLIGHT ARRIVAL|RECEIVED FROM FLIGHT|(^|\W)RCF($|\W)/i.test(label);
   });
   arrivalLike.sort((a, b) => {
-    const ta = new Date(eventTime(a)).getTime();
-    const tb = new Date(eventTime(b)).getTime();
-    return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+    const ta = toDateValue(eventTime(a))?.getTime() || 0;
+    const tb = toDateValue(eventTime(b))?.getTime() || 0;
+    return tb - ta;
   });
   return arrivalLike[0] || null;
 }
 function findLatestEvent(raw) {
   const nodes = walkObjects(raw).filter(n => eventTime(n) && eventLabel(n));
   nodes.sort((a,b) => {
-    const ta = new Date(eventTime(a)).getTime();
-    const tb = new Date(eventTime(b)).getTime();
-    return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+    const ta = toDateValue(eventTime(a))?.getTime() || 0;
+    const tb = toDateValue(eventTime(b))?.getTime() || 0;
+    return tb - ta;
   });
   return nodes[0] || null;
 }
-function findArrivalEstimate(raw) {
+function findArrivalEstimate(raw, destination = '') {
   const preferred = [
-    'estimatedArrivalTime','estimatedArrival','eta','flightEstimatedArrivalTime','arrivalEstimatedTime',
-    'scheduledArrivalTime','scheduledArrival','flightScheduledArrivalTime','arrivalScheduledTime',
-    'arrivalTime','estimatedArrivalDate','scheduledArrivalDate'
+    'estimatedArrivalTime','estimatedArrival','eta','etaDateTime','estimatedArrivalDateTime','flightEstimatedArrivalTime','arrivalEstimatedTime',
+    'scheduledArrivalTime','scheduledArrival','scheduledArrivalDateTime','flightScheduledArrivalTime','arrivalScheduledTime',
+    'arrivalTime','estimatedArrivalDate','scheduledArrivalDate','plannedArrivalTime','plannedArrival','flightArrivalTime'
   ];
-  const direct = firstAnywhere(raw, preferred);
-  if (validDateValue(direct)) return direct;
+  const now = Date.now();
+  const dest = String(destination || '').toUpperCase();
+  const candidates = [];
 
-  const candidates = walkObjects(raw).filter(n => {
-    const label = eventLabel(n);
-    const t = eventTime(n);
-    return t && /ARRIVAL|ARRIVED|(^|\W)ARR($|\W)/i.test(label);
+  for (const node of walkObjects(raw)) {
+    const nodeDest = String(pickFirst(node, ['destination','destinationAirport','arrivalAirport','to','destinationCode','arrivalCode','airportCode','station']) || '').toUpperCase();
+    const destMatch = !dest || !nodeDest || nodeDest === dest;
+
+    for (const key of preferred) {
+      if (node[key] !== undefined && node[key] !== null && node[key] !== '') {
+        const d = toDateValue(node[key]);
+        if (d && destMatch) candidates.push({ value: node[key], time: d.getTime(), score: 5 });
+      }
+    }
+
+    const combined = siblingArrivalDateTime(node);
+    if (combined && destMatch) {
+      const d = toDateValue(combined);
+      if (d) candidates.push({ value: combined, time: d.getTime(), score: 6 });
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      const k = key.toLowerCase();
+      if (!/(arrival|arrive|eta)/.test(k) || /(departure|origin)/.test(k)) continue;
+      const d = toDateValue(value);
+      if (d && destMatch) candidates.push({ value, time: d.getTime(), score: /(estimated|schedule|planned|eta)/.test(k) ? 7 : 3 });
+    }
+
+    const label = eventLabel(node);
+    const t = eventTime(node);
+    if (t && /ARRIVAL|ARRIVED|(^|\W)ARR($|\W)/i.test(label) && destMatch) {
+      const d = toDateValue(t);
+      if (d) candidates.push({ value: t, time: d.getTime(), score: /ESTIMAT|SCHEDUL|PLANNED/.test(label) ? 8 : 2 });
+    }
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a,b) => {
+    const af = a.time >= now - 6 * 3600000 ? 1 : 0;
+    const bf = b.time >= now - 6 * 3600000 ? 1 : 0;
+    if (af !== bf) return bf - af;
+    if (a.score !== b.score) return b.score - a.score;
+    return Math.abs(a.time - now) - Math.abs(b.time - now);
   });
-  const timed = candidates.map(n => eventTime(n)).filter(validDateValue);
-  timed.sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
-  return timed[0] || null;
+  return candidates[0].value || null;
 }
 function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
   const best = findBestShipment(raw, fallbackMawb);
@@ -137,13 +204,16 @@ function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
   const summaryStatus = pickFirst(best, ['aviationStatus','statusName','status','latestStatus','trackingStatus','state']) ||
     pickFirst(latest, ['status','statusName','eventDetail','eventCode','description']);
 
+  const origin = String(firstAnywhere(best, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || firstAnywhere(raw, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || '');
+  const destination = String(firstAnywhere(best, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || firstAnywhere(raw, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || '');
+
   const actualArrivalDirect = firstAnywhere(best, [
     'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
   ]) || firstAnywhere(raw, [
     'actualArrivalTime','actualArrival','arrivedAt','actualArrivalDate','flightActualArrivalTime','arrivalActualTime'
   ]);
   const actualArrival = validDateValue(actualArrivalDirect) ? actualArrivalDirect : (arrivalEvent && validDateValue(eventTime(arrivalEvent)) ? eventTime(arrivalEvent) : null);
-  const eta = actualArrival || findArrivalEstimate(best) || findArrivalEstimate(raw) || null;
+  const eta = actualArrival || findArrivalEstimate(best, destination) || findArrivalEstimate(raw, destination) || null;
 
   const status = actualArrival || arrivalEvent ? 'ARRIVED' : (summaryStatus ? String(summaryStatus) : 'Tracking record found');
 
@@ -151,8 +221,8 @@ function normalizeResponse(raw, fallbackMawb, detectedCarrier='') {
     mawb: normalizeMawb(pickFirst(best, ['trackingNo','trackNo','mawb','awbNo','waybillNo','trackingNumber']) || fallbackMawb),
     status,
     carrierCode: String(firstAnywhere(best, ['carrierCode','courierCode','carrier','airlineCode']) || detectedCarrier || ''),
-    origin: String(firstAnywhere(best, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || firstAnywhere(raw, ['origin','originAirport','departureAirport','from','departure','originCode','departureCode']) || ''),
-    destination: String(firstAnywhere(best, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || firstAnywhere(raw, ['destination','destinationAirport','arrivalAirport','to','arrival','destinationCode','arrivalCode']) || ''),
+    origin,
+    destination,
     eta,
     actualArrival: actualArrival || null,
     flightNo: String(firstAnywhere(best, ['flightNo','flightNumber','flight','flightCode']) || firstAnywhere(raw, ['flightNo','flightNumber','flight','flightCode']) || ''),
