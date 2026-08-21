@@ -96,6 +96,11 @@ async function visibleInput(page, purpose='trackjet'){
   return null;
 }
 
+function isExternalHttpUrl(value=''){
+  if(!/^https?:\/\//i.test(String(value)))return false;
+  try{return new URL(value).hostname!=='trackjet.world';}catch{return false;}
+}
+
 // Use a real Puppeteer click, not DOM el.click(). TrackJet opens some carrier links
 // from a user gesture; synthetic DOM clicks can be ignored or popup-blocked.
 async function clickByText(page, re, selectors='button,input[type="submit"],input[type="button"],a'){
@@ -111,6 +116,7 @@ async function clickByText(page, re, selectors='button,input[type="submit"],inpu
         href:el.href||el.getAttribute('href')||'',
         target:el.target||'',
         dataHref:el.getAttribute('data-href')||el.getAttribute('data-url')||el.getAttribute('data-target-url')||'',
+        onclick:(el.getAttribute('onclick')||'').slice(0,400),
         tag:el.tagName||''
       };
     },{src:re.source,flags:re.flags});
@@ -198,28 +204,33 @@ async function runTrackJet(mawb){
       debug.handoff=handoff;
       if(!handoff.clicked)return {ok:false,error:'TrackJet found the carrier, but no carrier handoff button was exposed.',debug};
 
-      // Give a trusted click time to create a popup or same-tab navigation.
-      for(let i=0;i<14;i++){
+      // TrackJet can first create an about:blank popup and navigate it asynchronously.
+      // Do not mistake about:blank for the carrier page; wait for a real http(s) URL.
+      let popupPage=null;
+      for(let i=0;i<28;i++){
         await sleep(500);
         const after=await browser.pages();
-        const external=after.find(p=>p!==page && (()=>{try{return new URL(p.url()).hostname!=='trackjet.world';}catch{return false;}})());
+        const newPages=after.filter(p=>p!==page && !before.includes(p));
+        if(!popupPage && newPages.length)popupPage=newPages[newPages.length-1];
+
+        const external=after.find(p=>p!==page && isExternalHttpUrl(p.url()));
         if(external){ carrierPage=external; break; }
-        try{
-          if(new URL(page.url()).hostname!=='trackjet.world'){ carrierPage=page; break; }
-        }catch{}
+        if(isExternalHttpUrl(page.url())){ carrierPage=page; break; }
+
+        if(popupPage){
+          debug.popupUrl=popupPage.url();
+          if(isExternalHttpUrl(popupPage.url())){ carrierPage=popupPage; break; }
+        }
       }
 
-      // If TrackJet exposed a direct carrier URL but its popup was blocked, navigate to that URL ourselves.
+      // If TrackJet exposed a direct carrier URL but the popup never navigated, use it.
       if(carrierPage===page && new URL(page.url()).hostname==='trackjet.world'){
         const direct=handoff.href||handoff.dataHref||'';
-        if(/^https?:\/\//i.test(direct)){
+        if(isExternalHttpUrl(direct)){
           try{
-            const host=new URL(direct).hostname;
-            if(host!=='trackjet.world'){
-              debug.handoffFallback='DIRECT_URL';
-              await page.goto(direct,{waitUntil:'domcontentloaded',timeout:25000});
-              carrierPage=page;
-            }
+            debug.handoffFallback='DIRECT_URL';
+            await page.goto(direct,{waitUntil:'domcontentloaded',timeout:25000});
+            carrierPage=page;
           }catch{}
         }
       }
@@ -227,8 +238,15 @@ async function runTrackJet(mawb){
       const after=await browser.pages();
       debug.pageUrls=after.map(p=>p.url()).slice(-6);
       if(carrierPage===page && new URL(page.url()).hostname==='trackjet.world'){
+        if(popupPage && !isExternalHttpUrl(popupPage.url())){
+          return {ok:false,error:`TrackJet created a popup but it stayed at ${popupPage.url()||'about:blank'} instead of navigating to the airline.`,debug:{...debug,stage:'TRACKJET_HANDOFF_BLANK_POPUP',popupUrl:popupPage.url()}};
+        }
         return {ok:false,error:'TrackJet handoff button was clicked, but the browser remained on TrackJet. The carrier window/link did not open.',debug:{...debug,stage:'TRACKJET_HANDOFF_NOT_OPENED'}};
       }
+    }
+
+    if(!isExternalHttpUrl(carrierPage.url())){
+      return {ok:false,error:`Carrier handoff did not reach a real airline URL; browser is at ${carrierPage.url()||'about:blank'}.`,debug:{...debug,stage:'CARRIER_URL_INVALID',carrierUrl:carrierPage.url()}};
     }
 
     debug.stage='CARRIER_OPEN';
