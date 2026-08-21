@@ -1,291 +1,212 @@
-import { GET as track123GET, POST as track123POST } from '../../../route';
+import { GET as fallbackGET, POST as fallbackPOST } from '../../../route';
 
-export const GET = track123GET;
+export const GET = fallbackGET;
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const EMIRATES_TRACK_URL = 'https://scekprd.emirates.com/skychain/app?initial=y&service=page%2Fnwp%3ATrackshipmt';
-
-function normalizeDateTime(value = '') {
-  const v = String(value).trim();
-  if (!v) return null;
-  const native = new Date(v);
-  if (!Number.isNaN(native.getTime())) return native.toISOString();
-  const m = v.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})[^\d]?(\d{1,2})[:.](\d{2})(?:\s*(AM|PM))?/i);
-  if (!m) return null;
-  let [, dd, mm, yy, hh, min, ap] = m;
-  let year = Number(yy);
-  if (year < 100) year += 2000;
-  let hour = Number(hh);
-  if (ap) {
-    const upper = ap.toUpperCase();
-    if (upper === 'PM' && hour < 12) hour += 12;
-    if (upper === 'AM' && hour === 12) hour = 0;
+const AIRLINES = {
+  '160': {
+    name: 'Cathay Cargo',
+    code: 'CX',
+    url: 'https://www.cathaycargo.com/usrapps/eservices/track/track.aspx'
+  },
+  '176': {
+    name: 'Emirates SkyCargo',
+    code: 'EK',
+    url: 'https://scekprd.emirates.com/skychain/app?initial=y&service=page%2Fnwp%3ATrackshipmt'
   }
-  const d = new Date(Date.UTC(year, Number(mm) - 1, Number(dd), hour, Number(min)));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+function normMawb(v='') {
+  const d=String(v).replace(/\D/g,'');
+  return d.length>=11 ? `${d.slice(0,3)}-${d.slice(3,11)}` : String(v).trim();
 }
 
-function firstMatch(text, patterns) {
-  for (const p of patterns) {
-    const m = String(text || '').match(p);
-    if (m && m[1]) return m[1].trim();
+function parseDateTime(raw='') {
+  const s=String(raw).replace(/\s+/g,' ').trim();
+  if(!s) return null;
+  const direct=new Date(s);
+  if(!Number.isNaN(direct.getTime())) return direct.toISOString();
+  const patterns=[
+    /(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})[^\d]{0,5}(\d{1,2})[:.](\d{2})(?:\s*(AM|PM))?/i,
+    /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})[^\d]{0,5}(\d{1,2})[:.](\d{2})/i
+  ];
+  let m=s.match(patterns[0]);
+  if(m){
+    let [,dd,mm,yy,hh,min,ap]=m; let y=+yy; if(y<100)y+=2000; let h=+hh;
+    if(ap){ap=ap.toUpperCase(); if(ap==='PM'&&h<12)h+=12; if(ap==='AM'&&h===12)h=0;}
+    const d=new Date(Date.UTC(y,+mm-1,+dd,h,+min)); return Number.isNaN(d.getTime())?null:d.toISOString();
   }
+  m=s.match(patterns[1]);
+  if(m){ const [,yy,mm,dd,hh,min]=m; const d=new Date(Date.UTC(+yy,+mm-1,+dd,+hh,+min)); return Number.isNaN(d.getTime())?null:d.toISOString(); }
+  return null;
+}
+
+function first(text, regs){
+  for(const r of regs){ const m=String(text).match(r); if(m?.[1]) return m[1].trim(); }
   return '';
 }
 
-function parseEmiratesText(text, mawb) {
-  const compact = String(text || '').replace(/\s+/g, ' ').trim();
-  const digits = String(mawb).replace(/\D/g, '');
-  const serial = digits.slice(3);
-  const pageHasAwb = compact.replace(/\D/g, '').includes(digits) || compact.includes(serial);
+function parseOfficialText(text, mawb, prefix){
+  const t=String(text||'').replace(/\s+/g,' ').trim();
+  const cfg=AIRLINES[prefix];
+  const digits=mawb.replace(/\D/g,''); const serial=digits.slice(3);
+  const hasAwb=t.replace(/\D/g,'').includes(digits)||t.includes(serial);
+  if(!hasAwb) return { useful:false, error:`${cfg.name} result page did not contain this AWB.` };
 
-  const flightNo = firstMatch(compact, [
-    /(?:Flight(?:\s*No\.?|\s*Number)?|FLT)\s*[:#-]?\s*(EK\s*\d{2,4})/i,
-    /\b(EK\s*\d{2,4})\b/i
-  ]).replace(/\s+/g, '').toUpperCase();
+  const flightPrefix=cfg.code;
+  const flightNo=first(t,[
+    new RegExp(`\\b(${flightPrefix}\\s*[- ]?\\d{2,4})\\b`,'i'),
+    /(?:Flight(?:\s*No\.?|\s*Number)?|FLT)\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[- ]?\d{2,4})/i
+  ]).replace(/\s+/g,'').toUpperCase();
 
-  const origin = firstMatch(compact, [
-    /(?:Origin|From|Departure\s*Station|Originating\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
+  const origin=first(t,[
+    /(?:AWB\s*Origin|Origin|From|Departure\s*Station|Originating\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
     /\b([A-Z]{3})\s*(?:-|→|TO)\s*[A-Z]{3}\b/i
   ]).toUpperCase();
 
-  const destination = firstMatch(compact, [
-    /(?:Destination|To|Arrival\s*Station|Destination\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
+  const destination=first(t,[
+    /(?:AWB\s*Destination|Destination|To|Arrival\s*Station|Destination\s*Station)\s*[:#-]?\s*([A-Z]{3})\b/i,
     /\b[A-Z]{3}\s*(?:-|→|TO)\s*([A-Z]{3})\b/i
   ]).toUpperCase();
 
-  const pieces = firstMatch(compact, [
+  const bags=first(t,[
     /(?:Pieces|Piece|Pcs|Pkgs|Packages)\s*[:#-]?\s*(\d{1,6})/i,
-    /(\d{1,6})\s*(?:Pieces|Pcs)\b/i
+    /(\d{1,6})\s*(?:PCS|Pieces)\b/i
   ]);
-
-  const weight = firstMatch(compact, [
+  const weight=first(t,[
     /(?:Gross\s*Weight|Weight)\s*[:#-]?\s*([\d,.]+)\s*(?:KG|KGS|KILOGRAMS?)?/i,
     /([\d,.]+)\s*(?:KG|KGS)\b/i
-  ]).replace(/,/g, '');
+  ]).replace(/,/g,'');
 
-  const actualRaw = firstMatch(compact, [
-    /(?:Actual\s*Arrival(?:\s*Time)?|Arrived(?:\s*At)?|Arrival\s*Actual)\s*[:#-]?\s*([^|]{6,40})/i
+  const actualRaw=first(t,[
+    /(?:Actual\s*Arrival(?:\s*Time)?|Arrived(?:\s*At|\s*On)?|Arrival\s*Actual)\s*[:#-]?\s*([^|]{6,45})/i,
+    /(?:ARR|RCF)[^\d]{0,20}([0-3]?\d[-\/.][0-1]?\d[-\/.]\d{2,4}[^\d]{0,5}[0-2]?\d[:.]\d{2})/i
   ]);
-  const etaRaw = firstMatch(compact, [
-    /(?:Estimated\s*Arrival(?:\s*Time)?|ETA|Expected\s*Arrival(?:\s*Time)?|Scheduled\s*Arrival(?:\s*Time)?)\s*[:#-]?\s*([^|]{6,40})/i
+  const etaRaw=first(t,[
+    /(?:Estimated\s*Arrival(?:\s*Time)?|Expected\s*Arrival(?:\s*Time)?|ETA)\s*[:#-]?\s*([^|]{6,45})/i,
+    /(?:Scheduled\s*Arrival(?:\s*Time)?|STA)\s*[:#-]?\s*([^|]{6,45})/i
   ]);
+  const actualArrival=parseDateTime(actualRaw);
+  const eta=actualArrival||parseDateTime(etaRaw);
 
-  const actualArrival = normalizeDateTime(actualRaw);
-  const eta = actualArrival || normalizeDateTime(etaRaw);
+  let status='';
+  if(actualArrival||/\bARRIVED\b|\bRCF\b/i.test(t)) status='ARRIVED';
+  else if(/\bDEPARTED\b|\bIN\s*TRANSIT\b|\bDEP\b/i.test(t)) status='IN_TRANSIT';
+  else if(/\bBOOKED\b|\bRCS\b|\bRECEIVED\b/i.test(t)) status='RECEIVED';
 
-  let status = '';
-  if (actualArrival || /\bARRIVED\b|\bRCF\b/i.test(compact)) status = 'ARRIVED';
-  else if (/\bIN\s*TRANSIT\b|\bDEPARTED\b|\bDEP\b/i.test(compact)) status = 'IN_TRANSIT';
-  else status = firstMatch(compact, [/(?:Shipment\s*Status|Current\s*Status|Status)\s*[:#-]?\s*([A-Za-z][A-Za-z _-]{2,40})/i]);
-
-  const useful = pageHasAwb && Boolean(flightNo || origin || destination || pieces || weight || eta || actualArrival || status);
+  const useful=Boolean(origin||destination||flightNo||bags||weight||eta||actualArrival||status);
   return {
     useful,
-    shipment: { mawb, status, carrierCode:'EK', origin, destination, eta, actualArrival, flightNo, bags:pieces, weight, source:'Emirates SkyCargo official browser tracker' },
-    debug: { pageHasAwb, textHint: compact.slice(0, 700) }
+    shipment:{ mawb, carrierCode:cfg.code, origin, destination, flightNo, bags, weight, eta, actualArrival, status:status||`${cfg.name.toUpperCase()} SHIPMENT FOUND`, source:`${cfg.name} official tracker` },
+    debug:{ textHint:t.slice(0,1200) }
   };
 }
 
-async function setInputValue(page, index, value) {
-  return page.evaluate(({ index, value }) => {
-    const inputs = [...document.querySelectorAll('input')];
-    const el = inputs[index];
-    if (!el) return false;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (setter) setter.call(el, value); else el.value = value;
-    el.focus();
-    el.dispatchEvent(new Event('input', { bubbles:true }));
-    el.dispatchEvent(new Event('change', { bubbles:true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles:true, key:'Tab' }));
-    return true;
-  }, { index, value });
+async function setValue(page,el,value){
+  await page.evaluate((node,val)=>{
+    const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')?.set;
+    if(setter) setter.call(node,val); else node.value=val;
+    node.focus();
+    node.dispatchEvent(new Event('input',{bubbles:true}));
+    node.dispatchEvent(new Event('change',{bubbles:true}));
+    node.dispatchEvent(new Event('blur',{bubbles:true}));
+  },el,value);
 }
 
-async function fillEmiratesForm(page, prefix, serial, digits) {
-  const meta = await page.evaluate(() => [...document.querySelectorAll('input')].map((el, index) => {
-    const r = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    return {
-      index,
-      type:(el.type || '').toLowerCase(), name:el.name || '', id:el.id || '', placeholder:el.placeholder || '',
-      maxLength:el.maxLength || 0, value:el.value || '', disabled:el.disabled,
-      visible:r.width > 3 && r.height > 3 && style.visibility !== 'hidden' && style.display !== 'none',
-      x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height)
-    };
-  }));
-
-  const usable = meta.filter(x => x.visible && !x.disabled && ['text','number','tel','search',''].includes(x.type));
-  const attr = x => `${x.name} ${x.id} ${x.placeholder}`;
-
-  let prefixCandidate = usable.find(x => /awb.*pre|prefix|doc.*pre/i.test(attr(x))) || usable.find(x => x.maxLength === 3);
-  let serialCandidate = usable.find(x => x !== prefixCandidate && /awb.*no|document.*no|doc.*no|awb|document/i.test(attr(x)) && (x.maxLength === 8 || x.maxLength > 3)) ||
-    usable.find(x => x !== prefixCandidate && x.maxLength === 8);
-
-  if (!prefixCandidate || !serialCandidate) {
-    const pairs = [];
-    for (const a of usable) for (const b of usable) {
-      if (a.index === b.index) continue;
-      if (Math.abs(a.y - b.y) <= 30 && a.x < b.x) {
-        let score = 0;
-        if (a.maxLength === 3) score += 30;
-        if (b.maxLength === 8) score += 30;
-        if (a.w < b.w) score += 10;
-        if (a.y > 150) score += 5;
-        pairs.push({ a, b, score });
-      }
-    }
-    pairs.sort((p,q)=>q.score-p.score);
-    if (pairs[0] && pairs[0].score >= 20) {
-      prefixCandidate = prefixCandidate || pairs[0].a;
-      serialCandidate = serialCandidate || pairs[0].b;
-    }
+async function fillAndSubmit(page,prefix,serial,digits){
+  const inputs=await page.$$('input');
+  const list=[];
+  for(let i=0;i<inputs.length;i++){
+    const m=await inputs[i].evaluate(el=>{const r=el.getBoundingClientRect();return {index:0,type:(el.type||'').toLowerCase(),name:el.name||'',id:el.id||'',placeholder:el.placeholder||'',maxLength:el.maxLength||0,visible:r.width>3&&r.height>3&&!el.disabled};});
+    m.index=i; if(m.visible&&['text','number','tel','search',''].includes(m.type)) list.push(m);
   }
+  const attrs=x=>`${x.name} ${x.id} ${x.placeholder}`;
+  let pre=list.find(x=>/airline.*code|prefix|awb.*pre/i.test(attrs(x)))||list.find(x=>x.maxLength===3);
+  let num=list.find(x=>x.index!==pre?.index&&/air.*waybill|awb|waybill|document.*no|awb.*no/i.test(attrs(x))&&(x.maxLength===8||x.maxLength===0||x.maxLength>3))||list.find(x=>x.index!==pre?.index&&x.maxLength===8);
 
-  if (prefixCandidate && serialCandidate) {
-    await setInputValue(page, prefixCandidate.index, prefix);
-    await setInputValue(page, serialCandidate.index, serial);
-  } else {
-    const one = usable.find(x => /awb|document/i.test(attr(x)) && x.maxLength >= 11) || usable.find(x => x.maxLength >= 11);
-    if (!one) return { filled:false, meta:usable };
-    await setInputValue(page, one.index, digits);
-    serialCandidate = one;
+  if(pre&&num){ await setValue(page,inputs[pre.index],prefix); await setValue(page,inputs[num.index],serial); }
+  else {
+    num=list.find(x=>/air.*waybill|awb|waybill|document/i.test(attrs(x)))||list[0];
+    if(!num) return {filled:false,inputs:list};
+    await setValue(page,inputs[num.index],digits);
   }
 
   await new Promise(r=>setTimeout(r,500));
-  let clicked = await page.evaluate(() => {
-    const els = [...document.querySelectorAll('button,input[type="submit"],input[type="button"],a')].filter(el => {
-      const r = el.getBoundingClientRect();
-      return r.width > 3 && r.height > 3;
-    });
-    const txt = el => (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
-    const target = els.find(el => /^track$/i.test(txt(el))) || els.find(el => /track shipment|track|search|submit|go/i.test(txt(el)));
-    if (!target) return false;
-    target.click();
-    return true;
+  const clicked=await page.evaluate(()=>{
+    const els=[...document.querySelectorAll('button,input[type="submit"],input[type="button"],a')].filter(el=>{const r=el.getBoundingClientRect();return r.width>3&&r.height>3;});
+    const txt=el=>(el.innerText||el.value||el.getAttribute('aria-label')||'').trim();
+    const b=els.find(el=>/^track$/i.test(txt(el)))||els.find(el=>/track shipment|track|search/i.test(txt(el)));
+    if(b){b.click();return true;} return false;
   });
-
-  if (!clicked && serialCandidate) {
-    await page.evaluate(index => {
-      const el = [...document.querySelectorAll('input')][index];
-      if (el) {
-        el.focus();
-        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles:true, key:'Enter', code:'Enter' }));
-        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles:true, key:'Enter', code:'Enter' }));
-        if (el.form && typeof el.form.requestSubmit === 'function') el.form.requestSubmit();
-      }
-    }, serialCandidate.index);
-    clicked = true;
+  if(!clicked&&num){
+    await page.evaluate(el=>{ if(el.form?.requestSubmit) el.form.requestSubmit(); },inputs[num.index]);
   }
-
-  return { filled:true, clicked, meta:usable, prefixCandidate, serialCandidate };
+  return {filled:true,clicked,inputs:list};
 }
 
-async function fetchEmiratesBrowser(mawb) {
-  const digits = String(mawb).replace(/\D/g, '');
-  if (!digits.startsWith('176') || digits.length !== 11) return { useful:false };
-  const prefix = digits.slice(0,3);
-  const serial = digits.slice(3,11);
-  let browser;
-  try {
-    const chromiumMod = await import('@sparticuz/chromium');
-    const puppeteerMod = await import('puppeteer-core');
-    const chromium = chromiumMod.default || chromiumMod;
-    const puppeteer = puppeteerMod.default || puppeteerMod;
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport:{ width:1440, height:1100 },
-      executablePath:await chromium.executablePath(),
-      headless:true
-    });
-
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-    await page.setExtraHTTPHeaders({ 'Accept-Language':'en-US,en;q=0.9' });
-    await page.goto(EMIRATES_TRACK_URL, { waitUntil:'networkidle2', timeout:30000 });
+async function officialBrowser(mawb,prefix){
+  const cfg=AIRLINES[prefix]; if(!cfg) return {useful:false};
+  const digits=mawb.replace(/\D/g,''); const serial=digits.slice(3,11); let browser;
+  try{
+    const chromiumMod=await import('@sparticuz/chromium');
+    const puppeteerMod=await import('puppeteer-core');
+    const chromium=chromiumMod.default||chromiumMod; const puppeteer=puppeteerMod.default||puppeteerMod;
+    browser=await puppeteer.launch({args:chromium.args,executablePath:await chromium.executablePath(),headless:true,defaultViewport:{width:1440,height:1100}});
+    const page=await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36');
+    await page.setExtraHTTPHeaders({'Accept-Language':'en-US,en;q=0.9'});
+    await page.goto(cfg.url,{waitUntil:'networkidle2',timeout:30000});
     await new Promise(r=>setTimeout(r,1800));
-
-    const form = await fillEmiratesForm(page, prefix, serial, digits);
-    if (!form.filled) return { useful:false, error:'Emirates Document No. fields were not found.', debug:{ inputs:form.meta } };
-
-    try {
-      await page.waitForFunction(s => document.body && (document.body.innerText.includes(s) || document.body.innerText.replace(/\D/g,'').includes(`176${s}`)), { timeout:15000 }, serial);
-    } catch {}
-    try { await page.waitForNetworkIdle({ idleTime:1200, timeout:12000 }); } catch {}
-    await new Promise(r=>setTimeout(r,2500));
-
-    const bodyText = await page.evaluate(() => document.body?.innerText || '');
-    const parsed = parseEmiratesText(bodyText, `${prefix}-${serial}`);
-    return { ...parsed, debug:{ ...(parsed.debug||{}), clicked:form.clicked, prefixField:form.prefixCandidate, serialField:form.serialCandidate, inputs:form.meta } };
-  } catch (e) {
-    return { useful:false, error:e?.message || 'Emirates browser tracking failed' };
-  } finally {
-    if (browser) try { await browser.close(); } catch {}
-  }
+    const form=await fillAndSubmit(page,prefix,serial,digits);
+    if(!form.filled) return {useful:false,error:`${cfg.name} tracking inputs not found.`,debug:{inputs:form.inputs}};
+    try{await page.waitForNetworkIdle({idleTime:1200,timeout:12000});}catch{}
+    await new Promise(r=>setTimeout(r,3000));
+    const text=await page.evaluate(()=>document.body?.innerText||'');
+    const parsed=parseOfficialText(text,mawb,prefix);
+    return {...parsed,debug:{...(parsed.debug||{}),clicked:form.clicked}};
+  }catch(e){return {useful:false,error:e?.message||`${cfg.name} browser tracking failed`};}
+  finally{if(browser)try{await browser.close();}catch{}}
 }
 
-function safeFallbackForEmirates(track = {}, mawb = '') {
+function sanitizedFallback(track,mawb,prefix){
+  const cfg=AIRLINES[prefix];
   return {
     mawb,
-    carrierCode:track.carrierCode || 'EK',
-    bags:track.bags || '',
-    weight:track.weight || '',
-    flightNo:track.flightNo || '',
+    carrierCode:track?.carrierCode||cfg?.code||'',
+    bags:track?.bags||'',
+    weight:track?.weight||'',
+    flightNo:track?.flightNo||'',
     origin:'', destination:'', eta:null, actualArrival:null,
-    status:'WAITING FOR EMIRATES LIVE DATA',
-    source:'Track123 fallback — ETA/origin/status not trusted for Emirates'
+    status:`WAITING FOR ${cfg?.name?.toUpperCase()||'AIRLINE'} LIVE DATA`,
+    source:'Track123 fallback — official origin/ETA/status unavailable'
   };
 }
 
-export async function POST(request) {
-  const body = await request.json();
-  const mawb = body?.mawb || '';
-  const digits = String(mawb).replace(/\D/g, '');
-  const isEmirates = digits.startsWith('176');
+export async function POST(request){
+  const body=await request.json();
+  const mawb=normMawb(body?.mawb||'');
+  const prefix=mawb.replace(/\D/g,'').slice(0,3);
+  const cfg=AIRLINES[prefix];
+  let official={useful:false};
+  if(cfg) official=await officialBrowser(mawb,prefix);
 
-  let emirates = { useful:false };
-  if (isEmirates) emirates = await fetchEmiratesBrowser(mawb);
+  const fallbackReq=new Request(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const fbResp=await fallbackPOST(fallbackReq);
+  let fb={}; try{fb=await fbResp.json();}catch{}
+  const track=fb?.shipment||{};
 
-  const fallbackReq = new Request(request.url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) });
-  const trackResp = await track123POST(fallbackReq);
-  let trackData = {};
-  try { trackData = await trackResp.json(); } catch {}
-
-  if (isEmirates && emirates.useful) {
-    const official = emirates.shipment || {};
-    const track = trackData?.shipment || {};
-    return Response.json({
-      ok:true,
-      source:'Emirates SkyCargo official browser tracker',
-      airlinePrimary:true,
-      shipment:{
-        mawb:official.mawb || mawb,
-        carrierCode:'EK',
-        origin:official.origin || '',
-        destination:official.destination || '',
-        eta:official.eta || null,
-        actualArrival:official.actualArrival || null,
-        status:official.status || 'EMIRATES SHIPMENT FOUND',
-        flightNo:official.flightNo || track.flightNo || '',
-        bags:official.bags || track.bags || '',
-        weight:official.weight || track.weight || '',
-        source:'Emirates SkyCargo official browser tracker'
-      },
-      airlineDebug:emirates.debug || null
-    });
+  if(cfg&&official.useful){
+    const o=official.shipment||{};
+    return Response.json({ok:true,source:`${cfg.name} official browser tracker`,airlinePrimary:true,shipment:{
+      mawb:o.mawb||mawb,carrierCode:cfg.code,origin:o.origin||'',destination:o.destination||'',eta:o.eta||null,actualArrival:o.actualArrival||null,
+      status:o.status||`${cfg.name.toUpperCase()} SHIPMENT FOUND`,flightNo:o.flightNo||track.flightNo||'',bags:o.bags||track.bags||'',weight:o.weight||track.weight||'',source:`${cfg.name} official tracker`
+    },airlineDebug:official.debug||null});
   }
 
-  if (isEmirates) {
-    return Response.json({
-      ok:true,
-      source:'Emirates browser tracker unavailable; sanitized fallback',
-      airlinePrimary:false,
-      airlineError:emirates.error || null,
-      airlineDebug:emirates.debug || null,
-      shipment:safeFallbackForEmirates(trackData?.shipment || {}, mawb)
-    });
+  if(cfg){
+    return Response.json({ok:true,source:`${cfg.name} official tracker unavailable; sanitized Track123 fallback`,airlinePrimary:false,airlineError:official.error||null,airlineDebug:official.debug||null,shipment:sanitizedFallback(track,mawb,prefix)});
   }
 
-  return Response.json(trackData, { status:trackResp.status });
+  return Response.json(fb,{status:fbResp.status});
 }
