@@ -31,7 +31,6 @@ function statusFromText(t=''){
 
 function parseCarrierText(raw, mawb, iata=''){
   const t=cleanText(raw);
-  const prefix=mawb.slice(0,3);
   const route=t.match(new RegExp(`${esc(mawb)}\\s*\\(\\s*([A-Z]{3})\\s*[-–—>]\\s*([A-Z]{3})\\s*\\)`,'i')) ||
               t.match(/\b([A-Z]{3})\s*(?:-|–|—|→|>)\s*([A-Z]{3})\b/);
   const pcs=t.match(/(\d{1,6})\s*(?:Piece\(s\)|Pieces?|Pcs)\b/i);
@@ -48,7 +47,8 @@ function parseCarrierText(raw, mawb, iata=''){
     arrivalDate=p.date; arrivalTime=p.time; arrivalActual=true;
   }
   if(!arrivalDate && flightNo){
-    const idx=t.lastIndexOf(flightNo.replace(/([A-Z]+)(\d+)/,'$1-$2'))>=0 ? t.lastIndexOf(flightNo.replace(/([A-Z]+)(\d+)/,'$1-$2')) : t.lastIndexOf(flightNo);
+    const dashed=flightNo.replace(/([A-Z]+)(\d+)/,'$1-$2');
+    const idx=t.lastIndexOf(dashed)>=0 ? t.lastIndexOf(dashed) : t.lastIndexOf(flightNo);
     const tail=idx>=0?t.slice(idx,idx+350):t;
     const dts=[...tail.matchAll(/(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\s+(\d{1,2}):(\d{2})/g)];
     if(dts.length){ const p=localDate(dts[dts.length-1]); arrivalDate=p.date; arrivalTime=p.time; }
@@ -96,13 +96,33 @@ async function visibleInput(page, purpose='trackjet'){
   return null;
 }
 
+// Use a real Puppeteer click, not DOM el.click(). TrackJet opens some carrier links
+// from a user gesture; synthetic DOM clicks can be ignored or popup-blocked.
 async function clickByText(page, re, selectors='button,input[type="submit"],input[type="button"],a'){
-  return page.evaluate(({src,flags,selectors})=>{
-    const re=new RegExp(src,flags); const els=[...document.querySelectorAll(selectors)];
-    const txt=el=>(el.innerText||el.value||el.getAttribute('aria-label')||'').trim();
-    const el=els.find(x=>{const r=x.getBoundingClientRect();return r.width>4&&r.height>4&&re.test(txt(x));});
-    if(!el)return {clicked:false}; const out={clicked:true,text:txt(el),href:el.href||'',target:el.target||''}; el.click(); return out;
-  },{src:re.source,flags:re.flags,selectors});
+  const handles=await page.$$(selectors);
+  for(const h of handles){
+    const meta=await h.evaluate((el,{src,flags})=>{
+      const re=new RegExp(src,flags);
+      const r=el.getBoundingClientRect();
+      const text=(el.innerText||el.value||el.getAttribute('aria-label')||'').trim();
+      return {
+        match:r.width>4&&r.height>4&&re.test(text),
+        text,
+        href:el.href||el.getAttribute('href')||'',
+        target:el.target||'',
+        dataHref:el.getAttribute('data-href')||el.getAttribute('data-url')||el.getAttribute('data-target-url')||'',
+        tag:el.tagName||''
+      };
+    },{src:re.source,flags:re.flags});
+    if(!meta.match)continue;
+    try{
+      await h.click({delay:80});
+      return {clicked:true,...meta};
+    }catch(e){
+      return {clicked:false,...meta,error:e?.message||String(e)};
+    }
+  }
+  return {clicked:false};
 }
 
 async function maybeSubmitCarrier(page, mawb){
@@ -138,7 +158,7 @@ async function runTrackJet(mawb){
     debug.chromiumPath=executablePath?String(executablePath).split('/').slice(-2).join('/'):'missing';
     browser=await puppeteer.launch({args:chromium.args,executablePath,headless:true,defaultViewport:{width:1440,height:1000}});
     const page=await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({'Accept-Language':'en-US,en;q=0.9'});
 
     debug.stage='TRACKJET_OPEN';
@@ -154,13 +174,13 @@ async function runTrackJet(mawb){
     }
 
     debug.stage='TRACKJET_RESULT';
-    for(let i=0;i<12;i++){
+    for(let i=0;i<16;i++){
       await sleep(500);
       const host=new URL(page.url()).hostname;
       const text=cleanText(await page.evaluate(()=>document.body?.innerText||''));
       if(host!=='trackjet.world' || /We found your carrier|Open tracking on/i.test(text))break;
     }
-    let trackjetText=cleanText(await page.evaluate(()=>document.body?.innerText||''));
+    const trackjetText=cleanText(await page.evaluate(()=>document.body?.innerText||''));
     debug.trackjetUrl=page.url();
     debug.trackjetHint=trackjetText.slice(0,500);
     const iata=(trackjetText.match(/\bIATA\s+([A-Z0-9]{2})\b/i)||[])[1]||'';
@@ -172,15 +192,43 @@ async function runTrackJet(mawb){
       const before=await browser.pages();
       let handoff=await clickByText(page,/^Open tracking on /i,'a,button');
       if(!handoff.clicked){
-        await sleep(2500);
+        await sleep(1200);
         handoff=await clickByText(page,/Open tracking on/i,'a,button');
       }
       debug.handoff=handoff;
       if(!handoff.clicked)return {ok:false,error:'TrackJet found the carrier, but no carrier handoff button was exposed.',debug};
-      await sleep(2500);
+
+      // Give a trusted click time to create a popup or same-tab navigation.
+      for(let i=0;i<14;i++){
+        await sleep(500);
+        const after=await browser.pages();
+        const external=after.find(p=>p!==page && (()=>{try{return new URL(p.url()).hostname!=='trackjet.world';}catch{return false;}})());
+        if(external){ carrierPage=external; break; }
+        try{
+          if(new URL(page.url()).hostname!=='trackjet.world'){ carrierPage=page; break; }
+        }catch{}
+      }
+
+      // If TrackJet exposed a direct carrier URL but its popup was blocked, navigate to that URL ourselves.
+      if(carrierPage===page && new URL(page.url()).hostname==='trackjet.world'){
+        const direct=handoff.href||handoff.dataHref||'';
+        if(/^https?:\/\//i.test(direct)){
+          try{
+            const host=new URL(direct).hostname;
+            if(host!=='trackjet.world'){
+              debug.handoffFallback='DIRECT_URL';
+              await page.goto(direct,{waitUntil:'domcontentloaded',timeout:25000});
+              carrierPage=page;
+            }
+          }catch{}
+        }
+      }
+
       const after=await browser.pages();
-      if(after.length>before.length)carrierPage=after[after.length-1];
-      else carrierPage=page;
+      debug.pageUrls=after.map(p=>p.url()).slice(-6);
+      if(carrierPage===page && new URL(page.url()).hostname==='trackjet.world'){
+        return {ok:false,error:'TrackJet handoff button was clicked, but the browser remained on TrackJet. The carrier window/link did not open.',debug:{...debug,stage:'TRACKJET_HANDOFF_NOT_OPENED'}};
+      }
     }
 
     debug.stage='CARRIER_OPEN';
