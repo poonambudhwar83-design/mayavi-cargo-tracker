@@ -8,6 +8,18 @@ function normalizeMawb(v='') {
   const d = String(v).replace(/\D/g,'');
   return d.length >= 11 ? `${d.slice(0,3)}-${d.slice(3,11)}` : String(v).trim();
 }
+function airlineFromMawb(mawb=''){
+  const prefix=String(mawb).replace(/\D/g,'').slice(0,3);
+  const map={
+    '157':{name:'Qatar Airways Cargo',iata:'QR',official:'https://www.qrcargo.com/s/track-your-shipment'},
+    '176':{name:'Emirates SkyCargo',iata:'EK',official:'https://www.skycargo.com/'},
+    '020':{name:'Lufthansa Cargo',iata:'LH',official:'https://www.lufthansa-cargo.com/'},
+    '098':{name:'Air India Cargo',iata:'AI',official:'https://cargo.airindia.com/'},
+    '160':{name:'Cathay Cargo',iata:'CX',official:'https://www.cathaycargo.com/'},
+    '065':{name:'Saudia Cargo',iata:'SV',official:'https://www.saudiacargo.com/'}
+  };
+  return map[prefix]||{name:prefix?`Airline prefix ${prefix}`:'Unknown airline',iata:'',official:''};
+}
 function pad(n){ return String(n).padStart(2,'0'); }
 function localParts(value){
   if(!value) return {};
@@ -66,13 +78,14 @@ export default function Home(){
 
   function upsertMawbOnly(mawb, sourceLabel=''){
     const key=normalizeMawb(mawb);
+    const airline=airlineFromMawb(key);
     setShipments(v=>{
       const idx=v.findIndex(x=>normalizeMawb(x.mawb)===key);
       if(idx<0){
-        return [{...EMPTY,mawb:key,id:crypto.randomUUID(),status:'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:'',updatedAt:new Date().toISOString()},...v];
+        return [{...EMPTY,mawb:key,airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,id:crypto.randomUUID(),status:'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:'',updatedAt:new Date().toISOString()},...v];
       }
       const copy=[...v];
-      copy[idx]={...copy[idx],mawb:key,status:copy[idx].status||'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:copy[idx].remarks,updatedAt:new Date().toISOString()};
+      copy[idx]={...copy[idx],mawb:key,airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,status:copy[idx].status||'MAWB identified — ready for live tracking',remarks:sourceLabel?`MAWB read from ${sourceLabel}`:copy[idx].remarks,updatedAt:new Date().toISOString()};
       return copy;
     });
   }
@@ -81,7 +94,7 @@ export default function Home(){
     e.preventDefault();
     if(!form.mawb) return setNotice('Enter a MAWB number.');
     upsertMawbOnly(form.mawb);
-    setForm(EMPTY); setManualOpen(false); setNotice('MAWB saved. Click Track Live.');
+    setForm(EMPTY); setManualOpen(false); setNotice('MAWB saved. Airline detected from AWB prefix.');
   }
 
   function startBagEdit(s){ setBagEditId(s.id); setBagEditValue(s.bags||''); }
@@ -159,7 +172,8 @@ export default function Home(){
       const mawb=extractMawb(text);
       if(!mawb) throw new Error('I could read the file, but could not confidently find an 11-digit MAWB. Use Manual Entry and type the MAWB.');
       upsertMawbOnly(mawb,file.name);
-      setNotice(`MAWB found: ${mawb}. Other shipment details will come only from live tracking.`);
+      const airline=airlineFromMawb(mawb);
+      setNotice(`MAWB found: ${mawb}. Airline detected: ${airline.name}.`);
     }catch(e){ setNotice(`Upload/OCR error: ${e.message}`); }
     finally{ setBusy(false); setOcrProgress(''); }
   }
@@ -179,14 +193,15 @@ export default function Home(){
     </section>
     {(notice||ocrProgress)&&<div className="notice">{ocrProgress||notice}</div>}
     <section className="tableWrap">
-      <table><thead><tr><th>MAWB</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Destination</th><th>Arrival Date</th><th>Arrival Time</th><th>Mail Due</th><th>Mail Alert</th><th>Status</th><th>Remarks</th><th></th></tr></thead>
-      <tbody>{!shipments.length?<tr><td colSpan="12" className="empty">No shipments yet. Add a MAWB or upload a MAWB PDF/photo.</td></tr>:shipments.map(s=><tr key={s.id} className={statusClass(s.status)}>
+      <table><thead><tr><th>MAWB</th><th>Airline</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Destination</th><th>Arrival Date</th><th>Arrival Time</th><th>Mail Due</th><th>Mail Alert</th><th>Status</th><th>Remarks</th><th></th></tr></thead>
+      <tbody>{!shipments.length?<tr><td colSpan="13" className="empty">No shipments yet. Add a MAWB or upload a MAWB PDF/photo.</td></tr>:shipments.map(s=>{const airline=airlineFromMawb(s.mawb);return <tr key={s.id} className={statusClass(s.status)}>
         <td><b>{s.mawb}</b>{s.flightNo&&<small>{s.flightNo}</small>}</td>
+        <td><b>{s.airlineName||airline.name}</b>{(s.officialTracker||airline.official)&&<small><a href={s.officialTracker||airline.official} target="_blank" rel="noreferrer">Official tracker ↗</a></small>}</td>
         <td>{bagEditId===s.id?<span><input style={{width:'65px'}} inputMode="numeric" value={bagEditValue} onChange={e=>setBagEditValue(e.target.value)}/><button onClick={()=>saveBags(s.id)}>Save</button></span>:<span>{s.bags||'—'} <button onClick={()=>startBagEdit(s)}>Edit</button></span>}</td>
         <td>{s.weight?`${s.weight} kg`:'—'}</td><td>{s.origin||'—'}</td><td>{s.destination||'—'}</td><td>{s.arrivalDate||'—'}</td><td>{s.arrivalTime||'—'}</td><td>{mailDue(s)||'—'}</td><td><b>{mailAlert(s)}</b></td><td><b>{s.status||'—'}</b><small>{s.updatedAt?`Updated ${new Date(s.updatedAt).toLocaleTimeString()}`:''}</small></td><td>{s.remarks||'—'}</td><td className="actions"><button onClick={()=>trackOne(s.id,false)} disabled={busy}>Track Live</button><button className="x" onClick={()=>remove(s.id)}>×</button></td>
-      </tr>)}</tbody></table>
+      </tr>})}</tbody></table>
     </section>
-    <section className="help"><b>MAWB-only document reading + manual bags.</b> PDF/photo is used only to identify the MAWB. Bags can be entered or corrected manually. Arrival date/time, route, flight and live status still come from live tracking. When a live ETA is available, Mayavi shows when to send the mail 6 hours before arrival and highlights MAIL NOW / LANDING SOON.</section>
+    <section className="help"><b>Airline-aware MAWB tracking.</b> Mayavi now detects the airline from the MAWB prefix and provides the official airline cargo tracker link. Qatar (157) routes to Qatar Airways Cargo. Automatic extraction from airline websites will only be enabled where the airline exposes a stable machine-readable endpoint; Mayavi will not invent ETA data.</section>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}><h2>Add Shipment</h2><div className="grid">
       <label>MAWB*<input value={form.mawb} onChange={e=>setForm({...form,mawb:e.target.value})} placeholder="020-12345678" required/></label>
