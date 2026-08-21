@@ -88,40 +88,60 @@ async function setValue(page,el,value){
     const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')?.set;
     if(setter) setter.call(node,val); else node.value=val;
     node.focus();
-    for(const ev of ['input','change','blur']) node.dispatchEvent(new Event(ev,{bubbles:true}));
+    for(const ev of ['input','change','keyup','blur']) {
+      if(ev==='keyup') node.dispatchEvent(new KeyboardEvent(ev,{bubbles:true,key:'Tab'}));
+      else node.dispatchEvent(new Event(ev,{bubbles:true}));
+    }
   },el,value);
 }
 
 async function fillAndSubmit(page,prefix,serial,digits){
   const inputs=await page.$$('input'); const list=[];
   for(let i=0;i<inputs.length;i++){
-    const m=await inputs[i].evaluate(el=>{const r=el.getBoundingClientRect();return {index:0,type:(el.type||'').toLowerCase(),name:el.name||'',id:el.id||'',placeholder:el.placeholder||'',maxLength:el.maxLength||0,visible:r.width>3&&r.height>3&&!el.disabled};});
+    const m=await inputs[i].evaluate(el=>{
+      const r=el.getBoundingClientRect();
+      return {index:0,type:(el.type||'').toLowerCase(),name:el.name||'',id:el.id||'',placeholder:el.placeholder||'',maxLength:el.maxLength||0,visible:r.width>3&&r.height>3&&!el.disabled,value:el.value||''};
+    });
     m.index=i; if(m.visible&&['text','number','tel','search',''].includes(m.type)) list.push(m);
   }
   const a=x=>`${x.name} ${x.id} ${x.placeholder}`;
-  let pre=list.find(x=>/prefix|awb.*pre|airline.*code/i.test(a(x)))||list.find(x=>x.maxLength===3);
+  let pre=list.find(x=>/prefix|awb.*pre|airline.*code|document.*pre/i.test(a(x)))||list.find(x=>x.maxLength===3);
   let num=list.find(x=>x.index!==pre?.index&&/awb|waybill|document|tracking/i.test(a(x))&&(x.maxLength===8||x.maxLength===0||x.maxLength>3))||list.find(x=>x.index!==pre?.index&&x.maxLength===8);
   if(pre&&num){ await setValue(page,inputs[pre.index],prefix); await setValue(page,inputs[num.index],serial); }
   else {
     num=list.find(x=>/awb|waybill|document|tracking/i.test(a(x)))||list[0];
-    if(!num) return {filled:false};
+    if(!num) return {filled:false,reason:'NO_VISIBLE_AWB_INPUT',inputs:list};
     await setValue(page,inputs[num.index],digits);
   }
-  await new Promise(r=>setTimeout(r,400));
-  let clicked=await page.evaluate(()=>{
-    const els=[...document.querySelectorAll('button,input[type="submit"],input[type="button"],a')].filter(el=>{const r=el.getBoundingClientRect();return r.width>3&&r.height>3;});
-    const txt=el=>(el.innerText||el.value||el.getAttribute('aria-label')||'').trim();
-    const b=els.find(el=>/^track$/i.test(txt(el)))||els.find(el=>/track shipment|track|search|submit/i.test(txt(el)));
-    if(!b)return false; b.click(); return true;
-  });
-  if(!clicked&&num){ try{await page.evaluate(el=>el.form?.requestSubmit?.(),inputs[num.index]); clicked=true;}catch{} }
-  return {filled:true,clicked};
+  await new Promise(r=>setTimeout(r,500));
+
+  // IMPORTANT: submit from the AWB input's own form. The old code could click a top navigation "Track" link.
+  const submitResult=await page.evaluate(({numIndex})=>{
+    const allInputs=[...document.querySelectorAll('input')];
+    const field=allInputs[numIndex];
+    if(!field) return {submitted:false,method:'NO_FIELD'};
+    const form=field.form||field.closest('form');
+    const text=el=>(el.innerText||el.value||el.getAttribute('aria-label')||'').trim();
+    if(form){
+      const controls=[...form.querySelectorAll('button,input[type="submit"],input[type="button"]')];
+      const btn=controls.find(el=>/track shipment|^track$|search|submit|go/i.test(text(el)));
+      if(btn){btn.click();return {submitted:true,method:'FORM_BUTTON',buttonText:text(btn)};}
+      if(typeof form.requestSubmit==='function'){form.requestSubmit();return {submitted:true,method:'FORM_REQUEST_SUBMIT'};}
+      form.submit(); return {submitted:true,method:'FORM_SUBMIT'};
+    }
+    const buttons=[...document.querySelectorAll('button,input[type="submit"],input[type="button"]')].filter(el=>{const r=el.getBoundingClientRect();return r.width>3&&r.height>3;});
+    const btn=buttons.find(el=>/track shipment|^track$|search|submit|go/i.test(text(el)));
+    if(btn){btn.click();return {submitted:true,method:'PAGE_BUTTON',buttonText:text(btn)};}
+    return {submitted:false,method:'NO_SUBMIT_CONTROL'};
+  },{numIndex:num.index});
+
+  return {filled:true,submitted:submitResult.submitted,submitMethod:submitResult.method,buttonText:submitResult.buttonText||'',inputs:list,prefixInput:pre||null,awbInput:num||null};
 }
 
 async function officialBrowser(mawb,prefix){
   const cfg=AIRLINES[prefix]; if(!cfg)return {useful:false};
   const digits=mawb.replace(/\D/g,''); const serial=digits.slice(3,11); let browser;
-  const captured=[];
+  const captured=[]; const responseMeta=[];
   try{
     const chromiumMod=await import('@sparticuz/chromium'); const puppeteerMod=await import('puppeteer-core');
     const chromium=chromiumMod.default||chromiumMod; const puppeteer=puppeteerMod.default||puppeteerMod;
@@ -135,6 +155,8 @@ async function officialBrowser(mawb,prefix){
         const type=res.request().resourceType();
         if(!['xhr','fetch','document'].includes(type))return;
         const ct=String(res.headers()['content-type']||'');
+        const url=res.url();
+        responseMeta.push({status:res.status(),type,url:url.slice(0,220),contentType:ct.slice(0,80)});
         if(!/json|text|javascript|html/i.test(ct))return;
         const body=await res.text();
         if(body&&body.length<1500000&&(body.includes(serial)||body.replace(/\D/g,'').includes(digits)||/arrival|flight|shipment|waybill|awb/i.test(body))) captured.push(body);
@@ -142,17 +164,35 @@ async function officialBrowser(mawb,prefix){
     });
 
     await page.goto(cfg.url,{waitUntil:'networkidle2',timeout:30000});
-    await new Promise(r=>setTimeout(r,1500));
+    await new Promise(r=>setTimeout(r,1800));
+    const initialUrl=page.url();
     const form=await fillAndSubmit(page,prefix,serial,digits);
-    if(!form.filled)return {useful:false,error:`${cfg.name} AWB input was not found.`};
+    if(!form.filled)return {useful:false,error:`${cfg.name}: no visible AWB input was found.`,debug:{stage:'FIND_AWB_INPUT',reason:form.reason,inputs:form.inputs||[],initialUrl}};
+    if(!form.submitted)return {useful:false,error:`${cfg.name}: AWB fields were filled, but no shipment submit control was found.`,debug:{stage:'SUBMIT_AWB',submitMethod:form.submitMethod,inputs:form.inputs||[],prefixInput:form.prefixInput,awbInput:form.awbInput,initialUrl}};
+
     try{await page.waitForNetworkIdle({idleTime:1200,timeout:15000});}catch{}
-    await new Promise(r=>setTimeout(r,3000));
+    await new Promise(r=>setTimeout(r,3500));
 
     const bodyText=await page.evaluate(()=>document.body?.innerText||'');
+    const finalUrl=page.url();
     const combined=[bodyText,...captured].join(' ');
     const parsed=parseOfficialText(combined,mawb,prefix);
-    return {...parsed,error:parsed.useful?'':`${cfg.name} accepted the page request but no readable shipment result was exposed.`,debug:{capturedResponses:captured.length,clicked:form.clicked}};
-  }catch(e){return {useful:false,error:e?.message||`${cfg.name} official tracking failed`};}
+    const challenge=/captcha|access denied|forbidden|robot|verify you are human|sorry to interrupt|one moment please|transaction is not allowed/i.test(bodyText);
+    const debug={
+      stage:parsed.useful?'PARSE_SUCCESS':'PARSE_RESULT',
+      initialUrl,finalUrl,
+      submitMethod:form.submitMethod,
+      buttonText:form.buttonText,
+      prefixInput:form.prefixInput,
+      awbInput:form.awbInput,
+      capturedResponses:captured.length,
+      recentResponses:responseMeta.slice(-12),
+      bodyHasAwb:bodyText.includes(serial)||bodyText.replace(/\D/g,'').includes(digits),
+      challengeDetected:challenge,
+      bodyHint:bodyText.replace(/\s+/g,' ').slice(0,900)
+    };
+    return {...parsed,error:parsed.useful?'':`${cfg.name}: form submitted, but the returned page/network data did not expose readable shipment details.`,debug};
+  }catch(e){return {useful:false,error:e?.message||`${cfg.name} official tracking failed`,debug:{stage:'BROWSER_ERROR',message:e?.message||String(e)}};}
   finally{if(browser)try{await browser.close();}catch{}}
 }
 
@@ -165,16 +205,14 @@ export async function POST(request){
   const body=await request.json(); const mawb=normMawb(body?.mawb||'');
   const prefix=mawb.replace(/\D/g,'').slice(0,3); const cfg=AIRLINES[prefix];
 
-  // For supported airlines, bypass Track123 completely: MAWB -> official airline website -> Mayavi.
   if(cfg){
     const official=await officialBrowser(mawb,prefix);
     if(official.useful){
       return Response.json({ok:true,source:`${cfg.name} official website`,airlinePrimary:true,shipment:official.shipment,airlineDebug:official.debug||null});
     }
-    return Response.json({ok:true,source:`${cfg.name} official website — no readable result`,airlinePrimary:true,airlineError:official.error||null,airlineDebug:official.debug||null,shipment:waitingShipment(mawb,prefix)});
+    return Response.json({ok:true,source:`${cfg.name} official website — diagnostic failure`,airlinePrimary:true,airlineError:official.error||null,airlineDebug:official.debug||null,shipment:waitingShipment(mawb,prefix)});
   }
 
-  // Other airlines remain on the existing fallback until an official connector is added.
   const fallbackReq=new Request(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   return fallbackPOST(fallbackReq);
 }
