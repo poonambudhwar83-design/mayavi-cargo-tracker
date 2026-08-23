@@ -89,7 +89,7 @@ function extractMawbs(text=''){
   return[...found];
 }
 function isFinished(status=''){
-  return/arrived|delivered|notified consignee|received at destination/i.test(String(status));
+  return/arriv|delivered|notified consignee|received at destination/i.test(String(status));
 }
 function statusFromLive(previous,live,etaIso){
   const raw=String(live?.status||'').toUpperCase();
@@ -119,6 +119,7 @@ function statusFromLive(previous,live,etaIso){
 
 export default function Home(){
   const[shipments,setShipments]=useState([]);
+  const[hydrated,setHydrated]=useState(false);
   const[form,setForm]=useState(EMPTY_FORM);
   const[manualOpen,setManualOpen]=useState(false);
   const[busy,setBusy]=useState(false);
@@ -129,10 +130,14 @@ export default function Home(){
   const shipmentsRef=useRef([]);
 
   useEffect(()=>{
-    try{setShipments(JSON.parse(localStorage.getItem('mayaviShipments')||'[]'));}catch{}
+    try{setShipments(JSON.parse(localStorage.getItem('mayaviShipments')||'[]'));}catch{setShipments([]);}
+    setHydrated(true);
     fetch('/api/track').then(r=>r.json()).then(d=>setRouterReady(Boolean(d.configured))).catch(()=>setRouterReady(false));
   },[]);
-  useEffect(()=>{shipmentsRef.current=shipments;localStorage.setItem('mayaviShipments',JSON.stringify(shipments));},[shipments]);
+  useEffect(()=>{
+    shipmentsRef.current=shipments;
+    if(hydrated)localStorage.setItem('mayaviShipments',JSON.stringify(shipments));
+  },[shipments,hydrated]);
   useEffect(()=>{
     const id=setInterval(async()=>{
       const active=shipmentsRef.current.filter(s=>!isFinished(s.status)).slice(0,6);
@@ -187,8 +192,8 @@ export default function Home(){
           ...prev,
           airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,
           flightNo:live.flightNo||prev.flightNo||'',
-          bags:live.bags??live.pieces??prev.bags??'',
-          weight:live.weight??prev.weight??'',
+          bags:live.bags||live.pieces||prev.bags||'',
+          weight:live.weight||prev.weight||'',
           origin:live.origin||prev.origin||'',
           arrivalDate:parts.date||prev.arrivalDate||'',
           arrivalTime:parts.time||prev.arrivalTime||'',
