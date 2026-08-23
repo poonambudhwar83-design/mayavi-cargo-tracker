@@ -1,468 +1,129 @@
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=60;
 
-const BASE_URL = 'https://api.shipsgo.com/v2';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
 
-function normalizeMawb(value = '') {
-  const d = String(value).replace(/\D/g, '');
-  return d.length === 11 ? `${d.slice(0,3)}-${d.slice(3)}` : '';
+const OFFICIAL={
+'001':{name:'American Airlines Cargo',iata:'AA',url:'https://www.aacargo.com/AACargo/tracking'},
+'006':{name:'Delta Cargo',iata:'DL',url:'https://www.deltacargo.com/Cargo/catalog/products/track-shipment'},
+'014':{name:'Air Canada Cargo',iata:'AC',url:'https://www.aircanada.com/cargo/en/tools-forms/track-and-trace/'},
+'016':{name:'United Cargo',iata:'UA',url:'https://www.unitedcargo.com/en/us/track'},
+'020':{name:'Lufthansa Cargo',iata:'LH',url:'https://www.lufthansa-cargo.com/en/eservices/etracking'},
+'023':{name:'FedEx Express',iata:'FX',url:'https://www.fedex.com/en-us/tracking.html'},
+'057':{name:'Air France KLM Martinair Cargo',iata:'AF',url:'https://www.afklcargo.com/'},
+'065':{name:'Saudia Cargo',iata:'SV',url:'https://www.saudiacargo.com/e-services'},
+'071':{name:'Ethiopian Cargo',iata:'ET',url:'https://cargo.ethiopianairlines.com/my-cargo/track-your-shipment'},
+'074':{name:'KLM Cargo',iata:'KL',url:'https://www.afklcargo.com/'},
+'075':{name:'Iberia Cargo',iata:'IB',url:'https://www.iagcargo.com/en/track/'},
+'081':{name:'Qantas Freight',iata:'QF',url:'https://freight.qantas.com/'},
+'098':{name:'Air India Cargo',iata:'AI',url:'https://cargo.airindia.com/in/en/track-shipment.html'},
+'105':{name:'Finnair Cargo',iata:'AY',url:'https://cargo.finnair.com/'},
+'125':{name:'British Airways / IAG Cargo',iata:'BA',url:'https://www.iagcargo.com/en/track/'},
+'131':{name:'Japan Airlines Cargo',iata:'JL',url:'https://www.jal.co.jp/jalcargo/inter/track/'},
+'157':{name:'Qatar Airways Cargo',iata:'QR',url:'https://www.qrcargo.com/s/track-your-shipment'},
+'160':{name:'Cathay Cargo',iata:'CX',url:'https://www.cathaycargo.com/en-us/track-and-trace.html'},
+'176':{name:'Emirates SkyCargo',iata:'EK',url:'https://scekprd.emirates.com/skychain/app?initial=y&service=page%2Fnwp%3ATrackshipmt'},
+'180':{name:'Korean Air Cargo',iata:'KE',url:'https://cargo.koreanair.com/en/tracking'},
+'205':{name:'ANA Cargo',iata:'NH',url:'https://www.anacargo.jp/en/int/airwaybill/'},
+'217':{name:'Thai Airways Cargo',iata:'TG',url:'https://www.thaicargo.com/en/track-shipment'},
+'232':{name:'Malaysia Airlines Cargo',iata:'MH',url:'https://www.maskargo.com/'},
+'235':{name:'Turkish Cargo',iata:'TK',url:'https://www.turkishcargo.com.tr/en/online-services/shipment-tracking'},
+'297':{name:'China Airlines Cargo',iata:'CI',url:'https://cargo.china-airlines.com/ccnetv2/content/manage/ShipmentTracking.aspx'},
+'312':{name:'IndiGo CarGo',iata:'6E',url:'https://6ecargo.goindigo.in/FrmAWBTracking.aspx'},
+'406':{name:'UPS Airlines',iata:'5X',url:'https://www.ups.com/track'},
+'607':{name:'Etihad Cargo',iata:'EY',url:'https://www.etihadcargo.com/'},
+'618':{name:'Singapore Airlines Cargo',iata:'SQ',url:'https://www.siacargo.com/e-services/track-shipment'},
+'724':{name:'SWISS WorldCargo',iata:'LX',url:'https://www.swissworldcargo.com/'},
+'988':{name:'Asiana Cargo',iata:'OZ',url:'https://www.asiana-cargo.com/tracking/viewTraceAirWaybill.do'},
+'999':{name:'Air China Cargo',iata:'CA',url:'https://www.airchinacargo.com/en/trackShipment'}
+};
+
+function normalizeMawb(v=''){const d=String(v).replace(/\D/g,'');return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:'';}
+function officialFor(mawb){return OFFICIAL[mawb.replace(/\D/g,'').slice(0,3)]||null;}
+function monthNum(m){return({jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'})[String(m).slice(0,3).toLowerCase()]||'';}
+function parseTextDate(raw=''){
+ const s=clean(raw);let m=s.match(/\b(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s,](\d{2,4})\s+(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+ if(m){let h=Number(m[4]),ap=(m[6]||'').toUpperCase();if(ap==='PM'&&h<12)h+=12;if(ap==='AM'&&h===12)h=0;let y=String(m[3]);if(y.length===2)y=`20${y}`;const mo=monthNum(m[2]);if(mo)return{date:`${y}-${mo}-${String(m[1]).padStart(2,'0')}`,time:`${String(h).padStart(2,'0')}:${m[5]}`};}
+ m=s.match(/\b(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);if(m)return{date:`${m[1]}-${m[2]}-${m[3]}`,time:`${String(m[4]).padStart(2,'0')}:${m[5]}`};
+ return{date:'',time:''};
 }
-
-function token() {
-  return process.env.SHIPSGO_API_TOKEN || process.env.SHIPSGO_TOKEN || '';
+function statusFromText(t=''){
+ if(/notified consignee/i.test(t))return'NOTIFIED CONSIGNEE';
+ if(/received at destination/i.test(t))return'RECEIVED AT DESTINATION';
+ if(/\bdelivered\b|\bdlv\b/i.test(t))return'DELIVERED';
+ if(/\barrived\b|\blanded\b|\bRCF\b/i.test(t))return'ARRIVED';
+ if(/\bdelayed\b|\blate\b|exception/i.test(t))return'DELAYED';
+ if(/\bdeparted\b|\bDEP\b|in[ -]?transit|airborne|in flight/i.test(t))return'IN TRANSIT';
+ if(/\bbooked\b|\bRCS\b|received from shipper|manifested/i.test(t))return'BOOKED';
+ return'';
 }
-
-function safeJson(text = '') {
-  try { return JSON.parse(text); } catch { return {}; }
+function parseOfficialText(raw,mawb,airline){
+ const t=clean(raw),digits=mawb.replace(/\D/g,''),serial=digits.slice(3);
+ if(/no shipment|no record|not found|invalid (?:awb|air waybill)|unable to find|no data found|awb does not exist/i.test(t))return{notFound:true};
+ const route=t.match(/\b([A-Z]{3})\s*(?:-|–|—|→|>)\s*([A-Z]{3})\b/);
+ const origin=(t.match(/(?:origin|from|departure(?: airport)?)\s*[:\-]?\s*([A-Z]{3})\b/i)||[])[1]||route?.[1]||'';
+ const destination=(t.match(/(?:destination|to|arrival(?: airport| station)?)\s*[:\-]?\s*([A-Z]{3})\b/i)||[])[1]||route?.[2]||'';
+ const pcs=(t.match(/(?:pieces?|pcs?|bags?)\s*[:#-]?\s*(\d{1,6})\b/i)||t.match(/\b(\d{1,6})\s*(?:pieces?|pcs?|bags?)\b/i)||[])[1]||'';
+ const weight=(t.match(/(?:gross\s+weight|weight)\s*[:#-]?\s*([\d,.]+)\s*(?:kg|kgs|kilograms?)?/i)||t.match(/([\d,.]+)\s*(?:kg|kgs|kilograms?)\b/i)||[])[1]?.replace(/,/g,'')||'';
+ const iata=airline?.iata||'',fRe=iata?new RegExp(`\\b${iata}[-\\s]?(\\d{2,4})\\b`,'ig'):/\b([A-Z0-9]{2})[-\s]?(\d{2,4})\b/g,f=[...t.matchAll(fRe)];
+ const flightNo=f.length?(iata?`${iata}${f.at(-1)[1]}`:`${f.at(-1)[1]}${f.at(-1)[2]}`):'';
+ const actualChunk=(t.match(/(?:actual arrival|arrived(?: at)?|landed(?: at)?)[^\n|]{0,140}/i)||[])[0]||'';
+ const etaChunk=(t.match(/(?:estimated arrival|expected arrival|ETA|scheduled arrival|arrival date(?:\/time)?)[^\n|]{0,170}/i)||[])[0]||'';
+ let arrival=parseTextDate(actualChunk),actual=Boolean(arrival.date&&arrival.time);if(!arrival.date)arrival=parseTextDate(etaChunk);
+ if(!arrival.date){const all=[...t.matchAll(/(?:arriv|ETA)[\s\S]{0,100}?(\d{1,2}[-\s][A-Za-z]{3,9}[-\s,]\d{2,4}\s+\d{1,2}:\d{2}(?:\s*(?:AM|PM))?)/ig)];if(all.length)arrival=parseTextDate(all.at(-1)[1]);}
+ const status=statusFromText(t),seen=t.includes(mawb)||t.includes(digits)||t.includes(serial),useful=Boolean(seen&&(origin||destination||pcs||weight||flightNo||arrival.date||status));
+ return{useful,shipment:{mawb,carrierCode:iata,airlineName:airline.name,origin:origin.toUpperCase(),destination:destination.toUpperCase(),bags:pcs,pieces:pcs,weight,flightNo,arrivalDate:arrival.date,arrivalTime:arrival.time,arrivalIsActual:actual,status:status||(arrival.date?'IN TRANSIT':'TRACKING'),officialTracker:airline.url,source:`${airline.name} official website`}};
 }
-
-async function shipsgo(path, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18000);
-  try {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      ...options,
-      cache: 'no-store',
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        'X-Shipsgo-User-Token': token(),
-        ...(options.body ? {'Content-Type':'application/json'} : {}),
-        ...(options.headers || {})
-      }
-    });
-    const text = await res.text();
-    return {
-      ok: res.ok,
-      status: res.status,
-      data: safeJson(text),
-      creditsRemaining: res.headers.get('x-shipsgo-credits-remaining') || '',
-      creditsCost: res.headers.get('x-shipsgo-credits-cost') || ''
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+function technicalBlock(text=''){
+ if(/captcha|verify (?:you are|that you are) human|i am not a robot|robot check|access denied|forbidden|unusual traffic|cloudflare|security check|one moment please/i.test(text))return'CAPTCHA / ANTI-BOT';
+ if(/sign in|log in|login required|register to track|please register|account required/i.test(text))return'LOGIN WALL';
+ return'';
 }
-
-function findShipmentId(data, mawb) {
-  const target = normalizeMawb(mawb);
-  let found = null;
-  function visit(v) {
-    if (found || v == null) return;
-    if (Array.isArray(v)) return v.forEach(visit);
-    if (typeof v !== 'object') return;
-    const awb = normalizeMawb(v.awb_number || v.awb || '');
-    if (awb === target && Number.isFinite(Number(v.id))) {
-      found = Number(v.id);
-      return;
-    }
-    for (const child of Object.values(v)) visit(child);
-  }
-  visit(data);
-  return found;
+async function safeBodyText(page,retries=6){
+ for(let i=0;i<retries;i++){try{return clean(await page.evaluate(()=>document.body?.innerText||''));}catch(e){if(!/Execution context was destroyed|Cannot find context|detached/i.test(String(e?.message||e)))throw e;await sleep(500);}}
+ return'';
 }
-
-async function locateOrCreate(mawb, debug) {
-  debug.stage = 'SHIPSGO_FIND';
-  const params = new URLSearchParams();
-  params.set('filters[awb_number]', `eq:${mawb}`);
-  params.set('take', '10');
-
-  const list = await shipsgo(`/air/shipments?${params.toString()}`);
-  if (list.status === 401 || list.status === 403) {
-    return {error:'ShipsGo rejected the API token or API access is not activated for this account.', code:'SHIPSGO_AUTH'};
-  }
-
-  if (list.ok) {
-    const exact = (list.data?.shipments || []).find(x => normalizeMawb(x?.awb_number) === mawb);
-    if (exact?.id) {
-      debug.shipmentCreated = false;
-      return {id:Number(exact.id)};
-    }
-  }
-
-  debug.stage = 'SHIPSGO_CREATE';
-  const created = await shipsgo('/air/shipments', {
-    method:'POST',
-    body:JSON.stringify({awb_number:mawb})
-  });
-  debug.creditsRemaining = created.creditsRemaining;
-  debug.creditsCost = created.creditsCost;
-
-  if (created.ok) {
-    const id = Number(created.data?.shipment?.id || findShipmentId(created.data, mawb));
-    if (id) {
-      debug.shipmentCreated = true;
-      return {id};
-    }
-  }
-
-  if (created.status === 409) {
-    const id = Number(created.data?.shipment?.id || findShipmentId(created.data, mawb));
-    if (id) {
-      debug.shipmentCreated = false;
-      return {id};
-    }
-    const retry = await shipsgo(`/air/shipments?${params.toString()}`);
-    const exact = (retry.data?.shipments || []).find(x => normalizeMawb(x?.awb_number) === mawb);
-    if (exact?.id) {
-      debug.shipmentCreated = false;
-      return {id:Number(exact.id)};
-    }
-  }
-
-  if (created.status === 401 || created.status === 403) {
-    return {error:'ShipsGo rejected the API token or API access is not activated for this account.', code:'SHIPSGO_AUTH'};
-  }
-  if (created.status === 402) {
-    return {error:'ShipsGo API access or tracking credits are not active for this account.', code:'SHIPSGO_PAYMENT'};
-  }
-  if (created.status === 429) {
-    return {error:'ShipsGo rate limit is busy. Please retry shortly.', code:'SHIPSGO_RATE_LIMIT'};
-  }
-
-  const msg = created.data?.message || created.data?.error || created.data?.detail || `ShipsGo returned HTTP ${created.status}`;
-  return {error:String(msg), code:'SHIPSGO_CREATE_FAILED'};
+async function visibleInputs(page){
+ const hs=await page.$$('input,textarea'),out=[];for(const h of hs){try{const m=await h.evaluate(el=>{const r=el.getBoundingClientRect();return{visible:r.width>4&&r.height>4&&!el.disabled,type:(el.type||'text').toLowerCase(),label:`${el.placeholder||''} ${el.name||''} ${el.id||''} ${el.getAttribute('aria-label')||''}`,max:el.maxLength||0};});if(m.visible&&!['hidden','checkbox','radio','file','password','email'].includes(m.type))out.push({h,m});}catch{}}return out;
 }
-
-function firstIata(node) {
-  return String(node?.location?.iata || node?.iata || '').toUpperCase();
+async function setValue(page,h,value){await page.evaluate((el,val)=>{const p=el instanceof HTMLInputElement?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,s=Object.getOwnPropertyDescriptor(p,'value')?.set;if(s)s.call(el,val);else el.value=val;el.focus();['input','change'].forEach(n=>el.dispatchEvent(new Event(n,{bubbles:true})));},h,value);}
+async function clickTrack(page){
+ const buttons=await page.$$('button,input[type="submit"],input[type="button"],[role="button"]');for(const b of buttons){try{const m=await b.evaluate(el=>{const r=el.getBoundingClientRect();return{visible:r.width>4&&r.height>4&&!el.disabled,text:(el.innerText||el.value||el.getAttribute('aria-label')||'').trim()};});if(m.visible&&/track|search|find|submit|enquir|inquir|go$/i.test(m.text)){await Promise.allSettled([page.waitForNavigation({waitUntil:'domcontentloaded',timeout:12000}),b.click({delay:80})]);return m.text;}}catch{}}return'';
 }
-
-function localDateParts(raw = '') {
-  const s = String(raw || '').trim();
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})/);
-  if (m) return {date:`${m[1]}-${m[2]}-${m[3]}`, time:`${String(m[4]).padStart(2,'0')}:${m[5]}`};
-  m = s.match(/^(\d{1,2})[-\/]([A-Za-z]{3})[-\/](\d{2,4})[ T](\d{1,2}):(\d{2})/);
-  if (m) {
-    const months={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
-    let y=String(m[3]); if(y.length===2)y=`20${y}`;
-    const mo=months[m[2].toLowerCase()];
-    if(mo)return{date:`${y}-${mo}-${String(m[1]).padStart(2,'0')}`,time:`${String(m[4]).padStart(2,'0')}:${m[5]}`};
-  }
-  return {date:'',time:''};
+async function submitOfficial(page,mawb){
+ const prefix=mawb.slice(0,3),serial=mawb.replace(/\D/g,'').slice(3),digits=mawb.replace(/\D/g,''),inputs=await visibleInputs(page),label=x=>String(x.m.label||'');
+ const prefixInput=inputs.find(x=>x.m.max===3||/prefix|airline code/i.test(label(x))),serialInput=inputs.find(x=>x!==prefixInput&&(x.m.max===8||/(awb|air waybill|waybill).*(number|no)|shipment.*number/i.test(label(x))));
+ let target=null;
+ if(prefixInput&&serialInput){await setValue(page,prefixInput.h,prefix);await setValue(page,serialInput.h,serial);target=serialInput.h;}
+ else{const one=inputs.find(x=>/awb|air waybill|waybill|shipment.*(?:track|number)|tracking.*number/i.test(label(x)))||inputs.find(x=>x.m.max===11||x.m.max===12||x.m.max===14);if(!one)return{ok:false,reason:'TRACKING FORM NOT ACCESSIBLE'};await setValue(page,one.h,one.m.max===8?serial:(one.m.max===11?digits:mawb));target=one.h;}
+ const clicked=await clickTrack(page);if(!clicked&&target){try{await Promise.allSettled([page.waitForNavigation({waitUntil:'domcontentloaded',timeout:12000}),page.evaluate(el=>el.form?.requestSubmit?.(),target)]);}catch{}}
+ return{ok:true,clicked};
 }
-
-function looksDate(v) {
-  return typeof v === 'string' && (/\d{4}-\d{2}-\d{2}[T\s]\d{1,2}:\d{2}/.test(v) || /\d{1,2}[-\/][A-Za-z]{3}[-\/]\d{2,4}[ T]\d{1,2}:\d{2}/.test(v));
+async function runOfficial(mawb){
+ const airline=officialFor(mawb);if(!airline)return{ok:false,technical:true,reason:'NO OFFICIAL TRACKER MAPPED FOR THIS PREFIX',airline:null,debug:{stage:'NO_OFFICIAL_TRACKER'}};
+ let browser;const debug={stage:'OFFICIAL_OPEN',airline:airline.name,officialUrl:airline.url};
+ try{
+  const chromiumMod=await import('@sparticuz/chromium'),puppeteerMod=await import('puppeteer-core'),chromium=chromiumMod.default||chromiumMod,puppeteer=puppeteerMod.default||puppeteerMod;
+  browser=await puppeteer.launch({args:chromium.args,executablePath:await chromium.executablePath(),headless:true,defaultViewport:{width:1440,height:1050}});
+  const page=await browser.newPage();await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36');await page.setExtraHTTPHeaders({'Accept-Language':'en-US,en;q=0.9'});
+  await page.goto(airline.url,{waitUntil:'domcontentloaded',timeout:28000});await sleep(1400);
+  try{await page.evaluate(()=>{const b=[...document.querySelectorAll('button')].find(x=>/accept all|accept cookies|allow all|agree/i.test((x.innerText||'').trim()));if(b)b.click();});}catch{}
+  let text=await safeBodyText(page);const blocked=technicalBlock(text);if(blocked)return{ok:false,technical:true,reason:blocked,airline,debug:{...debug,stage:'OFFICIAL_BLOCKED'}};
+  debug.stage='OFFICIAL_SUBMIT';const submitted=await submitOfficial(page,mawb);debug.submit=submitted;if(!submitted.ok)return{ok:false,technical:true,reason:submitted.reason,airline,debug:{...debug,stage:'OFFICIAL_FORM_BLOCKED'}};
+  await sleep(3500);try{await page.waitForNetworkIdle({idleTime:700,timeout:9000});}catch{}text=await safeBodyText(page);
+  const blockedAfter=technicalBlock(text);if(blockedAfter)return{ok:false,technical:true,reason:blockedAfter,airline,debug:{...debug,stage:'OFFICIAL_BLOCKED_AFTER_SUBMIT'}};
+  const parsed=parseOfficialText(text,mawb,airline);if(parsed.notFound)return{ok:false,notFound:true,technical:false,reason:'Official airline website returned no shipment record.',airline,debug:{...debug,stage:'OFFICIAL_NO_RECORD'}};
+  if(!parsed.useful)return{ok:false,technical:true,reason:'Official tracking page opened, but the live result is not machine-readable from the server. Use the Official tracker link for this MAWB.',airline,debug:{...debug,stage:'OFFICIAL_RESULT_UNREADABLE'}};
+  return{ok:true,airline,shipment:parsed.shipment,debug:{...debug,stage:'OFFICIAL_SUCCESS'}};
+ }catch(e){return{ok:false,technical:true,reason:e?.message||'Official airline browser failed.',airline,debug:{...debug,stage:'OFFICIAL_BROWSER_ERROR'}};}finally{if(browser)try{await browser.close();}catch{}}
 }
-
-function objectNodes(value, out = [], depth = 0) {
-  if (depth > 8 || value == null) return out;
-  if (Array.isArray(value)) {
-    value.forEach(v => objectNodes(v, out, depth + 1));
-    return out;
-  }
-  if (typeof value === 'object') {
-    out.push(value);
-    Object.values(value).forEach(v => objectNodes(v, out, depth + 1));
-  }
-  return out;
+function waiting(mawb,airline,reason=''){return{mawb,carrierCode:airline?.iata||'',airlineName:airline?.name||'',origin:'',destination:'',bags:'',pieces:'',weight:'',flightNo:'',arrivalDate:'',arrivalTime:'',eta:null,actualArrival:null,status:'CHECKING',officialTracker:airline?.url||'',source:`${airline?.name||'Official airline'} official tracker`,message:reason};}
+async function handle(mawb){
+ const r=await runOfficial(mawb);
+ if(r.ok)return Response.json({ok:true,configured:true,provider:`${r.airline.name} official website`,source:`${r.airline.name} official website`,airlinePrimary:true,noPaidApi:true,shipment:r.shipment,trackingDebug:r.debug});
+ return Response.json({ok:true,configured:true,provider:'Official airline websites',source:'Official airline tracker',airlinePrimary:true,noPaidApi:true,trackingError:r.reason,trackingDebug:r.debug,officialTracker:r.airline?.url||'',shipment:waiting(mawb,r.airline,r.reason)});
 }
-
-function valueByRegex(obj, re) {
-  if (!obj || typeof obj !== 'object') return '';
-  for (const [k,v] of Object.entries(obj)) {
-    if (re.test(k) && looksDate(v)) return v;
-  }
-  return '';
-}
-
-function nodeText(obj) {
-  if (!obj || typeof obj !== 'object') return '';
-  return Object.entries(obj)
-    .filter(([,v]) => typeof v === 'string' || typeof v === 'number')
-    .map(([k,v]) => `${k}:${v}`)
-    .join(' ');
-}
-
-function nodeIata(obj) {
-  const nodes = objectNodes(obj, [], 0).slice(0,12);
-  for (const n of nodes) {
-    const v = n?.location?.iata || n?.iata || n?.airport_code || n?.airport || '';
-    const s = String(v).toUpperCase();
-    if (/^[A-Z]{3}$/.test(s)) return s;
-  }
-  return '';
-}
-
-function eventArrivalFromMovements(raw, destination, status) {
-  const finished = /LANDED|ARRIVED|DELIVERED|COMPLETED/.test(String(status).toUpperCase());
-  const nodes = objectNodes(raw?.movements || [], []);
-  const candidates = [];
-
-  for (const n of nodes) {
-    const txt = nodeText(n);
-    const isArr = /(?:^|\b)(ARR)(?:\b|$)|arrival|arrived/i.test(txt);
-    const isRcf = /(?:^|\b)RCF(?:\b|$)|received from flight/i.test(txt);
-    if (!isArr || isRcf) continue;
-
-    const actual = valueByRegex(n, /actual.*(?:date|time)|(?:date|time).*actual|actual_at|actual$/i);
-    const estimated = valueByRegex(n, /estimated|estimate|eta|expected/i);
-    const scheduled = valueByRegex(n, /scheduled|planned/i);
-    const generic = valueByRegex(n, /date|time|occurred|event_at|timestamp/i);
-    const value = actual || estimated || scheduled || generic;
-    if (!value) continue;
-
-    const kind = actual ? 'actual' : estimated ? 'estimated' : scheduled ? 'scheduled' : 'event';
-    const iata = nodeIata(n);
-    let score = 100;
-    if (destination && iata === destination) score += 180;
-    if (finished && kind === 'actual') score += 120;
-    if (!finished && kind === 'estimated') score += 110;
-    if (!finished && kind === 'scheduled') score += 80;
-    if (iata && destination && iata !== destination) score -= 120;
-    candidates.push({value, kind, iata, score});
-  }
-
-  candidates.sort((a,b) => b.score - a.score);
-  return candidates[0] || null;
-}
-
-function genericArrival(raw, destination, status) {
-  const finished = /LANDED|ARRIVED|DELIVERED|COMPLETED/.test(String(status).toUpperCase());
-  const candidates = [];
-
-  function walk(v, path = '', parent = null, depth = 0) {
-    if (depth > 9 || v == null) return;
-    if (Array.isArray(v)) return v.forEach((x,i) => walk(x, `${path}[${i}]`, v, depth + 1));
-    if (typeof v === 'object') {
-      for (const [k,x] of Object.entries(v)) walk(x, path ? `${path}.${k}` : k, v, depth + 1);
-      return;
-    }
-    if (!looksDate(v)) return;
-    const p = path.toLowerCase();
-    if (/rcf|received_from_flight|date_of_dep|departure|created_at|updated_at|checked_at/.test(p)) return;
-    if (!/arr|eta|expected|scheduled.*arrival|planned.*arrival/.test(p)) return;
-
-    let score = 60;
-    let kind = 'event';
-    if (/actual.*arr|arr.*actual/.test(p)) {score += 100; kind='actual';}
-    else if (/eta|estimated|expected/.test(p)) {score += 90; kind='estimated';}
-    else if (/scheduled|planned/.test(p)) {score += 70; kind='scheduled';}
-    const iata = nodeIata(parent || {});
-    if (destination && iata === destination) score += 140;
-    if (finished && kind === 'actual') score += 80;
-    if (!finished && kind === 'estimated') score += 70;
-    candidates.push({value:v, kind, iata, score});
-  }
-
-  walk(raw);
-  candidates.sort((a,b) => b.score - a.score);
-  return candidates[0] || null;
-}
-
-function pickFlight(raw, destination) {
-  const nodes = objectNodes(raw?.movements || [], []);
-  const found = [];
-  for (const n of nodes) {
-    const iata = nodeIata(n);
-    for (const [k,v] of Object.entries(n || {})) {
-      if (!/flight.*(?:no|number)|flight_no|flight_number/i.test(k)) continue;
-      const m = String(v || '').toUpperCase().match(/\b([A-Z0-9]{2,3})[-\s]?(\d{2,4})\b/);
-      if (m) found.push({flight:`${m[1]}${m[2]}`, score:destination && iata===destination?100:0});
-    }
-  }
-  found.sort((a,b)=>b.score-a.score);
-  if(found.length)return found[0].flight;
-
-  let fallback='';
-  function walk(v, key=''){
-    if(v==null)return;
-    if(Array.isArray(v))return v.forEach(x=>walk(x,key));
-    if(typeof v==='object')return Object.entries(v).forEach(([k,x])=>walk(x,k));
-    if(!/flight.*(?:no|number)|flight_no|flight_number/i.test(key))return;
-    const m=String(v).toUpperCase().match(/\b([A-Z0-9]{2,3})[-\s]?(\d{2,4})\b/);if(m)fallback=`${m[1]}${m[2]}`;
-  }
-  walk(raw);
-  return fallback;
-}
-
-function normalizeStatus(value = '') {
-  const s = String(value || '').toUpperCase().replace(/\s+/g, '_');
-  if (s === 'NEW') return 'REGISTERED';
-  if (/INPROGRESS|IN_PROGRESS/.test(s)) return 'WAITING FOR CARRIER DATA';
-  if (/DELIVER/.test(s)) return 'DELIVERED';
-  if (/LANDED|ARRIVED|COMPLETED/.test(s)) return 'ARRIVED';
-  if (/DELAY|EXCEPTION/.test(s)) return 'DELAYED';
-  if (/EN_ROUTE|ENROUTE|IN_TRANSIT|DEPART/.test(s)) return 'IN TRANSIT';
-  if (/BOOK|RECEIVED|RCS|MANIFEST/.test(s)) return 'RECEIVED';
-  return s.replace(/_/g,' ') || 'TRACKING';
-}
-
-function mapShipment(raw, mawb) {
-  const route = raw?.route || {};
-  const airline = raw?.airline || {};
-  const cargo = raw?.cargo || {};
-  const destination = firstIata(route?.destination);
-  const sourceStatus = raw?.status || raw?.status_extended?.status || '';
-  const status = normalizeStatus(sourceStatus);
-
-  // Prefer true flight ARR events. Do NOT use RCF as flight arrival; RCF is cargo received from flight.
-  const arrival = eventArrivalFromMovements(raw, destination, sourceStatus) || genericArrival(raw, destination, sourceStatus);
-  const parts = localDateParts(arrival?.value || '');
-  const actual = arrival?.kind === 'actual' || (/ARRIVED|DELIVERED/.test(status) && Boolean(arrival?.value));
-
-  return {
-    mawb,
-    shipsgoShipmentId: raw?.id || null,
-    carrierCode: String(airline?.iata || '').toUpperCase(),
-    airlineName: airline?.name || '',
-    origin: firstIata(route?.origin),
-    destination,
-    bags: cargo?.pieces ?? '',
-    pieces: cargo?.pieces ?? '',
-    weight: cargo?.weight ?? '',
-    volume: cargo?.volume ?? '',
-    flightNo: pickFlight(raw, destination),
-    arrivalDate: parts.date,
-    arrivalTime: parts.time,
-    eta: !actual && arrival?.value ? arrival.value : null,
-    actualArrival: actual && arrival?.value ? arrival.value : null,
-    arrivalIsActual: actual,
-    status,
-    shipsgoRawStatus: sourceStatus,
-    transshipments: route?.ts_count ?? '',
-    transitTime: route?.transit_time ?? '',
-    updatedAt: raw?.updated_at || raw?.checked_at || '',
-    source:'ShipsGo Air API'
-  };
-}
-
-function hasUsefulData(s) {
-  return Boolean(s?.origin || s?.destination || s?.pieces || s?.weight || s?.flightNo || s?.arrivalDate);
-}
-
-function waiting(mawb, message = '') {
-  return {
-    mawb, carrierCode:'', airlineName:'', origin:'', destination:'', bags:'', pieces:'', weight:'', volume:'', flightNo:'',
-    arrivalDate:'', arrivalTime:'', eta:null, actualArrival:null, arrivalIsActual:false,
-    status:'CHECKING', source:'ShipsGo Air API', message
-  };
-}
-
-async function getDetails(id) {
-  const detail = await shipsgo(`/air/shipments/${id}`);
-  if (!detail.ok) return {error:detail.data?.message || detail.data?.error || `ShipsGo returned HTTP ${detail.status}`, status:detail.status};
-  return {raw:detail.data?.shipment || {}};
-}
-
-async function track(mawb) {
-  const debug = {stage:'START', provider:'ShipsGo Air API'};
-  try {
-    if (!token()) {
-      return {ok:false, error:'SHIPSGO_API_TOKEN is not configured in Vercel.', debug:{...debug, stage:'SHIPSGO_NOT_CONFIGURED'}};
-    }
-
-    const located = await locateOrCreate(mawb, debug);
-    if (located.error) {
-      return {ok:false, error:located.error, debug:{...debug, stage:located.code || 'SHIPSGO_LOCATE_FAILED'}};
-    }
-
-    debug.shipmentId = located.id;
-    debug.stage = 'SHIPSGO_DETAILS';
-
-    let result = await getDetails(located.id);
-    if (result.error) {
-      return {ok:false, error:String(result.error), debug:{...debug, stage:'SHIPSGO_DETAILS_FAILED', httpStatus:result.status}};
-    }
-
-    let raw = result.raw;
-    let mapped = mapShipment(raw, mawb);
-
-    // Creating a shipment starts ShipsGo tracking, but the first carrier check can be asynchronous.
-    // Give a newly registered / empty shipment a few short polls within this request.
-    const delays = [2500, 4000, 5500];
-    for (let i=0; i<delays.length && !hasUsefulData(mapped) && /^(NEW|INPROGRESS|IN_PROGRESS)?$/i.test(String(raw?.status || '')); i++) {
-      debug.stage = `SHIPSGO_WAIT_FIRST_CHECK_${i+1}`;
-      await sleep(delays[i]);
-      result = await getDetails(located.id);
-      if (result.error) break;
-      raw = result.raw;
-      mapped = mapShipment(raw, mawb);
-    }
-
-    debug.shipsgoStatus = raw?.status || '';
-    debug.checkedAt = raw?.checked_at || '';
-    debug.shipmentCreated = Boolean(debug.shipmentCreated);
-
-    if (!hasUsefulData(mapped) && /NEW/i.test(String(raw?.status || ''))) {
-      debug.stage = 'SHIPSGO_REGISTERED_WAITING_FIRST_CHECK';
-      return {
-        ok:true,
-        shipment:mapped,
-        message:'MAWB has been added to ShipsGo. ShipsGo has not completed its first airline check yet.',
-        debug
-      };
-    }
-
-    if (!hasUsefulData(mapped) && /INPROGRESS|IN_PROGRESS/i.test(String(raw?.status || ''))) {
-      debug.stage = 'SHIPSGO_WAITING_CARRIER_DATA';
-      return {
-        ok:true,
-        shipment:mapped,
-        message:'ShipsGo is tracking this MAWB, but the airline has not published usable shipment data yet.',
-        debug
-      };
-    }
-
-    debug.stage = 'SUCCESS';
-    return {ok:true, shipment:mapped, debug};
-  } catch (e) {
-    const message = e?.name === 'AbortError' ? 'ShipsGo request timed out.' : (e?.message || String(e));
-    return {ok:false, error:message, debug:{...debug, stage:'SHIPSGO_ERROR'}};
-  }
-}
-
-async function handle(mawb) {
-  const r = await track(mawb);
-  if (r.ok) {
-    return Response.json({
-      ok:true,
-      configured:true,
-      provider:'ShipsGo Air API',
-      source:'ShipsGo Air API',
-      airlinePrimary:true,
-      shipment:r.shipment,
-      trackingError:r.message || '',
-      trackingDebug:r.debug
-    });
-  }
-  return Response.json({
-    ok:true,
-    configured:Boolean(token()),
-    provider:'ShipsGo Air API',
-    source:'ShipsGo Air API diagnostic',
-    airlinePrimary:true,
-    trackingError:r.error,
-    trackingDebug:r.debug,
-    shipment:waiting(mawb, r.error)
-  });
-}
-
-export async function GET(request) {
-  const url = new URL(request.url);
-  const q = url.searchParams.get('mawb');
-  if (!q) {
-    return Response.json({
-      configured:Boolean(token()),
-      provider:'ShipsGo Air API',
-      apiKeyRequired:true,
-      envVar:'SHIPSGO_API_TOKEN',
-      mode:'MAWB → auto-create/find in ShipsGo → wait for first carrier check → fetch current details → Mayavi'
-    });
-  }
-  const mawb = normalizeMawb(q);
-  if (!mawb) return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
-  return handle(mawb);
-}
-
-export async function POST(request) {
-  let body = {};
-  try { body = await request.json(); } catch { return Response.json({ok:false,error:'Invalid request body.'},{status:400}); }
-  const mawb = normalizeMawb(body?.mawb);
-  if (!mawb) return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
-  return handle(mawb);
-}
+export async function GET(request){const u=new URL(request.url),q=u.searchParams.get('mawb');if(!q)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,mode:'MAWB prefix → official airline tracker → fill MAWB → read result when permitted'});const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});return handle(mawb);}
+export async function POST(request){let b={};try{b=await request.json();}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400});}const mawb=normalizeMawb(b?.mawb);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});return handle(mawb);}
