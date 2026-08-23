@@ -1,27 +1,25 @@
-# MAYAVI CARGO Tracker
+# MAYAVI CARGO — Live Flight Tracker
 
-A deployable Next.js tracker for MAWB document extraction and Track123 air-cargo tracking.
+A deployable Next.js MAWB tracker for photo/PDF extraction and live airline tracking.
 
-## What is real in this build
-- Manual shipment entry and browser persistence.
-- PDF text extraction using PDF.js.
-- OCR for images/scanned first PDF page using Tesseract.js.
-- MAWB / bags / weight / airport-route extraction from document text.
-- Server-side Track123 aviation register/query calls (API key never exposed to browser).
-- Arrival date/time mapping when Track123 returns an ETA/arrival timestamp.
-- Automatic `Mail Due` = arrival time minus 6 hours.
-- Clear indicator when the Track123 key is missing; the UI does not fabricate live results.
+## Current workflow
+- Upload one image, several images, or a PDF.
+- OCR/text extraction finds one or many 11-digit MAWB numbers.
+- The first 3 digits identify the airline prefix.
+- The server opens TrackJet as the carrier-routing point and follows the matching official-airline handoff.
+- Mayavi reads machine-readable airline shipment data without fabricating missing values.
+- Primary live fields: Origin, Estimated Arrival Date, Estimated Arrival Time and Status.
+- Extra fields when available: Flight number, Bags/Pieces and Weight.
+- Editable Client Name column for every shipment.
+- Mail Time is automatically calculated as arrival time minus 5 hours.
+- Early/Delayed status is flagged when the live arrival moves at least 30 minutes from the first ETA stored by Mayavi.
+- Active shipments auto-refresh every 20 minutes while the dashboard is open, and can be refreshed manually at any time.
 
-## Vercel setup
-1. Upload the extracted project files to the `mayavi-cargo-tracker` GitHub repository.
-2. Connect that repository to the Vercel `mayavi-cargo-tracker` project.
-3. In Vercel: Settings -> Environment Variables, add:
-   `TRACK123_API_KEY` = your Track123 API key
-4. Apply it to Production, Preview and Development.
-5. Redeploy.
+## Live-data rules
+The official-carrier page is treated as the primary source. If a carrier blocks automated access with CAPTCHA or does not expose readable shipment details, Mayavi shows that tracking stage/error instead of inventing ETA, origin, weight or bags.
 
-## Important Track123 note
-Air-cargo registration can consume substantially more Track123 quota than parcel tracking. Track123 documentation currently states 100 quota units per registered air-freight tracking number. The tracker registers before querying so a new MAWB can begin tracking; if it already exists, it still proceeds to query.
+## Deployment
+The production branch is `main`. Connect this GitHub repository to the Vercel Mayavi Cargo project and point the custom domain to that project. The current TrackJet → official carrier browser route does not require the old Track123 API key.
 
-## Security
-Never put the Track123 key in `NEXT_PUBLIC_*` variables or browser JavaScript.
+## Browser persistence
+Shipment rows are currently stored in browser localStorage. Tracking results are live, but the saved dashboard list is device/browser-specific until a shared database is added.
