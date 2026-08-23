@@ -162,7 +162,7 @@ export default function Home(){
         if(i<0){
           next.unshift({
             id:crypto.randomUUID(),mawb,clientName:clientName||'',bags:seed.bags||'',weight:seed.weight||'',origin:'',arrivalDate:'',arrivalTime:'',flightNo:'',
-            airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,status:'CHECKING',baselineArrival:'',dataSource:'TrackJet → official airline',
+            airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,status:'CHECKING',baselineArrival:'',dataSource:'Official airline website',
             remarks:sourceLabel?`Read from ${sourceLabel}`:'',updatedAt:new Date().toISOString()
           });
         }else{
@@ -176,7 +176,7 @@ export default function Home(){
 
   async function trackMawb(mawb,forceRefresh=false,silent=false){
     const key=normalizeMawb(mawb),airline=airlineFromMawb(key);
-    if(!silent)setNotice(`Tracking ${key}: ${airline.name} via TrackJet → official carrier…`);
+    if(!silent)setNotice(`Checking ${key} directly on ${airline.name} official cargo website…`);
     try{
       const r=await fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mawb:key,forceRefresh})});
       const d=await r.json();
@@ -188,6 +188,7 @@ export default function Home(){
       setShipments(list=>list.map(prev=>{
         if(normalizeMawb(prev.mawb)!==key)return prev;
         const status=statusFromLive(prev,live,etaIso);
+        const routeNote=d.fallbackUsed?`Official blocked: ${d.officialError||'technical block'} · Track123 fallback used`:(d.officialError?`Official issue: ${d.officialError}`:'Official airline checked');
         return{
           ...prev,
           airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,
@@ -199,14 +200,15 @@ export default function Home(){
           arrivalTime:parts.time||prev.arrivalTime||'',
           baselineArrival:prev.baselineArrival||etaIso||'',
           status,
-          dataSource:d.source||live.source||'TrackJet → official airline',
-          remarks:d.trackingError?`${debug.stage||'Carrier check'} · ${d.trackingError}`:(parts.date&&parts.time?`Live arrival ${parts.date} ${parts.time}`:`${debug.stage||'Carrier checked'} · waiting for ETA`),
+          dataSource:d.source||live.source||'Official airline website',
+          remarks:d.trackingError?`${routeNote} · ${debug.stage||'Carrier check'} · ${d.trackingError}`:(parts.date&&parts.time?`${routeNote} · live arrival ${parts.date} ${parts.time}`:`${routeNote} · ${debug.stage||'waiting for ETA'}`),
           updatedAt:new Date().toISOString()
         };
       }));
       if(!silent){
-        if(parts.date&&parts.time)setNotice(`${airline.name}: live arrival ${parts.date} ${parts.time} received. Mail time is automatically 5 hours earlier.`);
-        else setNotice(`${airline.name}: carrier checked. ${d.trackingError||'Arrival time is not published yet.'}`);
+        if(parts.date&&parts.time)setNotice(`${airline.name}: live arrival ${parts.date} ${parts.time} received${d.fallbackUsed?' from fallback because the official site was technically blocked':' directly from the official airline'}. Mail time is 5 hours earlier.`);
+        else if(d.fallbackUsed)setNotice(`${airline.name} official site was blocked (${d.officialError||'technical block'}), so this MAWB alone used the fallback tracker.`);
+        else setNotice(`${airline.name} official website checked. ${d.trackingError||'Arrival time is not published yet.'}`);
       }
     }catch(e){
       setShipments(list=>list.map(x=>normalizeMawb(x.mawb)===key?{...x,status:'CHECKING',remarks:`Tracking error · ${e.message}`,updatedAt:new Date().toISOString()}:x));
@@ -280,10 +282,10 @@ export default function Home(){
       const added=upsertMawbs(mawbs,files.length===1?files[0].name:`${files.length} uploaded files`,uploadClient);
       setOcrProgress('');
       for(let i=0;i<added.length;i++){
-        setNotice(`Found ${added.length} MAWB(s). Live tracking ${i+1}/${added.length}: ${added[i]}`);
+        setNotice(`Found ${added.length} MAWB(s). Official-airline tracking ${i+1}/${added.length}: ${added[i]}`);
         await trackMawb(added[i],false,true);
       }
-      setNotice(`${added.length} MAWB(s) extracted and sent through live carrier tracking.`);
+      setNotice(`${added.length} MAWB(s) extracted and checked with their official airline trackers.`);
     }catch(e){
       setNotice(`Upload/OCR error: ${e.message}`);
     }finally{setBusy(false);setOcrProgress('');}
@@ -302,8 +304,8 @@ export default function Home(){
 
   return <main>
     <header>
-      <div><h1>MAYAVI CARGO — LIVE FLIGHT TRACKER</h1><p>Photo/PDF → MAWB → Airline Prefix → TrackJet → Official Airline → ETA → 5-Hour Mail Time</p></div>
-      <div className="right"><div>{new Date().toLocaleDateString('en-IN')}</div><span className={routerReady?'live':'offline'}>{routerReady?'● LIVE ROUTER READY':'● ROUTER CHECKING'}</span><small>Auto refresh: 20 min</small></div>
+      <div><h1>MAYAVI CARGO — LIVE FLIGHT TRACKER</h1><p>Photo/PDF → MAWB → Airline Prefix → Official Airline Website → ETA → 5-Hour Mail Time</p></div>
+      <div className="right"><div>{new Date().toLocaleDateString('en-IN')}</div><span className={routerReady?'live':'offline'}>{routerReady?'● OFFICIAL AIRLINE ROUTER READY':'● ROUTER CHECKING'}</span><small>Fallback only if that airline is technically blocked · Auto refresh: 20 min</small></div>
     </header>
 
     <section className="toolbar">
@@ -338,7 +340,7 @@ export default function Home(){
       })}</tbody>
     </table></section>
 
-    <div className="help"><b>How it works:</b> upload one photo, several photos, or a PDF. Mayavi extracts every readable 11-digit MAWB, identifies the airline from the 3-digit prefix, opens the carrier path through TrackJet, reads the official airline result when machine-readable, and returns origin + estimated arrival date/time first. Bags, weight and flight number are filled when the carrier publishes them. The Mail Time column is always exactly 5 hours before the current arrival time. Early/Delayed status is also detected when the live arrival moves at least 30 minutes from the first ETA seen by Mayavi.</div>
+    <div className="help"><b>How it works:</b> Mayavi extracts every readable 11-digit MAWB and identifies the airline from its 3-digit prefix. It then goes <b>directly to that airline's official cargo tracker</b>. Only if that specific airline technically blocks automated access — for example CAPTCHA, anti-bot verification, login wall, or an inaccessible tracking form — Mayavi sends <b>that MAWB only</b> to the Track123 fallback. A normal official “no shipment found” result does not trigger the fallback. Origin and estimated arrival date/time remain the priority; bags, weight and flight number are added when published. Mail Time is exactly 5 hours before the current arrival time.</div>
 
     {manualOpen&&<div className="modal"><form onSubmit={saveManual}>
       <h2>Add MAWB</h2>

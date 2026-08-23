@@ -6,20 +6,23 @@ A deployable Next.js MAWB tracker for photo/PDF extraction and live airline trac
 - Upload one image, several images, or a PDF.
 - OCR/text extraction finds one or many 11-digit MAWB numbers.
 - The first 3 digits identify the airline prefix.
-- The server opens TrackJet as the carrier-routing point and follows the matching official-airline handoff.
-- Mayavi reads machine-readable airline shipment data without fabricating missing values.
+- Mayavi opens that airline's official cargo-tracking website first.
+- It enters the MAWB into the airline tracker and reads machine-readable live shipment data.
 - Primary live fields: Origin, Estimated Arrival Date, Estimated Arrival Time and Status.
 - Extra fields when available: Flight number, Bags/Pieces and Weight.
 - Editable Client Name column for every shipment.
 - Mail Time is automatically calculated as arrival time minus 5 hours.
-- Early/Delayed status is flagged when the live arrival moves at least 30 minutes from the first ETA stored by Mayavi.
-- Active shipments auto-refresh every 20 minutes while the dashboard is open, and can be refreshed manually at any time.
+- Active shipments auto-refresh every 20 minutes while the dashboard is open.
 
-## Live-data rules
-The official-carrier page is treated as the primary source. If a carrier blocks automated access with CAPTCHA or does not expose readable shipment details, Mayavi shows that tracking stage/error instead of inventing ETA, origin, weight or bags.
+## Fallback rule
+Track123 is not the normal route. It is used only for the individual MAWB whose official airline tracker is technically blocked by CAPTCHA/anti-bot verification, a login wall, an inaccessible tracking form, or a live result that cannot be read by the server browser. Other airlines continue to use their own official websites directly.
 
-## Deployment
-The production branch is `main`. Connect this GitHub repository to the Vercel Mayavi Cargo project and point the custom domain to that project. The current TrackJet → official carrier browser route does not require the old Track123 API key.
+If the official airline website itself returns a normal `not found / no shipment record` response, Mayavi shows that airline result and does not send the MAWB to the fallback.
+
+The fallback requires `TRACK123_API_KEY` in Vercel. No API key is required for the official-airline primary route.
+
+## Data integrity
+Mayavi does not invent ETA, origin, weight, bags or flight number. If neither the official airline nor the permitted fallback produces readable live data, the dashboard shows the exact technical stage instead.
 
 ## Browser persistence
 Shipment rows are currently stored in browser localStorage. Tracking results are live, but the saved dashboard list is device/browser-specific until a shared database is added.
