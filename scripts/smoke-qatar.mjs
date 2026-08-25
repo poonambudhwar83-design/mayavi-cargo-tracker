@@ -1,5 +1,6 @@
 import { trackOfficial } from '../lib/official-tracker.js';
 
+// Public format-valid example only; no customer shipment is exposed in CI logs.
 const exampleMawb = '157-10631913';
 const result = await trackOfficial(exampleMawb);
 
