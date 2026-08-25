@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'lib/adapters/qatar.js'
       - 'lib/official-tracker.js'
       - 'scripts/smoke-qatar.mjs'
       - '.github/workflows/qatar-smoke.yml'
@@ -17,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: npm install
       - name: Verify Qatar official tracking form
         env:
