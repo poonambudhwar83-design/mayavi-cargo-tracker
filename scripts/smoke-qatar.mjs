@@ -15,7 +15,11 @@ const summary = {
 
 console.log(JSON.stringify(summary, null, 2));
 
-// Success here means the real Qatar form was found, populated and submitted.
-// A fake example can legitimately return no record; that still proves the browser flow works.
-const submitted = result.ok || result.notFound || ['QATAR_RESULT_UNREADABLE', 'QATAR_SUCCESS', 'QATAR_NO_RECORD'].includes(result.debug?.stage);
-if (!submitted) process.exit(1);
+const submit = result.debug?.submit;
+const formReallySubmitted = Boolean(
+  submit?.ok &&
+  submit?.serialLength === 8 &&
+  /Track Shipment/i.test(String(submit?.button || ''))
+);
+
+if (!formReallySubmitted) process.exit(1);
