@@ -1,5 +1,6 @@
 import { airlineForMawb, normalizeMawb } from '../../../lib/airlines.js';
 import { trackOfficial } from '../../../lib/official-tracker.js';
+import { trackQatar } from '../../../lib/adapters/qatar.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +30,8 @@ function waiting(mawb, airline, reason = '') {
 
 async function handle(mawb) {
   const airline = airlineForMawb(mawb);
-  const result = await trackOfficial(mawb);
+  const prefix = mawb.replace(/\D/g, '').slice(0, 3);
+  const result = prefix === '157' ? await trackQatar(mawb) : await trackOfficial(mawb);
 
   if (result.ok) {
     return Response.json({
@@ -38,6 +40,7 @@ async function handle(mawb) {
       provider: `${result.airline.name} official website`,
       source: `${result.airline.name} official website`,
       airlinePrimary: true,
+      exactCarrierAdapter: prefix === '157',
       noPaidApi: true,
       noTrackJet: true,
       shipment: result.shipment,
@@ -51,6 +54,7 @@ async function handle(mawb) {
     provider: 'Official airline websites',
     source: 'Official airline tracker',
     airlinePrimary: true,
+    exactCarrierAdapter: prefix === '157',
     noPaidApi: true,
     noTrackJet: true,
     trackingError: result.reason,
@@ -70,7 +74,7 @@ export async function GET(request) {
       apiKeyRequired: false,
       noPaidApi: true,
       noTrackJet: true,
-      mode: 'MAWB prefix → official airline tracker → fill MAWB → read result when permitted'
+      mode: 'MAWB prefix → exact carrier adapter when available → official airline tracker'
     });
   }
 
