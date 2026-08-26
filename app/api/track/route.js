@@ -1,6 +1,6 @@
 import { airlineForMawb, normalizeMawb } from '../../../lib/airlines.js';
 import { trackOfficial } from '../../../lib/official-tracker.js';
-import { trackQatarLive } from '../../../lib/adapters/qatar-live.js';
+import { trackQatarLiveV2 } from '../../../lib/adapters/qatar-live-v2.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 
 export const runtime = 'nodejs';
@@ -34,7 +34,7 @@ async function handle(mawb) {
   const prefix = mawb.replace(/\D/g, '').slice(0, 3);
   const exact = prefix === '157' || hasExactOfficialAdapter(prefix);
   const result = prefix === '157'
-    ? await trackQatarLive(mawb)
+    ? await trackQatarLiveV2(mawb)
     : hasExactOfficialAdapter(prefix)
       ? await trackExactOfficial(mawb)
       : await trackOfficial(mawb);

@@ -1,7 +1,8 @@
-import { trackQatar } from '../lib/adapters/qatar.js';
+import { trackQatarLiveV2 } from '../lib/adapters/qatar-live-v2.js';
 
-// Public format-valid example only; no customer shipment is exposed in CI logs.
-const result = await trackQatar('157-10631913');
+// Public historical Qatar shipment used only to verify the official-site parser.
+const result = await trackQatarLiveV2('157-12345675');
+const shipment = result.shipment || {};
 
 const summary = {
   ok: result.ok,
@@ -9,18 +10,32 @@ const summary = {
   notFound: result.notFound || false,
   reason: result.reason || '',
   stage: result.debug?.stage || '',
+  networkResponses: result.debug?.networkResponses ?? 0,
   submit: result.debug?.submit || null,
-  airline: result.airline?.name || ''
+  extracted: {
+    origin: shipment.origin || '',
+    destination: shipment.destination || '',
+    pieces: shipment.pieces || '',
+    weight: shipment.weight || '',
+    flightNo: shipment.flightNo || '',
+    arrivalDate: shipment.arrivalDate || '',
+    arrivalTime: shipment.arrivalTime || '',
+    arrivalIsActual: shipment.arrivalIsActual || false,
+    status: shipment.status || ''
+  }
 };
 
-console.log(JSON.stringify(summary, null, 2));
+console.log('QATAR_V2_SMOKE=' + JSON.stringify(summary));
 
-const submit = result.debug?.submit;
-const formReallySubmitted = Boolean(
-  submit?.ok &&
-  submit?.enteredLength === submit?.expectedLength &&
-  [8, 11].includes(submit?.expectedLength) &&
-  /Track Shipment/i.test(String(submit?.button || ''))
-);
+const expected = summary.ok &&
+  summary.stage === 'QATAR_SUCCESS_NETWORK' &&
+  summary.extracted.origin === 'HAN' &&
+  summary.extracted.destination === 'DFW' &&
+  summary.extracted.pieces === '13' &&
+  summary.extracted.weight === '4559.0' &&
+  summary.extracted.flightNo === 'QR0729' &&
+  summary.extracted.arrivalDate === '2021-05-18' &&
+  summary.extracted.arrivalTime === '15:22' &&
+  summary.extracted.status === 'DELIVERED';
 
-if (!formReallySubmitted) process.exit(1);
+if (!expected) process.exit(1);
