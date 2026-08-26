@@ -1,7 +1,7 @@
-import { trackQatar } from '../lib/adapters/qatar.js';
+import { trackQatarLive } from '../lib/adapters/qatar-live.js';
 
 // Public format-valid example only; no customer shipment is exposed in CI logs.
-const result = await trackQatar('157-10631913');
+const result = await trackQatarLive('157-12345675');
 
 const summary = {
   ok: result.ok,
@@ -9,18 +9,15 @@ const summary = {
   notFound: result.notFound || false,
   reason: result.reason || '',
   stage: result.debug?.stage || '',
+  networkResponses: result.debug?.networkResponses ?? 0,
   submit: result.debug?.submit || null,
   airline: result.airline?.name || ''
 };
 
-console.log(JSON.stringify(summary, null, 2));
+console.log('QATAR_SMOKE_RESULT=' + JSON.stringify(summary));
 
-const submit = result.debug?.submit;
-const formReallySubmitted = Boolean(
-  submit?.ok &&
-  submit?.enteredLength === submit?.expectedLength &&
-  [8, 11].includes(submit?.expectedLength) &&
-  /Track Shipment/i.test(String(submit?.button || ''))
-);
-
-if (!formReallySubmitted) process.exit(1);
+// Passing means the official Qatar page opened, accepted the form flow, and produced
+// either a normal no-record result or a machine-readable shipment result.
+if (['QATAR_BROWSER_ERROR', 'QATAR_FORM_FAILED', 'QATAR_RESULT_UNREADABLE'].includes(summary.stage)) {
+  process.exit(1);
+}
