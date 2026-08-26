@@ -7,54 +7,76 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']
 });
 
+async function deepEls(page, selector) {
+  const handle = await page.evaluateHandle(sel => {
+    const out = [], seen = new Set();
+    const walk = root => {
+      if (!root?.querySelectorAll) return;
+      for (const el of root.querySelectorAll(sel)) {
+        if (!seen.has(el)) { seen.add(el); out.push(el); }
+      }
+      for (const el of root.querySelectorAll('*')) if (el.shadowRoot) walk(el.shadowRoot);
+    };
+    walk(document);
+    return out;
+  }, selector);
+  const props = await handle.getProperties();
+  const out = [];
+  for (const prop of props.values()) {
+    const el = prop.asElement();
+    if (el) out.push(el);
+  }
+  await handle.dispose();
+  return out;
+}
+
 try {
   const page = await browser.newPage();
+  const network = [];
+  page.on('response', r => {
+    const u = r.url();
+    if (/(track|shipment|cargo|aura|apex|croamis)/i.test(u)) network.push({status:r.status(), url:u});
+  });
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36');
   await page.setExtraHTTPHeaders({'Accept-Language':'en-US,en;q=0.9'});
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await new Promise(r => setTimeout(r, 5000));
 
-  const result = await page.evaluate(() => {
-    const rows = [];
-    const seen = new Set();
-    const walk = (root, where='document') => {
-      if (!root?.querySelectorAll) return;
-      for (const el of root.querySelectorAll('input,button,[role="button"]')) {
-        if (seen.has(el)) continue;
-        seen.add(el);
-        const r = el.getBoundingClientRect();
-        if (r.width < 3 || r.height < 3) continue;
-        rows.push({
-          where,
-          tag: el.tagName,
-          type: el.type || '',
-          name: el.name || '',
-          id: el.id || '',
-          placeholder: el.placeholder || '',
-          aria: el.getAttribute('aria-label') || '',
-          text: String(el.innerText || el.value || '').replace(/\s+/g,' ').trim(),
-          maxLength: Number(el.maxLength || -1),
-          disabled: Boolean(el.disabled),
-          readOnly: Boolean(el.readOnly)
-        });
-      }
-      for (const el of root.querySelectorAll('*')) {
-        if (el.shadowRoot) walk(el.shadowRoot, 'shadow-root');
-      }
-    };
-    walk(document);
-    return {
-      title: document.title,
-      bodyPreview: (document.body?.innerText || '').replace(/\s+/g,' ').slice(0,1200),
-      controls: rows
-    };
-  });
+  const inputs = await deepEls(page, 'input[type="text"]');
+  const visible = [];
+  for (const el of inputs) {
+    const meta = await el.evaluate(x => {
+      const r = x.getBoundingClientRect();
+      return {visible:r.width>3&&r.height>3&&!x.disabled&&!x.readOnly,value:String(x.value||''),maxLength:Number(x.maxLength||-1)};
+    });
+    if (meta.visible) visible.push({el,meta});
+  }
+  const prefix = visible.find(x => x.meta.maxLength === 3 || x.meta.value === '157');
+  const number = prefix ? visible.find(x => x !== prefix) : null;
+  if (!prefix || !number) throw new Error(`Expected Qatar prefix+number fields, found ${visible.length}`);
 
-  console.log('QATAR_PROBE_RESULT=' + JSON.stringify(result));
-  const hasLikelyAwb = result.controls.some(c => /awb|air waybill|shipment|prefix|number/i.test(`${c.name} ${c.id} ${c.placeholder} ${c.aria}`) || c.maxLength === 3 || c.maxLength === 8);
-  const hasTrack = result.controls.some(c => /track shipment|track|search/i.test(c.text));
-  console.log(`QATAR_PROBE_SUMMARY inputs=${result.controls.filter(c=>c.tag==='INPUT').length} hasLikelyAwb=${hasLikelyAwb} hasTrack=${hasTrack}`);
-  if (!hasLikelyAwb || !hasTrack) process.exitCode = 2;
+  await number.el.click({clickCount:3});
+  await page.keyboard.press('Backspace');
+  await number.el.type('00000000', {delay:55});
+  const typed = await number.el.evaluate(x => String(x.value||''));
+
+  const buttons = await deepEls(page, 'button,[role="button"]');
+  let clicked = false;
+  for (const b of buttons) {
+    const meta = await b.evaluate(x => {
+      const r = x.getBoundingClientRect();
+      return {visible:r.width>3&&r.height>3&&!x.disabled,text:String(x.innerText||x.value||x.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim()};
+    });
+    if (meta.visible && /track shipment/i.test(meta.text)) {
+      await b.click({delay:70});
+      clicked = true;
+      break;
+    }
+  }
+  await new Promise(r => setTimeout(r, 5000));
+  const body = await page.evaluate(() => (document.body?.innerText || '').replace(/\s+/g,' ').slice(0,1600));
+  console.log('QATAR_SUBMIT_PROBE=' + JSON.stringify({typed,clicked,network:network.slice(-12),bodyPreview:body}));
+  if (typed !== '00000000' || !clicked) process.exitCode = 2;
 } finally {
   await browser.close();
 }
