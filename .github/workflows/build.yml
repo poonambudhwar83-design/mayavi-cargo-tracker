@@ -19,3 +19,6 @@ jobs:
       - name: Qatar official-site smoke test
         if: github.head_ref == 'qatar-live-smoke-test'
         run: node scripts/smoke-qatar.mjs
+      - name: Qatar arrival-field diagnostic
+        if: github.head_ref == 'qatar-live-smoke-test'
+        run: node scripts/diag-qatar-dates.mjs
