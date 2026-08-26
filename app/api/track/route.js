@@ -1,6 +1,7 @@
 import { airlineForMawb, normalizeMawb } from '../../../lib/airlines.js';
 import { trackOfficial } from '../../../lib/official-tracker.js';
 import { trackQatarLive } from '../../../lib/adapters/qatar-live.js';
+import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,12 @@ function waiting(mawb, airline, reason = '') {
 async function handle(mawb) {
   const airline = airlineForMawb(mawb);
   const prefix = mawb.replace(/\D/g, '').slice(0, 3);
-  const result = prefix === '157' ? await trackQatarLive(mawb) : await trackOfficial(mawb);
+  const exact = prefix === '157' || hasExactOfficialAdapter(prefix);
+  const result = prefix === '157'
+    ? await trackQatarLive(mawb)
+    : hasExactOfficialAdapter(prefix)
+      ? await trackExactOfficial(mawb)
+      : await trackOfficial(mawb);
 
   if (result.ok) {
     return Response.json({
@@ -40,8 +46,8 @@ async function handle(mawb) {
       provider: `${result.airline.name} official website`,
       source: `${result.airline.name} official website`,
       airlinePrimary: true,
-      exactCarrierAdapter: prefix === '157',
-      officialNetworkCapture: prefix === '157',
+      exactCarrierAdapter: exact,
+      officialNetworkCapture: exact,
       noPaidApi: true,
       noTrackJet: true,
       shipment: result.shipment,
@@ -55,8 +61,8 @@ async function handle(mawb) {
     provider: 'Official airline websites',
     source: 'Official airline tracker',
     airlinePrimary: true,
-    exactCarrierAdapter: prefix === '157',
-    officialNetworkCapture: prefix === '157',
+    exactCarrierAdapter: exact,
+    officialNetworkCapture: exact,
     noPaidApi: true,
     noTrackJet: true,
     trackingError: result.reason,
@@ -76,7 +82,8 @@ export async function GET(request) {
       apiKeyRequired: false,
       noPaidApi: true,
       noTrackJet: true,
-      mode: 'MAWB prefix → exact carrier adapter → official airline form + official network response'
+      exactAdapters: ['157 Qatar Airways Cargo', '065 Saudia Cargo', '176 Emirates SkyCargo', '098 Air India Cargo'],
+      mode: 'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'
     });
   }
 
