@@ -1,0 +1,31 @@
+name: Verify Qatar Production Adapter
+
+on:
+  push:
+    branches:
+      - verify-qatar-production-adapter
+    paths:
+      - 'scripts/verify-qatar-production.mjs'
+      - '.github/workflows/verify-qatar-production.yml'
+      - 'lib/adapters/qatar-live.js'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install
+      - name: Locate preinstalled Chrome
+        run: |
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME_PATH"
+          echo "CHROME_EXECUTABLE_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+          "$CHROME_PATH" --version
+      - name: Run production Qatar adapter against official site
+        run: node scripts/verify-qatar-production.mjs
