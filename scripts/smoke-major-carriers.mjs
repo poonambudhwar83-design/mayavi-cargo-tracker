@@ -17,7 +17,11 @@ for (const [name, mawb] of cases) {
     reason: result.reason || '',
     stage: result.debug?.stage || '',
     submitted: result.debug?.submitted ?? null,
+    submit: result.debug?.submit || null,
+    finalUrl: result.debug?.finalUrl || '',
     networkResponses: result.debug?.networkResponses ?? 0,
+    networkUrls: result.debug?.networkUrls || [],
+    preview: name === 'Air India Cargo' ? String(result.debug?.preview || '').slice(0,1200) : '',
     shipment: result.shipment ? {
       origin: result.shipment.origin || '',
       destination: result.shipment.destination || '',
@@ -31,8 +35,6 @@ for (const [name, mawb] of cases) {
   };
   console.log('CARRIER_SMOKE=' + JSON.stringify(summary));
 
-  // Browser/form failures are real adapter failures. A clean no-record response is acceptable
-  // for these public format-valid examples.
   if (['EXACT_BROWSER_ERROR', 'EXACT_FORM_NOT_FOUND', 'EXACT_RESULT_UNREADABLE'].includes(summary.stage)) failed = true;
 }
 
