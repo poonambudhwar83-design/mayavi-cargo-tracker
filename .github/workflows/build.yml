@@ -16,3 +16,6 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
+      - name: Qatar v2 official-site verification
+        if: github.head_ref == 'qatar-exact-arrival-fields'
+        run: node scripts/smoke-qatar.mjs
