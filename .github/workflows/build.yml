@@ -16,3 +16,8 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
+      - name: Major carrier official-site smoke tests
+        if: github.head_ref == 'major-carriers-live-smoke'
+        env:
+          CHROME_EXECUTABLE_PATH: /usr/bin/google-chrome
+        run: node scripts/smoke-major-carriers.mjs
