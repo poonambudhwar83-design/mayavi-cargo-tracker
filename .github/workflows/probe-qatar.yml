@@ -1,0 +1,30 @@
+name: Probe Qatar Official Tracker
+
+on:
+  push:
+    branches:
+      - probe-qatar-live
+    paths:
+      - 'scripts/probe-qatar.mjs'
+      - '.github/workflows/probe-qatar.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install app dependencies
+        run: npm install
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+      - name: Probe Qatar public tracking form
+        env:
+          CHROME_EXECUTABLE_PATH: /usr/bin/chromium
+        run: node scripts/probe-qatar.mjs
