@@ -16,3 +16,6 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
+      - name: Qatar official-site smoke test
+        if: github.head_ref == 'qatar-live-smoke-test'
+        run: node scripts/smoke-qatar.mjs
