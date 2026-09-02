@@ -1,5 +1,6 @@
 import { trackMawb } from '../../../lib/tracker.js';
 import { trackTurkish } from '../../../lib/turkish.js';
+import { trackCathay } from '../../../lib/cathay.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 
@@ -16,7 +17,10 @@ function timeoutResult(ms){
 }
 
 async function officialFallback(mawb){
-  const task=mawb.startsWith('235-')?trackTurkish(mawb):trackMawb(mawb);
+  let task;
+  if(mawb.startsWith('160-')) task=trackCathay(mawb);
+  else if(mawb.startsWith('235-')) task=trackTurkish(mawb);
+  else task=trackMawb(mawb);
   return Promise.race([task,timeoutResult(22000)]);
 }
 
@@ -24,23 +28,22 @@ async function handle(mawb){
   const airline=airlineForMawb(mawb);
   if(!airline)return Response.json({ok:false,error:`Airline prefix ${mawb.slice(0,3)} is not mapped yet.`},{status:422});
 
-  // V3 strategy: global air-cargo API first. Official carrier website is a time-capped fallback.
   const apiResult=await trackWithTrackingMore(mawb,airline);
   if(apiResult.ok&&hasRealShipmentData(apiResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','TRACKINGMORE');
-    return Response.json({ok:true,version:'3.1',provider:'TrackingMore Air Cargo API',apiPrimary:true,officialFallback:true,shipment:apiResult.shipment,debug:apiResult.debug});
+    return Response.json({ok:true,version:'3.2',provider:'TrackingMore Air Cargo API',apiPrimary:true,officialFallback:true,shipment:apiResult.shipment,debug:apiResult.debug});
   }
 
   const officialResult=await officialFallback(mawb);
-  console.log('mawb_tracking_result',mawb,officialResult?.ok?'OK':'FAIL','OFFICIAL',officialResult?.reason||'',officialResult?.debug?.stage||'',apiResult?.reason||'');
+  console.log('mawb_tracking_result',mawb,officialResult?.ok?'OK':'FAIL','OFFICIAL',officialResult?.reason||'',officialResult?.debug?.stage||'',officialResult?.debug?.source||'',apiResult?.reason||'');
   if(officialResult.ok&&hasRealShipmentData(officialResult.shipment)){
-    return Response.json({ok:true,version:'3.1',provider:'Official airline website',apiPrimary:true,apiFallbackReason:apiResult?.reason||'',shipment:officialResult.shipment,debug:officialResult.debug});
+    return Response.json({ok:true,version:'3.2',provider:officialResult?.debug?.source==='cathay-terminal'?'Cathay Cargo Terminal official tracking':'Official airline website',apiPrimary:true,apiFallbackReason:apiResult?.reason||'',shipment:officialResult.shipment,debug:officialResult.debug});
   }
 
   const reason=officialResult.ok?'NO VERIFIED SHIPMENT DATA RETURNED':officialResult.reason;
   return Response.json({
     ok:false,
-    version:'3.1',
+    version:'3.2',
     mawb,
     airline,
     trackingError:reason,
@@ -61,10 +64,11 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,
-    version:'3.1',
-    mode:'Global air-cargo API first → time-capped official airline fallback',
+    version:'3.2',
+    mode:'Global air-cargo API first → dedicated official adapters → time-capped generic fallback',
     apiProvider:'TrackingMore Air Cargo',
     apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
+    dedicatedAdapters:['160 Cathay Cargo Terminal','235 Turkish Cargo'],
     carrierCount:CONFIGURED_PREFIXES.length,
     configuredPrefixes:CONFIGURED_PREFIXES
   });
