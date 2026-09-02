@@ -1,4 +1,5 @@
 import { trackMawb } from '../../../lib/tracker.js';
+import { trackTurkish } from '../../../lib/turkish.js';
 import { normalizeMawb, airlineForMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
@@ -10,7 +11,9 @@ function hasRealShipmentData(s={}){
 }
 
 async function handle(mawb){
-  const airline=airlineForMawb(mawb); const result=await trackMawb(mawb);
+  const airline=airlineForMawb(mawb);
+  const result=mawb.startsWith('235-')?await trackTurkish(mawb):await trackMawb(mawb);
+  console.log('mawb_tracking_result',mawb,result?.ok?'OK':'FAIL',result?.reason||'',result?.debug?.stage||'',result?.debug?.source||'');
   if(result.ok&&hasRealShipmentData(result.shipment))return Response.json({ok:true,provider:'Official airline website',airlinePrimary:true,noPaidApi:true,shipment:result.shipment,debug:result.debug});
   const reason=result.ok?'NO VERIFIED SHIPMENT DATA RETURNED':result.reason;
   return Response.json({ok:false,provider:'Official airline website',airlinePrimary:true,noPaidApi:true,mawb,airline,trackingError:reason,debug:result.debug},{status:result.notFound?404:502});
@@ -24,7 +27,7 @@ export async function POST(request){
 
 export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
-  if(!q)return Response.json({ok:true,version:'2.2',mode:'MAWB prefix → official airline adapter',configuredPrefixes:['057','065','098','157','160','176','235']});
+  if(!q)return Response.json({ok:true,version:'2.3',mode:'MAWB prefix → dedicated carrier adapter',configuredPrefixes:['057','065','098','157','160','176','235'],turkishAdapter:'network-capture'});
   const mawb=normalizeMawb(q); if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   return handle(mawb);
 }
