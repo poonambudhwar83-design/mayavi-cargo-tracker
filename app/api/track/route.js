@@ -1,102 +1,22 @@
-import { airlineForMawb, normalizeMawb } from '../../../lib/airlines.js';
-import { trackOfficial } from '../../../lib/official-tracker.js';
-import { trackQatarLiveV2 } from '../../../lib/adapters/qatar-live-v2.js';
-import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
+import { trackMawb } from '../../../lib/tracker.js';
+import { normalizeMawb, airlineForMawb } from '../../../lib/airlines.js';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=60;
 
-function waiting(mawb, airline, reason = '') {
-  return {
-    mawb,
-    carrierCode: airline?.iata || '',
-    airlineName: airline?.name || '',
-    origin: '',
-    destination: '',
-    bags: '',
-    pieces: '',
-    weight: '',
-    flightNo: '',
-    arrivalDate: '',
-    arrivalTime: '',
-    eta: null,
-    actualArrival: null,
-    status: 'CHECKING',
-    officialTracker: airline?.url || '',
-    source: `${airline?.name || 'Official airline'} official tracker`,
-    message: reason
-  };
+export async function POST(request){
+  let body={}; try{body=await request.json()}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400})}
+  const mawb=normalizeMawb(body?.mawb); if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  const airline=airlineForMawb(mawb); const result=await trackMawb(mawb);
+  if(result.ok)return Response.json({ok:true,provider:'Official airline website',airlinePrimary:true,noPaidApi:true,shipment:result.shipment,debug:result.debug});
+  return Response.json({ok:false,provider:'Official airline website',airlinePrimary:true,noPaidApi:true,mawb,airline,trackingError:result.reason,debug:result.debug},{status:result.notFound?404:502});
 }
 
-async function handle(mawb) {
-  const airline = airlineForMawb(mawb);
-  const prefix = mawb.replace(/\D/g, '').slice(0, 3);
-  const exact = prefix === '157' || hasExactOfficialAdapter(prefix);
-  const result = prefix === '157'
-    ? await trackQatarLiveV2(mawb)
-    : hasExactOfficialAdapter(prefix)
-      ? await trackExactOfficial(mawb)
-      : await trackOfficial(mawb);
-
-  if (result.ok) {
-    return Response.json({
-      ok: true,
-      configured: true,
-      provider: `${result.airline.name} official website`,
-      source: `${result.airline.name} official website`,
-      airlinePrimary: true,
-      exactCarrierAdapter: exact,
-      officialNetworkCapture: exact,
-      noPaidApi: true,
-      noTrackJet: true,
-      shipment: result.shipment,
-      trackingDebug: result.debug
-    });
-  }
-
-  return Response.json({
-    ok: true,
-    configured: true,
-    provider: 'Official airline websites',
-    source: 'Official airline tracker',
-    airlinePrimary: true,
-    exactCarrierAdapter: exact,
-    officialNetworkCapture: exact,
-    noPaidApi: true,
-    noTrackJet: true,
-    trackingError: result.reason,
-    trackingDebug: result.debug,
-    officialTracker: result.airline?.url || airline?.url || '',
-    shipment: waiting(mawb, result.airline || airline, result.reason)
-  });
-}
-
-export async function GET(request) {
-  const url = new URL(request.url);
-  const query = url.searchParams.get('mawb');
-  if (!query) {
-    return Response.json({
-      configured: true,
-      provider: 'Official airline websites',
-      apiKeyRequired: false,
-      noPaidApi: true,
-      noTrackJet: true,
-      exactAdapters: ['157 Qatar Airways Cargo', '065 Saudia Cargo', '176 Emirates SkyCargo', '098 Air India Cargo'],
-      mode: 'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'
-    });
-  }
-
-  const mawb = normalizeMawb(query);
-  if (!mawb) return Response.json({ ok: false, error: 'Enter a valid 11-digit MAWB.' }, { status: 400 });
-  return handle(mawb);
-}
-
-export async function POST(request) {
-  let body = {};
-  try { body = await request.json(); } catch { return Response.json({ ok: false, error: 'Invalid request body.' }, { status: 400 }); }
-
-  const mawb = normalizeMawb(body?.mawb);
-  if (!mawb) return Response.json({ ok: false, error: 'Enter a valid 11-digit MAWB.' }, { status: 400 });
-  return handle(mawb);
+export async function GET(request){
+  const q=new URL(request.url).searchParams.get('mawb');
+  if(!q)return Response.json({ok:true,version:'2.0',mode:'MAWB prefix → official airline adapter',configuredPrefixes:['057','065','098','157','160','176','235']});
+  const mawb=normalizeMawb(q); if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  const result=await trackMawb(mawb);
+  return Response.json(result,{status:result.ok?200:(result.notFound?404:502)});
 }
