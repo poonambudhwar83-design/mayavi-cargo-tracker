@@ -26,13 +26,13 @@ async function handle(mawb){
   const apiResult=await trackWithTrackingMore(mawb,airline);
   if(apiResult.ok&&hasRealShipmentData(apiResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','TRACKINGMORE');
-    return Response.json({ok:true,version:'3.4',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
+    return Response.json({ok:true,version:'3.5',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
   }
 
   const directResult=await dedicatedOfficial(mawb);
   if(directResult.ok&&hasRealShipmentData(directResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'');
-    return Response.json({ok:true,version:'3.4',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
+    return Response.json({ok:true,version:'3.5',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
   }
 
   const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
@@ -42,7 +42,7 @@ async function handle(mawb){
   console.log('mawb_tracking_result',mawb,'FAIL',trackingError,directResult?.debug?.stage||'');
   return Response.json({
     ok:false,
-    version:'3.4',
+    version:'3.5',
     mawb,
     airline,
     trackingError,
@@ -50,7 +50,7 @@ async function handle(mawb){
     directAdapterError:directResult?.reason||'',
     apiConfigured,
     requiredSecret:apiConfigured?null:'TRACKINGMORE_API_KEY',
-    officialTracker:airline.url||null,
+    officialTracker:directResult?.officialTracker||airline.url||null,
     debug:directResult?.debug||null
   },{status:503});
 }
@@ -65,11 +65,11 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,
-    version:'3.4',
-    mode:'Global air-cargo API → direct official adapters; no browser automation',
+    version:'3.5',
+    mode:'Global air-cargo API → direct official/public carrier adapters; no browser automation',
     apiProvider:'TrackingMore Air Cargo',
     apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['020 Lufthansa Cargo','065 Saudia Cargo','160 Cathay Cargo Terminal'],
+    dedicatedAdapters:['020 Lufthansa Cargo API/public eTracking','065 Saudia Cargo','160 Cathay Cargo Terminal'],
     carrierCount:CONFIGURED_PREFIXES.length,
     configuredPrefixes:CONFIGURED_PREFIXES
   });
