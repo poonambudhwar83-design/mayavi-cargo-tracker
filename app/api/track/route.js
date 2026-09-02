@@ -1,4 +1,5 @@
 import { trackCathay } from '../../../lib/cathay.js';
+import { trackSaudia } from '../../../lib/saudia.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 
@@ -12,6 +13,7 @@ function hasRealShipmentData(s={}){
 
 async function dedicatedOfficial(mawb){
   if(mawb.startsWith('160-')) return trackCathay(mawb);
+  if(mawb.startsWith('065-')) return trackSaudia(mawb);
   return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
 }
 
@@ -22,23 +24,23 @@ async function handle(mawb){
   const apiResult=await trackWithTrackingMore(mawb,airline);
   if(apiResult.ok&&hasRealShipmentData(apiResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','TRACKINGMORE');
-    return Response.json({ok:true,version:'3.2',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
+    return Response.json({ok:true,version:'3.3',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
   }
 
   const directResult=await dedicatedOfficial(mawb);
   if(directResult.ok&&hasRealShipmentData(directResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'');
-    return Response.json({ok:true,version:'3.2',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
+    return Response.json({ok:true,version:'3.3',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
   }
 
   const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
-  const trackingError=!apiConfigured
-    ? 'GLOBAL AIR-CARGO API KEY NOT CONFIGURED'
-    : (apiResult?.reason||directResult?.reason||'NO VERIFIED SHIPMENT DATA');
+  const trackingError=!directResult?.skipped
+    ? (directResult?.reason||apiResult?.reason||'NO VERIFIED SHIPMENT DATA')
+    : (!apiConfigured?'GLOBAL AIR-CARGO API KEY NOT CONFIGURED':(apiResult?.reason||'NO VERIFIED SHIPMENT DATA'));
   console.log('mawb_tracking_result',mawb,'FAIL',trackingError,directResult?.debug?.stage||'');
   return Response.json({
     ok:false,
-    version:'3.2',
+    version:'3.3',
     mawb,
     airline,
     trackingError,
@@ -60,11 +62,11 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,
-    version:'3.2',
+    version:'3.3',
     mode:'Global air-cargo API → direct official adapters; no browser automation',
     apiProvider:'TrackingMore Air Cargo',
     apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['160 Cathay Cargo Terminal'],
+    dedicatedAdapters:['065 Saudia Cargo','160 Cathay Cargo Terminal'],
     carrierCount:CONFIGURED_PREFIXES.length,
     configuredPrefixes:CONFIGURED_PREFIXES
   });
