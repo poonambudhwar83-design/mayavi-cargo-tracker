@@ -1,27 +1,18 @@
-import { trackMawb } from '../../../lib/tracker.js';
-import { trackTurkish } from '../../../lib/turkish.js';
 import { trackCathay } from '../../../lib/cathay.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=60;
+export const maxDuration=30;
 
 function hasRealShipmentData(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime||(s.status&&s.status!=='TRACKING'));
 }
 
-function timeoutResult(ms){
-  return new Promise(resolve=>setTimeout(()=>resolve({ok:false,reason:`OFFICIAL TRACKER TIMEOUT AFTER ${Math.round(ms/1000)}S`,debug:{stage:'TIMEOUT'}}),ms));
-}
-
-async function officialFallback(mawb){
-  let task;
-  if(mawb.startsWith('160-')) task=trackCathay(mawb);
-  else if(mawb.startsWith('235-')) task=trackTurkish(mawb);
-  else task=trackMawb(mawb);
-  return Promise.race([task,timeoutResult(22000)]);
+async function dedicatedOfficial(mawb){
+  if(mawb.startsWith('160-')) return trackCathay(mawb);
+  return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
 }
 
 async function handle(mawb){
@@ -31,27 +22,32 @@ async function handle(mawb){
   const apiResult=await trackWithTrackingMore(mawb,airline);
   if(apiResult.ok&&hasRealShipmentData(apiResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','TRACKINGMORE');
-    return Response.json({ok:true,version:'3.2',provider:'TrackingMore Air Cargo API',apiPrimary:true,officialFallback:true,shipment:apiResult.shipment,debug:apiResult.debug});
+    return Response.json({ok:true,version:'3.2',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
   }
 
-  const officialResult=await officialFallback(mawb);
-  console.log('mawb_tracking_result',mawb,officialResult?.ok?'OK':'FAIL','OFFICIAL',officialResult?.reason||'',officialResult?.debug?.stage||'',officialResult?.debug?.source||'',apiResult?.reason||'');
-  if(officialResult.ok&&hasRealShipmentData(officialResult.shipment)){
-    return Response.json({ok:true,version:'3.2',provider:officialResult?.debug?.source==='cathay-terminal'?'Cathay Cargo Terminal official tracking':'Official airline website',apiPrimary:true,apiFallbackReason:apiResult?.reason||'',shipment:officialResult.shipment,debug:officialResult.debug});
+  const directResult=await dedicatedOfficial(mawb);
+  if(directResult.ok&&hasRealShipmentData(directResult.shipment)){
+    console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'');
+    return Response.json({ok:true,version:'3.2',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
   }
 
-  const reason=officialResult.ok?'NO VERIFIED SHIPMENT DATA RETURNED':officialResult.reason;
+  const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
+  const trackingError=!apiConfigured
+    ? 'GLOBAL AIR-CARGO API KEY NOT CONFIGURED'
+    : (apiResult?.reason||directResult?.reason||'NO VERIFIED SHIPMENT DATA');
+  console.log('mawb_tracking_result',mawb,'FAIL',trackingError,directResult?.debug?.stage||'');
   return Response.json({
     ok:false,
     version:'3.2',
     mawb,
     airline,
-    trackingError:reason,
-    apiFallbackError:apiResult?.reason||'',
-    apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    requiredSecret:process.env.TRACKINGMORE_API_KEY?null:'TRACKINGMORE_API_KEY',
-    debug:officialResult.debug
-  },{status:officialResult.notFound?404:502});
+    trackingError,
+    apiError:apiResult?.reason||'',
+    directAdapterError:directResult?.reason||'',
+    apiConfigured,
+    requiredSecret:apiConfigured?null:'TRACKINGMORE_API_KEY',
+    debug:directResult?.debug||null
+  },{status:503});
 }
 
 export async function POST(request){
@@ -65,10 +61,10 @@ export async function GET(request){
   if(!q)return Response.json({
     ok:true,
     version:'3.2',
-    mode:'Global air-cargo API first → dedicated official adapters → time-capped generic fallback',
+    mode:'Global air-cargo API → direct official adapters; no browser automation',
     apiProvider:'TrackingMore Air Cargo',
     apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['160 Cathay Cargo Terminal','235 Turkish Cargo'],
+    dedicatedAdapters:['160 Cathay Cargo Terminal'],
     carrierCount:CONFIGURED_PREFIXES.length,
     configuredPrefixes:CONFIGURED_PREFIXES
   });
