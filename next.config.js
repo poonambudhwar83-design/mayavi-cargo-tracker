@@ -1,1 +1,3 @@
-module.exports = {};
+module.exports = {
+  serverExternalPackages: ['@sparticuz/chromium','puppeteer-core']
+};
