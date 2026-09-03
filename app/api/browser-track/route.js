@@ -1,4 +1,4 @@
-import { trackWithBrowser, inspectCathayFlightPage } from '../../../lib/browserTracker.js';
+import { trackWithBrowser, inspectCathayFlightPage, trackCathayFlightStatus } from '../../../lib/browserTracker.js';
 import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
@@ -22,8 +22,9 @@ export async function GET(request){
   const flight=u.searchParams.get('flight');
   if(flight){
     const date=u.searchParams.get('date')||'';
-    const result=await inspectCathayFlightPage(flight,date);
-    return Response.json({...result,screenshotBase64:result.screenshotBase64?true:false});
+    const inspect=u.searchParams.get('inspect')==='1';
+    const result=inspect?await inspectCathayFlightPage(flight,date):await trackCathayFlightStatus(flight,date);
+    return Response.json({...result,screenshotBase64:result.screenshotBase64?true:false},{status:result.ok?200:503});
   }
   const q=u.searchParams.get('mawb');
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
