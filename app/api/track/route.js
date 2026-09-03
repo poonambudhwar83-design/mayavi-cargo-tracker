@@ -4,12 +4,13 @@ import { trackLufthansa } from '../../../lib/lufthansa.js';
 import { trackQatar } from '../../../lib/qatar.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
+import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=30;
-const VERSION='3.7.0';
+export const maxDuration=60;
+const VERSION='3.7.1';
 
 function hasRealShipmentData(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime||(s.status&&s.status!=='TRACKING'));
@@ -21,6 +22,14 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('157-')) return trackQatar(mawb);
   if(mawb.startsWith('160-')) return trackCathay(mawb);
   return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
+}
+
+async function enrichCathayFromScreenshot(mawb,directResult){
+  if(!mawb.startsWith('160-')||!directResult?.ok)return null;
+  const s=directResult.shipment||{};
+  if(!s.flightNo||!s.origin||!s.destination||!directResult?.debug?.flightDate)return null;
+  if((s.status==='ARRIVED'||s.status==='DELIVERED')&&s.arrivalDate&&s.arrivalTime)return null;
+  return trackFlightStatusSnapshot({flightNo:s.flightNo,origin:s.origin,destination:s.destination,date:directResult.debug.flightDate});
 }
 
 async function handle(mawb){
@@ -35,8 +44,30 @@ async function handle(mawb){
 
   const directResult=await dedicatedOfficial(mawb);
   if(directResult.ok&&hasRealShipmentData(directResult.shipment)){
-    console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'');
-    return Response.json({ok:true,version:VERSION,provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
+    let shipment={...directResult.shipment};
+    let screenshotResult=null;
+    if(mawb.startsWith('160-')){
+      screenshotResult=await enrichCathayFromScreenshot(mawb,directResult);
+      if(screenshotResult?.ok){
+        shipment={
+          ...shipment,
+          status:screenshotResult.status||shipment.status,
+          arrivalDate:screenshotResult.arrivalDate||shipment.arrivalDate,
+          arrivalTime:screenshotResult.arrivalTime||shipment.arrivalTime,
+          arrivalIsActual:Boolean(screenshotResult.arrivalIsActual),
+          source:`${shipment.source} + ${screenshotResult.source}`
+        };
+      }
+    }
+    console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'',screenshotResult?.ok?'SCREENSHOT_ENRICHED':'');
+    return Response.json({
+      ok:true,version:VERSION,
+      provider:screenshotResult?.ok?'Official cargo data + flight-status screenshot':'Official direct adapter',
+      shipment,
+      screenshotCaptured:Boolean(screenshotResult?.screenshotBase64),
+      screenshotEnrichment:screenshotResult?{ok:Boolean(screenshotResult.ok),reason:screenshotResult.reason||'',source:screenshotResult.source||'',url:screenshotResult.url||''}:null,
+      apiFallbackReason:apiResult?.reason||'',debug:directResult.debug
+    });
   }
 
   const browserResult=await trackWithBrowser(mawb);
@@ -69,7 +100,7 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,version:VERSION,
-    mode:'Global API → direct adapter → automatic official-airline browser screenshot/text extraction → manual link only if blocked',
+    mode:'Global API → direct adapter → automatic browser/screenshot enrichment → manual link only if blocked',
     apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
     dedicatedAdapters:['020 Lufthansa','065 Saudia','157 Qatar','160 Cathay'],
     automaticBrowserCapture:true,screenshotOcrFallback:true,
