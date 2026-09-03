@@ -6,7 +6,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 
-const URL='https://scekprd.emirates.com/skychain/app?initial=y&service=page%2Fnwp%3ATrackshipmt';
+const TRACK_URL='https://scekprd.emirates.com/skychain/app?initial=y&service=page%2Fnwp%3ATrackshipmt';
 const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
 const clip=(s,n=6000)=>clean(s).slice(0,n);
 
@@ -16,7 +16,7 @@ async function launch(){
 }
 
 export async function GET(request){
-  const mawb=normalizeMawb(new URL(request.url).searchParams.get('mawb'));
+  const mawb=normalizeMawb(new globalThis.URL(request.url).searchParams.get('mawb'));
   if(!mawb||!mawb.startsWith('176-'))return Response.json({ok:false,error:'Use a valid Emirates 176 MAWB.'},{status:400});
   const prefix='176',serial=mawb.slice(4),digits=mawb.replace(/\D/g,'');
   let browser;
@@ -41,7 +41,7 @@ export async function GET(request){
         }catch{}
       })();netTasks.push(task);
     });
-    await page.goto(URL,{waitUntil:'domcontentloaded',timeout:18000});
+    await page.goto(TRACK_URL,{waitUntil:'domcontentloaded',timeout:18000});
     await new Promise(r=>setTimeout(r,1800));
     const fill=await page.evaluate(({prefix,serial})=>{
       const visible=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>15&&r.height>8&&!e.disabled};
