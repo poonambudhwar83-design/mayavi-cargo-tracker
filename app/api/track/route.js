@@ -13,7 +13,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
-const VERSION='3.9.1';
+const VERSION='3.9.2';
 
 function concrete(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime);
@@ -61,7 +61,7 @@ async function dedicatedOfficial(mawb){
   return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
 }
 async function browserOfficial(mawb){
-  if(mawb.startsWith('176-')) return {ok:false,skipped:true,reason:'EMIRATES USES DEDICATED ESKYCARGO SCREENSHOT OCR'};
+  if(mawb.startsWith('176-')) return {ok:false,skipped:true,reason:'EMIRATES USES DEDICATED ESKYCARGO LIVE PAGE ADAPTER'};
   return mawb.startsWith('065-')?trackSaudiaWithBrowser(mawb):trackWithBrowser(mawb);
 }
 async function cathayFlightEnrichment(mawb,directResult){
@@ -88,7 +88,7 @@ async function handle(mawb){
 
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
-  const needsOcr=Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
+  const needsOcr=!mawb.startsWith('176-')&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr){
     ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
   }
@@ -124,7 +124,7 @@ async function handle(mawb){
   if(hasUseful){
     console.log('mawb_tracking_result',mawb,'OK','SCREENSHOT_VERIFIED',shipment.status,'shot',screenshotCaptured,'ocr',screenshotOcrUsed);
     return Response.json({
-      ok:true,version:VERSION,provider:mawb.startsWith('176-')?'Emirates eSkyCargo Tracking Details screenshot OCR':'Official page + screenshot verified',shipment,
+      ok:true,version:VERSION,provider:mawb.startsWith('176-')?'Emirates eSkyCargo live page':'Official page + screenshot verified',shipment,
       screenshotCaptured,screenshotVerified,screenshotOcrUsed,
       verification:{
         officialPage:direct?.officialTracker||browserResult?.debug?.url||browserResult?.officialTracker||airline.url||'',
@@ -163,9 +163,9 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,version:VERSION,
-    mode:'Every MAWB → official airline page → automatic screenshot → verified extraction → shared tracker save',
+    mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',
     apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['020 Lufthansa','065 Saudia translated segment browser','157 Qatar','160 Cathay','176 Emirates eSkyCargo Tracking Details screenshot OCR'],
+    dedicatedAdapters:['020 Lufthansa','065 Saudia translated segment browser','157 Qatar','160 Cathay','176 Emirates eSkyCargo live page'],
     automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,
     carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES
   });
