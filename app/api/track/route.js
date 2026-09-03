@@ -1,6 +1,7 @@
 import { trackCathay } from '../../../lib/cathay.js';
 import { trackSaudia } from '../../../lib/saudia.js';
 import { trackLufthansa } from '../../../lib/lufthansa.js';
+import { trackQatar } from '../../../lib/qatar.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 
@@ -15,6 +16,7 @@ function hasRealShipmentData(s={}){
 async function dedicatedOfficial(mawb){
   if(mawb.startsWith('020-')) return trackLufthansa(mawb);
   if(mawb.startsWith('065-')) return trackSaudia(mawb);
+  if(mawb.startsWith('157-')) return trackQatar(mawb);
   if(mawb.startsWith('160-')) return trackCathay(mawb);
   return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
 }
@@ -26,13 +28,13 @@ async function handle(mawb){
   const apiResult=await trackWithTrackingMore(mawb,airline);
   if(apiResult.ok&&hasRealShipmentData(apiResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','TRACKINGMORE');
-    return Response.json({ok:true,version:'3.5',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
+    return Response.json({ok:true,version:'3.5.5',provider:'TrackingMore Air Cargo API',shipment:apiResult.shipment,debug:apiResult.debug});
   }
 
   const directResult=await dedicatedOfficial(mawb);
   if(directResult.ok&&hasRealShipmentData(directResult.shipment)){
     console.log('mawb_tracking_result',mawb,'OK','DIRECT_OFFICIAL',directResult?.debug?.source||'');
-    return Response.json({ok:true,version:'3.5',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
+    return Response.json({ok:true,version:'3.5.5',provider:'Official direct adapter',shipment:directResult.shipment,apiFallbackReason:apiResult?.reason||'',debug:directResult.debug});
   }
 
   const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
@@ -42,7 +44,7 @@ async function handle(mawb){
   console.log('mawb_tracking_result',mawb,'FAIL',trackingError,directResult?.debug?.stage||'');
   return Response.json({
     ok:false,
-    version:'3.5',
+    version:'3.5.5',
     mawb,
     airline,
     trackingError,
@@ -51,6 +53,7 @@ async function handle(mawb){
     apiConfigured,
     requiredSecret:apiConfigured?null:'TRACKINGMORE_API_KEY',
     officialTracker:directResult?.officialTracker||airline.url||null,
+    manualHint:directResult?.manualHint||null,
     debug:directResult?.debug||null
   },{status:503});
 }
@@ -65,11 +68,11 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({
     ok:true,
-    version:'3.5',
+    version:'3.5.5',
     mode:'Global air-cargo API → direct official/public carrier adapters; no browser automation',
     apiProvider:'TrackingMore Air Cargo',
     apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['020 Lufthansa Cargo API/public eTracking','065 Saudia Cargo','160 Cathay Cargo Terminal'],
+    dedicatedAdapters:['020 Lufthansa Cargo API/public eTracking','065 Saudia Cargo','157 Qatar Cargo official fallback','160 Cathay Cargo Terminal'],
     carrierCount:CONFIGURED_PREFIXES.length,
     configuredPrefixes:CONFIGURED_PREFIXES
   });
