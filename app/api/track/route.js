@@ -10,7 +10,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
-const VERSION='3.7.1';
+const VERSION='3.7.2';
 
 function hasRealShipmentData(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime||(s.status&&s.status!=='TRACKING'));
@@ -65,7 +65,7 @@ async function handle(mawb){
       provider:screenshotResult?.ok?'Official cargo data + flight-status screenshot':'Official direct adapter',
       shipment,
       screenshotCaptured:Boolean(screenshotResult?.screenshotBase64),
-      screenshotEnrichment:screenshotResult?{ok:Boolean(screenshotResult.ok),reason:screenshotResult.reason||'',source:screenshotResult.source||'',url:screenshotResult.url||''}:null,
+      screenshotEnrichment:screenshotResult?{ok:Boolean(screenshotResult.ok),reason:screenshotResult.reason||'',source:screenshotResult.source||'',url:screenshotResult.url||'',debug:screenshotResult.debug||null}:null,
       apiFallbackReason:apiResult?.reason||'',debug:directResult.debug
     });
   }
