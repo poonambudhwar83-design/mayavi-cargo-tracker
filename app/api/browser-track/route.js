@@ -5,9 +5,12 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 
-async function handle(mawb){
+async function handle(mawb,{image=false}={}){
   const result=await trackWithBrowser(mawb);
-  if(result.ok)return Response.json({ok:true,version:'3.7',provider:'Official airline browser capture',shipment:result.shipment,screenshotBase64:result.screenshotBase64||null,debug:result.debug||null});
+  if(image&&result.screenshotBase64){
+    return new Response(Buffer.from(result.screenshotBase64,'base64'),{status:200,headers:{'content-type':'image/jpeg','cache-control':'no-store'}});
+  }
+  if(result.ok)return Response.json({ok:true,version:'3.7',provider:'Official airline browser capture',shipment:result.shipment,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null});
   return Response.json({ok:false,version:'3.7',mawb,trackingError:result.reason||'BROWSER TRACKING FAILED',officialTracker:result.officialTracker||null,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null},{status:503});
 }
 
@@ -28,5 +31,5 @@ export async function GET(request){
   }
   const q=u.searchParams.get('mawb');
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
-  return handle(mawb);
+  return handle(mawb,{image:u.searchParams.get('image')==='1'});
 }
