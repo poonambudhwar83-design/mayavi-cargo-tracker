@@ -1,0 +1,24 @@
+import { trackWithBrowser } from '../../../lib/browserTracker.js';
+import { normalizeMawb } from '../../../lib/airlines.js';
+
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=30;
+
+async function handle(mawb){
+  const result=await trackWithBrowser(mawb);
+  if(result.ok)return Response.json({ok:true,version:'3.7',provider:'Official airline browser capture',shipment:result.shipment,screenshotBase64:result.screenshotBase64||null,debug:result.debug||null});
+  return Response.json({ok:false,version:'3.7',mawb,trackingError:result.reason||'BROWSER TRACKING FAILED',officialTracker:result.officialTracker||null,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null},{status:503});
+}
+
+export async function POST(request){
+  let body={};try{body=await request.json()}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400})}
+  const mawb=normalizeMawb(body?.mawb);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  return handle(mawb);
+}
+
+export async function GET(request){
+  const q=new URL(request.url).searchParams.get('mawb');
+  const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  return handle(mawb);
+}
