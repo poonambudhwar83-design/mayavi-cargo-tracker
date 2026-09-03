@@ -1,6 +1,6 @@
 {
   "name": "mayavi-cargo-tracker-v3",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "private": true,
   "scripts": {"dev":"next dev","build":"next build","start":"next start"},
   "dependencies": {
@@ -9,6 +9,7 @@
     "react-dom": "19.2.3",
     "tesseract.js": "7.0.0",
     "puppeteer-core": "25.9.0",
-    "@sparticuz/chromium": "149.0.0"
+    "@sparticuz/chromium": "149.0.0",
+    "@neondatabase/serverless": "1.1.0"
   }
 }
