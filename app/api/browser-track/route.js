@@ -3,7 +3,7 @@ import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=30;
+export const maxDuration=60;
 
 async function handle(mawb){
   const result=await trackWithBrowser(mawb);
