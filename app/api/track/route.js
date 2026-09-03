@@ -1,5 +1,6 @@
 import { trackCathay } from '../../../lib/cathay.js';
 import { trackSaudia } from '../../../lib/saudia.js';
+import { trackSaudiaWithBrowser } from '../../../lib/saudiaBrowser.js';
 import { trackLufthansa } from '../../../lib/lufthansa.js';
 import { trackQatar } from '../../../lib/qatar.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
@@ -10,7 +11,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
-const VERSION='3.7.2';
+const VERSION='3.7.3';
 
 function hasRealShipmentData(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime||(s.status&&s.status!=='TRACKING'));
@@ -70,10 +71,18 @@ async function handle(mawb){
     });
   }
 
-  const browserResult=await trackWithBrowser(mawb);
+  let browserResult;
+  if(mawb.startsWith('065-')) browserResult=await trackSaudiaWithBrowser(mawb);
+  else browserResult=await trackWithBrowser(mawb);
+
   if(browserResult.ok&&hasRealShipmentData(browserResult.shipment)){
-    console.log('mawb_tracking_result',mawb,'OK','OFFICIAL_BROWSER_CAPTURE');
-    return Response.json({ok:true,version:VERSION,provider:'Official airline browser capture',shipment:browserResult.shipment,screenshotCaptured:Boolean(browserResult.screenshotBase64),debug:browserResult.debug});
+    console.log('mawb_tracking_result',mawb,'OK',mawb.startsWith('065-')?'SAUDIA_SEGMENT_BROWSER':'OFFICIAL_BROWSER_CAPTURE');
+    return Response.json({
+      ok:true,version:VERSION,
+      provider:mawb.startsWith('065-')?'Saudia segment browser (translated to English)':'Official airline browser capture',
+      shipment:browserResult.shipment,
+      screenshotCaptured:Boolean(browserResult.screenshotBase64),debug:browserResult.debug
+    });
   }
 
   const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
@@ -102,7 +111,7 @@ export async function GET(request){
     ok:true,version:VERSION,
     mode:'Global API → direct adapter → automatic browser/screenshot enrichment → manual link only if blocked',
     apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
-    dedicatedAdapters:['020 Lufthansa','065 Saudia','157 Qatar','160 Cathay'],
+    dedicatedAdapters:['020 Lufthansa','065 Saudia translated segment browser','157 Qatar','160 Cathay'],
     automaticBrowserCapture:true,screenshotOcrFallback:true,
     carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES
   });
