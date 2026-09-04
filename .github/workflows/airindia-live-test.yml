@@ -1,0 +1,22 @@
+name: Air India production live test
+on:
+  push:
+    branches: [v2-clean-scratch]
+    paths:
+      - '.github/workflows/airindia-live-test.yml'
+  workflow_dispatch:
+jobs:
+  test-airindia:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Mayavi production Air India tracker
+        run: |
+          set +e
+          echo '=== PRODUCTION AIR INDIA TEST START ==='
+          curl -sS --max-time 120 -H 'accept: application/json' \
+            -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
+            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-00000000'
+          code=$?
+          echo "CURL_EXIT:$code"
+          echo '=== PRODUCTION AIR INDIA TEST END ==='
+          exit 0
