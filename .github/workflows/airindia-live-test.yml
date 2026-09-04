@@ -12,7 +12,7 @@ jobs:
       - name: Inspect Air India production form
         run: |
           set +e
-          echo '=== AIR INDIA FORM INSPECT START ==='
+          echo '=== AIR INDIA FORM INSPECT RUN 2 ==='
           curl -sS --max-time 70 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
             'https://mayavi-cargo-shared-tracker.vercel.app/api/airindia-form-debug'
