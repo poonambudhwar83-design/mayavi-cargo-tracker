@@ -1,0 +1,26 @@
+name: Emirates production live test
+
+on:
+  push:
+    branches:
+      - v2-clean-scratch
+    paths:
+      - '.github/workflows/emirates-live-test.yml'
+
+jobs:
+  test-emirates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Call Mayavi production Emirates tracker
+        shell: bash
+        run: |
+          set +e
+          echo '=== PRODUCTION EMIRATES TEST START ==='
+          curl -sS --max-time 280 -H 'accept: application/json' \
+            -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
+            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=176-61041886'
+          code=$?
+          echo "CURL_EXIT:$code"
+          echo '=== PRODUCTION EMIRATES TEST END ==='
+          exit 0
