@@ -13,7 +13,7 @@ jobs:
       - name: Call dedicated Air India production tracker
         run: |
           set +e
-          echo '=== PRODUCTION AIR INDIA SCREENSHOT FLOW TEST RUN 8 ==='
+          echo '=== PRODUCTION AIR INDIA ACTIVITY VERIFY TEST RUN 9 ==='
           curl -sS --max-time 120 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
             'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-31308815'
