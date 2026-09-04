@@ -13,7 +13,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
-const VERSION='3.9.2';
+const VERSION='3.9.3';
 
 function concrete(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime);
