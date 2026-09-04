@@ -8,14 +8,15 @@ on:
 jobs:
   test-airindia:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     steps:
       - name: Call dedicated Air India production tracker
         run: |
           set +e
           echo '=== PRODUCTION AIR INDIA ADAPTER TEST START ==='
-          curl -sS --max-time 90 -H 'accept: application/json' \
+          curl -sS --max-time 180 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
-            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-00000000'
+            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-31308815'
           code=$?
           echo "CURL_EXIT:$code"
           echo '=== PRODUCTION AIR INDIA ADAPTER TEST END ==='
