@@ -12,7 +12,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=60;
+export const maxDuration=300;
 const VERSION='3.9.3';
 
 function concrete(s={}){
