@@ -34,6 +34,7 @@ const AIRLINES={
 '297':{name:'China Airlines Cargo',iata:'CI',official:'https://cargo.china-airlines.com/'},
 '312':{name:'IndiGo CarGo',iata:'6E',official:'https://6ecargo.goindigo.in/FrmAWBTracking.aspx'},
 '406':{name:'UPS Airlines',iata:'5X',official:'https://www.ups.com/track'},
+'514':{name:'Air Arabia Cargo',iata:'G9',official:'https://cargo.airarabia.com/cargo-tracking/'},
 '607':{name:'Etihad Cargo',iata:'EY',official:'https://www.etihadcargo.com/'},
 '618':{name:'Singapore Airlines Cargo',iata:'SQ',official:'https://www.singaporeair.com/'},
 '724':{name:'SWISS WorldCargo',iata:'LX',official:'https://www.swissworldcargo.com/'},
