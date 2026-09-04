@@ -10,14 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Call dedicated Air India production tracker
+      - name: Track and save verified Air India row
+        shell: bash
         run: |
-          set +e
-          echo '=== PRODUCTION AIR INDIA FINAL FLOW TEST RUN 10 ==='
-          curl -sS --max-time 120 -H 'accept: application/json' \
-            -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
-            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-31308815'
-          code=$?
-          echo "CURL_EXIT:$code"
-          echo '=== PRODUCTION AIR INDIA ADAPTER TEST END ==='
-          exit 0
+          set -euo pipefail
+          BASE='https://mayavi-cargo-shared-tracker.vercel.app'
+          echo '=== PRODUCTION AIR INDIA TRACK + SAVE RUN 11 ==='
+          track="$(curl -fsS --max-time 120 -H 'accept: application/json' "$BASE/api/track?mawb=098-31308815")"
+          echo "$track" | jq '{ok,version,provider,shipment,screenshotCaptured,screenshotVerified,screenshotOcrUsed}'
+          echo "$track" | jq -e '.ok==true and .screenshotCaptured==true and .screenshotVerified==true and .shipment.origin=="SHJ" and .shipment.destination=="DEL" and .shipment.pieces=="22" and .shipment.weight=="1203" and .shipment.flightNo=="IX0136" and .shipment.arrivalDate=="2026-08-27" and .shipment.arrivalTime=="15:20" and .shipment.status=="ARRIVED"' >/dev/null
+
+          all="$(curl -fsS --max-time 30 -H 'accept: application/json' "$BASE/api/shipments")"
+          old="$(echo "$all" | jq -c '[.rows[]? | select(.awb=="09831308815") | .data][0] // {}')"
+          new="$(echo "$track" | jq -c '.shipment | del(.awbMatched,.arrivalEvidence)')"
+          payload="$(jq -cn --argjson old "$old" --argjson new "$new" '{row: ($old + $new + {lastChecked:(now|todateiso8601),trackingError:""})}')"
+          saved="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' --data "$payload" "$BASE/api/shipments")"
+          echo "$saved" | jq '{ok,shared,rows:[.rows[]|{awb,version,data}]}'
+          echo "$saved" | jq -e '.ok==true and .shared==true and .rows[0].awb=="09831308815" and .rows[0].data.origin=="SHJ" and .rows[0].data.destination=="DEL" and .rows[0].data.flightNo=="IX0136" and .rows[0].data.status=="ARRIVED"' >/dev/null
+          echo '=== AIR INDIA TRACKER ROW SAVED ==='
