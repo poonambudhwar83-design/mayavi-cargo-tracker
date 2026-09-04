@@ -10,14 +10,14 @@ on:
 jobs:
   test-emirates:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
       - name: Call Mayavi production Emirates tracker
         shell: bash
         run: |
           set +e
-          echo '=== PRODUCTION EMIRATES TEST RUN 2 ==='
-          curl -sS --max-time 120 -H 'accept: application/json' \
+          echo '=== PRODUCTION EMIRATES TEST RUN 3 ==='
+          curl -sS --max-time 75 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
             'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=176-61041886'
           code=$?
