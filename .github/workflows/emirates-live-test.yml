@@ -16,7 +16,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          echo '=== PRODUCTION EMIRATES TEST RUN 3 ==='
+          echo '=== PRODUCTION EMIRATES TEST RUN 4 ==='
           curl -sS --max-time 75 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
             'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=176-61041886'
