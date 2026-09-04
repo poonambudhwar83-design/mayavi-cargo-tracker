@@ -82,7 +82,7 @@ export async function GET(request) {
       apiKeyRequired: false,
       noPaidApi: true,
       noTrackJet: true,
-      exactAdapters: ['157 Qatar Airways Cargo', '065 Saudia Cargo', '176 Emirates SkyCargo', '098 Air India Cargo'],
+      exactAdapters: ['157 Qatar Airways Cargo', '065 Saudia Cargo', '176 Emirates SkyCargo', '098 Air India Cargo', '514 Air Arabia Cargo'],
       mode: 'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'
     });
   }
