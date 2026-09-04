@@ -9,14 +9,14 @@ jobs:
   test-airindia:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect Air India production form
+      - name: Call dedicated Air India production tracker
         run: |
           set +e
-          echo '=== AIR INDIA FORM INSPECT RUN 2 ==='
-          curl -sS --max-time 70 -H 'accept: application/json' \
+          echo '=== PRODUCTION AIR INDIA ADAPTER TEST START ==='
+          curl -sS --max-time 90 -H 'accept: application/json' \
             -w '\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}\n' \
-            'https://mayavi-cargo-shared-tracker.vercel.app/api/airindia-form-debug'
+            'https://mayavi-cargo-shared-tracker.vercel.app/api/track?mawb=098-00000000'
           code=$?
           echo "CURL_EXIT:$code"
-          echo '=== AIR INDIA FORM INSPECT END ==='
+          echo '=== PRODUCTION AIR INDIA ADAPTER TEST END ==='
           exit 0
