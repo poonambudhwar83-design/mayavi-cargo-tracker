@@ -143,9 +143,11 @@ export default function AirArabiaLiveCapture(){
     }
   }
   const active=['selecting','watching','saving'].includes(state);
-  return <div style={{position:'fixed',right:18,top:86,zIndex:9999,width:'min(350px,calc(100vw - 36px))',background:'rgba(12,20,36,.96)',color:'#fff',border:'1px solid rgba(255,255,255,.18)',borderRadius:14,padding:12,boxShadow:'0 10px 30px rgba(0,0,0,.26)',fontFamily:'system-ui,-apple-system,Segoe UI,sans-serif'}}>
-    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}><div style={{fontSize:11,fontWeight:800,letterSpacing:'.08em'}}>AIR ARABIA AUTO CAPTURE</div><div style={{fontSize:10,opacity:.8}}>{state==='watching'?'LIVE':state==='saving'?'SAVING':state==='error'?'CHECK':'READY'}</div></div>
-    <div style={{fontSize:11,lineHeight:1.4,margin:'7px 0 9px',opacity:.9}}>{message}</div>
-    <div style={{display:'flex',gap:7}}><button onClick={start} disabled={active} style={{flex:1,border:0,borderRadius:9,padding:'8px 10px',fontWeight:800,cursor:active?'default':'pointer',background:'#ef3340',color:'#fff',opacity:active?.72:1}}>{state==='watching'?'CONNECTED':state==='saving'?'SAVING…':state==='selecting'?'SELECT iCARGO TAB…':'START AIR ARABIA'}</button>{active&&<button onClick={stop} style={{border:'1px solid rgba(255,255,255,.25)',borderRadius:9,padding:'8px 10px',fontWeight:700,cursor:'pointer',background:'transparent',color:'#fff'}}>STOP</button>}</div>
-  </div>;
+  return <section style={{width:'calc(100% - 24px)',maxWidth:1700,margin:'14px auto 0',background:'linear-gradient(135deg,#102a56,#173f80)',color:'#fff',borderRadius:14,padding:'12px 14px',boxShadow:'0 5px 18px rgba(20,33,61,.12)',fontFamily:'Arial,Helvetica,sans-serif',display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
+    <div style={{minWidth:220,flex:'1 1 520px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}><strong style={{fontSize:11,letterSpacing:'.08em'}}>AIR ARABIA AUTO CAPTURE</strong><span style={{fontSize:10,opacity:.82}}>{state==='watching'?'LIVE':state==='saving'?'SAVING':state==='error'?'CHECK':'READY'}</span></div>
+      <div style={{fontSize:11,lineHeight:1.35,opacity:.9}}>{message}</div>
+    </div>
+    <div style={{display:'flex',gap:8,flex:'0 0 auto'}}><button onClick={start} disabled={active} style={{border:0,borderRadius:9,padding:'9px 14px',fontWeight:800,cursor:active?'default':'pointer',background:'#ef3340',color:'#fff',opacity:active?.72:1}}>{state==='watching'?'CONNECTED':state==='saving'?'SAVING…':state==='selecting'?'SELECT iCARGO TAB…':'START AIR ARABIA'}</button>{active&&<button onClick={stop} style={{border:'1px solid rgba(255,255,255,.35)',borderRadius:9,padding:'9px 12px',fontWeight:700,cursor:'pointer',background:'transparent',color:'#fff'}}>STOP</button>}</div>
+  </section>;
 }
