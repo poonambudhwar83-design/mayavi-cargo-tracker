@@ -15,7 +15,9 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.6';
+const VERSION='3.9.7';
+const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+const pad=v=>String(v).padStart(2,'0');
 
 function concrete(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.bookingDate||s.arrivalDate||s.arrivalTime);
@@ -52,6 +54,41 @@ function applyArrival(base={},candidate={}){
   if(candidate.arrivalTime&&(candidate.arrivalIsActual||!out.arrivalTime))out.arrivalTime=candidate.arrivalTime;
   if(candidate.arrivalDate||candidate.arrivalTime)out.arrivalIsActual=Boolean(candidate.arrivalIsActual);
   return out;
+}
+function parseBookingDate(text='',fallbackYear=''){
+  const s=String(text||'').toUpperCase();
+  let m=s.match(/\b(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/);if(m)return`${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m=s.match(/\b(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})\b/);if(m)return`${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  m=s.match(/\b(\d{1,2})[\s\-,]+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\-,]+(20\d{2})\b/);if(m)return`${m[3]}-${MONTH[m[2]]}-${pad(m[1])}`;
+  m=s.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\-,]+(\d{1,2})[\s\-,]+(20\d{2})\b/);if(m)return`${m[3]}-${MONTH[m[1]]}-${pad(m[2])}`;
+  const year=/^20\d{2}$/.test(String(fallbackYear||''))?String(fallbackYear):'';
+  if(year){
+    m=s.match(/\b(\d{1,2})[\s\-,]+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\b/);if(m)return`${year}-${MONTH[m[2]]}-${pad(m[1])}`;
+    m=s.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\-,]+(\d{1,2})\b/);if(m)return`${year}-${MONTH[m[1]]}-${pad(m[2])}`;
+  }
+  return'';
+}
+function bookingDateFromOfficialText(text='',arrivalDate=''){
+  const flat=String(text||'').replace(/\s+/g,' ').trim();if(!flat)return'';
+  const fallbackYear=String(arrivalDate||'').match(/^(20\d{2})/)?.[1]||String(new Date().getUTCFullYear());
+  const priorities=[
+    /\bBOOKED\b|BOOKING\s+DATE|BOOKED\s+(?:ON|AT)|BOOKING\s+CONFIRMED/ig,
+    /\bRCS\b|RECEIVED\s+FROM\s+SHIPPER|\bACCEPTED\b|\bACCEPT\b/ig
+  ];
+  for(const rx of priorities){
+    const matches=[...flat.matchAll(rx)];
+    for(const match of matches){
+      const at=match.index||0;
+      const window=flat.slice(Math.max(0,at-120),Math.min(flat.length,at+360));
+      const d=parseBookingDate(window,fallbackYear);if(d)return d;
+    }
+  }
+  return'';
+}
+function debugText(result={}){
+  const d=result?.debug||{};
+  return [d.summarySample,d.activitySample,d.panelSample,d.bodySample,d.textSample,d.arrivalEvidence,d.preview,d.sample]
+    .filter(Boolean).join(' ');
 }
 
 async function dedicatedOfficial(mawb){
@@ -120,6 +157,14 @@ async function handle(mawb){
   shipment=applyArrival(shipment,cathay);
   shipment=applyArrival(shipment,browser);
   shipment=applyArrival(shipment,ocr);
+  if(!shipment.bookingDate){
+    const officialText=[debugText(directResult),debugText(browserResult),debugText(apiResult)].filter(Boolean).join(' ');
+    const derivedBookingDate=bookingDateFromOfficialText(officialText,shipment.arrivalDate);
+    if(derivedBookingDate){
+      shipment.bookingDate=derivedBookingDate;
+      shipment.bookingDateSource='Official Booked/Accepted/RCS event';
+    }
+  }
   shipment.status=chooseStatus({api,direct,browser,ocr,cathay});
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source,cathayResult?.source].filter(Boolean).join(' + ')||'Official tracking verification';
 
@@ -142,6 +187,7 @@ async function handle(mawb){
         browserClicked:browserResult?.debug?.clicked||directResult?.debug?.nextClicked||'',
         ocrStatusEvidence:ocr?.statusEvidence||'',
         ocrSnippet:ocr?.screenshotSnippet||'',
+        bookingDateSource:shipment.bookingDateSource||'',
         emiratesShipmentId:mawb.startsWith('176-')?(directResult?.debug?.shipmentId||''):'',
         cathayFlightScreenshot:Boolean(cathayResult?.screenshotBase64),
         airArabiaNextClicked:mawb.startsWith('514-')?(directResult?.debug?.nextClicked||''):''
@@ -177,7 +223,7 @@ export async function GET(request){
     mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',
     apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
     dedicatedAdapters:['020 Lufthansa','065 Saudia translated segment browser','098 Air India Cargo Portal','157 Qatar','160 Cathay','176 Emirates eSkyCargo live page','514 Air Arabia Cargo details-screen screenshot'],
-    automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,
+    automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,
     carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES
   });
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
