@@ -22,12 +22,14 @@ function mailTimeFrom(date='',time=''){
 }
 function businessStatus(raw='',timingStatus=''){
   const s=String(raw||'').toUpperCase();
+  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+  if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED'||s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
-  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED'))return'ARRIVED';
   return'BOOKED';
 }
 function decorateTiming(existing={},incoming={}){
+  const shipmentType=(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT';
   const scheduledArrivalDate=existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'';
   const scheduledArrivalTime=existing.scheduledArrivalTime||incoming.scheduledArrivalTime||existing.arrivalTime||incoming.arrivalTime||'';
   const arrivalDate=incoming.arrivalDate||existing.arrivalDate||'';
@@ -36,7 +38,7 @@ function decorateTiming(existing={},incoming={}){
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
   const status=businessStatus(incoming.status||existing.status||'',timingStatus);
-  return {...existing,...incoming,shipmentType:(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT',scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:mailTimeFrom(arrivalDate,arrivalTime)};
+  return {...existing,...incoming,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 
