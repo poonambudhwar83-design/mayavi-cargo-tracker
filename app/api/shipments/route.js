@@ -16,9 +16,14 @@ function normalize(v=''){const d=digits(v);return d.length===11?d:''}
 function safeData(row={}){
   const awb=normalize(row.mawb||row.awb);
   if(!awb)throw new Error('Invalid MAWB.');
-  const data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`};
+  const data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`,shipmentType:row.shipmentType==='EXPORT'?'EXPORT':'IMPORT'};
   delete data._dbUpdatedAt;
   return {awb,data};
+}
+function adminAllowed(request){
+  const configured=process.env.MAYAVI_ADMIN_KEY||'';
+  const supplied=request.headers.get('x-mayavi-admin-key')||'';
+  return Boolean(configured&&supplied&&configured===supplied);
 }
 
 export async function GET(){
@@ -61,6 +66,8 @@ export async function POST(request){
 
 export async function DELETE(request){
   try{
+    if(!process.env.MAYAVI_ADMIN_KEY)return Response.json({ok:false,error:'Admin delete protection is not configured yet.'},{status:503});
+    if(!adminAllowed(request))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
     const awb=normalize(new URL(request.url).searchParams.get('awb')||'');
     if(!awb)return Response.json({ok:false,error:'Invalid MAWB.'},{status:400});
     const sql=db();
