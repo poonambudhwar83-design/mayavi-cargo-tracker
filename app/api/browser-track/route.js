@@ -1,4 +1,5 @@
 import { trackWithBrowser, inspectCathayFlightPage, trackCathayFlightStatus } from '../../../lib/browserTracker.js';
+import { trackSaudiaWithBrowser } from '../../../lib/saudiaBrowser.js';
 import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
@@ -6,11 +7,11 @@ export const dynamic='force-dynamic';
 export const maxDuration=60;
 
 async function handle(mawb,{image=false}={}){
-  const result=await trackWithBrowser(mawb);
+  const result=mawb.startsWith('065-')?await trackSaudiaWithBrowser(mawb):await trackWithBrowser(mawb);
   if(image&&result.screenshotBase64){
     return new Response(Buffer.from(result.screenshotBase64,'base64'),{status:200,headers:{'content-type':'image/jpeg','cache-control':'no-store'}});
   }
-  if(result.ok)return Response.json({ok:true,version:'3.7',provider:'Official airline browser capture',shipment:result.shipment,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null});
+  if(result.ok)return Response.json({ok:true,version:'3.7',provider:mawb.startsWith('065-')?'Saudia Cargo dedicated browser reader':'Official airline browser capture',shipment:result.shipment,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null});
   return Response.json({ok:false,version:'3.7',mawb,trackingError:result.reason||'BROWSER TRACKING FAILED',officialTracker:result.officialTracker||null,screenshotBase64:result.screenshotBase64||null,pageText:result.pageText||'',debug:result.debug||null},{status:503});
 }
 
