@@ -28,8 +28,19 @@ function formatTime12(value=''){
 }
 function officialUrl(row={}){
   const n=normalize(row.mawb),airline=airlineForMawb(n);
-  if(n.startsWith('514-'))return `https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/?mayavi_mawb=${encodeURIComponent(digits(n))}#/app`;
+  if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
+}
+function openOfficial(row={}){
+  const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;
+  if(!n.startsWith('514-')){window.open(url,'_blank','noopener,noreferrer');return;}
+  const awb=digits(n);const popup=window.open(url,`airarabia_${awb}`);if(!popup)return;
+  const inject=()=>{
+    try{
+      popup.location=`javascript:(()=>{const e=document.querySelector('#shipmentValue,input[name="shipmentValue"]');if(e){const d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(d&&d.set)d.set.call(e,'${awb}');else e.value='${awb}';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'1'}));e.focus();}})()`;
+    }catch{}
+  };
+  [2500,4500,7000,10000].forEach(ms=>setTimeout(inject,ms));
 }
 function statusFromText(text=''){
   const s=String(text).toUpperCase();
@@ -138,11 +149,11 @@ export default function Page(){
    try{const res=await fetch(`/api/shipments?awb=${encodeURIComponent(row.mawb)}`,{method:'DELETE'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Delete failed');setRows(r=>r.filter((_,x)=>x!==i));setShared(true);setNote(`${row.mawb} removed for everyone.`)}catch(e){setNote(`Could not remove from shared database: ${e.message||e}`)}
  }
  return <main>
-   <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V3.8.2</div><h1>Global MAWB Live Tracker</h1><p>Shared cloud database + automatic airline tracking. Add or refresh a MAWB once and the same saved row is visible to everyone opening this tracker.</p></div><div className="version">{shared?'SHARED DATABASE ✓':'LOCAL BACKUP'}</div></section>
+   <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V3.8.3</div><h1>Global MAWB Live Tracker</h1><p>Shared cloud database + automatic airline tracking. Add or refresh a MAWB once and the same saved row is visible to everyone opening this tracker.</p></div><div className="version">{shared?'SHARED DATABASE ✓':'LOCAL BACKUP'}</div></section>
    <section className="stats"><div><b>{stats.total}</b><span>Total MAWB</span></div><div><b>{stats.transit}</b><span>In Transit</span></div><div><b>{stats.arrived}</b><span>Arrived</span></div><div><b>{stats.checking}</b><span>Checking / Manual</span></div></section>
    <section className="entry"><div><label>MAWB NUMBER</label><input value={mawb} onChange={e=>setMawb(e.target.value)} placeholder="e.g. 157-12345678" onKeyDown={e=>e.key==='Enter'&&add()}/></div><div><label>CLIENT NAME</label><input value={client} onChange={e=>setClient(e.target.value)} placeholder="Optional client name"/></div><button disabled={busy} onClick={add}>{busy?'TRACKING…':'ADD + LIVE TRACK'}</button><button className="secondary" disabled={busy||!rows.length} onClick={refreshAll}>REFRESH ALL</button></section>
    {note&&<div className="note">{note}</div>}
-   <section className="tableWrap"><table><thead><tr><th>MAWB</th><th>Client</th><th>Airline</th><th>Origin</th><th>Destination</th><th>Flight</th><th>Bags/Pieces</th><th>Weight</th><th>Arrival Date</th><th>Arrival Time</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={`${r.mawb}-${i}`}><td><strong>{r.mawb}</strong>{r.trackingError&&<small className="err">{r.manualHint||'Auto tracking unavailable'}</small>}</td><td>{r.clientName||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{r.destination||'—'}</td><td>{r.flightNo||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{r.weight?`${r.weight} kg`:'—'}</td><td>{r.arrivalDate||'—'}</td><td>{formatTime12(r.arrivalTime)||'—'}</td><td><span className={`badge ${tone(r.status)}`}>{r.status||'CHECKING'}</span></td><td><div className="actions"><button className="refreshBtn" title="Refresh automatic tracking" onClick={()=>refresh(i)}>REFRESH</button>{officialUrl(r)&&<a className={`trackLink ${r.trackingError?'urgent':''}`} href={officialUrl(r)} target="_blank" rel="noreferrer" title="Open official airline tracking page">OFFICIAL TRACK ↗</a>}<label className="ocrBtn" title="Upload airline tracking screenshot">{ocrIndex===i?'READING…':'SCREENSHOT OCR'}<input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];readScreenshot(i,f);e.target.value=''}}/></label><button className="removeBtn" title="Remove" onClick={()=>remove(i)}>×</button></div></td></tr>):<tr><td colSpan="12" className="empty">No MAWB added yet.</td></tr>}</tbody></table></section>
+   <section className="tableWrap"><table><thead><tr><th>MAWB</th><th>Client</th><th>Airline</th><th>Origin</th><th>Destination</th><th>Flight</th><th>Bags/Pieces</th><th>Weight</th><th>Arrival Date</th><th>Arrival Time</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={`${r.mawb}-${i}`}><td><strong>{r.mawb}</strong>{r.trackingError&&<small className="err">{r.manualHint||'Auto tracking unavailable'}</small>}</td><td>{r.clientName||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{r.destination||'—'}</td><td>{r.flightNo||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{r.weight?`${r.weight} kg`:'—'}</td><td>{r.arrivalDate||'—'}</td><td>{formatTime12(r.arrivalTime)||'—'}</td><td><span className={`badge ${tone(r.status)}`}>{r.status||'CHECKING'}</span></td><td><div className="actions"><button className="refreshBtn" title="Refresh automatic tracking" onClick={()=>refresh(i)}>REFRESH</button>{officialUrl(r)&&<a className={`trackLink ${r.trackingError?'urgent':''}`} href={officialUrl(r)} target="_blank" rel="noreferrer" onClick={e=>{if(normalize(r.mawb).startsWith('514-')){e.preventDefault();openOfficial(r)}}} title="Open official airline tracking page">OFFICIAL TRACK ↗</a>}<label className="ocrBtn" title="Upload airline tracking screenshot">{ocrIndex===i?'READING…':'SCREENSHOT OCR'}<input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];readScreenshot(i,f);e.target.value=''}}/></label><button className="removeBtn" title="Remove" onClick={()=>remove(i)}>×</button></div></td></tr>):<tr><td colSpan="12" className="empty">No MAWB added yet.</td></tr>}</tbody></table></section>
    <footer>{CONFIGURED_PREFIXES.length} airline prefixes mapped • Shared Neon storage • API/direct tracking • Official browser capture • Screenshot OCR fallback</footer>
  </main>
 }
