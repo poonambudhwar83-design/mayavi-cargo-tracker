@@ -21,17 +21,26 @@ function dateTimeValue(date='',time=''){
   const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),Number(tm[1]),Number(tm[2]),0,0);
   return Number.isFinite(d.getTime())?d:null;
 }
+function previousDate(date=''){
+  const m=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/);if(!m)return false;
+  const now=new Date(),today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  return String(date)<today;
+}
 function mailTimeFrom(date='',time=''){
   const d=dateTimeValue(date,time);if(!d)return'';
   d.setHours(d.getHours()-5);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
 }
-function businessStatus(raw='',timingStatus=''){
+function businessStatus(raw='',timingStatus='',arrivalDate='',mawb=''){
   const s=String(raw||'').toUpperCase();
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+  if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
+  const prefix=normalize(mawb).slice(0,3);
+  const knownPastArrival=['157','160','910'].includes(prefix)&&previousDate(arrivalDate)&&!s.includes('CANCEL')&&!s.includes('DIVERT');
+  if(knownPastArrival)return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
-  if(timingStatus==='DELAYED'||s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
+  if(timingStatus==='DELAYED')return'DELAYED';
   return'BOOKED';
 }
 function tone(status=''){
@@ -55,7 +64,7 @@ function decorateTiming(existing={},incoming={}){
     timingDeltaMinutes=Math.round((current-planned)/60000);
     timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';
   }
-  const status=businessStatus(incoming.status||existing.status||'',timingStatus);
+  const status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalDate,incoming.mawb||existing.mawb||existing.awb||'');
   const mailTime=shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'';
   const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;
   return {...merged,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime,mailSent};
@@ -82,13 +91,16 @@ function dbToRow(record={}){
     airlineName:d.airlineName??d.airline??'',carrierCode:d.carrierCode??d.airlineCode??'',
     flightNo:d.flightNo??d.flight??'',pieces:d.pieces??d.bags??'',bags:d.bags??d.pieces??'',weight:cleanWeight(d.weight),
     bookingDate:d.bookingDate||'',shipmentType:d.shipmentType==='EXPORT'?'EXPORT':'IMPORT',officialTracker:d.officialTracker||d.sourceUrl||'',
+    enteredBy:d.enteredBy||'',enteredByUsername:d.enteredByUsername||'',enteredAt:d.enteredAt||'',
     mailSent:d.shipmentType==='EXPORT'?undefined:d.mailSent===true,lastChecked:d.lastChecked||record.tracking_checked_at||record.updated_at||'',_dbUpdatedAt:record.updated_at||''
   });
 }
 function withoutMeta(row={}){const {_dbUpdatedAt,...clean}=row;return clean}
 
-export default function DashboardClient({isAdmin=false}){
-  const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT'),[adminKey,setAdminKey]=useState('');
+export default function DashboardClient({isAdmin=false,currentUser=null,onLogout=null}){
+  const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT');
+  const employeeName=String(currentUser?.displayName||'').trim();
+  const employeeUsername=String(currentUser?.username||'').trim();
   async function persistRows(list){
     const clean=list.filter(x=>normalize(x?.mawb)).map(withoutMeta);if(!clean.length)return[];
     const res=await fetch('/api/shipments',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean})});
@@ -96,7 +108,6 @@ export default function DashboardClient({isAdmin=false}){
   }
   async function persistRow(row){return persistRows([row])}
   useEffect(()=>{
-    if(isAdmin){try{setAdminKey(sessionStorage.getItem('mayavi_admin_key')||'')}catch{}}
     let active=true;
     (async()=>{
       let local=[];
@@ -131,15 +142,19 @@ export default function DashboardClient({isAdmin=false}){
     try{await persistRow(next);setShared(true);setNote(`${successText} • Saved for everyone.`);return true}catch(e){setShared(false);setNote(`${successText} • Shared save failed: ${e.message||e}`);return false}
   }
   async function add(){
-    const n=normalize(mawb);if(!n){setNote('Please enter valid 11-digit MAWB.');return}const airline=airlineForMawb(n);if(!airline){setNote(`Prefix ${n.slice(0,3)} is not mapped yet.`);return}
+    const n=normalize(mawb),clientName=String(client||'').trim();
+    if(!n){setNote('Please enter valid 11-digit MAWB.');return}
+    if(!clientName){setNote('Client Name is mandatory. Please enter the client name before adding the MAWB.');return}
+    const airline=airlineForMawb(n);if(!airline){setNote(`Prefix ${n.slice(0,3)} is not mapped yet.`);return}
     const existing=rows.find(x=>normalize(x.mawb)===n);if(existing){setNote(`${n} is already fixed in ${existing.shipmentType||'IMPORT'} dashboard. Admin can move it if required.`);return}
+    const enteredAt=new Date().toISOString();
     setBusy(true);setNote(`Tracking ${n} — ${airline.name}…`);
-    try{const s=await track(n);const next=decorateTiming({}, {...s,shipmentType:activeTab,clientName:client,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:new Date().toISOString()});await saveAndShow(next,`${n} added to ${activeTab}`);setMawb('');setClient('')}
-    catch(e){const p=e.payload||{};const next=decorateTiming({}, {mawb:n,shipmentType:activeTab,clientName:client,airlineName:airline.name,status:'BOOKED',officialTracker:airline.url||p.officialTracker,manualHint:p.manualHint||'',trackingError:e.message,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:new Date().toISOString()});await saveAndShow(next,`${n} added to ${activeTab}; backend will retry automatically`);setMawb('');setClient('')}finally{setBusy(false)}
+    try{const s=await track(n);const next=decorateTiming({}, {...s,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:enteredAt});await saveAndShow(next,`${n} added to ${activeTab} by ${employeeName||'user'}`);setMawb('');setClient('')}
+    catch(e){const p=e.payload||{};const next=decorateTiming({}, {mawb:n,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,airlineName:airline.name,status:'BOOKED',officialTracker:airline.url||p.officialTracker,manualHint:p.manualHint||'',trackingError:e.message,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:enteredAt});await saveAndShow(next,`${n} added to ${activeTab} by ${employeeName||'user'}; backend will retry automatically`);setMawb('');setClient('')}finally{setBusy(false)}
   }
   async function refreshByMawb(value){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;setNote(`Refreshing ${row.mawb}…`);
-    try{const s=await track(row.mawb);const next=decorateTiming(row,{...s,shipmentType:row.shipmentType,clientName:row.clientName,mailSent:row.shipmentType==='IMPORT'?row.mailSent===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});setRows(r=>r.map((x,i)=>i===index?next:x));await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}
+    try{const s=await track(row.mawb);const next=decorateTiming(row,{...s,shipmentType:row.shipmentType,clientName:row.clientName,enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:row.shipmentType==='IMPORT'?row.mailSent===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});setRows(r=>r.map((x,i)=>i===index?next:x));await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}
     catch(e){const p=e.payload||{};const next=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?next:x));try{await persistRow(next);setShared(true)}catch{setShared(false)}setNote('Auto refresh had an issue; last verified details and status were retained.')}
   }
   async function refreshAll(){setBusy(true);for(const r of visibleRows)await refreshByMawb(r.mawb);setBusy(false)}
@@ -157,18 +172,17 @@ export default function DashboardClient({isAdmin=false}){
   }
   async function remove(value){
     if(!isAdmin)return;const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;
-    if(!adminKey){setNote('Admin key is required to delete a MAWB.');return}if(!window.confirm(`Delete ${row.mawb} from the shared tracker?`))return;
-    try{const res=await fetch(`/api/shipments?awb=${encodeURIComponent(row.mawb)}`,{method:'DELETE',headers:{'x-mayavi-admin-key':adminKey}});const data=await res.json();if(!data.ok)throw new Error(data.error||'Delete failed');setRows(r=>r.filter((_,i)=>i!==index));setShared(true);setNote(`${row.mawb} deleted by admin.`)}catch(e){setNote(`Delete blocked: ${e.message||e}`)}
+    if(!window.confirm(`Delete ${row.mawb} from the shared tracker?`))return;
+    try{const res=await fetch(`/api/shipments?awb=${encodeURIComponent(row.mawb)}`,{method:'DELETE'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Delete failed');setRows(r=>r.filter((_,i)=>i!==index));setShared(true);setNote(`${row.mawb} deleted by admin.`)}catch(e){setNote(`Delete blocked: ${e.message||e}`)}
   }
-  function updateAdminKey(v){setAdminKey(v);try{sessionStorage.setItem('mayavi_admin_key',v)}catch{}}
   return <main>
-    <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V4.1.2 • {isAdmin?'ADMIN':'EMPLOYEE'}</div><h1>{isAdmin?'Admin MAWB Dashboard':'Employee MAWB Dashboard'}</h1><p>Backend refresh every 2 hours • live status automatically changes to Booked, In Transit, Arrived, Delayed or Early Arrival • backend OCR reads shipment and booking details.</p></div><div className="version">{isAdmin?'ADMIN CONTROL':'EMPLOYEE ACCESS'} • {shared?'SHARED ✓':'LOCAL'}</div></section>
-    {isAdmin&&<section className="adminBar"><div><b>ADMIN SAFETY</b><span>Only admin can delete MAWBs. Enter your private admin key for delete actions.</span></div><input type="password" value={adminKey} onChange={e=>updateAdminKey(e.target.value)} placeholder="Admin key" autoComplete="off"/></section>}
+    <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V4.2 • {isAdmin?'ADMIN':'EMPLOYEE'}</div><h1>{isAdmin?'Admin MAWB Dashboard':'Employee MAWB Dashboard'}</h1><p>Backend refresh every 2 hours • live status automatically changes to Booked, In Transit, Arrived, Delayed or Early Arrival • every new MAWB records the employee who entered it.</p></div><div className="userPanel"><div className="version">{employeeName||'User'} • {shared?'SHARED ✓':'LOCAL'}</div>{onLogout&&<button className="logoutBtn" onClick={onLogout}>LOGOUT</button>}</div></section>
+    {isAdmin&&<section className="adminBar"><div><b>ADMIN ACCESS</b><span>This dashboard is protected by the admin login. Only admin can move or delete MAWBs.</span></div></section>}
     <section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>
     <section className="stats"><div><b>{stats.total}</b><span>{activeTab} MAWB</span></div><div><b>{stats.booked}</b><span>Booked</span></div><div><b>{stats.transit}</b><span>In Transit</span></div><div><b>{stats.arrived}</b><span>Arrived</span></div><div><b>{stats.attention}</b><span>Delayed / Early</span></div></section>
-    <section className="entry"><div><label>{activeTab} MAWB NUMBER</label><input value={mawb} onChange={e=>setMawb(e.target.value)} placeholder="e.g. 157-12345678" onKeyDown={e=>e.key==='Enter'&&add()}/></div><div><label>CLIENT NAME</label><input value={client} onChange={e=>setClient(e.target.value)} placeholder="Optional client name"/></div><button disabled={busy} onClick={add}>{busy?'TRACKING…':`ADD TO ${activeTab}`}</button><button className="secondary" disabled={busy||!visibleRows.length} onClick={refreshAll}>REFRESH {activeTab}</button></section>
+    <section className="entry"><div><label>{activeTab} MAWB NUMBER</label><input value={mawb} onChange={e=>setMawb(e.target.value)} placeholder="e.g. 157-12345678" onKeyDown={e=>e.key==='Enter'&&add()}/></div><div><label>CLIENT NAME *</label><input required value={client} onChange={e=>setClient(e.target.value)} placeholder="Required client name" onKeyDown={e=>e.key==='Enter'&&add()}/></div><button disabled={busy} onClick={add}>{busy?'TRACKING…':`ADD TO ${activeTab}`}</button><button className="secondary" disabled={busy||!visibleRows.length} onClick={refreshAll}>REFRESH {activeTab}</button></section>
     {note&&<div className="note">{note}</div>}
-    <section className="tableWrap"><table><thead><tr><th>MAWB</th><th>Client</th><th>Airline</th><th>Origin</th><th>Destination</th><th>Flight</th><th>Bags/Pieces</th><th>Weight</th><th>Booking Date</th><th>Arrival Date</th><th>Arrival Time</th>{activeTab==='IMPORT'&&<><th>Mail Time (-5h)</th><th>Mail</th></>}<th>Status</th><th>Action</th></tr></thead><tbody>{visibleRows.length?visibleRows.map(r=><tr key={r.mawb}><td><strong>{r.mawb}</strong>{r.trackingError&&<small className="err">Backend will retry automatically</small>}</td><td>{r.clientName?<span className="clientChip" style={clientStyle(r.clientName)}>{r.clientName}</span>:'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{r.destination||'—'}</td><td>{r.flightNo||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{r.weight?`${r.weight} kg`:'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.arrivalDate||'—'}</td><td>{formatTime12(r.arrivalTime)||'—'}</td>{activeTab==='IMPORT'&&<><td><strong className="mailTime">{r.mailTime||mailTimeFrom(r.arrivalDate,r.arrivalTime)||'—'}</strong></td><td><div className="mailChoice"><button className={`mailBtn yes ${r.mailSent===true?'selected':''}`} onClick={()=>setMail(r.mawb,true)}>YES</button><button className={`mailBtn no ${r.mailSent!==true?'selected':''}`} onClick={()=>setMail(r.mawb,false)}>NO</button></div></td></>}<td><span className={`badge ${tone(r.status)}`}>{businessStatus(r.status,r.timingStatus)}</span></td><td><div className="actions"><button className="refreshBtn" onClick={()=>refreshByMawb(r.mawb)}>REFRESH</button>{officialUrl(r)&&<a className={`trackLink ${r.trackingError?'urgent':''}`} href={officialUrl(r)} target="_blank" rel="noreferrer" onClick={e=>{if(normalize(r.mawb).startsWith('514-')){e.preventDefault();openOfficial(r);setNote(`${digits(r.mawb)} copied. Air Arabia opened.`)}}}>{normalize(r.mawb).startsWith('514-')?'COPY + OFFICIAL ↗':'OFFICIAL TRACK ↗'}</a>}{isAdmin&&<button className="moveBtn" onClick={()=>moveShipment(r.mawb)}>MOVE TO {activeTab==='IMPORT'?'EXPORT':'IMPORT'}</button>}{isAdmin&&<button className="removeBtn" onClick={()=>remove(r.mawb)}>DELETE</button>}</div></td></tr>):<tr><td colSpan={activeTab==='IMPORT'?15:13} className="empty">No {activeTab.toLowerCase()} MAWB added yet.</td></tr>}</tbody></table></section>
-    <footer>{CONFIGURED_PREFIXES.length} airline prefixes • Shared Neon storage • Backend OCR active • Booking date from OCR • Import mail reminder only • 2-hour backend refresh • Auto status: Booked / In Transit / Arrived / Delayed / Early Arrival • Employee MAWBs cannot be deleted</footer>
+    <section className="tableWrap"><table><thead><tr><th>MAWB</th><th>Client</th><th>Entered By</th><th>Airline</th><th>Origin</th><th>Destination</th><th>Flight</th><th>Bags/Pieces</th><th>Weight</th><th>Booking Date</th><th>Arrival Date</th><th>Arrival Time</th>{activeTab==='IMPORT'&&<><th>Mail Time (-5h)</th><th>Mail</th></>}<th>Status</th><th>Action</th></tr></thead><tbody>{visibleRows.length?visibleRows.map(r=><tr key={r.mawb}><td><strong>{r.mawb}</strong>{r.trackingError&&<small className="err">Backend will retry automatically</small>}</td><td>{r.clientName?<span className="clientChip" style={clientStyle(r.clientName)}>{r.clientName}</span>:'—'}</td><td>{r.enteredBy?<span className="employeeChip">{r.enteredBy}</span>:'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{r.destination||'—'}</td><td>{r.flightNo||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{r.weight?`${r.weight} kg`:'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.arrivalDate||'—'}</td><td>{formatTime12(r.arrivalTime)||'—'}</td>{activeTab==='IMPORT'&&<><td><strong className="mailTime">{r.mailTime||mailTimeFrom(r.arrivalDate,r.arrivalTime)||'—'}</strong></td><td><div className="mailChoice"><button className={`mailBtn yes ${r.mailSent===true?'selected':''}`} onClick={()=>setMail(r.mawb,true)}>YES</button><button className={`mailBtn no ${r.mailSent!==true?'selected':''}`} onClick={()=>setMail(r.mawb,false)}>NO</button></div></td></>}<td><span className={`badge ${tone(r.status)}`}>{businessStatus(r.status,r.timingStatus,r.arrivalDate,r.mawb)}</span></td><td><div className="actions"><button className="refreshBtn" onClick={()=>refreshByMawb(r.mawb)}>REFRESH</button>{officialUrl(r)&&<a className={`trackLink ${r.trackingError?'urgent':''}`} href={officialUrl(r)} target="_blank" rel="noreferrer" onClick={e=>{if(normalize(r.mawb).startsWith('514-')){e.preventDefault();openOfficial(r);setNote(`${digits(r.mawb)} copied. Air Arabia opened.`)}}}>{normalize(r.mawb).startsWith('514-')?'COPY + OFFICIAL ↗':'OFFICIAL TRACK ↗'}</a>}{isAdmin&&<button className="moveBtn" onClick={()=>moveShipment(r.mawb)}>MOVE TO {activeTab==='IMPORT'?'EXPORT':'IMPORT'}</button>}{isAdmin&&<button className="removeBtn" onClick={()=>remove(r.mawb)}>DELETE</button>}</div></td></tr>):<tr><td colSpan={activeTab==='IMPORT'?16:14} className="empty">No {activeTab.toLowerCase()} MAWB added yet.</td></tr>}</tbody></table></section>
+    <footer>{CONFIGURED_PREFIXES.length} airline prefixes • Shared Neon storage • Client name required • Employee name recorded on new MAWBs • 2-hour backend refresh • Auto status: Booked / In Transit / Arrived / Delayed / Early Arrival</footer>
   </main>
 }
