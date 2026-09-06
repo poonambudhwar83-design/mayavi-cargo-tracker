@@ -9,7 +9,7 @@ function toBase64(file){return new Promise((resolve,reject)=>{const r=new FileRe
 
 export default function SaudiaAssist(){
   const [open,setOpen]=useState(false),[mawb,setMawb]=useState(''),[files,setFiles]=useState([]),[busy,setBusy]=useState(false),[note,setNote]=useState('');
-  function openOfficial(){const n=norm(mawb);if(!n||!n.startsWith('065-')){setNote('Enter valid Saudia 065 MAWB first.');return}try{navigator.clipboard?.writeText(n.replace(/\D/g,'')).catch(()=>{})}catch{}window.open('https://china.saudiacargo.com/e-services/track-shipment','_blank','noopener,noreferrer');setNote('AWB copied. On Saudia: paste AWB → click arrow → scroll to latest segment → take screenshot(s).');}
+  function openOfficial(){const n=norm(mawb);if(!n||!n.startsWith('065-')){setNote('Enter valid Saudia 065 MAWB first.');return}try{navigator.clipboard?.writeText(n.replace(/\D/g,'')).catch(()=>{})}catch{}window.open('https://china.saudiacargo.com/e-services/track-shipment','_blank','noopener,noreferrer');setNote('AWB copied. On Saudia: paste AWB → click arrow → click the red + sign on the shipment card → scroll to the latest/bottom timeline → take screenshot(s).');}
   async function upload(){const n=norm(mawb);if(!n||!n.startsWith('065-')){setNote('Enter valid Saudia 065 MAWB.');return}if(!files.length){setNote('Choose at least one Saudia result screenshot.');return}setBusy(true);setNote('Reading Saudia timeline…');try{const images=[];for(const f of files.slice(0,5))images.push(await toBase64(f));const res=await fetch('/api/saudia-screenshot',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mawb:n,images})});const data=await res.json();if(!data.ok)throw new Error(data.error||'Saudia screenshot read failed.');const s=data.shipment||{};setNote(`Saved: ${s.status||'TRACKING'}${s.arrivalDate?` • Arrival ${s.arrivalDate}`:''}${s.arrivalTime?` ${s.arrivalTime}`:''}. Refreshing dashboard…`);setTimeout(()=>window.location.reload(),1200)}catch(e){setNote(e.message||'Saudia screenshot read failed.')}finally{setBusy(false)}}
   return <>
     <button style={btn} onClick={()=>{setOpen(true);setNote('')}}>SAUDIA RESULT</button>
@@ -20,6 +20,7 @@ export default function SaudiaAssist(){
       <label style={{display:'block',fontSize:11,fontWeight:900,margin:'12px 0 5px'}}>SAUDIA MAWB</label>
       <input value={mawb} onChange={e=>setMawb(e.target.value)} placeholder="065-XXXXXXXX" style={{width:'100%',height:44,border:'1px solid #cbd5e1',borderRadius:9,padding:'0 11px'}}/>
       <button style={{...btn,width:'100%',marginTop:10}} onClick={openOfficial}>COPY AWB + OPEN SAUDIA OFFICIAL ↗</button>
+      <div style={{marginTop:12,padding:11,borderRadius:10,background:'#fff7ed',border:'1px solid #fed7aa',fontSize:13,lineHeight:1.5}}><b>Exact steps:</b> AWB → Arrow → <b>red + sign</b> → latest/bottom timeline → screenshot.</div>
       <label style={{display:'block',fontSize:11,fontWeight:900,margin:'14px 0 5px'}}>UPLOAD RESULT SCREENSHOT(S)</label>
       <input type="file" accept="image/*" multiple onChange={e=>setFiles([...e.target.files])}/>
       <small style={{display:'block',marginTop:8,color:'#667085'}}>For long timelines, upload the screenshot showing the latest/bottom segment. You may upload up to 5 screenshots.</small>
