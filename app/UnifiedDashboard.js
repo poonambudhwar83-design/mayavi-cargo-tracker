@@ -7,8 +7,9 @@ const FALLBACK_USERS=[
   {username:'naman',displayName:'Naman',role:'employee',passwordSet:false},
   {username:'renu',displayName:'Renu',role:'employee',passwordSet:false},
   {username:'sumit',displayName:'Sumit',role:'employee',passwordSet:false},
-  {username:'bholu',displayName:'Bholu',role:'employee',passwordSet:false},
-  {username:'bholi',displayName:'Bholi',role:'employee',passwordSet:false}
+  {username:'mandeep',displayName:'Mandeep',role:'employee',passwordSet:false},
+  {username:'parvesh',displayName:'Parvesh',role:'employee',passwordSet:false},
+  {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false}
 ];
 
 export default function UnifiedDashboard(){
