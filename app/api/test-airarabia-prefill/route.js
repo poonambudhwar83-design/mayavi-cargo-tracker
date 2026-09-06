@@ -17,43 +17,41 @@ async function launch(){
     headless:'shell'
   });
 }
-
-async function inspect(page,url){
-  await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
-  await sleep(3500);
-  const data=await page.evaluate(()=>{
-    const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>40&&r.height>10&&s.display!=='none'&&s.visibility!=='hidden'};
-    const inputs=[...document.querySelectorAll('input')].filter(visible).map(e=>({
-      value:e.value||'',placeholder:e.placeholder||'',name:e.name||'',id:e.id||'',aria:e.getAttribute('aria-label')||''
-    }));
-    const awb=inputs.find(x=>/awb|waybill/i.test(`${x.placeholder} ${x.name} ${x.id} ${x.aria}`))||inputs[0]||null;
-    return {href:location.href,awb,inputs:inputs.slice(0,8)};
-  }).catch(()=>({href:page.url(),awb:null,inputs:[]}));
-  return data;
+async function getAwb(page){
+  return page.evaluate(()=>{
+    const all=[...document.querySelectorAll('input')];
+    const el=all.find(e=>/awb|waybill/i.test(`${e.placeholder||''} ${e.name||''} ${e.id||''}`))||all[0];
+    return el?{value:el.value||'',placeholder:el.placeholder||'',name:el.name||'',id:el.id||''}:null;
+  }).catch(()=>null);
 }
 
 export async function GET(request){
   const n=new URL(request.url).searchParams.get('mawb')?.replace(/\D/g,'')||'51411911723';
   if(!/^514\d{8}$/.test(n))return Response.json({ok:false,error:'Use valid Air Arabia MAWB.'},{status:400});
-  const candidates=[
-    `${BASE}#/app?mawb=${n}`,
-    `${BASE}#/app?awb=${n}`,
-    `${BASE}?mawb=${n}#/app`,
-    `${BASE}?awb=${n}#/app`,
-    `${BASE}?trackingId=${n}#/app`,
-    `${BASE}?awbNumber=${n}#/app`
-  ];
   let browser;
   try{
     browser=await launch();
-    const page=await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/149 Safari/537.36');
-    const results=[];
-    for(const url of candidates){
-      const r=await inspect(page,url);
-      results.push({url,...r,prefilled:Boolean(r.awb&&String(r.awb.value).replace(/\D/g,'')===n)});
-    }
-    return Response.json({ok:true,mawb:n,results});
+    const opener=await browser.newPage();
+    await opener.goto('https://mayavi-cargo-shared-tracker.vercel.app/',{waitUntil:'domcontentloaded',timeout:30000});
+    const popupPromise=new Promise(resolve=>browser.once('targetcreated',async t=>{try{if(t.type()==='page')resolve(await t.page())}catch{}}));
+    await opener.evaluate((url)=>{window.__p=window.open(url,'airarabia_test');},`${BASE}#/app`);
+    const popup=await Promise.race([popupPromise,sleep(10000).then(()=>null)]);
+    if(!popup)return Response.json({ok:true,mawb:n,popupOpened:false});
+    await popup.waitForNavigation({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{});
+    await sleep(3500);
+    const before=await getAwb(popup);
+    let injectionError='';
+    try{
+      await opener.evaluate((value)=>{
+        try{
+          window.__p.location = `javascript:(()=>{const e=document.querySelector('#shipmentValue,input[name=shipmentValue]');if(e){e.value='${value}';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}})()`;
+        }catch(e){window.__injectErr=String(e)}
+      },n);
+      await sleep(1800);
+      injectionError=await opener.evaluate(()=>window.__injectErr||'');
+    }catch(e){injectionError=e?.message||String(e)}
+    const after=await getAwb(popup);
+    return Response.json({ok:true,mawb:n,popupOpened:true,before,after,injectionError,prefilled:Boolean(after&&String(after.value).replace(/\D/g,'')===n)});
   }catch(e){
     return Response.json({ok:false,error:e?.message||String(e)},{status:500});
   }finally{try{await browser?.close()}catch{}}
