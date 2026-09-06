@@ -15,6 +15,8 @@ const FALLBACK_USERS=[
 const modalBack={position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,.48)',display:'flex',alignItems:'center',justifyContent:'center',padding:18};
 const modalCard={width:'min(460px,100%)',background:'#fff',borderRadius:18,padding:22,boxShadow:'0 18px 55px rgba(0,0,0,.28)'};
 const fullInput={width:'100%',boxSizing:'border-box',marginBottom:12};
+const topAccountBar={display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 14px',background:'#f7f9fc',borderBottom:'1px solid #e1e6ef'};
+const topAccountButton={border:'1px solid #cfd7e5',background:'#fff',borderRadius:9,padding:'8px 12px',fontWeight:800,cursor:'pointer',fontSize:12};
 
 export default function UnifiedDashboard(){
   const [session,setSession]=useState(null);
@@ -130,12 +132,11 @@ export default function UnifiedDashboard(){
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
-    <DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>
-
-    <div style={{position:'fixed',right:18,bottom:18,zIndex:60,display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
-      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={{border:'none',borderRadius:12,padding:'12px 16px',fontWeight:800,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,0,0,.22)'}}>MANAGE USER PASSWORDS</button>}
-      <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={{border:'none',borderRadius:12,padding:'12px 16px',fontWeight:800,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,0,0,.22)'}}>CHANGE MY PASSWORD</button>
+    <div style={topAccountBar}>
+      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
+      <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
     </div>
+    <DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
