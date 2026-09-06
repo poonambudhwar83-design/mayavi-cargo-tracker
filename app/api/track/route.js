@@ -15,10 +15,10 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.5';
+const VERSION='3.9.6';
 
 function concrete(s={}){
-  return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.arrivalDate||s.arrivalTime);
+  return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.bookingDate||s.arrivalDate||s.arrivalTime);
 }
 function statusRank(status=''){
   const s=String(status).toUpperCase();
@@ -97,7 +97,7 @@ async function handle(mawb){
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
   const skipGenericOcr=mawb.startsWith('176-')||mawb.startsWith('098-')||mawb.startsWith('514-');
-  const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
+  const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||!browserShipment.bookingDate||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr){
     ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
   }
@@ -131,7 +131,7 @@ async function handle(mawb){
   const screenshotOcrUsed=Boolean(ocrResult?.ok)||directOcr;
   const hasUseful=concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot));
   if(hasUseful){
-    console.log('mawb_tracking_result',mawb,'OK','SCREENSHOT_VERIFIED',shipment.status,'shot',screenshotCaptured,'ocr',screenshotOcrUsed);
+    console.log('mawb_tracking_result',mawb,'OK','SCREENSHOT_VERIFIED',shipment.status,'shot',screenshotCaptured,'ocr',screenshotOcrUsed,'bookingDate',shipment.bookingDate||'');
     const provider=mawb.startsWith('176-')?'Emirates eSkyCargo live page':mawb.startsWith('098-')?'Air India Cargo Portal':mawb.startsWith('514-')?'Air Arabia Cargo details-screen screenshot':'Official page + screenshot verified';
     return Response.json({
       ok:true,version:VERSION,provider,shipment,
@@ -177,7 +177,7 @@ export async function GET(request){
     mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',
     apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),
     dedicatedAdapters:['020 Lufthansa','065 Saudia translated segment browser','098 Air India Cargo Portal','157 Qatar','160 Cathay','176 Emirates eSkyCargo live page','514 Air Arabia Cargo details-screen screenshot'],
-    automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,
+    automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,
     carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES
   });
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
