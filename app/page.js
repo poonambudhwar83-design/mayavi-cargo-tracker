@@ -1,5 +1,5 @@
-import DashboardClient from './DashboardClient.js';
+import UnifiedDashboard from './UnifiedDashboard.js';
 
 export default function Page(){
-  return <DashboardClient isAdmin={false}/>;
+  return <UnifiedDashboard/>;
 }
