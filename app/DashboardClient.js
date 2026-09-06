@@ -101,12 +101,12 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT');
   const employeeName=String(currentUser?.displayName||'').trim();
   const employeeUsername=String(currentUser?.username||'').trim();
-  async function persistRows(list){
+  async function persistRows(list,markEntry=false){
     const clean=list.filter(x=>normalize(x?.mawb)).map(withoutMeta);if(!clean.length)return[];
-    const res=await fetch('/api/shipments',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean})});
+    const res=await fetch('/api/shipments',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean,markEntry})});
     const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database save failed.');return data.rows||[];
   }
-  async function persistRow(row){return persistRows([row])}
+  async function persistRow(row,markEntry=false){return persistRows([row],markEntry)}
   useEffect(()=>{
     let active=true;
     (async()=>{
@@ -139,7 +139,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   }
   async function saveAndShow(next,successText){
     setRows(r=>[next,...r.filter(x=>normalize(x.mawb)!==normalize(next.mawb))]);
-    try{await persistRow(next);setShared(true);setNote(`${successText} • Saved for everyone.`);return true}catch(e){setShared(false);setNote(`${successText} • Shared save failed: ${e.message||e}`);return false}
+    try{await persistRow(next,true);setShared(true);setNote(`${successText} • Saved for everyone.`);return true}catch(e){setShared(false);setNote(`${successText} • Shared save failed: ${e.message||e}`);return false}
   }
   async function add(){
     const n=normalize(mawb),clientName=String(client||'').trim();
