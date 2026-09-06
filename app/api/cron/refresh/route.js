@@ -13,12 +13,19 @@ function dateTimeValue(date='',time=''){
 }
 function formatTime12(value=''){
   const m=String(value||'').match(/^(\d{1,2}):([0-5]\d)$/);if(!m)return value||'';
-  const h=Number(m[1]),suffix=h>=12?'PM':'AM',h12=h%12||12;return `${pad(h12)}:${m[2]} ${suffix}`;
+  const h=Number(m[1]);return `${pad(h%12||12)}:${m[2]} ${h>=12?'PM':'AM'}`;
 }
 function mailTimeFrom(date='',time=''){
   const d=dateTimeValue(date,time);if(!d)return'';
   d.setHours(d.getHours()-5);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
+}
+function businessStatus(raw='',timingStatus=''){
+  const s=String(raw||'').toUpperCase();
+  if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
+  if(timingStatus==='DELAYED'||s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
+  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED'))return'ARRIVED';
+  return'BOOKED';
 }
 function decorateTiming(existing={},incoming={}){
   const scheduledArrivalDate=existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'';
@@ -27,18 +34,10 @@ function decorateTiming(existing={},incoming={}){
   const arrivalTime=incoming.arrivalTime||existing.arrivalTime||'';
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
-  if(planned&&current){
-    timingDeltaMinutes=Math.round((current-planned)/60000);
-    timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';
-  }
-  let status=incoming.status||existing.status||'TRACKING';
-  const arrived=/ARRIVED|DELIVERED|DESTINATION/i.test(status);
-  if(timingStatus==='DELAYED')status=arrived?'ARRIVED LATE':'DELAYED';
-  else if(timingStatus==='EARLY')status=arrived?'ARRIVED EARLY':'EARLY';
-  else if(timingStatus==='ON TIME'&&/^(?:DELAYED|EARLY)$/i.test(status))status='ON TIME';
-  return {...existing,...incoming,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:mailTimeFrom(arrivalDate,arrivalTime)};
+  if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
+  const status=businessStatus(incoming.status||existing.status||'',timingStatus);
+  return {...existing,...incoming,shipmentType:(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT',scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:mailTimeFrom(arrivalDate,arrivalTime)};
 }
-
 async function readJson(res){try{return await res.json()}catch{return null}}
 
 export async function GET(request){
@@ -48,7 +47,6 @@ export async function GET(request){
   const shipmentsRes=await fetch(`${origin}/api/shipments`,{cache:'no-store'});
   const shipments=await readJson(shipmentsRes);
   if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments'},{status:503});
-
   const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
   const results=await Promise.allSettled(rows.map(async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
@@ -56,17 +54,14 @@ export async function GET(request){
     const track=await readJson(trackRes);
     let next;
     if(track?.ok&&track.shipment){
-      next=decorateTiming(existing,{...track.shipment,mawb,clientName:existing.clientName||existing.client||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
+      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
     }else{
-      next={...existing,mawb,lastChecked:new Date().toISOString(),trackingError:track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true};
+      next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true});
     }
     const saveRes=await fetch(`${origin}/api/shipments`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:[next]}),cache:'no-store'});
-    const saved=await readJson(saveRes);
-    if(!saved?.ok)throw new Error(saved?.error||'Save failed');
-    return {mawb,status:next.status||'',backendOcrUsed:Boolean(next.backendOcrUsed)};
+    const saved=await readJson(saveRes);if(!saved?.ok)throw new Error(saved?.error||'Save failed');
+    return {mawb,status:next.status||'',shipmentType:next.shipmentType,backendOcrUsed:Boolean(next.backendOcrUsed)};
   }));
-
-  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
-  const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
+  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value),failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
   return Response.json({ok:true,refreshed:ok.length,failed:failed.length,results:ok,errors:failed});
 }
