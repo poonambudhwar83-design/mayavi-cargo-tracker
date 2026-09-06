@@ -46,6 +46,23 @@ export async function POST(request){
     const action=String(body?.action||'login').toLowerCase();
     if(action==='logout')return json({ok:true,authenticated:false},200,{'set-cookie':clearSessionCookie()});
 
+    if(action==='change_password'){
+      const session=readSession(request);
+      if(!session)return json({ok:false,error:'Please login again before changing your password.'},401);
+      const currentPassword=String(body?.currentPassword||'');
+      const newPassword=String(body?.newPassword||'');
+      if(currentPassword.length<4)return json({ok:false,error:'Enter your current password.'},400);
+      if(newPassword.length<4)return json({ok:false,error:'New password must be at least 4 characters.'},400);
+      if(currentPassword===newPassword)return json({ok:false,error:'New password must be different from the current password.'},400);
+      const sql=db();
+      const [user]=await sql`SELECT username,display_name,role,password_salt,password_hash,is_active FROM mayavi_users WHERE lower(username)=lower(${session.username}) LIMIT 1`;
+      if(!user||!user.is_active)return json({ok:false,error:'This user is not enabled for Mayavi Cargo.'},403);
+      if(!verifyPassword(currentPassword,user.password_salt,user.password_hash))return json({ok:false,error:'Current password is incorrect.'},403);
+      const {salt,hash}=hashPassword(newPassword);
+      await sql`UPDATE mayavi_users SET password_salt=${salt},password_hash=${hash},updated_at=now() WHERE username=${user.username}`;
+      return json({ok:true,message:'Password changed successfully.'});
+    }
+
     const username=normalizeUsername(body?.username||body?.name||'');
     const password=String(body?.password||'');
     if(!username)return json({ok:false,error:'Select your name.'},400);
