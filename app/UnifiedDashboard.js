@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
 
 const FALLBACK_USERS=[
-  {username:'admin',displayName:'Admin',role:'admin',passwordSet:true},
+  {username:'admin',displayName:'Admin',role:'admin',passwordSet:false},
   {username:'naman',displayName:'Naman',role:'employee',passwordSet:false},
   {username:'renu',displayName:'Renu',role:'employee',passwordSet:false},
   {username:'sumit',displayName:'Sumit',role:'employee',passwordSet:false},
@@ -21,6 +21,7 @@ export default function UnifiedDashboard(){
   const [note,setNote]=useState('');
 
   const selected=useMemo(()=>users.find(u=>u.username===username),[users,username]);
+  const firstLogin=Boolean(selected&&!selected.passwordSet);
 
   useEffect(()=>{
     let active=true;
@@ -66,12 +67,12 @@ export default function UnifiedDashboard(){
         <option value="">Select name</option>
         {users.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.role==='admin'?' (Admin)':''}</option>)}
       </select>
-      <label>{selected&&selected.role!=='admin'&&!selected.passwordSet?'SET YOUR PASSWORD':'PASSWORD'}</label>
-      <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()} placeholder={selected&&selected.role!=='admin'&&!selected.passwordSet?'Choose password on first login':'Enter password'} autoComplete="current-password"/>
-      {selected&&selected.role!=='admin'&&!selected.passwordSet&&<div className="firstLogin">First login: this password will become your permanent Mayavi password.</div>}
+      <label>{firstLogin?'SET YOUR PASSWORD':'PASSWORD'}</label>
+      <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()} placeholder={firstLogin?'Choose password on first login':'Enter password'} autoComplete="current-password"/>
+      {firstLogin&&<div className="firstLogin">First login: this password will become your permanent Mayavi password.</div>}
       {note&&<div className="loginNote">{note}</div>}
-      <button disabled={busy} onClick={login}>{busy?'CHECKING…':selected&&selected.role!=='admin'&&!selected.passwordSet?'SET PASSWORD & LOGIN':'LOGIN'}</button>
-      <small>Admin access is password protected. Employee MAWBs will show who entered them.</small>
+      <button disabled={busy} onClick={login}>{busy?'CHECKING…':firstLogin?'SET PASSWORD & LOGIN':'LOGIN'}</button>
+      <small>Admin access is password protected. Employee MAWBs automatically record who entered them.</small>
     </section>
   </main>;
 }
