@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
+import SaudiaAssist from './SaudiaAssist.js';
 
 const FALLBACK_USERS=[
   {username:'admin',displayName:'Admin',role:'admin',passwordSet:false},
@@ -136,6 +137,7 @@ export default function UnifiedDashboard(){
 
   if(session)return <>
     <div style={topAccountBar}>
+      <SaudiaAssist/>
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
     </div>
