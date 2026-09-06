@@ -29,8 +29,9 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb=''){
   const s=String(raw||'').toUpperCase();
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
-  const cathayPast=normalize(mawb).startsWith('160-')&&previousUtcDate(arrivalDate)&&!s.includes('CANCEL')&&!s.includes('DIVERT');
-  if(cathayPast)return'ARRIVED';
+  const prefix=normalize(mawb).slice(0,3);
+  const knownPastArrival=['157','160','910'].includes(prefix)&&previousUtcDate(arrivalDate)&&!s.includes('CANCEL')&&!s.includes('DIVERT');
+  if(knownPastArrival)return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
@@ -54,21 +55,23 @@ export async function GET(request){
   const secret=process.env.CRON_SECRET;
   if(secret&&request.headers.get('authorization')!==`Bearer ${secret}`)return Response.json({ok:false,error:'Unauthorized'},{status:401});
   const origin=new URL(request.url).origin;
-  const shipmentsRes=await fetch(`${origin}/api/shipments`,{cache:'no-store'});
+  const internalKey=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  const internalHeaders=internalKey?{'x-mayavi-internal-key':internalKey}:{};
+  const shipmentsRes=await fetch(`${origin}/api/shipments`,{cache:'no-store',headers:internalHeaders});
   const shipments=await readJson(shipmentsRes);
   if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments'},{status:503});
   const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
   const results=await Promise.allSettled(rows.map(async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
-    const trackRes=await fetch(`${origin}/api/track`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mawb}),cache:'no-store'});
+    const trackRes=await fetch(`${origin}/api/track`,{method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({mawb}),cache:'no-store'});
     const track=await readJson(trackRes);
     let next;
     if(track?.ok&&track.shipment){
-      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
+      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
     }else{
       next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true});
     }
-    const saveRes=await fetch(`${origin}/api/shipments`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:[next]}),cache:'no-store'});
+    const saveRes=await fetch(`${origin}/api/shipments`,{method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({rows:[next]}),cache:'no-store'});
     const saved=await readJson(saveRes);if(!saved?.ok)throw new Error(saved?.error||'Save failed');
     return {mawb,status:next.status||'',shipmentType:next.shipmentType,backendOcrUsed:Boolean(next.backendOcrUsed)};
   }));
