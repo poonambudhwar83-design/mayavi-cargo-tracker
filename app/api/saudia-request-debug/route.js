@@ -1,6 +1,6 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
-import { normalizeMawb } from '../../../../lib/airlines.js';
+import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
