@@ -23,6 +23,11 @@ function db(){
 function json(body,status=200,headers={}){
   return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json',...headers}});
 }
+async function adminSession(request){
+  const session=readSession(request);
+  if(!session||session.role!=='admin')return null;
+  return session;
+}
 
 export async function GET(request){
   const session=readSession(request);
@@ -61,6 +66,26 @@ export async function POST(request){
       const {salt,hash}=hashPassword(newPassword);
       await sql`UPDATE mayavi_users SET password_salt=${salt},password_hash=${hash},updated_at=now() WHERE username=${user.username}`;
       return json({ok:true,message:'Password changed successfully.'});
+    }
+
+    if(action==='admin_set_password'||action==='admin_reset_password'){
+      const admin=await adminSession(request);
+      if(!admin)return json({ok:false,error:'Admin login required.'},403);
+      const targetUsername=normalizeUsername(body?.targetUsername||'');
+      if(!targetUsername)return json({ok:false,error:'Select a user.'},400);
+      const sql=db();
+      const [target]=await sql`SELECT username,display_name,role,is_active FROM mayavi_users WHERE lower(username)=lower(${targetUsername}) LIMIT 1`;
+      if(!target||!target.is_active)return json({ok:false,error:'Selected user is not enabled.'},404);
+      if(target.role==='admin'&&target.username!==admin.username)return json({ok:false,error:'Another admin account cannot be changed here.'},403);
+      if(action==='admin_reset_password'){
+        await sql`UPDATE mayavi_users SET password_salt=NULL,password_hash=NULL,updated_at=now() WHERE username=${target.username}`;
+        return json({ok:true,message:`${target.display_name} can set a fresh password on next login.`,passwordSet:false});
+      }
+      const newPassword=String(body?.newPassword||'');
+      if(newPassword.length<4)return json({ok:false,error:'New password must be at least 4 characters.'},400);
+      const {salt,hash}=hashPassword(newPassword);
+      await sql`UPDATE mayavi_users SET password_salt=${salt},password_hash=${hash},updated_at=now() WHERE username=${target.username}`;
+      return json({ok:true,message:`Password updated for ${target.display_name}.`,passwordSet:true});
     }
 
     const username=normalizeUsername(body?.username||body?.name||'');
