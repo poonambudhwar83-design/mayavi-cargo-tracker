@@ -11,12 +11,15 @@ const FALLBACK_USERS=[
   {username:'parvesh',displayName:'Parvesh',role:'employee',passwordSet:false},
   {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false}
 ];
+const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
 
 const modalBack={position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,.48)',display:'flex',alignItems:'center',justifyContent:'center',padding:18};
 const modalCard={width:'min(460px,100%)',background:'#fff',borderRadius:18,padding:22,boxShadow:'0 18px 55px rgba(0,0,0,.28)'};
 const fullInput={width:'100%',boxSizing:'border-box',marginBottom:12};
 const topAccountBar={display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 14px',background:'#f7f9fc',borderBottom:'1px solid #e1e6ef'};
 const topAccountButton={border:'1px solid #cfd7e5',background:'#fff',borderRadius:9,padding:'8px 12px',fontWeight:800,cursor:'pointer',fontSize:12};
+
+function clearStaleShipmentBackup(){try{localStorage.removeItem(LOCAL_SHIPMENT_KEY)}catch{}}
 
 export default function UnifiedDashboard(){
   const [session,setSession]=useState(null);
@@ -60,7 +63,7 @@ export default function UnifiedDashboard(){
       try{
         const data=await loadUsers();
         if(!active)return;
-        if(data.authenticated&&data.session)setSession(data.session);
+        if(data.authenticated&&data.session){clearStaleShipmentBackup();setSession(data.session);}
         if(!data.ok&&data.error)setNote(data.error);
       }catch{if(active)setNote('Login service is temporarily unavailable.')}finally{if(active)setLoading(false)}
     })();
@@ -75,7 +78,7 @@ export default function UnifiedDashboard(){
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
       const data=await res.json();
       if(!data.ok)throw new Error(data.error||'Login failed.');
-      setSession(data.session);setPassword('');setShowPassword(false);
+      clearStaleShipmentBackup();setSession(data.session);setPassword('');setShowPassword(false);
       await loadUsers().catch(()=>{});
     }catch(e){setNote(e.message||'Login failed.')}finally{setBusy(false)}
   }
