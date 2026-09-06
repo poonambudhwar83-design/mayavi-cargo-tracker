@@ -1,7 +1,7 @@
-import DashboardClient from '../DashboardClient.js';
+import { redirect } from 'next/navigation';
 
-export const metadata={title:'Mayavi Cargo Admin Dashboard'};
+export const metadata={title:'Mayavi Cargo Secure Dashboard'};
 
 export default function AdminPage(){
-  return <DashboardClient isAdmin={true}/>;
+  redirect('/');
 }
