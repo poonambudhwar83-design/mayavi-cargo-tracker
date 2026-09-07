@@ -8,6 +8,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "tesseract.js": "7.0.0",
+    "wasm-feature-detect": "1.9.0",
     "bmp-js": "0.1.0",
     "puppeteer-core": "25.9.0",
     "@sparticuz/chromium": "149.0.0",
