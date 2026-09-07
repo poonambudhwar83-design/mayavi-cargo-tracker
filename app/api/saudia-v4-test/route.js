@@ -1,4 +1,4 @@
-import { trackSaudiaDirect } from '../../../lib/saudiaDirectV4.js';
+import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
