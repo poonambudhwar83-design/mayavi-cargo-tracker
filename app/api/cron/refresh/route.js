@@ -11,11 +11,6 @@ function dateTimeValue(date='',time=''){
   const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),Number(tm[1]),Number(tm[2]),0,0);
   return Number.isFinite(d.getTime())?d:null;
 }
-function previousUtcDate(date=''){
-  const m=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/);if(!m)return false;
-  const now=new Date(),today=`${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())}`;
-  return String(date)<today;
-}
 function formatTime12(value=''){
   const m=String(value||'').match(/^(\d{1,2}):([0-5]\d)$/);if(!m)return value||'';
   const h=Number(m[1]);return `${pad(h%12||12)}:${m[2]} ${h>=12?'PM':'AM'}`;
@@ -25,13 +20,10 @@ function mailTimeFrom(date='',time=''){
   d.setHours(d.getHours()-5);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
 }
-function businessStatus(raw='',timingStatus='',arrivalDate='',mawb=''){
+function businessStatus(raw='',timingStatus=''){
   const s=String(raw||'').toUpperCase();
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
-  const prefix=normalize(mawb).slice(0,3);
-  const knownPastArrival=['157','160','910'].includes(prefix)&&previousUtcDate(arrivalDate)&&!s.includes('CANCEL')&&!s.includes('DIVERT');
-  if(knownPastArrival)return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
@@ -46,7 +38,7 @@ function decorateTiming(existing={},incoming={}){
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
-  const status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalDate,incoming.mawb||existing.mawb||existing.awb||'');
+  const status=businessStatus(incoming.status||existing.status||'',timingStatus);
   return {...existing,...incoming,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
