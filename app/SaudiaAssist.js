@@ -1,9 +1,10 @@
 'use client';
 import { useState } from 'react';
 
-const back={position:'fixed',inset:0,zIndex:120,background:'rgba(0,0,0,.5)',display:'grid',placeItems:'center',padding:18};
-const card={width:'min(540px,100%)',background:'#fff',borderRadius:18,padding:22,boxShadow:'0 18px 55px rgba(0,0,0,.3)'};
+const back={position:'fixed',inset:0,zIndex:120,background:'rgba(0,0,0,.5)',display:'grid',placeItems:'center',padding:18,overflowY:'auto'};
+const card={width:'min(540px,100%)',maxHeight:'90vh',overflowY:'auto',background:'#fff',borderRadius:18,padding:22,boxShadow:'0 18px 55px rgba(0,0,0,.3)',position:'relative'};
 const btn={border:'1px solid #cfd7e5',background:'#fff',borderRadius:9,padding:'8px 12px',fontWeight:800,cursor:'pointer',fontSize:12};
+const closeBtn={position:'sticky',top:0,float:'right',zIndex:2,width:34,height:34,border:'1px solid #d0d5dd',borderRadius:999,background:'#fff',fontWeight:900,cursor:'pointer'};
 const inputStyle={width:'100%',height:44,border:'1px solid #cbd5e1',borderRadius:9,padding:'0 11px',boxSizing:'border-box'};
 function norm(v=''){const d=String(v).replace(/\D/g,'');return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:''}
 function toBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=reject;r.readAsDataURL(file)})}
@@ -32,7 +33,8 @@ export default function SaudiaAssist(){
   }
   return <>
     <button style={btn} onClick={()=>{setOpen(true);setNote('')}}>SAUDIA RESULT</button>
-    {open&&<div style={back}><section style={card}>
+    {open&&<div style={back} onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section style={card}>
+      <button aria-label="Close Saudia window" title="Close" style={closeBtn} disabled={busy} onClick={()=>setOpen(false)}>×</button>
       <div style={{fontSize:12,fontWeight:900,letterSpacing:1.2,color:'#164da3'}}>SAUDIA CARGO • OFFICIAL RESULT</div>
       <h2 style={{margin:'8px 0'}}>Saudia Screenshot Tracking</h2>
       <p style={{marginTop:0,color:'#667085',lineHeight:1.5}}>Use the normal Saudia browser result. Mayavi reads the screenshot taken only after <b>More Information</b> is open and saves the verified fields.</p>
