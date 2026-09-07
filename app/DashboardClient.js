@@ -35,9 +35,6 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb=''){
   const s=String(raw||'').toUpperCase();
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
-  const prefix=normalize(mawb).slice(0,3);
-  const knownPastArrival=['157','160','910'].includes(prefix)&&previousDate(arrivalDate)&&!s.includes('CANCEL')&&!s.includes('DIVERT');
-  if(knownPastArrival)return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
