@@ -20,10 +20,12 @@ function mailTimeFrom(date='',time=''){
   d.setHours(d.getHours()-5);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
 }
-function businessStatus(raw='',timingStatus=''){
+function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(mawb||''));}
+function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   const s=String(raw||'').toUpperCase();
-  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
+  if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
+  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
@@ -31,15 +33,18 @@ function businessStatus(raw='',timingStatus=''){
 }
 function decorateTiming(existing={},incoming={}){
   const shipmentType=(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT';
+  const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
   const scheduledArrivalDate=existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'';
   const scheduledArrivalTime=existing.scheduledArrivalTime||incoming.scheduledArrivalTime||existing.arrivalTime||incoming.arrivalTime||'';
   const arrivalDate=incoming.arrivalDate||existing.arrivalDate||'';
   const arrivalTime=incoming.arrivalTime||existing.arrivalTime||'';
+  const arrivalIsActual=Boolean(incoming.arrivalIsActual===true||existing.arrivalIsActual===true);
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
-  const status=businessStatus(incoming.status||existing.status||'',timingStatus);
-  return {...existing,...incoming,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
+  let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb);
+  if(isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
+  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 
