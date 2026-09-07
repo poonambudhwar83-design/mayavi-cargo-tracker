@@ -115,7 +115,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       try{
         const res=await fetch('/api/shipments',{cache:'no-store'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database unavailable');
         const server=(data.rows||[]).map(dbToRow).filter(x=>x.mawb);const map=new Map(server.map(x=>[digits(x.mawb),x]));const migrate=[];
-        for(const l of local){const key=digits(l.mawb),s=map.get(key);if(!s){map.set(key,l);migrate.push(l);continue}const lt=Date.parse(l.lastChecked||0)||0,st=Date.parse(s._dbUpdatedAt||0)||0;if(lt>st){const newer=decorateTiming(s,{...l,mawb:normalize(l.mawb)});map.set(key,newer);migrate.push(newer)}}
+        for(const l of local){const key=digits(l.mawb);if(!map.has(key)){map.set(key,l);migrate.push(l)}}
         const merged=[...map.values()].sort((a,b)=>(Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0));
         if(!active)return;setRows(merged);setShared(true);setLoaded(true);localStorage.setItem(KEY,JSON.stringify(merged.map(withoutMeta)));if(migrate.length)persistRows(migrate).catch(()=>{});
       }catch(e){if(!active)return;setRows(local);setLoaded(true);setShared(false);setNote(`Shared database unavailable — showing this browser backup only. ${e.message||''}`)}
@@ -157,7 +157,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     try{const s=await track(row.mawb);const next=decorateTiming(row,{...s,shipmentType:row.shipmentType,clientName:row.clientName,enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:row.shipmentType==='IMPORT'?row.mailSent===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});setRows(r=>r.map((x,i)=>i===index?next:x));await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}
     catch(e){const p=e.payload||{};const next=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?next:x));try{await persistRow(next);setShared(true)}catch{setShared(false)}setNote('Auto refresh had an issue; last verified details and status were retained.')}
   }
-  async function refreshAll(){setBusy(true);for(const r of visibleRows)await refreshByMawb(r.mawb);setBusy(false)}
+  async function refreshAll(){setBusy(true);try{await Promise.allSettled(visibleRows.map(r=>refreshByMawb(r.mawb)))}finally{setBusy(false)}}
   async function setMail(value,sent){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row||row.shipmentType==='EXPORT')return;
     const next={...row,mailSent:sent,mailUpdatedAt:new Date().toISOString()};setRows(r=>r.map((x,i)=>i===index?next:x));
