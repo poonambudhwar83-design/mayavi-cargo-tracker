@@ -14,6 +14,21 @@ function db(){
 }
 function digits(v=''){return String(v).replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?d:''}
+function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
+  const awb=normalize(awbValue||data.mawb||data.awb);
+  if(!awb.startsWith('229'))return data;
+  const clean={...data};
+  delete clean.destination;
+  delete clean.arrivalDate;
+  delete clean.arrivalTime;
+  delete clean.scheduledArrivalDate;
+  delete clean.scheduledArrivalTime;
+  delete clean.arrivalIsActual;
+  delete clean.timingDeltaMinutes;
+  delete clean.timingStatus;
+  delete clean.mailTime;
+  return clean;
+}
 function secureEqual(a='',b=''){
   const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));
   return aa.length===bb.length&&aa.equals(bb);
@@ -30,7 +45,8 @@ function access(request){
 function safeData(row={},session=null,markEntry=false){
   const awb=normalize(row.mawb||row.awb);
   if(!awb)throw new Error('Invalid MAWB.');
-  const data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`,shipmentType:row.shipmentType==='EXPORT'?'EXPORT':'IMPORT'};
+  let data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`,shipmentType:row.shipmentType==='EXPORT'?'EXPORT':'IMPORT'};
+  data=sanitizeKuwaitDetailsOnly(data,awb);
   delete data._dbUpdatedAt;
   if(markEntry&&session){
     data.enteredBy=String(session.displayName||session.username||'').trim();
@@ -44,7 +60,8 @@ export async function GET(request){
   try{
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
-    const rows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
+    const rawRows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
+    const rows=rawRows.map(row=>({...row,data:sanitizeKuwaitDetailsOnly(row.data||{},row.awb)}));
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
@@ -77,7 +94,7 @@ export async function POST(request){
           tracking_checked_at=EXCLUDED.tracking_checked_at
         RETURNING awb,data,version,updated_at,tracking_checked_at
       `;
-      saved.push(result);
+      saved.push({...result,data:sanitizeKuwaitDetailsOnly(result.data||{},result.awb)});
     }
     return Response.json({ok:true,shared:true,rows:saved});
   }catch(e){
