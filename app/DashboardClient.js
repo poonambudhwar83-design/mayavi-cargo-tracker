@@ -51,10 +51,12 @@ function tone(status=''){
 function decorateTiming(existing={},incoming={}){
   const merged={...existing,...incoming};
   const shipmentType=merged.shipmentType==='EXPORT'?'EXPORT':'IMPORT';
-  const scheduledArrivalDate=existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'';
-  const scheduledArrivalTime=existing.scheduledArrivalTime||incoming.scheduledArrivalTime||existing.arrivalTime||incoming.arrivalTime||'';
-  const arrivalDate=incoming.arrivalDate||existing.arrivalDate||'';
-  const arrivalTime=incoming.arrivalTime||existing.arrivalTime||'';
+  const rowMawb=normalize(incoming.mawb||existing.mawb||existing.awb||'');
+  const kuwaitDetailsOnly=rowMawb.startsWith('229-');
+  const scheduledArrivalDate=kuwaitDetailsOnly?'':(existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'');
+  const scheduledArrivalTime=kuwaitDetailsOnly?'':(existing.scheduledArrivalTime||incoming.scheduledArrivalTime||existing.arrivalTime||incoming.arrivalTime||'');
+  const arrivalDate=kuwaitDetailsOnly?'':(incoming.arrivalDate||existing.arrivalDate||'');
+  const arrivalTime=kuwaitDetailsOnly?'':(incoming.arrivalTime||existing.arrivalTime||'');
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){
@@ -64,7 +66,7 @@ function decorateTiming(existing={},incoming={}){
   const status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalDate,incoming.mawb||existing.mawb||existing.awb||'');
   const mailTime=shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'';
   const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;
-  return {...merged,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,timingDeltaMinutes,timingStatus,status,mailTime,mailSent};
+  return {...merged,destination:kuwaitDetailsOnly?'':(merged.destination||''),shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:kuwaitDetailsOnly?false:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,mailTime,mailSent};
 }
 function clientStyle(name=''){
   const s=String(name||'').trim();if(!s)return{};
