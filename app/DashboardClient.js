@@ -145,9 +145,22 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     const airline=airlineForMawb(n);if(!airline){setNote(`Prefix ${n.slice(0,3)} is not mapped yet.`);return}
     const existing=rows.find(x=>normalize(x.mawb)===n);if(existing){setNote(`${n} is already fixed in ${existing.shipmentType||'IMPORT'} dashboard. Admin can move it if required.`);return}
     const enteredAt=new Date().toISOString();
-    setBusy(true);setNote(`Tracking ${n} — ${airline.name}…`);
-    try{const s=await track(n);const next=decorateTiming({}, {...s,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:enteredAt});await saveAndShow(next,`${n} added to ${activeTab} by ${employeeName||'user'}`);setMawb('');setClient('')}
-    catch(e){const p=e.payload||{};const next=decorateTiming({}, {mawb:n,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,airlineName:airline.name,status:'BOOKED',officialTracker:airline.url||p.officialTracker,manualHint:p.manualHint||'',trackingError:e.message,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:enteredAt});await saveAndShow(next,`${n} added to ${activeTab} by ${employeeName||'user'}; backend will retry automatically`);setMawb('');setClient('')}finally{setBusy(false)}
+    const base=decorateTiming({}, {mawb:n,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,airlineName:airline.name,status:'BOOKED',officialTracker:airline.url||'',mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:enteredAt});
+    setRows(r=>[base,...r.filter(x=>normalize(x.mawb)!==n)]);
+    setMawb('');setClient('');setBusy(true);setNote(`${n} added. Fetching live ${airline.name} details…`);
+    try{await persistRow(base,true);setShared(true)}catch(e){setShared(false);setNote(`${n} added locally; shared save failed: ${e.message||e}`)}
+    try{
+      const s=await track(n);
+      const next=decorateTiming(base,{...s,shipmentType:activeTab,clientName,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,mailSent:activeTab==='IMPORT'?false:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});
+      setRows(r=>r.map(x=>normalize(x.mawb)===n?next:x));
+      try{await persistRow(next);setShared(true);setNote(`${n} live details filled and saved.`)}catch(e){setShared(false);setNote(`${n} live details filled locally; shared save failed: ${e.message||e}`)}
+    }catch(e){
+      const p=e.payload||{};
+      const next=decorateTiming(base,{trackingError:e.message,manualHint:p.manualHint||'',officialTracker:airline.url||p.officialTracker||base.officialTracker,lastChecked:new Date().toISOString()});
+      setRows(r=>r.map(x=>normalize(x.mawb)===n?next:x));
+      try{await persistRow(next)}catch{}
+      setNote(`${n} saved. Live tracking will retry; use REFRESH if details stay blank.`)
+    }finally{setBusy(false)}
   }
   async function refreshByMawb(value){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;setNote(`Refreshing ${row.mawb}…`);
