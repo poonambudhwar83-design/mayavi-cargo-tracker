@@ -7,6 +7,7 @@ import { trackEmirates } from '../../../lib/emirates.js';
 import { trackAirIndia } from '../../../lib/airIndia.js';
 import { trackAirArabia } from '../../../lib/airArabia.js';
 import { trackOman } from '../../../lib/oman.js';
+import { trackKuwait } from '../../../lib/kuwait.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
@@ -15,7 +16,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.11';
+const VERSION='3.9.12';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 
@@ -98,6 +99,7 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('157-')) return trackQatar(mawb);
   if(mawb.startsWith('160-')) return trackCathay(mawb);
   if(mawb.startsWith('176-')) return trackEmirates(mawb);
+  if(mawb.startsWith('229-')) return trackKuwait(mawb);
   if(mawb.startsWith('235-')) return trackTurkish(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
   if(mawb.startsWith('910-')) return trackOman(mawb);
@@ -108,6 +110,7 @@ async function browserOfficial(mawb){
   if(mawb.startsWith('160-')) return {ok:false,skipped:true,reason:'CATHAY USES FAST DEDICATED TERMINAL ADAPTER'};
   if(mawb.startsWith('176-')) return {ok:false,skipped:true,reason:'EMIRATES USES DEDICATED ESKYCARGO LIVE PAGE ADAPTER'};
   if(mawb.startsWith('098-')) return {ok:false,skipped:true,reason:'AIR INDIA USES DEDICATED CARGO PORTAL ADAPTER'};
+  if(mawb.startsWith('229-')) return {ok:false,skipped:true,reason:'KUWAIT AIRWAYS USES DEDICATED DETAILS TABLE ADAPTER'};
   if(mawb.startsWith('235-')) return {ok:false,skipped:true,reason:'TURKISH CARGO USES DEDICATED OFFICIAL TRACKER'};
   if(mawb.startsWith('514-')) return {ok:false,skipped:true,reason:'AIR ARABIA USES DEDICATED DETAILS-SCREEN ADAPTER'};
   if(mawb.startsWith('910-')) return {ok:false,skipped:true,reason:'OMAN AIR CARGO USES DEDICATED OFFICIAL TRACKER'};
@@ -122,11 +125,12 @@ async function handle(mawb){
   const qatarFastPath=mawb.startsWith('157-');
   const cathayFastPath=mawb.startsWith('160-');
   const saudiaFastPath=mawb.startsWith('065-');
+  const kuwaitFastPath=mawb.startsWith('229-');
   const turkishFastPath=mawb.startsWith('235-');
   const omanFastPath=mawb.startsWith('910-');
-  const skipGenericApi=airArabiaOfficialOnly||qatarFastPath||cathayFastPath||saudiaFastPath||turkishFastPath||omanFastPath;
+  const skipGenericApi=airArabiaOfficialOnly||qatarFastPath||cathayFastPath||saudiaFastPath||kuwaitFastPath||turkishFastPath||omanFastPath;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
-    skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
+    skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
     dedicatedOfficial(mawb),browserOfficial(mawb)
   ]);
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
@@ -136,7 +140,7 @@ async function handle(mawb){
   const cathayResult=null;
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
-  const skipGenericOcr=mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('235-')||mawb.startsWith('514-')||mawb.startsWith('910-');
+  const skipGenericOcr=mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('229-')||mawb.startsWith('235-')||mawb.startsWith('514-')||mawb.startsWith('910-');
   const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||!browserShipment.bookingDate||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr)ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
 
@@ -173,7 +177,7 @@ async function handle(mawb){
   const hasUseful=concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct)));
   if(hasUseful){
     console.log('mawb_tracking_result',mawb,'OK','SCREENSHOT_VERIFIED',shipment.status,'shot',screenshotCaptured,'ocr',screenshotOcrUsed,'bookingDate',shipment.bookingDate||'','arrival',shipment.arrivalDate||'',shipment.arrivalTime||'');
-    const provider=mawb.startsWith('065-')?'Saudia Cargo deep direct track-shipment':mawb.startsWith('098-')?'Air India Cargo Portal':mawb.startsWith('157-')?'Qatar Cargo dedicated official browser':mawb.startsWith('160-')?'Cathay Cargo Terminal official tracking':mawb.startsWith('176-')?'Emirates eSkyCargo live page':mawb.startsWith('235-')?'Turkish Cargo official tracking':mawb.startsWith('514-')?'Air Arabia Cargo details-screen screenshot':mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':'Official page + screenshot verified';
+    const provider=mawb.startsWith('065-')?'Saudia Cargo deep direct track-shipment':mawb.startsWith('098-')?'Air India Cargo Portal':mawb.startsWith('157-')?'Qatar Cargo dedicated official browser':mawb.startsWith('160-')?'Cathay Cargo Terminal official tracking':mawb.startsWith('176-')?'Emirates eSkyCargo live page':mawb.startsWith('229-')?'Kuwait Airways Cargo official tracking':mawb.startsWith('235-')?'Turkish Cargo official tracking':mawb.startsWith('514-')?'Air Arabia Cargo details-screen screenshot':mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':'Official page + screenshot verified';
     return Response.json({ok:true,version:VERSION,provider,shipment,screenshotCaptured,screenshotVerified,screenshotOcrUsed,verification:{officialPage:browserResult?.officialTracker||direct?.officialTracker||airline.url||'',browserStage:browserResult?.debug?.stage||directResult?.debug?.stage||'',browserClicked:browserResult?.debug?.attempts?.[0]?.clicked||browserResult?.debug?.setup?.mode||browserResult?.debug?.clicked||directResult?.debug?.nextClicked||'',ocrStatusEvidence:ocr?.statusEvidence||'',ocrSnippet:ocr?.screenshotSnippet||'',bookingDateSource:shipment.bookingDateSource||'',emiratesShipmentId:mawb.startsWith('176-')?(directResult?.debug?.shipmentId||''):'',cathayFlightScreenshot:false,airArabiaNextClicked:mawb.startsWith('514-')?(directResult?.debug?.nextClicked||''):''},debug:{api:apiResult?.debug||null,direct:directResult?.debug||null,browser:browserResult?.debug||null,ocr:ocrResult?.debug||null}});
   }
 
@@ -191,7 +195,7 @@ export async function POST(request){
 
 export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
-  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['020 Lufthansa','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','235 Turkish Cargo official tracking','514 Air Arabia Cargo details-screen screenshot','910 Oman Air Cargo dedicated official tracker'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
+  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['020 Lufthansa','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','229 Kuwait Airways Cargo details table','235 Turkish Cargo official tracking','514 Air Arabia Cargo details-screen screenshot','910 Oman Air Cargo dedicated official tracker'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   return handle(mawb);
 }
