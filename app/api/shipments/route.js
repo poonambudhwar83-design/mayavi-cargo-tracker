@@ -3,6 +3,7 @@ import { readSession } from '../../../lib/mayaviAuth.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
+export const maxDuration=300;
 
 function connectionString(){
   return process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
@@ -39,12 +40,59 @@ function safeData(row={},session=null,markEntry=false){
   }
   return {awb,data};
 }
+function isBlankEmiratesRow(row={}){
+  const awb=normalize(row.awb||row?.data?.mawb||'');
+  if(!awb.startsWith('176'))return false;
+  const d=row.data||{};
+  return !d.origin&&!d.destination&&!d.flightNo&&!d.pieces&&!d.bags&&!d.weight&&!d.arrivalDate&&!d.arrivalTime;
+}
 
 export async function GET(request){
   try{
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
     const rows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
+
+    // Repair previously-saved blank Emirates rows automatically from the live Emirates tracker.
+    // This uses the same backend algorithm as the REFRESH button; it does not use user screenshots.
+    const origin=new URL(request.url).origin;
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i];
+      if(!isBlankEmiratesRow(row))continue;
+      const awb=normalize(row.awb||row?.data?.mawb||'');
+      const mawb=`${awb.slice(0,3)}-${awb.slice(3)}`;
+      try{
+        const trackRes=await fetch(`${origin}/api/track?mawb=${encodeURIComponent(mawb)}`,{cache:'no-store'});
+        const track=await trackRes.json().catch(()=>null);
+        if(!track?.ok||!track?.shipment)continue;
+        const old=row.data||{};
+        const merged={
+          ...old,
+          ...track.shipment,
+          mawb,
+          shipmentType:old.shipmentType==='EXPORT'?'EXPORT':'IMPORT',
+          clientName:old.clientName??old.client??'',
+          enteredBy:old.enteredBy||'',
+          enteredByUsername:old.enteredByUsername||'',
+          enteredAt:old.enteredAt||'',
+          mailSent:old.shipmentType==='EXPORT'?undefined:old.mailSent===true,
+          lastChecked:new Date().toISOString(),
+          trackingError:'',
+          manualHint:''
+        };
+        const [updated]=await sql`
+          UPDATE mayavi_shipments
+          SET data=${JSON.stringify(merged)}::jsonb,
+              version=version+1,
+              updated_at=now(),
+              tracking_checked_at=now()
+          WHERE awb=${awb}
+          RETURNING awb,data,version,updated_at,tracking_checked_at
+        `;
+        if(updated)rows[i]=updated;
+      }catch{}
+    }
+
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
