@@ -1,0 +1,51 @@
+name: Wire Virgin Atlantic Once
+
+on:
+  push:
+    branches: [v2-clean-scratch]
+    paths:
+      - '.github/workflows/wire-virgin-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v2-clean-scratch
+          fetch-depth: 0
+
+      - name: Wire Virgin Atlantic dedicated adapter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/api/track/route.js')
+          s=p.read_text()
+          def add_after(anchor, addition):
+              global s
+              if addition.strip() in s:
+                  return
+              if anchor not in s:
+                  raise SystemExit(f'anchor not found: {anchor}')
+              s=s.replace(anchor, anchor+addition, 1)
+
+          add_after("import { trackKuwait } from '../../../lib/kuwait.js';\n", "import { trackVirgin } from '../../../lib/virgin.js';\n")
+          add_after("  if(mawb.startsWith('910-')) return trackOman(mawb);\n", "  if(mawb.startsWith('932-')) return trackVirgin(mawb);\n")
+          add_after("  if(mawb.startsWith('910-')) return {ok:false,skipped:true,reason:'OMAN AIR CARGO USES DEDICATED OFFICIAL TRACKER'};\n", "  if(mawb.startsWith('932-')) return {ok:false,skipped:true,reason:'VIRGIN ATLANTIC USES DEDICATED TRACK CARGO ADAPTER'};\n")
+          add_after("  const omanFastPath=mawb.startsWith('910-');\n", "  const virginFastPath=mawb.startsWith('932-');\n")
+          s=s.replace("const skipGenericApi=airArabiaOfficialOnly||qatarFastPath||cathayFastPath||saudiaFastPath||kuwaitFastPath||turkishFastPath||omanFastPath;", "const skipGenericApi=airArabiaOfficialOnly||qatarFastPath||cathayFastPath||saudiaFastPath||kuwaitFastPath||turkishFastPath||omanFastPath||virginFastPath;")
+          s=s.replace("cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'", "cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'")
+          s=s.replace("||mawb.startsWith('910-');", "||mawb.startsWith('910-')||mawb.startsWith('932-');", 1)
+          s=s.replace("mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':'Official page + screenshot verified'", "mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':mawb.startsWith('932-')?'Virgin Atlantic Cargo Track Cargo':'Official page + screenshot verified'")
+          s=s.replace("'910 Oman Air Cargo dedicated official tracker']", "'910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo']")
+          p.write_text(s)
+          Path('.github/workflows/wire-virgin-once.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Activate Virgin Atlantic Track Cargo adapter"
+          git push origin HEAD:v2-clean-scratch
