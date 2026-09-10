@@ -14,6 +14,24 @@ function db(){
 }
 function digits(v=''){return String(v).replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?d:''}
+function fractionIsPartial(v=''){
+  const m=String(v||'').trim().match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+  if(!m)return false;
+  const arrived=Number(m[1]),total=Number(m[2]);
+  return Number.isFinite(arrived)&&Number.isFinite(total)&&total>0&&arrived>=0&&arrived<total;
+}
+function saudiaIsPartLoad(data={},awbValue=''){
+  const awb=normalize(awbValue||data.mawb||data.awb);
+  if(!awb.startsWith('065'))return false;
+  if(data.isPartLoad===true)return true;
+  const arrivedPieces=Number(data.arrivedPieces),totalPieces=Number(data.totalPieces);
+  if(Number.isFinite(arrivedPieces)&&Number.isFinite(totalPieces)&&totalPieces>0&&arrivedPieces>0&&arrivedPieces<totalPieces)return true;
+  return fractionIsPartial(data.pieces)||fractionIsPartial(data.bags)||fractionIsPartial(data.weight);
+}
+function enforceSaudiaPartLoad(data={},awbValue=''){
+  if(!saudiaIsPartLoad(data,awbValue))return data;
+  return {...data,isPartLoad:true,status:'PART ARRIVED'};
+}
 function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
   const awb=normalize(awbValue||data.mawb||data.awb);
   if(!awb.startsWith('229'))return data;
@@ -28,6 +46,9 @@ function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
   delete clean.timingStatus;
   delete clean.mailTime;
   return clean;
+}
+function sanitizeShipment(data={},awbValue=''){
+  return enforceSaudiaPartLoad(sanitizeKuwaitDetailsOnly(data,awbValue),awbValue);
 }
 function secureEqual(a='',b=''){
   const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));
@@ -46,7 +67,7 @@ function safeData(row={},session=null,markEntry=false){
   const awb=normalize(row.mawb||row.awb);
   if(!awb)throw new Error('Invalid MAWB.');
   let data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`,shipmentType:row.shipmentType==='EXPORT'?'EXPORT':'IMPORT'};
-  data=sanitizeKuwaitDetailsOnly(data,awb);
+  data=sanitizeShipment(data,awb);
   delete data._dbUpdatedAt;
   if(markEntry&&session){
     data.enteredBy=String(session.displayName||session.username||'').trim();
@@ -61,7 +82,7 @@ export async function GET(request){
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
     const rawRows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
-    const rows=rawRows.map(row=>({...row,data:sanitizeKuwaitDetailsOnly(row.data||{},row.awb)}));
+    const rows=rawRows.map(row=>({...row,data:sanitizeShipment(row.data||{},row.awb)}));
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
@@ -94,7 +115,7 @@ export async function POST(request){
           tracking_checked_at=EXCLUDED.tracking_checked_at
         RETURNING awb,data,version,updated_at,tracking_checked_at
       `;
-      saved.push({...result,data:sanitizeKuwaitDetailsOnly(result.data||{},result.awb)});
+      saved.push({...result,data:sanitizeShipment(result.data||{},result.awb)});
     }
     return Response.json({ok:true,shared:true,rows:saved});
   }catch(e){
