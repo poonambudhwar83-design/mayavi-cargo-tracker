@@ -14,6 +14,20 @@ function db(){
 }
 function digits(v=''){return String(v).replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?d:''}
+function normalizeSaudiaFlightNo(value=''){
+  const raw=String(value||'').trim().toUpperCase().replace(/\s+/g,'');
+  if(!raw)return'';
+  const m=raw.match(/^(?:SV|SVA)?0*(\d{1,4}[A-Z]?)$/);
+  if(m)return`SV${m[1]}`;
+  return /^SV\d{1,4}[A-Z]?$/.test(raw)?raw:'';
+}
+function enforceSaudiaFlightNo(data={},awbValue=''){
+  const awb=normalize(awbValue||data.mawb||data.awb);
+  if(!awb.startsWith('065'))return data;
+  const flightNo=normalizeSaudiaFlightNo(data.flightNo||data.flight||'');
+  if(!flightNo)return data;
+  return {...data,flightNo,flight:flightNo};
+}
 function fractionIsPartial(v=''){
   const m=String(v||'').trim().match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
   if(!m)return false;
@@ -48,7 +62,9 @@ function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
   return clean;
 }
 function sanitizeShipment(data={},awbValue=''){
-  return enforceSaudiaPartLoad(sanitizeKuwaitDetailsOnly(data,awbValue),awbValue);
+  let clean=sanitizeKuwaitDetailsOnly(data,awbValue);
+  clean=enforceSaudiaFlightNo(clean,awbValue);
+  return enforceSaudiaPartLoad(clean,awbValue);
 }
 function secureEqual(a='',b=''){
   const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));
