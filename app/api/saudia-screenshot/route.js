@@ -12,7 +12,7 @@ function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:''}
 function merge(base={},next={}){
   const out={...base};
-  for(const k of ['origin','destination','flightNo','pieces','bags','weight','bookingDate','arrivalDate','arrivalTime','officialTracker'])if(next?.[k])out[k]=next[k];
+  for(const k of ['origin','destination','flightNo','flightDate','pieces','bags','weight','bookingDate','arrivalDate','arrivalTime','officialTracker'])if(next?.[k])out[k]=next[k];
   if(next?.arrivalIsActual!==undefined)out.arrivalIsActual=Boolean(next.arrivalIsActual);
   // For Saudia the screenshot's top/right State field is authoritative. Timeline must not override it.
   if(next?.status&&next.status!=='TRACKING')out.status=next.status;
