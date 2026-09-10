@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -15,10 +15,116 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: v2-clean-scratch
+          fetch-depth: 0
+
+      - name: Apply Turkish prefix correction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/turkish.js')
+          s = p.read_text()
+
+          helper = r'''async function clearAndTypeInput(page, handle, value) {
+            await handle.focus();
+            await handle.evaluate(el => {
+              const proto = Object.getPrototypeOf(el);
+              const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+              if (setter) setter.call(el, ''); else el.value = '';
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+            });
+            await sleep(100);
+            await handle.type(String(value), {delay:35});
+            await sleep(150);
+            return await handle.evaluate(el => String(el.value || ''));
+          }
+
+          '''
+          if 'async function clearAndTypeInput(page, handle, value)' not in s:
+              s = s.replace('async function fillAddSearch(page, mawb) {', helper + 'async function fillAddSearch(page, mawb) {', 1)
+
+          a = s.index('async function fillAddSearch(page, mawb) {')
+          b = s.index('async function pageText(page) {', a)
+          flow = r'''async function fillAddSearch(page, mawb) {
+            const digits = digitsOnly(mawb);
+            const prefix = digits.slice(0,3);
+            const serial = digits.slice(3);
+
+            for (const frame of page.frames()) {
+              let inputs = [];
+              try { inputs = await frame.$$('input:not([type="hidden"]),textarea'); } catch { continue; }
+              const fields = [];
+              for (const input of inputs) {
+                try {
+                  const meta = await input.evaluate(el => {
+                    const r = el.getBoundingClientRect();
+                    return {
+                      visible:r.width > 3 && r.height > 3 && !el.disabled && !el.readOnly,
+                      max:Number(el.maxLength || -1),
+                      label:`${el.placeholder || ''} ${el.name || ''} ${el.id || ''} ${el.getAttribute('aria-label') || ''} ${el.labels?.[0]?.innerText || ''}`
+                    };
+                  });
+                  if (meta.visible) fields.push({input,meta});
+                } catch {}
+              }
+
+              const prefixField = fields.find(x => x.meta.max === 3 || /prefix|awb code|airline code/i.test(x.meta.label));
+              let numberField = fields.find(x => x !== prefixField && (x.meta.max === 8 || /awb|air waybill|waybill/i.test(x.meta.label)));
+              if (!numberField) numberField = fields.find(x => x !== prefixField && [11,12,14].includes(x.meta.max));
+              if (!numberField) continue;
+
+              let actualPrefix = prefix;
+              if (prefixField) {
+                actualPrefix = await clearAndTypeInput(page, prefixField.input, prefix);
+                if (actualPrefix !== prefix) return {ok:false,stage:'PREFIX_INPUT_MISMATCH',expectedPrefix:prefix,actualPrefix};
+              }
+
+              const wantedNumber = numberField.meta.max === 8 ? serial : (prefixField ? serial : digits);
+              const actualNumber = await clearAndTypeInput(page, numberField.input, wantedNumber);
+              if (actualNumber !== wantedNumber) return {ok:false,stage:'AWB_INPUT_MISMATCH',expectedNumber:wantedNumber,actualNumber,actualPrefix};
+
+              const add = await clickAddOption(page, serial, 9000);
+              if (!add.ok) return {ok:false,stage:'ADD_OPTION_NOT_FOUND',expected:`Add: ${serial}`,actualPrefix,actualNumber,postAddState:add.state || []};
+
+              const postAddState = add.state || await inspectAddState(page, serial);
+              await sleep(700);
+              const search = await clickSearch(page, 7000);
+              if (!search.ok) return {ok:false,stage:'SEARCH_BUTTON_NOT_FOUND',actualPrefix,actualNumber,addMode:add.clickMode,addText:add.text,postAddState};
+
+              return {
+                ok:true,
+                actualPrefix,
+                actualNumber,
+                addMode:add.clickMode || 'CLICK_ADD_OPTION',
+                addText:add.text,
+                postAddState,
+                searchMode:'CLICK_SEARCH',
+                tkSmartClicked:false
+              };
+            }
+            return {ok:false,stage:'FORM_NOT_FOUND'};
+          }
+
+          '''
+          s = s[:a] + flow + s[b:]
+          p.write_text(s)
+          print('Turkish flow now verifies exact prefix 235 before Add')
+          PY
+
+      - name: Commit Turkish prefix correction if changed
+        run: |
+          if git diff --quiet -- lib/turkish.js; then
+            echo "No Turkish code changes"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add lib/turkish.js
+            git commit -m "Verify Turkish prefix 235 before Add"
+            git push origin HEAD:v2-clean-scratch
+          fi
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
       - run: npm install
       - run: npm run build
