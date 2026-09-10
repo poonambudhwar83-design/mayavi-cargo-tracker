@@ -23,6 +23,7 @@ function mailTimeFrom(date='',time=''){
 function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(mawb||''));}
 function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   const s=String(raw||'').toUpperCase();
+  if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
