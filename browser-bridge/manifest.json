@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Mayavi Saudia Browser Bridge",
+  "version": "1.0.0",
+  "description": "Uses the user's normal Chrome session to read Saudia Cargo tracking results for Mayavi Cargo Tracker.",
+  "permissions": ["tabs", "storage"],
+  "host_permissions": [
+    "https://saudiacargo.com/*",
+    "https://*.saudiacargo.com/*",
+    "https://mayavi-cargo-shared-tracker.vercel.app/*",
+    "https://mayavicargo.com/*",
+    "https://www.mayavicargo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mayavi-cargo-shared-tracker.vercel.app/*",
+        "https://mayavicargo.com/*",
+        "https://www.mayavicargo.com/*"
+      ],
+      "js": ["mayavi-content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://saudiacargo.com/*",
+        "https://*.saudiacargo.com/*"
+      ],
+      "js": ["saudia-content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-bridge.js"],
+      "matches": [
+        "https://mayavi-cargo-shared-tracker.vercel.app/*",
+        "https://mayavicargo.com/*",
+        "https://www.mayavicargo.com/*"
+      ]
+    }
+  ]
+}
