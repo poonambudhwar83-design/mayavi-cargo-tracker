@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -16,6 +16,51 @@ jobs:
         with:
           ref: v2-clean-scratch
           fetch-depth: 0
+
+      - name: Apply Turkish post-cookie Search retry
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/turkish.js')
+          s = p.read_text()
+          old = """    await sleep(700);
+              debug.cookieAfterSearch = await dismissTurkishCookies(page);
+
+              const cargoInfoFound = await waitForCargoTrackingInformation(page, 20000);"""
+          new = """    await sleep(700);
+              debug.cookieAfterSearch = await dismissTurkishCookies(page);
+
+              // Turkish can render its cookie banner only after the first Search click.
+              // If Mayavi had to accept it, press Search once more before reading Cargo Tracking Information.
+              if (debug.cookieAfterSearch?.clicked) {
+                await sleep(400);
+                const searchRetry = await clickSearch(page, 7000);
+                debug.searchRetryAfterCookie = searchRetry;
+                if (searchRetry?.ok) await sleep(1200);
+              }
+
+              const cargoInfoFound = await waitForCargoTrackingInformation(page, 20000);"""
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+              print('Applied Turkish Search retry')
+          elif 'searchRetryAfterCookie' in s:
+              print('Turkish Search retry already applied')
+          else:
+              raise SystemExit('Expected Turkish Search block not found')
+          PY
+
+      - name: Commit Turkish retry if changed
+        run: |
+          if git diff --quiet -- lib/turkish.js; then
+            echo "No Turkish changes"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add lib/turkish.js
+            git commit -m "Retry Turkish Search after cookie acceptance"
+            git push origin HEAD:v2-clean-scratch
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
