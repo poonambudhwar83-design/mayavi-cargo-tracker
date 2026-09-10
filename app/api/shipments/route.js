@@ -124,7 +124,12 @@ export async function POST(request){
           data=EXCLUDED.data || jsonb_build_object(
             'enteredBy',COALESCE(mayavi_shipments.data->>'enteredBy',EXCLUDED.data->>'enteredBy'),
             'enteredByUsername',COALESCE(mayavi_shipments.data->>'enteredByUsername',EXCLUDED.data->>'enteredByUsername'),
-            'enteredAt',COALESCE(mayavi_shipments.data->>'enteredAt',EXCLUDED.data->>'enteredAt')
+            'enteredAt',COALESCE(mayavi_shipments.data->>'enteredAt',EXCLUDED.data->>'enteredAt'),
+            'bookingDate',COALESCE(NULLIF(EXCLUDED.data->>'bookingDate',''),mayavi_shipments.data->>'bookingDate',''),
+            'bookingTime',COALESCE(NULLIF(EXCLUDED.data->>'bookingTime',''),mayavi_shipments.data->>'bookingTime',''),
+            'bookingDateSource',COALESCE(NULLIF(EXCLUDED.data->>'bookingDateSource',''),mayavi_shipments.data->>'bookingDateSource',''),
+            'flightNo',COALESCE(NULLIF(EXCLUDED.data->>'flightNo',''),mayavi_shipments.data->>'flightNo',''),
+            'flightDate',COALESCE(NULLIF(EXCLUDED.data->>'flightDate',''),mayavi_shipments.data->>'flightDate','')
           ),
           version=mayavi_shipments.version+1,
           updated_at=now(),
