@@ -24,10 +24,9 @@ jobs:
           p = Path('lib/turkish.js')
           s = p.read_text()
 
-          start = s.index('async function clickAddOption(page, serial, timeout=9000) {')
-          end = s.index('async function clickSearch(page, timeout=7000) {', start)
-
-          replacement = r'''async function inspectAddState(page, serial) {
+          add_start = s.index('async function clickAddOption(page, serial, timeout=9000) {')
+          add_end = s.index('async function clickSearch(page, timeout=7000) {', add_start)
+          add_block = r'''async function inspectAddState(page, serial) {
             const out = [];
             for (const frame of page.frames()) {
               try {
@@ -75,8 +74,7 @@ jobs:
                     const matches = [...document.querySelectorAll(selectors)].filter(el => {
                       if (!visible(el)) return false;
                       const text = norm(el.innerText || el.textContent || '');
-                      const digits = text.replace(/\D/g,'');
-                      return /^Add\s*:/i.test(text) && digits.includes(awb) && text.length <= 80;
+                      return /^Add\s*:/i.test(text) && text.replace(/\D/g,'').includes(awb) && text.length <= 80;
                     });
                     if (!matches.length) return null;
                     matches.sort((a,b) => {
@@ -85,7 +83,7 @@ jobs:
                       if (aOpt !== bOpt) return aOpt - bOpt;
                       const at = norm(a.innerText || a.textContent || '');
                       const bt = norm(b.innerText || b.textContent || '');
-                      return at.length - bt.length || (a.getBoundingClientRect().width*a.getBoundingClientRect().height) - (b.getBoundingClientRect().width*b.getBoundingClientRect().height);
+                      return at.length - bt.length;
                     });
                     const leaf = matches[0];
                     const option = leaf.closest('mat-option,.mat-mdc-option,.mat-option,[role="option"],li,[class*="option"],[class*="autocomplete"]') || leaf;
@@ -93,7 +91,6 @@ jobs:
                     option.scrollIntoView({block:'center',inline:'center',behavior:'auto'});
                     return norm(option.innerText || option.textContent || leaf.innerText || leaf.textContent || '');
                   }, serial);
-
                   if (!marked) continue;
                   const handle = await frame.$('[data-mayavi-turkish-add="1"]');
                   if (!handle) continue;
@@ -103,44 +100,80 @@ jobs:
                   await sleep(650);
                   const state = await inspectAddState(page, serial);
                   try { await handle.evaluate(el => el.removeAttribute('data-mayavi-turkish-add')); } catch {}
-                  return { ok:true, text:marked, state, clickMode:'REAL_OPTION_MOUSE_CLICK' };
+                  return {ok:true,text:marked,state,clickMode:'REAL_OPTION_MOUSE_CLICK'};
                 } catch {}
               }
               await sleep(350);
             }
-            return { ok:false, state:await inspectAddState(page, serial) };
+            return {ok:false,state:await inspectAddState(page, serial)};
           }
 
           '''
+          s = s[:add_start] + add_block + s[add_end:]
 
-          s = s[:start] + replacement + s[end:]
+          flow_start = s.index('async function fillAddSearch(page, mawb) {')
+          flow_end = s.index('async function pageText(page) {', flow_start)
+          flow_block = r'''async function fillAddSearch(page, mawb) {
+            const digits = digitsOnly(mawb);
+            const prefix = digits.slice(0,3);
+            const serial = digits.slice(3);
 
-          old = '''    const add = await clickAddOption(page, serial, 9000);
-              if (!add.ok) return { ok:false, stage:'ADD_OPTION_NOT_FOUND', expected:`Add: ${serial}` };
+            for (const frame of page.frames()) {
+              let inputs = [];
+              try { inputs = await frame.$$('input:not([type="hidden"]),textarea'); } catch { continue; }
+              const fields = [];
+              for (const input of inputs) {
+                try {
+                  const meta = await input.evaluate(el => {
+                    const r = el.getBoundingClientRect();
+                    return {
+                      visible:r.width > 3 && r.height > 3 && !el.disabled && !el.readOnly,
+                      max:Number(el.maxLength || -1),
+                      label:`${el.placeholder || ''} ${el.name || ''} ${el.id || ''} ${el.getAttribute('aria-label') || ''} ${el.labels?.[0]?.innerText || ''}`
+                    };
+                  });
+                  if (meta.visible) fields.push({input,meta});
+                } catch {}
+              }
 
-              await sleep(700);'''
-          new = '''    const add = await clickAddOption(page, serial, 9000);
-              if (!add.ok) return { ok:false, stage:'ADD_OPTION_NOT_FOUND', expected:`Add: ${serial}`, postAddState:add.state || [] };
+              const prefixField = fields.find(x => x.meta.max === 3 || /prefix|awb code|airline code/i.test(x.meta.label));
+              let numberField = fields.find(x => x !== prefixField && (x.meta.max === 8 || /awb|air waybill|waybill/i.test(x.meta.label)));
+              if (!numberField) numberField = fields.find(x => x !== prefixField && [11,12,14].includes(x.meta.max));
+              if (!numberField) continue;
+
+              if (prefixField) {
+                await prefixField.input.click({clickCount:3});
+                await page.keyboard.press('Backspace');
+                await prefixField.input.type(prefix,{delay:35});
+              }
+              await numberField.input.click({clickCount:3});
+              await page.keyboard.press('Backspace');
+              await numberField.input.type(numberField.meta.max === 8 ? serial : (prefixField ? serial : digits),{delay:35});
+
+              const add = await clickAddOption(page, serial, 9000);
+              if (!add.ok) return {ok:false,stage:'ADD_OPTION_NOT_FOUND',expected:`Add: ${serial}`,postAddState:add.state || []};
 
               const postAddState = add.state || await inspectAddState(page, serial);
-              await sleep(700);'''
-          if old not in s:
-              raise SystemExit('fillAddSearch Add block not found')
-          s = s.replace(old, new, 1)
+              await sleep(700);
+              const search = await clickSearch(page, 7000);
+              if (!search.ok) return {ok:false,stage:'SEARCH_BUTTON_NOT_FOUND',addMode:add.clickMode,addText:add.text,postAddState};
 
-          old2 = '''      addMode:'CLICK_ADD_OPTION',
-                  addText:add.text,
-                  searchMode:'CLICK_SEARCH','''
-          new2 = '''      addMode:add.clickMode || 'CLICK_ADD_OPTION',
-                  addText:add.text,
-                  postAddState,
-                  searchMode:'CLICK_SEARCH','''
-          if old2 not in s:
-              raise SystemExit('fillAddSearch return block not found')
-          s = s.replace(old2, new2, 1)
+              return {
+                ok:true,
+                addMode:add.clickMode || 'CLICK_ADD_OPTION',
+                addText:add.text,
+                postAddState,
+                searchMode:'CLICK_SEARCH',
+                tkSmartClicked:false
+              };
+            }
+            return {ok:false,stage:'FORM_NOT_FOUND'};
+          }
 
+          '''
+          s = s[:flow_start] + flow_block + s[flow_end:]
           p.write_text(s)
-          print('Applied real Turkish Add option mouse click + post-Add verification')
+          print('Applied Turkish real Add click and post-Add state capture')
           PY
 
       - name: Commit Turkish Add fix if changed
