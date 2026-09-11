@@ -114,6 +114,7 @@ function dbToRow(record={}){
 }
 function withoutMeta(row={}){const {_dbUpdatedAt,...clean}=row;return clean}
 function isCustomsArchived(row={}){return row.shipmentType!=='EXPORT'&&row.mailSent===true&&row.customsCleared===true}
+function isPartArrived(row={}){return String(row.status||'').toUpperCase().includes('PART ARRIVED')}
 function uniq(rows,key){return [...new Set(rows.map(r=>String(r?.[key]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
 
 export default function DashboardClient({isAdmin=false,currentUser=null,onLogout=null}){
@@ -156,7 +157,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const dashboardRows=useMemo(()=>{
     if(activeTab==='EXPORT')return tabRows;
     if(isAdmin&&adminView==='CLEARED')return tabRows.filter(isCustomsArchived);
-    return tabRows.filter(r=>!isCustomsArchived(r));
+    return tabRows.filter(r=>!isCustomsArchived(r)||isPartArrived(r));
   },[tabRows,activeTab,isAdmin,adminView]);
   const customsFilterMode=isAdmin&&activeTab==='IMPORT'&&adminView==='CLEARED';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination')}),[dashboardRows]);
@@ -223,7 +224,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   async function setMail(value,sent){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row||row.shipmentType==='EXPORT')return;
     const next={...row,mailSent:sent,mailUpdatedAt:new Date().toISOString()};setRows(r=>r.map((x,i)=>i===index?next:x));
-    try{await persistRow(next);setShared(true);setNote(`${row.mawb}: Mail marked ${sent?'YES':'NO'} and saved.${sent&&next.customsCleared?' Moved to Customs Cleared view for admin.':''}`)}catch(e){setShared(false);setNote(`Mail status save failed: ${e.message||e}`)}
+    try{await persistRow(next);setShared(true);setNote(`${row.mawb}: Mail marked ${sent?'YES':'NO'} and saved.${sent&&next.customsCleared?(isPartArrived(next)?' PART ARRIVED stays in Active and also appears in Customs Cleared.':' Moved to Customs Cleared view for admin.') :''}`)}catch(e){setShared(false);setNote(`Mail status save failed: ${e.message||e}`)}
   }
   async function setCustomsClear(value,cleared){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row||row.shipmentType==='EXPORT')return;
@@ -231,8 +232,9 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     setRows(r=>r.map((x,i)=>i===index?next:x));
     try{
       await persistRow(next);setShared(true);
-      if(cleared&&next.mailSent)setNote(`${row.mawb}: Customs cleared and Mail YES — removed from employee dashboard and kept in Admin Customs Cleared.`);
-      else if(cleared)setNote(`${row.mawb}: Customs cleared marked. It will leave employee dashboard after Mail is YES.`);
+      if(cleared&&next.mailSent&&isPartArrived(next))setNote(`${row.mawb}: PART ARRIVED remains in Active Masters and is also kept in Customs Cleared.`);
+      else if(cleared&&next.mailSent)setNote(`${row.mawb}: Customs cleared and Mail YES — removed from employee dashboard and kept in Admin Customs Cleared.`);
+      else if(cleared)setNote(`${row.mawb}: Customs cleared marked. It will leave employee dashboard after Mail is YES, except while status is PART ARRIVED.`);
       else setNote(`${row.mawb}: Customs clear mark removed.`);
     }catch(e){setShared(false);setNote(`Customs clear status save failed: ${e.message||e}`)}
   }
@@ -250,7 +252,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   }
   return <main>
     <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V4.3 • {isAdmin?'ADMIN':'EMPLOYEE'}</div><h1>{isAdmin?'Admin MAWB Dashboard':'Employee MAWB Dashboard'}</h1><p>Backend refresh every 2 hours • live status automatically changes to Booked, In Transit, Part Arrived, Arrived, Delayed or Early Arrival • every new MAWB records the employee who entered it.</p></div><div className="userPanel"><div className="version">{employeeName||'User'} • {shared?'SHARED ✓':'LOCAL'}</div>{onLogout&&<button className="logoutBtn" onClick={onLogout}>LOGOUT</button>}</div></section>
-    {isAdmin&&<section className="adminBar"><div><b>ADMIN ACCESS</b><span>Active masters and Customs Cleared masters stay stored separately in the admin view. Only admin can move or delete MAWBs.</span></div></section>}
+    {isAdmin&&<section className="adminBar"><div><b>ADMIN ACCESS</b><span>Active masters and Customs Cleared masters stay stored separately in the admin view. PART ARRIVED customs-cleared masters remain visible in both until fully arrived.</span></div></section>}
     <section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>
     {isAdmin&&activeTab==='IMPORT'&&<section className="adminViews"><button className={adminView==='ACTIVE'?'active':''} onClick={()=>setAdminView('ACTIVE')}>ACTIVE MASTERS</button><button className={adminView==='CLEARED'?'active':''} onClick={()=>setAdminView('CLEARED')}>CUSTOMS CLEARED ({tabRows.filter(isCustomsArchived).length})</button></section>}
     <section className="stats"><div><b>{stats.total}</b><span>{isAdmin&&adminView==='CLEARED'?'Cleared':activeTab} MAWB</span></div><div><b>{stats.booked}</b><span>Booked</span></div><div><b>{stats.transit}</b><span>In Transit</span></div><div><b>{stats.arrived}</b><span>Arrived</span></div><div><b>{stats.attention}</b><span>Delayed / Early</span></div></section>
