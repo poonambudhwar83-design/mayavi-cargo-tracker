@@ -65,11 +65,10 @@ function decorateTiming(existing={},incoming={}){
   const merged={...existing,...incoming};
   const shipmentType=merged.shipmentType==='EXPORT'?'EXPORT':'IMPORT';
   const rowMawb=normalize(incoming.mawb||existing.mawb||existing.awb||'');
-  const kuwaitDetailsOnly=rowMawb.startsWith('229-');
-  const scheduledArrivalDate=kuwaitDetailsOnly?'':(incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'');
-  const scheduledArrivalTime=kuwaitDetailsOnly?'':(incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'');
-  const arrivalDate=kuwaitDetailsOnly?'':(incoming.arrivalDate||existing.arrivalDate||'');
-  const arrivalTime=kuwaitDetailsOnly?'':(incoming.arrivalTime||existing.arrivalTime||'');
+  const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';
+  const scheduledArrivalTime=incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'';
+  const arrivalDate=incoming.arrivalDate||existing.arrivalDate||'';
+  const arrivalTime=incoming.arrivalTime||existing.arrivalTime||'';
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){
@@ -84,7 +83,7 @@ function decorateTiming(existing={},incoming={}){
   const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;
   const customsCleared=shipmentType==='IMPORT'?merged.customsCleared===true:undefined;
   const masterCopyReceived=shipmentType==='EXPORT'?merged.masterCopyReceived===true:undefined;
-  return {...merged,flightNo,bookingDate,bookingTime,destination:kuwaitDetailsOnly?'':(merged.destination||''),shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:kuwaitDetailsOnly?false:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,mailTime,mailSent,customsCleared,masterCopyReceived};
+  return {...merged,flightNo,bookingDate,bookingTime,destination:merged.destination||'',shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,mailTime,mailSent,customsCleared,masterCopyReceived};
 }
 function clientStyle(name=''){
   const s=String(name||'').trim();if(!s)return{};
@@ -232,7 +231,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     try{await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}
     catch(e){setShared(false);setNote(`${row.mawb} refreshed. Live details retained; shared save needs a valid login session.`)}
   }
-  async function refreshAll(){setBusy(true);try{await Promise.allSettled(visibleRows.map(r=>refreshByMawb(r.mawb)))}finally{setBusy(false)}}
+  async function refreshAll(){setBusy(true);try{await Promise.allSettled(visibleRows.map(r=>refreshByMawb(r.mawb)))}finally{setBusy(false)}
   async function setMail(value,sent){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row||row.shipmentType==='EXPORT')return;
     const next={...row,mailSent:sent,mailUpdatedAt:new Date().toISOString()};setRows(r=>r.map((x,i)=>i===index?next:x));
