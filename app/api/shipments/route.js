@@ -49,8 +49,6 @@ function enforceSaudiaPartLoad(data={},awbValue=''){
 function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
   const awb=normalize(awbValue||data.mawb||data.awb);
   if(!awb.startsWith('229'))return data;
-  // Kuwait tracking now returns verified destination and calculated arrival fields.
-  // Preserve them in shared storage so a refresh survives page reload/login/device changes.
   return {...data};
 }
 function sanitizeShipment(data={},awbValue=''){
@@ -65,7 +63,7 @@ function secureEqual(a='',b=''){
 function internalAllowed(request){
   const configured=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
   const supplied=request.headers.get('x-mayavi-internal-key')||'';
-  return Boolean(configured&&supplied&&secureEqual(configured,supplied));
+  return Boolean(configured&&supplied&&secureEqual(supplied,configured));
 }
 function access(request){
   const session=readSession(request);
@@ -121,7 +119,10 @@ export async function POST(request){
             'bookingTime',COALESCE(NULLIF(EXCLUDED.data->>'bookingTime',''),mayavi_shipments.data->>'bookingTime',''),
             'bookingDateSource',COALESCE(NULLIF(EXCLUDED.data->>'bookingDateSource',''),mayavi_shipments.data->>'bookingDateSource',''),
             'flightNo',COALESCE(NULLIF(EXCLUDED.data->>'flightNo',''),mayavi_shipments.data->>'flightNo',''),
-            'flightDate',COALESCE(NULLIF(EXCLUDED.data->>'flightDate',''),mayavi_shipments.data->>'flightDate','')
+            'flightDate',COALESCE(NULLIF(EXCLUDED.data->>'flightDate',''),mayavi_shipments.data->>'flightDate',''),
+            'goodsDescription',COALESCE(NULLIF(EXCLUDED.data->>'goodsDescription',''),mayavi_shipments.data->>'goodsDescription',''),
+            'companyType',COALESCE(NULLIF(EXCLUDED.data->>'companyType',''),mayavi_shipments.data->>'companyType',''),
+            'companyName',COALESCE(NULLIF(EXCLUDED.data->>'companyName',''),mayavi_shipments.data->>'companyName','')
           ),
           version=mayavi_shipments.version+1,
           updated_at=now(),
