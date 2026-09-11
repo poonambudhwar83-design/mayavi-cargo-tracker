@@ -49,17 +49,9 @@ function enforceSaudiaPartLoad(data={},awbValue=''){
 function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
   const awb=normalize(awbValue||data.mawb||data.awb);
   if(!awb.startsWith('229'))return data;
-  const clean={...data};
-  delete clean.destination;
-  delete clean.arrivalDate;
-  delete clean.arrivalTime;
-  delete clean.scheduledArrivalDate;
-  delete clean.scheduledArrivalTime;
-  delete clean.arrivalIsActual;
-  delete clean.timingDeltaMinutes;
-  delete clean.timingStatus;
-  delete clean.mailTime;
-  return clean;
+  // Kuwait tracking now returns verified destination and calculated arrival fields.
+  // Preserve them in shared storage so a refresh survives page reload/login/device changes.
+  return {...data};
 }
 function sanitizeShipment(data={},awbValue=''){
   let clean=sanitizeKuwaitDetailsOnly(data,awbValue);
