@@ -93,11 +93,58 @@ function safeData(row={},session=null,markEntry=false){
   return {awb,data};
 }
 
+async function refreshAirIndiaRows(request,sql,rawRows=[]){
+  const airIndiaRows=rawRows.filter(row=>String(row.awb||'').startsWith('098'));
+  if(!airIndiaRows.length)return rawRows;
+  const origin=new URL(request.url).origin;
+  const internalKey=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  const headers=internalKey?{'x-mayavi-internal-key':internalKey}:{};
+  const refreshed=new Map();
+  await Promise.allSettled(airIndiaRows.map(async row=>{
+    const mawb=`${String(row.awb).slice(0,3)}-${String(row.awb).slice(3)}`;
+    const res=await fetch(`${origin}/api/track?mawb=${encodeURIComponent(mawb)}`,{cache:'no-store',headers});
+    const track=await res.json().catch(()=>null);
+    if(!track?.ok||!track.shipment)return;
+    const current=row.data||{};
+    const live=track.shipment||{};
+    const next=sanitizeShipment({
+      ...current,
+      ...live,
+      mawb,
+      shipmentType:current.shipmentType==='EXPORT'?'EXPORT':'IMPORT',
+      enteredBy:current.enteredBy||'',
+      enteredByUsername:current.enteredByUsername||'',
+      enteredAt:current.enteredAt||'',
+      mailSent:current.mailSent===true,
+      customsCleared:current.customsCleared===true,
+      masterCopyReceived:current.masterCopyReceived===true,
+      lastChecked:new Date().toISOString(),
+      trackingError:'',
+      backendAutoRefresh:true,
+      backendScreenshotCaptured:Boolean(track.screenshotCaptured),
+      backendOcrUsed:Boolean(track.screenshotOcrUsed)
+    },row.awb);
+    const [saved]=await sql`
+      UPDATE mayavi_shipments
+      SET data=${JSON.stringify(next)}::jsonb,
+          version=version+1,
+          updated_at=now(),
+          tracking_checked_at=now()
+      WHERE awb=${row.awb}
+      RETURNING awb,data,version,updated_at,tracking_checked_at
+    `;
+    if(saved)refreshed.set(String(row.awb),saved);
+  }));
+  return rawRows.map(row=>refreshed.get(String(row.awb))||row);
+}
+
 export async function GET(request){
   try{
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
-    const rawRows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
+    let rawRows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
+    rawRows=await refreshAirIndiaRows(request,sql,rawRows);
+    rawRows=[...rawRows].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0));
     const rows=rawRows.map(row=>({...row,data:sanitizeShipment(row.data||{},row.awb)}));
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
