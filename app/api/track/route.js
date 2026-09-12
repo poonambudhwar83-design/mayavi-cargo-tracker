@@ -4,6 +4,7 @@ import { trackQatarLiveV2 } from '../../../lib/adapters/qatar-live-v2.js';
 import { trackTurkishLive } from '../../../lib/adapters/turkish-live.js';
 import { trackKuwaitLive } from '../../../lib/adapters/kuwait-live.js';
 import { trackOmanLive } from '../../../lib/adapters/oman-live.js';
+import { trackEtihadLive } from '../../../lib/adapters/etihad-live.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 
 export const runtime = 'nodejs';
@@ -48,6 +49,12 @@ async function handle(mawb) {
   const airline = airlineForMawb(mawb);
   const prefix = mawb.replace(/\D/g, '').slice(0, 3);
 
+  if (prefix === '607') {
+    const etihad = await trackEtihadLive(mawb);
+    if (etihad.ok) return Response.json({ ok:true, configured:true, provider:'Etihad Cargo official website', source:etihad.shipment.source, airlinePrimary:true, exactCarrierAdapter:true, officialNetworkCapture:true, noPaidApi:true, noTrackJet:true, shipment:etihad.shipment, trackingDebug:etihad.debug });
+    return Response.json({ ok:true, configured:true, provider:'Etihad Cargo official website', source:'Etihad Cargo official shipment tracking', airlinePrimary:true, exactCarrierAdapter:true, officialNetworkCapture:true, noPaidApi:true, noTrackJet:true, trackingError:etihad.reason, trackingDebug:etihad.debug, officialTracker:etihad.airline?.url || airline?.url || '', shipment:waiting(mawb, etihad.airline || airline, etihad.reason) });
+  }
+
   if (prefix === '229') {
     const kuwait = await trackKuwaitLive(mawb);
     if (kuwait.ok) return Response.json({ ok:true, configured:true, provider:'Kuwait Airways official website', source:kuwait.shipment.source, airlinePrimary:true, exactCarrierAdapter:true, officialNetworkCapture:true, noPaidApi:true, noTrackJet:true, shipment:kuwait.shipment, trackingDebug:kuwait.debug });
@@ -83,7 +90,7 @@ async function handle(mawb) {
 
 export async function GET(request) {
   const url = new URL(request.url); const query = url.searchParams.get('mawb');
-  if (!query) return Response.json({ configured:true, provider:'Official airline websites', apiKeyRequired:false, noPaidApi:true, noTrackJet:true, exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo'], mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response' });
+  if (!query) return Response.json({ configured:true, provider:'Official airline websites', apiKeyRequired:false, noPaidApi:true, noTrackJet:true, exactAdapters:['607 Etihad Cargo','229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo'], mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response' });
   const mawb=normalizeMawb(query); if(!mawb) return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400}); return handle(mawb);
 }
 
