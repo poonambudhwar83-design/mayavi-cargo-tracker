@@ -9,12 +9,23 @@ function weightFromCell(value=''){
   const nums=s.match(/-?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite)||[];
   return nums.length?nums.at(-1):0;
 }
-function cleanCompany(value=''){
-  const s=String(value||'').replace(/\s+/g,' ').trim();
-  if(!s)return'';
-  if(/^Select$/i.test(s))return'';
-  return s.replace(/^Select\s*/i,'').trim();
+function tdAt(tr,i){return tr.querySelectorAll('td')[i]||null}
+function clientValue(tr,i){return txt(tdAt(tr,i))}
+function companyValue(tr,i){
+  const td=tdAt(tr,i);if(!td)return'';
+  const select=td.querySelector('select');
+  const selected=String(select?.value||'').trim();
+  if(selected==='OTHER'){
+    const input=td.querySelector('input');
+    return String(input?.value||'').trim()||'OTHER';
+  }
+  if(selected)return selected;
+  const raw=txt(td).replace(/\s+/g,' ').trim();
+  if(/\bKCC\b/i.test(raw))return'KCC';
+  if(/\bPV\b/i.test(raw))return'PV';
+  return raw.replace(/^Select\s*/i,'').trim();
 }
+function weightValue(tr,i){return txt(tdAt(tr,i))}
 
 export default function CustomsClearedEnhancements(){
   useEffect(()=>{
@@ -33,9 +44,8 @@ export default function CustomsClearedEnhancements(){
       if(clientIndex<0||companyIndex<0||weightIndex<0){bar?.remove();return}
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
-      const cell=(tr,i)=>txt(tr.querySelectorAll('td')[i]);
-      const clients=uniq(rows.map(r=>cell(r,clientIndex)));
-      const companies=uniq(rows.map(r=>cleanCompany(cell(r,companyIndex))));
+      const clients=uniq(rows.map(r=>clientValue(r,clientIndex)));
+      const companies=uniq(rows.map(r=>companyValue(r,companyIndex)));
       const signature=JSON.stringify({clients,companies,headers:headers.length});
 
       if(!bar){
@@ -49,8 +59,9 @@ export default function CustomsClearedEnhancements(){
       if(bar.dataset.signature!==signature){
         const oldClient=bar.querySelector('[data-cleared-client]')?.value||'';
         const oldCompany=bar.querySelector('[data-cleared-company]')?.value||'';
-        const options=arr=>arr.map(v=>`<option value="${v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\"/g,'&quot;')}">${v}</option>`).join('');
-        bar.innerHTML=`<div><label>CLIENT</label><select data-cleared-client><option value="">All Clients</option>${options(clients)}</select></div><div><label>COMPANY</label><select data-cleared-company><option value="">All Companies</option>${options(companies)}</select></div><button type="button" data-cleared-reset> CLEAR FILTERS </button><div style="margin-left:auto;display:grid;gap:2px;min-width:150px;text-align:right"><span style="font-size:11px;font-weight:700;color:#64748b">TOTAL WEIGHT</span><strong data-cleared-total style="font-size:18px">0 kg</strong></div>`;
+        const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        const options=arr=>arr.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+        bar.innerHTML=`<div><label>CLIENT</label><select data-cleared-client><option value="">All Clients</option>${options(clients)}</select></div><div><label>COMPANY</label><select data-cleared-company><option value="">All Companies</option>${options(companies)}</select></div><button type="button" data-cleared-reset>CLEAR FILTERS</button><div style="margin-left:auto;display:grid;gap:2px;min-width:150px;text-align:right"><span style="font-size:11px;font-weight:700;color:#64748b">TOTAL WEIGHT</span><strong data-cleared-total style="font-size:18px">0 kg</strong></div>`;
         bar.dataset.signature=signature;
         const cs=bar.querySelector('[data-cleared-client]'),cos=bar.querySelector('[data-cleared-company]');
         if(oldClient&&[...cs.options].some(o=>o.value===oldClient))cs.value=oldClient;
@@ -62,10 +73,10 @@ export default function CustomsClearedEnhancements(){
         const company=bar.querySelector('[data-cleared-company]')?.value||'';
         let total=0,shown=0;
         rows.forEach(r=>{
-          const c=cell(r,clientIndex),co=cleanCompany(cell(r,companyIndex));
-          const show=(!client||c===client)&&(!company||co.includes(company));
+          const c=clientValue(r,clientIndex),co=companyValue(r,companyIndex);
+          const show=(!client||c===client)&&(!company||co===company);
           r.style.display=show?'':'none';
-          if(show){shown++;total+=weightFromCell(cell(r,weightIndex));}
+          if(show){shown++;total+=weightFromCell(weightValue(r,weightIndex));}
         });
         const totalEl=bar.querySelector('[data-cleared-total]');
         if(totalEl)totalEl.textContent=`${total.toLocaleString(undefined,{maximumFractionDigits:2})} kg • ${shown} master${shown===1?'':'s'}`;
@@ -78,7 +89,7 @@ export default function CustomsClearedEnhancements(){
 
     const queue=()=>{if(scheduled)return;scheduled=true;setTimeout(install,0)};
     const observer=new MutationObserver(queue);
-    observer.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class']});
+    observer.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','value']});
     install();
     return()=>{observer.disconnect();document.getElementById('mayavi-cleared-enhancements')?.remove()}
   },[]);
