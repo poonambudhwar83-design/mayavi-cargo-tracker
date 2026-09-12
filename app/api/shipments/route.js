@@ -44,6 +44,10 @@ function saudiaIsPartLoad(data={},awbValue=''){
 }
 function enforceSaudiaPartLoad(data={},awbValue=''){
   if(!saudiaIsPartLoad(data,awbValue))return data;
+  const status=String(data.status||'').toUpperCase();
+  const sourceStatus=String(data.sourceStatus||'').toUpperCase();
+  const activeMovement=status.includes('IN TRANSIT')||status.includes('DEPART')||status.includes('AIRBORNE')||/^(MAN|FOW|DEP)$/.test(sourceStatus);
+  if(activeMovement)return {...data,isPartLoad:true,status:'IN TRANSIT'};
   return {...data,isPartLoad:true,status:'PART ARRIVED'};
 }
 function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
