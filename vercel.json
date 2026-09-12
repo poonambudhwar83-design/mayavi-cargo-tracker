@@ -8,6 +8,10 @@
       "maxDuration": 300,
       "regions": ["bom1"]
     },
+    "app/api/etihad-alt/route.js": {
+      "maxDuration": 300,
+      "regions": ["bom1"]
+    },
     "app/api/cron/refresh/route.js": {
       "maxDuration": 300
     }
