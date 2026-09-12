@@ -24,12 +24,24 @@ function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(maw
 function isAirIndia(mawb=''){return /^098-/.test(String(mawb||''));}
 function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   const s=String(raw||'').toUpperCase();
+
+  // AIR INDIA: official Activity View movement always wins over ETA/timing calculations.
+  // Manifested/Accepted/Built Up/Executed/Booked = BOOKED
+  // Departed = IN TRANSIT
+  // Arrived/Delivered = ARRIVED
+  if(isAirIndia(mawb)){
+    if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+    if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return arrivalIsActual?'ARRIVED':'IN TRANSIT';
+    if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
+    if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
+    return'BOOKED';
+  }
+
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+  if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
-  if(isAirIndia(mawb)&&(s.includes('BOOK')||s.includes('ACCEPT')||s.includes('MANIFEST')||s.includes('BUILT')||s.includes('EXECUT')))return'BOOKED';
-  if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
   return'BOOKED';
