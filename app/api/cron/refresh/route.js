@@ -31,7 +31,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   // Arrived/Delivered = ARRIVED
   if(isAirIndia(mawb)){
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
-    if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return arrivalIsActual?'ARRIVED':'IN TRANSIT';
+    if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
     if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
     if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
     return'BOOKED';
