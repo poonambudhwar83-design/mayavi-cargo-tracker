@@ -17,7 +17,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.12';
+const VERSION='3.9.13';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 
@@ -125,6 +125,7 @@ async function handle(mawb){
   if(!airline)return Response.json({ok:false,error:`Airline prefix ${mawb.slice(0,3)} is not mapped yet.`},{status:422});
 
   const airArabiaOfficialOnly=mawb.startsWith('514-');
+  const airIndiaFastPath=mawb.startsWith('098-');
   const qatarFastPath=mawb.startsWith('157-');
   const cathayFastPath=mawb.startsWith('160-');
   const saudiaFastPath=mawb.startsWith('065-');
@@ -132,9 +133,9 @@ async function handle(mawb){
   const turkishFastPath=mawb.startsWith('235-');
   const omanFastPath=mawb.startsWith('910-');
   const virginFastPath=mawb.startsWith('932-');
-  const skipGenericApi=airArabiaOfficialOnly||qatarFastPath||cathayFastPath||saudiaFastPath||kuwaitFastPath||turkishFastPath||omanFastPath||virginFastPath;
+  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||kuwaitFastPath||turkishFastPath||omanFastPath||virginFastPath;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
-    skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
+    skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:airIndiaFastPath?'AIR INDIA DEDICATED CARGO PORTAL ADAPTER IS PRIMARY':qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
     dedicatedOfficial(mawb),browserOfficial(mawb)
   ]);
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
