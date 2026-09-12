@@ -42,12 +42,18 @@ function saudiaIsPartLoad(data={},awbValue=''){
   if(Number.isFinite(arrivedPieces)&&Number.isFinite(totalPieces)&&totalPieces>0&&arrivedPieces>0&&arrivedPieces<totalPieces)return true;
   return fractionIsPartial(data.pieces)||fractionIsPartial(data.bags)||fractionIsPartial(data.weight);
 }
-function enforceSaudiaPartLoad(data={},awbValue=''){
-  if(!saudiaIsPartLoad(data,awbValue))return data;
+function saudiaActiveMovement(data={},awbValue=''){
+  const awb=normalize(awbValue||data.mawb||data.awb);
+  if(!awb.startsWith('065'))return false;
   const status=String(data.status||'').toUpperCase();
   const sourceStatus=String(data.sourceStatus||'').toUpperCase();
-  const activeMovement=status.includes('IN TRANSIT')||status.includes('DEPART')||status.includes('AIRBORNE')||/^(MAN|FOW|DEP)$/.test(sourceStatus);
-  if(activeMovement)return {...data,isPartLoad:true,status:'IN TRANSIT'};
+  return status.includes('IN TRANSIT')||status.includes('DEPART')||status.includes('AIRBORNE')||/^(MAN|FOW|DEP)$/.test(sourceStatus);
+}
+function enforceSaudiaPartLoad(data={},awbValue=''){
+  if(!saudiaIsPartLoad(data,awbValue))return data;
+  if(saudiaActiveMovement(data,awbValue)){
+    return {...data,isPartLoad:true,status:'IN TRANSIT',customsCleared:false,customsClearedAt:'',customsClearedBy:''};
+  }
   return {...data,isPartLoad:true,status:'PART ARRIVED'};
 }
 function sanitizeKuwaitDetailsOnly(data={},awbValue=''){
