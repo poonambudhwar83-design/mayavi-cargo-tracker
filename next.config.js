@@ -25,6 +25,9 @@ module.exports = {
     '/api/etihad-alt': [
       './node_modules/@sparticuz/chromium/bin/**/*'
     ],
+    '/api/etihad-champ-test': [
+      './node_modules/@sparticuz/chromium/bin/**/*'
+    ],
     '/api/cron/refresh': [
       './node_modules/@sparticuz/chromium/bin/**/*',
       './node_modules/tesseract.js/**/*',
