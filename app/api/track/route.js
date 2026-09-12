@@ -17,7 +17,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.13';
+const VERSION='3.9.14';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 
@@ -40,21 +40,35 @@ function mergeNonEmpty(base={},next={}){
   }
   return out;
 }
+function isFalseArrival(s={}){
+  return statusRank(s?.status)>=5&&s?.arrivalIsActual===false;
+}
 function chooseStatus({api,direct,browser,ocr,cathay}){
-  const all=[api,direct,browser,ocr,cathay].filter(Boolean);
-  const arrived=all.find(s=>statusRank(s.status)>=5);
+  const all=[direct,browser,api,ocr,cathay].filter(Boolean);
+  const valid=all.filter(s=>!isFalseArrival(s));
+  const arrived=valid.find(s=>statusRank(s.status)>=5);
   if(arrived)return arrived.status;
   if(ocr?.status==='DELAYED'&&ocr?.statusEvidence==='strong')return'DELAYED';
   const browserDelayed=browser?.status==='DELAYED'&&concrete(browser);
   if(browserDelayed)return'DELAYED';
-  const reliable=all.filter(s=>s.status&&s.status!=='TRACKING').sort((a,b)=>statusRank(b.status)-statusRank(a.status));
+  const reliable=valid.filter(s=>s.status&&s.status!=='TRACKING').sort((a,b)=>statusRank(b.status)-statusRank(a.status));
   return reliable[0]?.status||'TRACKING';
 }
-function applyArrival(base={},candidate={}){
-  const out={...base};if(!candidate)return out;
-  if(candidate.arrivalDate&&(candidate.arrivalIsActual||!out.arrivalDate))out.arrivalDate=candidate.arrivalDate;
-  if(candidate.arrivalTime&&(candidate.arrivalIsActual||!out.arrivalTime))out.arrivalTime=candidate.arrivalTime;
-  if(candidate.arrivalDate||candidate.arrivalTime)out.arrivalIsActual=Boolean(candidate.arrivalIsActual);
+function preferredArrival(...candidates){
+  const all=candidates.filter(s=>s&&(s.arrivalDate||s.arrivalTime));
+  const actual=all.find(s=>s.arrivalIsActual===true);
+  const chosen=actual||all[0];
+  if(!chosen)return null;
+  return {arrivalDate:chosen.arrivalDate||'',arrivalTime:chosen.arrivalTime||'',arrivalIsActual:chosen.arrivalIsActual===true,arrivalTimeSource:chosen.arrivalTimeSource||chosen.source||''};
+}
+function applyPreferredArrival(base={},...candidates){
+  const out={...base};
+  const chosen=preferredArrival(...candidates);
+  if(!chosen)return out;
+  if(chosen.arrivalDate)out.arrivalDate=chosen.arrivalDate;
+  if(chosen.arrivalTime)out.arrivalTime=chosen.arrivalTime;
+  out.arrivalIsActual=chosen.arrivalIsActual;
+  if(chosen.arrivalTimeSource)out.arrivalTimeSource=chosen.arrivalTimeSource;
   return out;
 }
 function parseBookingDate(text='',fallbackYear=''){
@@ -161,10 +175,7 @@ async function handle(mawb){
   if(browser)shipment=mergeNonEmpty(shipment,browser);
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
 
-  shipment=applyArrival(shipment,api);
-  shipment=applyArrival(shipment,direct);
-  shipment=applyArrival(shipment,browser);
-  shipment=applyArrival(shipment,ocr);
+  shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
   if(!shipment.bookingDate){
     const officialText=[debugText(directResult),debugText(browserResult),debugText(apiResult)].filter(Boolean).join(' ');
     const derivedBookingDate=bookingDateFromOfficialText(officialText,shipment.arrivalDate);
