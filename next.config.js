@@ -22,6 +22,9 @@ module.exports = {
       './node_modules/wasm-feature-detect/**/*',
       './node_modules/bmp-js/**/*'
     ],
+    '/api/etihad-alt': [
+      './node_modules/@sparticuz/chromium/bin/**/*'
+    ],
     '/api/cron/refresh': [
       './node_modules/@sparticuz/chromium/bin/**/*',
       './node_modules/tesseract.js/**/*',
