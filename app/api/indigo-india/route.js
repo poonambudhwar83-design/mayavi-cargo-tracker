@@ -5,7 +5,7 @@ export const dynamic='force-dynamic';
 export const preferredRegion='bom1';
 export const maxDuration=60;
 
-const URL='https://6ecargo.goindigo.in/FrmAWBTracking.aspx';
+const TRACKER_URL='https://6ecargo.goindigo.in/FrmAWBTracking.aspx';
 
 function decode(s=''){
   return String(s).replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&quot;/gi,'"').replace(/&#39;|&apos;/gi,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n)));
@@ -25,11 +25,11 @@ function headers(extra={}){
 }
 
 export async function GET(req){
-  const {searchParams}=new URL(req.url);
+  const {searchParams}=new globalThis.URL(req.url);
   const mawb=normalizeMawb(searchParams.get('mawb')||'');
   if(!mawb||!mawb.startsWith('312-'))return Response.json({ok:false,error:'INVALID INDIGO MAWB'},{status:400});
   const serial=mawb.slice(4);
-  const queryUrl=`${URL}?AWBNo=${encodeURIComponent(serial)}&AWBPrefix=312`;
+  const queryUrl=`${TRACKER_URL}?AWBNo=${encodeURIComponent(serial)}&AWBPrefix=312`;
   try{
     const r=await fetch(queryUrl,{headers:headers({referer:'https://6ecargo.goindigo.in/'}),redirect:'follow',cache:'no-store'});
     const html=await r.text();
