@@ -29,11 +29,12 @@ function attr(tag,name){
 }
 function formMeta(html=''){
   const forms=[...String(html).matchAll(/<form\b[^>]*>/gi)].map(m=>({tag:m[0],id:attr(m[0],'id'),name:attr(m[0],'name'),method:attr(m[0],'method'),action:attr(m[0],'action')}));
-  const inputs=[...String(html).matchAll(/<input\b[^>]*>/gi)].map(m=>{const t=m[0];return {id:attr(t,'id'),name:attr(t,'name'),type:(attr(t,'type')||'text').toLowerCase(),value:attr(t,'value'),placeholder:attr(t,'placeholder'),onclick:attr(t,'onclick')};});
+  const inputs=[...String(html).matchAll(/<input\b[^>]*>/gi)].map(m=>{const t=m[0];return {id:attr(t,'id'),name:attr(t,'name'),type:(attr(t,'type')||'text').toLowerCase(),value:attr(t,'value'),placeholder:attr(t,'placeholder'),maxlength:attr(t,'maxlength'),onclick:attr(t,'onclick')};});
+  const textareas=[...String(html).matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)].map(m=>{const t=`<textarea ${m[1]}>`;return {id:attr(t,'id'),name:attr(t,'name'),type:'textarea',value:decode(m[2]||''),placeholder:attr(t,'placeholder'),maxlength:attr(t,'maxlength')};});
   const buttons=[...String(html).matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/gi)].map(m=>{const t=m[0];return {id:attr(t,'id'),name:attr(t,'name'),type:(attr(t,'type')||'submit').toLowerCase(),value:attr(t,'value'),text:clean(t),onclick:attr(t,'onclick')};});
   const selects=[...String(html).matchAll(/<select\b[^>]*>[\s\S]*?<\/select>/gi)].map(m=>{const t=m[0];return {id:attr(t,'id'),name:attr(t,'name'),text:clean(t).slice(0,500)};});
   const scripts=[...String(html).matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(s=>/track|postback|awb|prefix/i.test(s)).map(s=>s.replace(/\s+/g,' ').slice(0,2500)).slice(0,12);
-  return {forms,inputs:inputs.filter(x=>x.type!=='hidden'),hiddenNames:inputs.filter(x=>x.type==='hidden').map(x=>x.name).filter(Boolean),buttons,selects,scripts};
+  return {forms,inputs:inputs.filter(x=>x.type!=='hidden'),textareas,hiddenNames:inputs.filter(x=>x.type==='hidden').map(x=>x.name).filter(Boolean),buttons,selects,scripts};
 }
 function cookieHeader(response){
   try{const xs=response.headers.getSetCookie?.();if(xs?.length)return xs.map(x=>x.split(';')[0]).join('; ');}catch{}
