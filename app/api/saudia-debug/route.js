@@ -1,4 +1,4 @@
-import { trackSaudiaDirect as trackSaudiaDirectV6 } from '../../../../lib/saudiaDirectV6.js';
+import { trackSaudiaDirect as trackSaudiaDirectV6 } from '../../../lib/saudiaDirectV6.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
