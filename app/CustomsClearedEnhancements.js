@@ -90,7 +90,9 @@ export default function CustomsClearedEnhancements(){
       const clients=uniq(rows.map(r=>clientValue(r,clientIndex)));
       const companies=uniq(rows.map(r=>companyValue(r,companyIndex)));
       const goods=goodsIndex>=0?uniq(rows.map(r=>goodsValue(r,goodsIndex))):[];
-      const signature=JSON.stringify({clients,companies,goods,headers:headers.length});
+      const clientHeader=headersEls[clientIndex];
+      const hasNativeClientFilter=Boolean(clientHeader?.querySelector('select:not([data-cleared-header-filter])'));
+      const signature=JSON.stringify({clients,companies,goods,headers:headers.length,hasNativeClientFilter});
 
       const previous={
         client:table.querySelector('[data-cleared-header-filter="client"]')?.value||'',
@@ -101,7 +103,7 @@ export default function CustomsClearedEnhancements(){
       if(currentSignature!==signature){
         table.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
         const configs=[
-          {index:clientIndex,key:'client',label:'Clients',values:clients},
+          ...(!hasNativeClientFilter?[{index:clientIndex,key:'client',label:'Clients',values:clients}]:[]),
           {index:companyIndex,key:'company',label:'Companies',values:companies},
           ...(goodsIndex>=0?[{index:goodsIndex,key:'goods',label:'Goods',values:goods}]:[])
         ];
@@ -124,7 +126,9 @@ export default function CustomsClearedEnhancements(){
       }
 
       const apply=()=>{
-        const client=table.querySelector('[data-cleared-header-filter="client"]')?.value||'';
+        const injectedClient=table.querySelector('[data-cleared-header-filter="client"]');
+        const nativeClient=clientHeader?.querySelector('select:not([data-cleared-header-filter])');
+        const client=injectedClient?.value||nativeClient?.value||'';
         const company=table.querySelector('[data-cleared-header-filter="company"]')?.value||'';
         const goods=table.querySelector('[data-cleared-header-filter="goods"]')?.value||'';
         let total=0,shown=0;
