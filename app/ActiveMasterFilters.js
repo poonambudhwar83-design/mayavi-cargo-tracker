@@ -40,11 +40,13 @@ export default function ActiveMasterFilters(){
     const install=()=>{
       scheduled=false;
       const adminButtons=[...document.querySelectorAll('.adminViews button')];
+      const isAdmin=adminButtons.length>0;
       const activeMastersVisible=!adminButtons.length||adminButtons.some(b=>b.classList.contains('active')&&/ACTIVE MASTERS/i.test(text(b)));
       const table=document.querySelector('.tableWrap table');
       document.getElementById('mayavi-active-master-filters')?.remove();
       if(!activeMastersVisible||!table){
         document.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+        document.querySelectorAll('[data-employee-custom-company]').forEach(el=>el.removeAttribute('data-employee-custom-company'));
         return;
       }
 
@@ -65,10 +67,19 @@ export default function ActiveMasterFilters(){
       }
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
+      rows.forEach(r=>{
+        const td=cellEl(r,companyIndex);if(!td)return;
+        const co=companyValue(r,companyIndex).toUpperCase();
+        const custom=Boolean(co&&co!=='KCC'&&co!=='PV');
+        if(!isAdmin&&custom)td.setAttribute('data-employee-custom-company','1');
+        else td.removeAttribute('data-employee-custom-company');
+      });
+
       const clients=unique(rows.map(r=>clientValue(r,clientIndex)));
-      const companies=unique(rows.map(r=>companyValue(r,companyIndex)));
+      const rowCompanies=unique(rows.map(r=>companyValue(r,companyIndex)));
+      const companies=isAdmin?unique(['KCC','PV',...rowCompanies]):['KCC','PV'];
       const goods=isImport&&goodsIndex>=0?unique(rows.map(r=>goodsValue(r,goodsIndex))):[];
-      const signature=JSON.stringify({isImport,clients,companies,goods,headers:headers.length});
+      const signature=JSON.stringify({isImport,isAdmin,clients,companies,goods,headers:headers.length});
       const previous={
         client:table.querySelector('[data-active-header-filter="client"]')?.value||'',
         company:table.querySelector('[data-active-header-filter="company"]')?.value||'',
@@ -116,6 +127,7 @@ export default function ActiveMasterFilters(){
       observer.disconnect();
       document.getElementById('mayavi-active-master-filters')?.remove();
       document.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+      document.querySelectorAll('[data-employee-custom-company]').forEach(el=>el.removeAttribute('data-employee-custom-company'));
     }
   },[]);
   return null;
