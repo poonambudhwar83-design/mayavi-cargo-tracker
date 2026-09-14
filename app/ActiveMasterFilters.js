@@ -39,10 +39,11 @@ export default function ActiveMasterFilters(){
     let scheduled=false;
     const install=()=>{
       scheduled=false;
-      const adminActive=[...document.querySelectorAll('.adminViews button')].some(b=>b.classList.contains('active')&&/ACTIVE MASTERS/i.test(text(b)));
+      const adminButtons=[...document.querySelectorAll('.adminViews button')];
+      const activeMastersVisible=!adminButtons.length||adminButtons.some(b=>b.classList.contains('active')&&/ACTIVE MASTERS/i.test(text(b)));
       const table=document.querySelector('.tableWrap table');
       document.getElementById('mayavi-active-master-filters')?.remove();
-      if(!adminActive||!table){
+      if(!activeMastersVisible||!table){
         document.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
         return;
       }
