@@ -9,6 +9,7 @@ body{background:linear-gradient(180deg,#f4f7ff 0%,#f8fbff 45%,#f7fafc 100%)}
 .tableWrap{border:1px solid #e6ebf4;box-shadow:0 8px 24px rgba(30,64,175,.08)}
 th{background:linear-gradient(180deg,#f8fbff,#f3f7fd);color:#50637d}tbody tr{transition:background .14s ease}tbody tr:hover td{background:#f8fbff}.clientChip,.employeeChip,.badge{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
 .refreshBtn{background:#e0ecff;color:#1d4ed8}.moveBtn{background:#ede9fe;color:#6d28d9}.trackLink{background:#f1f5f9;color:#334155}.customsToggle.checked{box-shadow:0 0 0 2px rgba(34,197,94,.08)}
+.tableWrap td[data-employee-custom-company="1"]>div{display:none!important}.tableWrap td[data-employee-custom-company="1"]::after{content:'—';color:#64748b;font-weight:700}
 @keyframes mayaviMailBlink{0%,100%{background:#fff7ed;color:#9a3412;border-color:#fdba74;box-shadow:0 0 0 0 rgba(249,115,22,.05)}50%{background:#fb923c;color:#fff;border-color:#f97316;box-shadow:0 0 0 5px rgba(249,115,22,.16)}}
 .mailChoice.mailOverdue .mailBtn.no,.mailBtn.no.mailOverdueBtn{animation:mayaviMailBlink 1.05s ease-in-out infinite;font-weight:1000}
 .mailOverdueTime .mailTime,.mailOverdueTime{color:#c2410c!important;font-weight:900!important;background:#fff7ed!important}
