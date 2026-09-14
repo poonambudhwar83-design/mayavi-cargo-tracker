@@ -31,6 +31,16 @@ function companyValue(tr,i){
   return raw.replace(/^Select\s*/i,'').trim();
 }
 function weightValue(tr,i){return txt(tdAt(tr,i))}
+function mailSortValue(value=''){
+  const s=String(value||'').trim();
+  const m=s.match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if(!m)return null;
+  let h=Number(m[4]);
+  if(h===12)h=0;
+  if(m[6].toUpperCase()==='PM')h+=12;
+  const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[5]),0,0);
+  return Number.isFinite(d.getTime())?d.getTime():null;
+}
 function hideLocationFiltersForClearedImport(){
   const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
   if(!/IMPORT/i.test(txt(type)))return;
@@ -84,9 +94,30 @@ export default function CustomsClearedEnhancements(){
       const companyIndex=headers.findIndex(v=>/^Company/i.test(v));
       const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
       const weightIndex=headers.findIndex(v=>/^Weight$/i.test(v));
+      const mailIndex=headers.findIndex(v=>/^Mail Time/i.test(v));
       if(clientIndex<0||companyIndex<0||weightIndex<0)return;
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
+      const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
+      const importMode=/IMPORT/i.test(txt(type));
+      if(importMode&&mailIndex>=0&&rows.length>1){
+        const ordered=[...rows].map((row,index)=>({row,index,score:mailSortValue(txt(tdAt(row,mailIndex)))})).sort((a,b)=>{
+          if(a.score==null&&b.score==null)return a.index-b.index;
+          if(a.score==null)return 1;
+          if(b.score==null)return -1;
+          if(a.score===b.score)return a.index-b.index;
+          return b.score-a.score;
+        });
+        if(ordered.some((item,index)=>item.row!==rows[index])){
+          const body=table.querySelector('tbody');
+          ordered.forEach(({row},index)=>{
+            body?.appendChild(row);
+            const serial=tdAt(row,0)?.querySelector('strong');
+            if(serial&&/^\d+$/.test(txt(serial)))serial.textContent=String(index+1);
+          });
+        }
+      }
+
       const clients=uniq(rows.map(r=>clientValue(r,clientIndex)));
       const companies=uniq(rows.map(r=>companyValue(r,companyIndex)));
       const goods=goodsIndex>=0?uniq(rows.map(r=>goodsValue(r,goodsIndex))):[];
