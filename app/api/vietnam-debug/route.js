@@ -1,4 +1,4 @@
-import { trackVietnam } from '../../../../lib/vietnam.js';
+import { trackVietnam } from '../../../lib/vietnam.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
