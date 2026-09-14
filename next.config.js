@@ -28,6 +28,13 @@ module.exports = {
     '/api/etihad-champ-test': [
       './node_modules/@sparticuz/chromium/bin/**/*'
     ],
+    '/api/saudia-debug': [
+      './node_modules/@sparticuz/chromium/bin/**/*',
+      './node_modules/tesseract.js/**/*',
+      './node_modules/tesseract.js-core/**/*',
+      './node_modules/wasm-feature-detect/**/*',
+      './node_modules/bmp-js/**/*'
+    ],
     '/api/cron/refresh': [
       './node_modules/@sparticuz/chromium/bin/**/*',
       './node_modules/tesseract.js/**/*',
