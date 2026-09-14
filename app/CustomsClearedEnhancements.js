@@ -11,6 +11,11 @@ function weightFromCell(value=''){
 }
 function tdAt(tr,i){return tr.querySelectorAll('td')[i]||null}
 function clientValue(tr,i){return txt(tdAt(tr,i))}
+function goodsValue(tr,i){
+  const td=tdAt(tr,i);if(!td)return'';
+  const input=td.querySelector('input');
+  return String(input?.value??txt(td)).trim();
+}
 function companyValue(tr,i){
   const td=tdAt(tr,i);if(!td)return'';
   const select=td.querySelector('select');
@@ -41,6 +46,15 @@ function hideLocationFiltersForClearedImport(){
     });
   });
 }
+function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+function makeHeaderSelect(key,label,values){
+  const select=document.createElement('select');
+  select.setAttribute('data-cleared-header-filter',key);
+  select.setAttribute('aria-label',`${label} filter`);
+  select.style.cssText='display:block;width:100%;min-width:92px;margin-top:4px;padding:3px 22px 3px 6px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;';
+  select.innerHTML=`<option value="">All ${label}</option>${values.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}`;
+  return select;
+}
 
 export default function CustomsClearedEnhancements(){
   useEffect(()=>{
@@ -49,58 +63,83 @@ export default function CustomsClearedEnhancements(){
       scheduled=false;
       const clearedActive=[...document.querySelectorAll('.adminViews button')].some(b=>b.classList.contains('active')&&/CUSTOMS CLEARED/i.test(txt(b)));
       const table=document.querySelector('.tableWrap table');
-      let bar=document.getElementById('mayavi-cleared-enhancements');
-      if(!clearedActive||!table){bar?.remove();return}
+      const oldBar=document.getElementById('mayavi-cleared-enhancements');
+      if(!clearedActive||!table){
+        oldBar?.remove();
+        document.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
+        document.getElementById('mayavi-cleared-total-inline')?.remove();
+        return;
+      }
 
       hideLocationFiltersForClearedImport();
+      oldBar?.remove();
 
-      const headers=[...table.querySelectorAll('thead th')].map(th=>txt(th).replace(/\s+/g,' '));
+      const headersEls=[...table.querySelectorAll('thead th')];
+      const headers=headersEls.map(th=>{
+        const clone=th.cloneNode(true);
+        clone.querySelectorAll('[data-cleared-header-filter],[data-cleared-filter-label]').forEach(el=>el.remove());
+        return txt(clone).replace(/\s+/g,' ');
+      });
       const clientIndex=headers.findIndex(v=>/^Client/i.test(v));
       const companyIndex=headers.findIndex(v=>/^Company/i.test(v));
+      const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
       const weightIndex=headers.findIndex(v=>/^Weight$/i.test(v));
-      if(clientIndex<0||companyIndex<0||weightIndex<0){bar?.remove();return}
+      if(clientIndex<0||companyIndex<0||weightIndex<0)return;
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
       const clients=uniq(rows.map(r=>clientValue(r,clientIndex)));
       const companies=uniq(rows.map(r=>companyValue(r,companyIndex)));
-      const signature=JSON.stringify({clients,companies,headers:headers.length});
+      const goods=goodsIndex>=0?uniq(rows.map(r=>goodsValue(r,goodsIndex))):[];
+      const signature=JSON.stringify({clients,companies,goods,headers:headers.length});
 
-      if(!bar){
-        bar=document.createElement('section');
-        bar.id='mayavi-cleared-enhancements';
-        bar.className='filters';
-        const wrap=document.querySelector('.tableWrap');
-        wrap?.parentNode?.insertBefore(bar,wrap);
+      const previous={
+        client:table.querySelector('[data-cleared-header-filter="client"]')?.value||'',
+        company:table.querySelector('[data-cleared-header-filter="company"]')?.value||'',
+        goods:table.querySelector('[data-cleared-header-filter="goods"]')?.value||''
+      };
+      const currentSignature=table.dataset.clearedFilterSignature||'';
+      if(currentSignature!==signature){
+        table.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
+        const configs=[
+          {index:clientIndex,key:'client',label:'Clients',values:clients},
+          {index:companyIndex,key:'company',label:'Companies',values:companies},
+          ...(goodsIndex>=0?[{index:goodsIndex,key:'goods',label:'Goods',values:goods}]:[])
+        ];
+        configs.forEach(({index,key,label,values})=>{
+          const th=headersEls[index];if(!th)return;
+          const select=makeHeaderSelect(key,label,values);
+          th.appendChild(select);
+          if(previous[key]&&[...select.options].some(o=>o.value===previous[key]))select.value=previous[key];
+        });
+        table.dataset.clearedFilterSignature=signature;
       }
 
-      if(bar.dataset.signature!==signature){
-        const oldClient=bar.querySelector('[data-cleared-client]')?.value||'';
-        const oldCompany=bar.querySelector('[data-cleared-company]')?.value||'';
-        const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-        const options=arr=>arr.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
-        bar.innerHTML=`<div><label>CLIENT</label><select data-cleared-client><option value="">All Clients</option>${options(clients)}</select></div><div><label>COMPANY</label><select data-cleared-company><option value="">All Companies</option>${options(companies)}</select></div><button type="button" data-cleared-reset>CLEAR FILTERS</button><div style="margin-left:auto;display:grid;gap:2px;min-width:150px;text-align:right"><span style="font-size:11px;font-weight:700;color:#64748b">TOTAL WEIGHT</span><strong data-cleared-total style="font-size:18px">0 kg</strong></div>`;
-        bar.dataset.signature=signature;
-        const cs=bar.querySelector('[data-cleared-client]'),cos=bar.querySelector('[data-cleared-company]');
-        if(oldClient&&[...cs.options].some(o=>o.value===oldClient))cs.value=oldClient;
-        if(oldCompany&&[...cos.options].some(o=>o.value===oldCompany))cos.value=oldCompany;
+      let totalEl=document.getElementById('mayavi-cleared-total-inline');
+      if(!totalEl){
+        totalEl=document.createElement('div');
+        totalEl.id='mayavi-cleared-total-inline';
+        totalEl.style.cssText='font-size:12px;font-weight:700;text-align:right;margin:2px 4px 5px;color:#475569;';
+        const wrap=document.querySelector('.tableWrap');
+        wrap?.parentNode?.insertBefore(totalEl,wrap);
       }
 
       const apply=()=>{
-        const client=bar.querySelector('[data-cleared-client]')?.value||'';
-        const company=bar.querySelector('[data-cleared-company]')?.value||'';
+        const client=table.querySelector('[data-cleared-header-filter="client"]')?.value||'';
+        const company=table.querySelector('[data-cleared-header-filter="company"]')?.value||'';
+        const goods=table.querySelector('[data-cleared-header-filter="goods"]')?.value||'';
         let total=0,shown=0;
         rows.forEach(r=>{
-          const c=clientValue(r,clientIndex),co=companyValue(r,companyIndex);
-          const show=(!client||c===client)&&(!company||co===company);
+          const c=clientValue(r,clientIndex);
+          const co=companyValue(r,companyIndex);
+          const g=goodsIndex>=0?goodsValue(r,goodsIndex):'';
+          const show=(!client||c===client)&&(!company||co===company)&&(!goods||g===goods);
           r.style.display=show?'':'none';
           if(show){shown++;total+=weightFromCell(weightValue(r,weightIndex));}
         });
-        const totalEl=bar.querySelector('[data-cleared-total]');
         if(totalEl)totalEl.textContent=`${total.toLocaleString(undefined,{maximumFractionDigits:2})} kg • ${shown} master${shown===1?'':'s'}`;
       };
-      bar.querySelectorAll('select').forEach(s=>{s.onchange=apply});
-      const reset=bar.querySelector('[data-cleared-reset]');
-      if(reset)reset.onclick=()=>{bar.querySelectorAll('select').forEach(s=>s.value='');apply()};
+
+      table.querySelectorAll('[data-cleared-header-filter]').forEach(s=>s.onchange=apply);
       apply();
     };
 
@@ -108,7 +147,12 @@ export default function CustomsClearedEnhancements(){
     const observer=new MutationObserver(queue);
     observer.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','value','style']});
     install();
-    return()=>{observer.disconnect();document.getElementById('mayavi-cleared-enhancements')?.remove()}
+    return()=>{
+      observer.disconnect();
+      document.getElementById('mayavi-cleared-enhancements')?.remove();
+      document.getElementById('mayavi-cleared-total-inline')?.remove();
+      document.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
+    }
   },[]);
   return null;
 }
