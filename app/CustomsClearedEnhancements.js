@@ -41,6 +41,21 @@ function mailSortValue(value=''){
   const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[5]),0,0);
   return Number.isFinite(d.getTime())?d.getTime():null;
 }
+function arrivalSortValue(dateValue='',timeValue=''){
+  const dm=String(dateValue||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})/);
+  if(!dm)return null;
+  let h=0,m=0;
+  const tm=String(timeValue||'').trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if(tm){
+    h=Number(tm[1]);m=Number(tm[2]);
+    if(tm[3]){
+      if(h===12)h=0;
+      if(tm[3].toUpperCase()==='PM')h+=12;
+    }
+  }
+  const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),h,m,0,0);
+  return Number.isFinite(d.getTime())?d.getTime():null;
+}
 function hideLocationFiltersForClearedImport(){
   const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
   if(!/IMPORT/i.test(txt(type)))return;
@@ -95,13 +110,22 @@ export default function CustomsClearedEnhancements(){
       const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
       const weightIndex=headers.findIndex(v=>/^Weight$/i.test(v));
       const mailIndex=headers.findIndex(v=>/^Mail Time/i.test(v));
+      const arrivalDateIndex=headers.findIndex(v=>/^Arrival Date/i.test(v));
+      const arrivalTimeIndex=headers.findIndex(v=>/^Arrival Time/i.test(v));
       if(clientIndex<0||companyIndex<0||weightIndex<0)return;
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
       const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
       const importMode=/IMPORT/i.test(txt(type));
-      if(importMode&&mailIndex>=0&&rows.length>1){
-        const ordered=[...rows].map((row,index)=>({row,index,score:mailSortValue(txt(tdAt(row,mailIndex)))})).sort((a,b)=>{
+      const exportMode=/EXPORT/i.test(txt(type));
+      if(rows.length>1&&((importMode&&mailIndex>=0)||(exportMode&&arrivalDateIndex>=0))){
+        const ordered=[...rows].map((row,index)=>({
+          row,
+          index,
+          score:importMode
+            ? mailSortValue(txt(tdAt(row,mailIndex)))
+            : arrivalSortValue(txt(tdAt(row,arrivalDateIndex)),arrivalTimeIndex>=0?txt(tdAt(row,arrivalTimeIndex)):'')
+        })).sort((a,b)=>{
           if(a.score==null&&b.score==null)return a.index-b.index;
           if(a.score==null)return 1;
           if(b.score==null)return -1;
