@@ -1,22 +1,16 @@
 'use client';
 import { useEffect } from 'react';
 
-const DATE_RANGE_KEY='mayavi_cleared_import_arrival_range';
+const RANGE_KEYS={
+  IMPORT:'mayavi_cleared_import_arrival_range',
+  EXPORT:'mayavi_cleared_export_booking_range'
+};
+
 function txt(el){return String(el?.textContent||'').trim()}
 function uniq(values){return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
-function weightFromCell(value=''){
-  const s=String(value||'').replace(/,/g,'').trim();
-  if(!s||s==='—')return 0;
-  const nums=s.match(/-?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite)||[];
-  return nums.length?nums.at(-1):0;
-}
 function tdAt(tr,i){return tr.querySelectorAll('td')[i]||null}
 function clientValue(tr,i){return txt(tdAt(tr,i))}
-function goodsValue(tr,i){
-  const td=tdAt(tr,i);if(!td)return'';
-  const input=td.querySelector('input');
-  return String(input?.value??txt(td)).trim();
-}
+function goodsValue(tr,i){const td=tdAt(tr,i);if(!td)return'';const input=td.querySelector('input');return String(input?.value??txt(td)).trim()}
 function companyValue(tr,i){
   const td=tdAt(tr,i);if(!td)return'';
   const select=td.querySelector('select');
@@ -31,10 +25,14 @@ function companyValue(tr,i){
   if(/\bPV\b/i.test(raw))return'PV';
   return raw.replace(/^Select\s*/i,'').trim();
 }
-function weightValue(tr,i){return txt(tdAt(tr,i))}
+function weightFromCell(value=''){
+  const s=String(value||'').replace(/,/g,'').trim();
+  if(!s||s==='—')return 0;
+  const nums=s.match(/-?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite)||[];
+  return nums.length?nums.at(-1):0;
+}
 function mailSortValue(value=''){
-  const s=String(value||'').trim();
-  const m=s.match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  const m=String(value||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if(!m)return null;
   let h=Number(m[4]);
   if(h===12)h=0;
@@ -42,33 +40,30 @@ function mailSortValue(value=''){
   const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[5]),0,0);
   return Number.isFinite(d.getTime())?d.getTime():null;
 }
-function arrivalSortValue(dateValue='',timeValue=''){
+function dateTimeSortValue(dateValue='',timeValue=''){
   const dm=String(dateValue||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})/);
   if(!dm)return null;
   let h=0,m=0;
   const tm=String(timeValue||'').trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
   if(tm){
     h=Number(tm[1]);m=Number(tm[2]);
-    if(tm[3]){
-      if(h===12)h=0;
-      if(tm[3].toUpperCase()==='PM')h+=12;
-    }
+    if(tm[3]){if(h===12)h=0;if(tm[3].toUpperCase()==='PM')h+=12;}
   }
   const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),h,m,0,0);
   return Number.isFinite(d.getTime())?d.getTime():null;
 }
-function arrivalDateOnly(value=''){
+function dateOnly(value=''){
   const m=String(value||'').trim().match(/(20\d{2}-\d{2}-\d{2})/);
   return m?m[1]:'';
 }
-function readDateRange(){
+function readDateRange(mode){
   try{
-    const parsed=JSON.parse(sessionStorage.getItem(DATE_RANGE_KEY)||'{}');
+    const parsed=JSON.parse(sessionStorage.getItem(RANGE_KEYS[mode])||'{}');
     return {from:String(parsed?.from||''),to:String(parsed?.to||'')};
   }catch{return {from:'',to:''}}
 }
-function saveDateRange(from='',to=''){
-  try{sessionStorage.setItem(DATE_RANGE_KEY,JSON.stringify({from,to}))}catch{}
+function saveDateRange(mode,from='',to=''){
+  try{sessionStorage.setItem(RANGE_KEYS[mode],JSON.stringify({from,to}))}catch{}
 }
 function hideLocationFiltersForClearedImport(){
   const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
@@ -98,6 +93,7 @@ function makeHeaderSelect(key,label,values){
 export default function CustomsClearedEnhancements(){
   useEffect(()=>{
     let scheduled=false;
+
     const install=()=>{
       scheduled=false;
       const clearedActive=[...document.querySelectorAll('.adminViews button')].some(b=>b.classList.contains('active')&&/CUSTOMS CLEARED/i.test(txt(b)));
@@ -114,6 +110,11 @@ export default function CustomsClearedEnhancements(){
       hideLocationFiltersForClearedImport();
       oldBar?.remove();
 
+      const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
+      const mode=/EXPORT/i.test(txt(type))?'EXPORT':'IMPORT';
+      const importMode=mode==='IMPORT';
+      const exportMode=mode==='EXPORT';
+
       const headersEls=[...table.querySelectorAll('thead th')];
       const headers=headersEls.map(th=>{
         const clone=th.cloneNode(true);
@@ -125,21 +126,19 @@ export default function CustomsClearedEnhancements(){
       const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
       const weightIndex=headers.findIndex(v=>/^Weight$/i.test(v));
       const mailIndex=headers.findIndex(v=>/^Mail Time/i.test(v));
+      const bookingDateIndex=headers.findIndex(v=>/^Booking Date/i.test(v));
       const arrivalDateIndex=headers.findIndex(v=>/^Arrival Date/i.test(v));
       const arrivalTimeIndex=headers.findIndex(v=>/^Arrival Time/i.test(v));
       if(clientIndex<0||companyIndex<0||weightIndex<0)return;
 
       const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
-      const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
-      const importMode=/IMPORT/i.test(txt(type));
-      const exportMode=/EXPORT/i.test(txt(type));
+
       if(rows.length>1&&((importMode&&mailIndex>=0)||(exportMode&&arrivalDateIndex>=0))){
         const ordered=[...rows].map((row,index)=>({
-          row,
-          index,
+          row,index,
           score:importMode
             ? mailSortValue(txt(tdAt(row,mailIndex)))
-            : arrivalSortValue(txt(tdAt(row,arrivalDateIndex)),arrivalTimeIndex>=0?txt(tdAt(row,arrivalTimeIndex)):'')
+            : dateTimeSortValue(txt(tdAt(row,arrivalDateIndex)),arrivalTimeIndex>=0?txt(tdAt(row,arrivalTimeIndex)):'')
         })).sort((a,b)=>{
           if(a.score==null&&b.score==null)return a.index-b.index;
           if(a.score==null)return 1;
@@ -162,15 +161,13 @@ export default function CustomsClearedEnhancements(){
       const goods=goodsIndex>=0?uniq(rows.map(r=>goodsValue(r,goodsIndex))):[];
       const clientHeader=headersEls[clientIndex];
       const hasNativeClientFilter=Boolean(clientHeader?.querySelector('select:not([data-cleared-header-filter])'));
-      const signature=JSON.stringify({clients,companies,goods,headers:headers.length,hasNativeClientFilter});
-
+      const signature=JSON.stringify({mode,clients,companies,goods,headers:headers.length,hasNativeClientFilter});
       const previous={
         client:table.querySelector('[data-cleared-header-filter="client"]')?.value||'',
         company:table.querySelector('[data-cleared-header-filter="company"]')?.value||'',
         goods:table.querySelector('[data-cleared-header-filter="goods"]')?.value||''
       };
-      const currentSignature=table.dataset.clearedFilterSignature||'';
-      if(currentSignature!==signature){
+      if(table.dataset.clearedFilterSignature!==signature){
         table.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
         const configs=[
           ...(!hasNativeClientFilter?[{index:clientIndex,key:'client',label:'Clients',values:clients}]:[]),
@@ -195,33 +192,41 @@ export default function CustomsClearedEnhancements(){
         wrap?.parentNode?.insertBefore(totalEl,wrap);
       }
 
+      const rangeDateIndex=importMode?arrivalDateIndex:bookingDateIndex;
+      const rangeDateLabel=importMode?'ARRIVAL DATE':'BOOKING DATE';
+
       const apply=()=>{
         const injectedClient=table.querySelector('[data-cleared-header-filter="client"]');
         const nativeClient=clientHeader?.querySelector('select:not([data-cleared-header-filter])');
         const client=injectedClient?.value||nativeClient?.value||'';
         const company=table.querySelector('[data-cleared-header-filter="company"]')?.value||'';
         const goods=table.querySelector('[data-cleared-header-filter="goods"]')?.value||'';
-        const range=importMode?readDateRange():{from:'',to:''};
+        const range=readDateRange(mode);
         let total=0,shown=0;
         rows.forEach(r=>{
           const c=clientValue(r,clientIndex);
           const co=companyValue(r,companyIndex);
           const g=goodsIndex>=0?goodsValue(r,goodsIndex):'';
-          const arrival=arrivalDateIndex>=0?arrivalDateOnly(txt(tdAt(r,arrivalDateIndex))):'';
-          const inRange=(!range.from&&!range.to)||Boolean(arrival&&(!range.from||arrival>=range.from)&&(!range.to||arrival<=range.to));
+          const rowDate=rangeDateIndex>=0?dateOnly(txt(tdAt(r,rangeDateIndex))):'';
+          const inRange=(!range.from&&!range.to)||Boolean(rowDate&&(!range.from||rowDate>=range.from)&&(!range.to||rowDate<=range.to));
           const show=(!client||c===client)&&(!company||co===company)&&(!goods||g===goods)&&inRange;
           r.style.display=show?'':'none';
-          if(show){shown++;total+=weightFromCell(weightValue(r,weightIndex));}
+          if(show){shown++;total+=weightFromCell(txt(tdAt(r,weightIndex)));}
         });
         if(totalEl)totalEl.textContent=`${total.toLocaleString(undefined,{maximumFractionDigits:2})} kg • ${shown} master${shown===1?'':'s'}`;
       };
 
-      if(importMode&&arrivalDateIndex>=0){
-        const dateHeader=headersEls[arrivalDateIndex];
-        let wrap=dateHeader?.querySelector('[data-cleared-date-range-wrap]');
+      table.querySelectorAll('[data-cleared-date-range-wrap]').forEach(el=>{
+        if(el.getAttribute('data-range-mode')!==mode)el.remove();
+      });
+
+      if(rangeDateIndex>=0){
+        const dateHeader=headersEls[rangeDateIndex];
+        let wrap=dateHeader?.querySelector(`[data-cleared-date-range-wrap][data-range-mode="${mode}"]`);
         if(!wrap&&dateHeader){
           wrap=document.createElement('div');
           wrap.setAttribute('data-cleared-date-range-wrap','1');
+          wrap.setAttribute('data-range-mode',mode);
           wrap.style.cssText='display:block;position:relative;margin-top:4px;';
           const button=document.createElement('button');
           button.type='button';
@@ -230,32 +235,30 @@ export default function CustomsClearedEnhancements(){
           const panel=document.createElement('div');
           panel.setAttribute('data-cleared-date-range-panel','1');
           panel.style.cssText='display:none;position:absolute;z-index:60;top:27px;left:0;width:210px;padding:9px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 10px 24px rgba(15,23,42,.18);text-align:left;';
-          panel.innerHTML='<label style="display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;">FROM ARRIVAL DATE</label><input data-cleared-date-from type="date" style="width:100%;box-sizing:border-box;padding:5px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;margin-bottom:7px;"><label style="display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;">TO ARRIVAL DATE</label><input data-cleared-date-to type="date" style="width:100%;box-sizing:border-box;padding:5px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;margin-bottom:8px;"><div style="display:flex;gap:6px;"><button type="button" data-cleared-date-apply style="flex:1;padding:5px;border:0;border-radius:6px;background:#0f766e;color:#fff;font-size:11px;font-weight:800;cursor:pointer;">APPLY</button><button type="button" data-cleared-date-clear style="flex:1;padding:5px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#475569;font-size:11px;font-weight:800;cursor:pointer;">CLEAR</button></div>';
+          panel.innerHTML=`<label style="display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;">FROM ${rangeDateLabel}</label><input data-cleared-date-from type="date" style="width:100%;box-sizing:border-box;padding:5px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;margin-bottom:7px;"><label style="display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;">TO ${rangeDateLabel}</label><input data-cleared-date-to type="date" style="width:100%;box-sizing:border-box;padding:5px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;margin-bottom:8px;"><div style="display:flex;gap:6px;"><button type="button" data-cleared-date-apply style="flex:1;padding:5px;border:0;border-radius:6px;background:#0f766e;color:#fff;font-size:11px;font-weight:800;cursor:pointer;">APPLY</button><button type="button" data-cleared-date-clear style="flex:1;padding:5px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#475569;font-size:11px;font-weight:800;cursor:pointer;">CLEAR</button></div>`;
           wrap.appendChild(button);wrap.appendChild(panel);dateHeader.appendChild(wrap);
           const fromInput=panel.querySelector('[data-cleared-date-from]');
           const toInput=panel.querySelector('[data-cleared-date-to]');
           const setButtonState=()=>{
-            const range=readDateRange();
+            const range=readDateRange(mode);
             const active=Boolean(range.from||range.to);
             button.textContent=active?'DATE RANGE ✓':'DATE RANGE';
             button.style.background=active?'#ccfbf1':'#fff';
             button.style.borderColor=active?'#14b8a6':'#cbd5e1';
-            button.title=active?`${range.from||'Any'} to ${range.to||'Any'}`:'Filter by Arrival Date range';
+            button.title=active?`${range.from||'Any'} to ${range.to||'Any'}`:`Filter by ${rangeDateLabel.toLowerCase()} range`;
           };
-          const saved=readDateRange();fromInput.value=saved.from;toInput.value=saved.to;setButtonState();
-          button.onclick=e=>{e.preventDefault();e.stopPropagation();const opening=panel.style.display==='none';panel.style.display=opening?'block':'none';if(opening){const r=readDateRange();fromInput.value=r.from;toInput.value=r.to;}};
+          const saved=readDateRange(mode);fromInput.value=saved.from;toInput.value=saved.to;setButtonState();
+          button.onclick=e=>{e.preventDefault();e.stopPropagation();const opening=panel.style.display==='none';panel.style.display=opening?'block':'none';if(opening){const r=readDateRange(mode);fromInput.value=r.from;toInput.value=r.to;}};
           panel.onclick=e=>e.stopPropagation();
           panel.querySelector('[data-cleared-date-apply]').onclick=()=>{
             let from=fromInput.value||'',to=toInput.value||'';
             if(from&&to&&from>to){const swap=from;from=to;to=swap;fromInput.value=from;toInput.value=to;}
-            saveDateRange(from,to);setButtonState();apply();panel.style.display='none';
+            saveDateRange(mode,from,to);setButtonState();apply();panel.style.display='none';
           };
           panel.querySelector('[data-cleared-date-clear]').onclick=()=>{
-            fromInput.value='';toInput.value='';saveDateRange('','');setButtonState();apply();panel.style.display='none';
+            fromInput.value='';toInput.value='';saveDateRange(mode,'','');setButtonState();apply();panel.style.display='none';
           };
         }
-      }else{
-        table.querySelectorAll('[data-cleared-date-range-wrap]').forEach(el=>el.remove());
       }
 
       table.querySelectorAll('[data-cleared-header-filter]').forEach(s=>s.onchange=apply);
