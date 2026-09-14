@@ -24,69 +24,98 @@ function companyValue(tr,i){
   if(/\bPV\b/i.test(raw))return'PV';
   return raw.replace(/^Select\s*/i,'').trim();
 }
+function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+function makeHeaderSelect(key,label,values){
+  const select=document.createElement('select');
+  select.setAttribute('data-active-header-filter',key);
+  select.setAttribute('aria-label',`${label} filter`);
+  select.style.cssText='display:block;width:100%;min-width:92px;margin-top:4px;padding:3px 22px 3px 6px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;';
+  select.innerHTML=`<option value="">All ${label}</option>${values.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}`;
+  return select;
+}
 
 export default function ActiveMasterFilters(){
   useEffect(()=>{
-    let applying=false;
+    let scheduled=false;
     const install=()=>{
-      if(applying)return;
-      applying=true;
-      try{
-        const adminActive=[...document.querySelectorAll('.adminViews button')].some(b=>b.classList.contains('active')&&/ACTIVE MASTERS/i.test(text(b)));
-        const table=document.querySelector('.tableWrap table');
-        const old=document.getElementById('mayavi-active-master-filters');
-        if(!adminActive||!table){old?.remove();return}
+      scheduled=false;
+      const adminActive=[...document.querySelectorAll('.adminViews button')].some(b=>b.classList.contains('active')&&/ACTIVE MASTERS/i.test(text(b)));
+      const table=document.querySelector('.tableWrap table');
+      document.getElementById('mayavi-active-master-filters')?.remove();
+      if(!adminActive||!table){
+        document.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+        return;
+      }
 
-        const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
-        const isImport=/IMPORT/i.test(text(type));
-        const headers=[...table.querySelectorAll('thead th')].map(th=>text(th).replace(/\s+/g,' '));
-        const clientIndex=headers.findIndex(v=>/^Client/i.test(v));
-        const companyIndex=headers.findIndex(v=>/^Company/i.test(v));
-        const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
-        if(clientIndex<0||companyIndex<0){old?.remove();return}
+      const type=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
+      const isImport=/IMPORT/i.test(text(type));
+      const headersEls=[...table.querySelectorAll('thead th')];
+      const headers=headersEls.map(th=>{
+        const clone=th.cloneNode(true);
+        clone.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+        return text(clone).replace(/\s+/g,' ');
+      });
+      const clientIndex=headers.findIndex(v=>/^Client/i.test(v));
+      const companyIndex=headers.findIndex(v=>/^Company/i.test(v));
+      const goodsIndex=headers.findIndex(v=>/^Goods/i.test(v));
+      if(clientIndex<0||companyIndex<0){
+        table.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+        return;
+      }
 
-        const bodyRows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
-        const clients=unique(bodyRows.map(r=>clientValue(r,clientIndex)));
-        const companies=unique(bodyRows.map(r=>companyValue(r,companyIndex)));
-        const goods=isImport&&goodsIndex>=0?unique(bodyRows.map(r=>goodsValue(r,goodsIndex))):[];
+      const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2);
+      const clients=unique(rows.map(r=>clientValue(r,clientIndex)));
+      const companies=unique(rows.map(r=>companyValue(r,companyIndex)));
+      const goods=isImport&&goodsIndex>=0?unique(rows.map(r=>goodsValue(r,goodsIndex))):[];
+      const signature=JSON.stringify({isImport,clients,companies,goods,headers:headers.length});
+      const previous={
+        client:table.querySelector('[data-active-header-filter="client"]')?.value||'',
+        company:table.querySelector('[data-active-header-filter="company"]')?.value||'',
+        goods:table.querySelector('[data-active-header-filter="goods"]')?.value||''
+      };
 
-        let bar=old;
-        const signature=JSON.stringify({isImport,clients,companies,goods});
-        if(!bar){
-          bar=document.createElement('section');
-          bar.id='mayavi-active-master-filters';
-          bar.className='filters';
-          const tableWrap=document.querySelector('.tableWrap');
-          tableWrap?.parentNode?.insertBefore(bar,tableWrap);
-        }
-        if(bar.dataset.signature!==signature){
-          const previous={client:bar.querySelector('[data-filter="client"]')?.value||'',company:bar.querySelector('[data-filter="company"]')?.value||'',goods:bar.querySelector('[data-filter="goods"]')?.value||''};
-          const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-          const select=(label,key,options)=>`<div><label>${label}</label><select data-filter="${key}"><option value="">All ${label}</option>${options.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></div>`;
-          bar.innerHTML=select('CLIENTS','client',clients)+select('COMPANIES','company',companies)+(isImport?select('GOODS','goods',goods):'')+'<button type="button" data-clear="1">CLEAR FILTERS</button>';
-          bar.dataset.signature=signature;
-          ['client','company','goods'].forEach(k=>{const s=bar.querySelector(`[data-filter="${k}"]`);if(s&&previous[k]&&[...s.options].some(o=>o.value===previous[k]))s.value=previous[k]});
-        }
-        const apply=()=>{
-          const client=bar.querySelector('[data-filter="client"]')?.value||'';
-          const company=bar.querySelector('[data-filter="company"]')?.value||'';
-          const goods=bar.querySelector('[data-filter="goods"]')?.value||'';
-          bodyRows.forEach(r=>{
-            const c=clientValue(r,clientIndex),co=companyValue(r,companyIndex),g=goodsIndex>=0?goodsValue(r,goodsIndex):'';
-            const show=(!client||c===client)&&(!company||co===company)&&(!goods||g===goods);
-            r.style.display=show?'':'none';
-          });
-        };
-        bar.querySelectorAll('select').forEach(s=>s.onchange=apply);
-        const clear=bar.querySelector('[data-clear="1"]');
-        if(clear)clear.onclick=()=>{bar.querySelectorAll('select').forEach(s=>s.value='');apply()};
-        apply();
-      }finally{applying=false}
+      if(table.dataset.activeFilterSignature!==signature){
+        table.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+        const configs=[
+          {index:clientIndex,key:'client',label:'Clients',values:clients},
+          {index:companyIndex,key:'company',label:'Companies',values:companies},
+          ...(isImport&&goodsIndex>=0?[{index:goodsIndex,key:'goods',label:'Goods',values:goods}]:[])
+        ];
+        configs.forEach(({index,key,label,values})=>{
+          const th=headersEls[index];if(!th)return;
+          const select=makeHeaderSelect(key,label,values);
+          th.appendChild(select);
+          if(previous[key]&&[...select.options].some(o=>o.value===previous[key]))select.value=previous[key];
+        });
+        table.dataset.activeFilterSignature=signature;
+      }
+
+      const apply=()=>{
+        const client=table.querySelector('[data-active-header-filter="client"]')?.value||'';
+        const company=table.querySelector('[data-active-header-filter="company"]')?.value||'';
+        const goods=table.querySelector('[data-active-header-filter="goods"]')?.value||'';
+        rows.forEach(r=>{
+          const c=clientValue(r,clientIndex);
+          const co=companyValue(r,companyIndex);
+          const g=goodsIndex>=0?goodsValue(r,goodsIndex):'';
+          const show=(!client||c===client)&&(!company||co===company)&&(!goods||g===goods);
+          r.style.display=show?'':'none';
+        });
+      };
+
+      table.querySelectorAll('[data-active-header-filter]').forEach(s=>s.onchange=apply);
+      apply();
     };
-    const observer=new MutationObserver(()=>setTimeout(install,0));
+
+    const queue=()=>{if(scheduled)return;scheduled=true;setTimeout(install,0)};
+    const observer=new MutationObserver(queue);
     observer.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['value','class']});
     install();
-    return()=>{observer.disconnect();document.getElementById('mayavi-active-master-filters')?.remove()}
+    return()=>{
+      observer.disconnect();
+      document.getElementById('mayavi-active-master-filters')?.remove();
+      document.querySelectorAll('[data-active-header-filter]').forEach(el=>el.remove());
+    }
   },[]);
   return null;
 }
