@@ -1,4 +1,5 @@
 import './globals.css';
+import './colorful.css';
 
 export const metadata={title:'Mayavi Cargo — MAWB Tracker',description:'Shared admin and employee MAWB dashboards with backend airline tracking and OCR'};
 
