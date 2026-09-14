@@ -1,0 +1,15 @@
+/* Mayavi visual polish: presentation only, no shipment data changes */
+body{background:linear-gradient(180deg,#f4f7ff 0%,#f8fbff 45%,#f7fafc 100%)}
+.hero{background:linear-gradient(125deg,#123a78 0%,#3157b7 45%,#0f8f8a 100%);box-shadow:0 14px 34px rgba(29,78,216,.18)}
+.typeTabs button.active{background:linear-gradient(135deg,#2563eb,#4f46e5);border-color:#3b5ed7;box-shadow:0 6px 16px rgba(59,92,215,.24)}
+.adminViews button.active{background:linear-gradient(135deg,#0f766e,#0d9488);border-color:#0f766e;box-shadow:0 5px 14px rgba(15,118,110,.18)}
+.stats div{border:1px solid #e8edf7;transition:transform .16s ease,box-shadow .16s ease}.stats div:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(30,64,175,.10)}
+.stats div:nth-child(1){background:linear-gradient(180deg,#eff6ff,#ffffff);border-top:3px solid #3b82f6}.stats div:nth-child(2){background:linear-gradient(180deg,#fff7ed,#ffffff);border-top:3px solid #f59e0b}.stats div:nth-child(3){background:linear-gradient(180deg,#eef2ff,#ffffff);border-top:3px solid #6366f1}.stats div:nth-child(4){background:linear-gradient(180deg,#ecfdf5,#ffffff);border-top:3px solid #10b981}.stats div:nth-child(5){background:linear-gradient(180deg,#fff1f2,#ffffff);border-top:3px solid #f43f5e}
+.entry{border:1px solid #e5eaf5}.entry button:not(.secondary){background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 5px 14px rgba(37,99,235,.16)}
+.tableWrap{border:1px solid #e6ebf4;box-shadow:0 8px 24px rgba(30,64,175,.08)}
+th{background:linear-gradient(180deg,#f8fbff,#f3f7fd);color:#50637d}tbody tr{transition:background .14s ease}tbody tr:hover td{background:#f8fbff}.clientChip,.employeeChip,.badge{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.refreshBtn{background:#e0ecff;color:#1d4ed8}.moveBtn{background:#ede9fe;color:#6d28d9}.trackLink{background:#f1f5f9;color:#334155}.customsToggle.checked{box-shadow:0 0 0 2px rgba(34,197,94,.08)}
+@keyframes mayaviMailBlink{0%,100%{background:#fff7ed;color:#9a3412;border-color:#fdba74;box-shadow:0 0 0 0 rgba(249,115,22,.05)}50%{background:#fb923c;color:#fff;border-color:#f97316;box-shadow:0 0 0 5px rgba(249,115,22,.16)}}
+.mailChoice.mailOverdue .mailBtn.no,.mailBtn.no.mailOverdueBtn{animation:mayaviMailBlink 1.05s ease-in-out infinite;font-weight:1000}
+.mailOverdueTime .mailTime,.mailOverdueTime{color:#c2410c!important;font-weight:900!important;background:#fff7ed!important}
+@media (prefers-reduced-motion:reduce){.mailChoice.mailOverdue .mailBtn.no,.mailBtn.no.mailOverdueBtn{animation:none;background:#fb923c;color:#fff;border-color:#f97316}}
