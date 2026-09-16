@@ -9,6 +9,17 @@ async function run(value){
   const mawb=normalizeMawb(value);
   if(!mawb||!mawb.startsWith('125-'))return Response.json({ok:false,error:'Enter a valid British Airways/IAG Cargo MAWB beginning 125.'},{status:400});
   const result=await trackBritishEntry(mawb);
+  const officialText=String(result?.debug?.pageText||'');
+  if(/AWB\s+invalid|please\s+enter\s+a\s+valid\s+AWB/i.test(officialText)){
+    return Response.json({
+      ok:false,
+      mawb,
+      provider:'British Airways / IAG Cargo official Track & Trace',
+      reason:'IAG CARGO REJECTED THE AUTOMATED AWB SUBMISSION AS INVALID',
+      officialTracker:'https://www.iagcargo.com/',
+      automationRejected:true
+    },{status:422});
+  }
   if(result?.ok)return Response.json({ok:true,provider:'British Airways / IAG Cargo official Track & Trace',...result});
   return Response.json({ok:false,mawb,provider:'British Airways / IAG Cargo official Track & Trace',...result},{status:503});
 }
