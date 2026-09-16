@@ -20,7 +20,7 @@ import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.17';
+const VERSION='3.9.18';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 
@@ -148,7 +148,14 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('312-')) return trackIndigo(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
   if(mawb.startsWith('910-')) return trackOman(mawb);
-  if(mawb.startsWith('932-')) return trackVirgin(mawb);
+  if(mawb.startsWith('932-')){
+    let result=await trackVirgin(mawb);
+    if(!result?.ok&&/ETXTBSY|EBUSY/i.test(String(result?.reason||''))){
+      await new Promise(resolve=>setTimeout(resolve,650));
+      result=await trackVirgin(mawb);
+    }
+    return result;
+  }
   return {ok:false,skipped:true,reason:'NO DEDICATED OFFICIAL ADAPTER FOR THIS PREFIX'};
 }
 async function browserOfficial(mawb){
