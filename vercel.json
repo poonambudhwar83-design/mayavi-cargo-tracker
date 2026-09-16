@@ -4,6 +4,10 @@
     "app/api/track/route.js": {
       "maxDuration": 300
     },
+    "app/api/cathay-hkg-test/route.js": {
+      "maxDuration": 60,
+      "regions": ["hkg1"]
+    },
     "app/api/etihad-test/route.js": {
       "maxDuration": 300,
       "regions": ["bom1"]
