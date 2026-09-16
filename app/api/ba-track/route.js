@@ -1,4 +1,4 @@
-import { trackBritishEntry } from '../../../lib/britishEntry.js';
+import { trackBritishEntryV2 } from '../../../lib/britishEntryV2.js';
 import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
@@ -9,7 +9,7 @@ async function run(value){
   const mawb=normalizeMawb(value);
   if(!mawb||!mawb.startsWith('125-'))return Response.json({ok:false,error:'Enter a valid British Airways/IAG Cargo MAWB beginning 125.'},{status:400});
 
-  const result=await trackBritishEntry(mawb);
+  const result=await trackBritishEntryV2(mawb);
 
   if(result?.ok){
     return Response.json({
@@ -45,6 +45,6 @@ export async function POST(request){
 
 export async function GET(request){
   const mawb=new URL(request.url).searchParams.get('mawb');
-  if(!mawb)return Response.json({ok:true,mode:'Isolated BA/IAG Cargo entry-page adapter test endpoint',prefix:'125',officialTracker:'https://www.iagcargo.com/'});
+  if(!mawb)return Response.json({ok:true,mode:'Isolated BA/IAG Cargo generic parser endpoint',prefix:'125',officialTracker:'https://www.iagcargo.com/'});
   return run(mawb);
 }
