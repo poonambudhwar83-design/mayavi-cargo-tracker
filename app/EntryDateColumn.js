@@ -97,8 +97,8 @@ export default function EntryDateColumn(){
         if(headers.length){
           dateHeader=document.createElement('th');
           dateHeader.setAttribute('data-entry-date-column','1');
-          dateHeader.style.minWidth='112px';
-          dateHeader.style.width='112px';
+          dateHeader.style.minWidth='138px';
+          dateHeader.style.width='138px';
           dateHeader.style.whiteSpace='nowrap';
           headers[0].insertAdjacentElement('afterend',dateHeader);
         }
@@ -126,8 +126,8 @@ export default function EntryDateColumn(){
         if(!td){
           td=document.createElement('td');
           td.setAttribute('data-entry-date-column','1');
-          td.style.minWidth='112px';
-          td.style.width='112px';
+          td.style.minWidth='138px';
+          td.style.width='138px';
           td.style.whiteSpace='nowrap';
           td.style.fontWeight='700';
           cells[0].insertAdjacentElement('afterend',td);
@@ -137,34 +137,39 @@ export default function EntryDateColumn(){
         if(!enteredAtByAwb.has(key))missingKnownDate=true;
       }
 
-      if(dateHeader){
-        const dates=[...new Set(rows.map(tr=>{
-          const awb=rowMawb(tr);
-          return awb?dateKey(enteredAtByAwb.get(digits(awb))||''):'';
-        }).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
-        const signature=JSON.stringify(dates);
-        let select=dateHeader.querySelector('select[data-entry-date-filter]');
-        if(!select){
-          dateHeader.innerHTML='<span>Entry Date</span>';
-          select=document.createElement('select');
-          select.setAttribute('data-entry-date-filter','1');
-          select.setAttribute('aria-label','Entry date filter');
-          select.style.cssText='display:block;width:100%;min-width:104px;margin-top:4px;padding:3px 20px 3px 5px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;';
-          dateHeader.appendChild(select);
-          select.onchange=()=>{
-            selectedDate=select.value||'';
-            applyFilter(table);
-          };
-        }
-        if(dateHeader.dataset.entryDateSignature!==signature){
-          const previous=selectedDate;
-          select.innerHTML=`<option value="">All Dates</option>${dates.map(d=>`<option value="${d}">${formatDateKey(d)}</option>`).join('')}`;
-          if(previous){
-            if(!dates.includes(previous))select.insertAdjacentHTML('beforeend',`<option value="${previous}">${formatDateKey(previous)}</option>`);
-            select.value=previous;
-          }
-          dateHeader.dataset.entryDateSignature=signature;
-        }
+      if(dateHeader&&!dateHeader.querySelector('input[data-entry-date-filter]')){
+        dateHeader.innerHTML='<span>Entry Date</span>';
+        const wrap=document.createElement('div');
+        wrap.style.cssText='display:flex;align-items:center;gap:4px;margin-top:4px;';
+        const input=document.createElement('input');
+        input.type='date';
+        input.setAttribute('data-entry-date-filter','1');
+        input.setAttribute('aria-label','Filter by entry date');
+        input.title='Select entry date';
+        input.style.cssText='width:108px;min-width:108px;padding:3px 4px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;';
+        input.value=selectedDate;
+        const clear=document.createElement('button');
+        clear.type='button';
+        clear.textContent='×';
+        clear.title='Clear entry date filter';
+        clear.setAttribute('aria-label','Clear entry date filter');
+        clear.style.cssText='width:22px;height:22px;padding:0;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#475569;font-size:15px;font-weight:700;line-height:18px;cursor:pointer;';
+        input.onchange=()=>{
+          selectedDate=input.value||'';
+          applyFilter(table);
+        };
+        clear.onclick=e=>{
+          e.preventDefault();
+          selectedDate='';
+          input.value='';
+          applyFilter(table);
+        };
+        wrap.appendChild(input);
+        wrap.appendChild(clear);
+        dateHeader.appendChild(wrap);
+      }else if(dateHeader){
+        const input=dateHeader.querySelector('input[data-entry-date-filter]');
+        if(input&&input.value!==selectedDate)input.value=selectedDate;
       }
 
       applyFilter(table);
