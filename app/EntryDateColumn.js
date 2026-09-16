@@ -34,7 +34,8 @@ export default function EntryDateColumn(){
     let scheduled=false;
     let loading=false;
     let reloadTimer=null;
-    let selectedDate='';
+    let fromDate='';
+    let toDate='';
     const enteredAtByAwb=new Map();
 
     let style=document.getElementById('mayavi-entry-date-filter-style');
@@ -80,7 +81,13 @@ export default function EntryDateColumn(){
         if(!awb)continue;
         const key=digits(awb);
         const rowDate=dateKey(enteredAtByAwb.get(key)||'');
-        tr.classList.toggle('mayavi-entry-date-hidden',Boolean(selectedDate&&rowDate!==selectedDate));
+        const inRange=Boolean(
+          rowDate &&
+          (!fromDate||rowDate>=fromDate) &&
+          (!toDate||rowDate<=toDate)
+        );
+        const filterActive=Boolean(fromDate||toDate);
+        tr.classList.toggle('mayavi-entry-date-hidden',filterActive&&!inRange);
       }
     }
 
@@ -97,8 +104,8 @@ export default function EntryDateColumn(){
         if(headers.length){
           dateHeader=document.createElement('th');
           dateHeader.setAttribute('data-entry-date-column','1');
-          dateHeader.style.minWidth='138px';
-          dateHeader.style.width='138px';
+          dateHeader.style.minWidth='240px';
+          dateHeader.style.width='240px';
           dateHeader.style.whiteSpace='nowrap';
           headers[0].insertAdjacentElement('afterend',dateHeader);
         }
@@ -126,8 +133,8 @@ export default function EntryDateColumn(){
         if(!td){
           td=document.createElement('td');
           td.setAttribute('data-entry-date-column','1');
-          td.style.minWidth='138px';
-          td.style.width='138px';
+          td.style.minWidth='240px';
+          td.style.width='240px';
           td.style.whiteSpace='nowrap';
           td.style.fontWeight='700';
           cells[0].insertAdjacentElement('afterend',td);
@@ -137,39 +144,69 @@ export default function EntryDateColumn(){
         if(!enteredAtByAwb.has(key))missingKnownDate=true;
       }
 
-      if(dateHeader&&!dateHeader.querySelector('input[data-entry-date-filter]')){
+      if(dateHeader&&!dateHeader.querySelector('[data-entry-date-range]')){
         dateHeader.innerHTML='<span>Entry Date</span>';
         const wrap=document.createElement('div');
-        wrap.style.cssText='display:flex;align-items:center;gap:4px;margin-top:4px;';
-        const input=document.createElement('input');
-        input.type='date';
-        input.setAttribute('data-entry-date-filter','1');
-        input.setAttribute('aria-label','Filter by entry date');
-        input.title='Select entry date';
-        input.style.cssText='width:108px;min-width:108px;padding:3px 4px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;';
-        input.value=selectedDate;
+        wrap.setAttribute('data-entry-date-range','1');
+        wrap.style.cssText='display:flex;align-items:flex-end;gap:5px;margin-top:4px;';
+
+        const makeDateBox=(labelText,kind,value)=>{
+          const box=document.createElement('label');
+          box.style.cssText='display:flex;flex-direction:column;gap:2px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;';
+          const label=document.createElement('span');
+          label.textContent=labelText;
+          const input=document.createElement('input');
+          input.type='date';
+          input.setAttribute(`data-entry-date-${kind}`,'1');
+          input.setAttribute('aria-label',`${labelText} entry date`);
+          input.style.cssText='width:92px;min-width:92px;padding:3px 4px;font-size:10px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;';
+          input.value=value;
+          box.appendChild(label);
+          box.appendChild(input);
+          return {box,input};
+        };
+
+        const from=makeDateBox('From','from',fromDate);
+        const to=makeDateBox('To','to',toDate);
         const clear=document.createElement('button');
         clear.type='button';
         clear.textContent='×';
-        clear.title='Clear entry date filter';
-        clear.setAttribute('aria-label','Clear entry date filter');
-        clear.style.cssText='width:22px;height:22px;padding:0;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#475569;font-size:15px;font-weight:700;line-height:18px;cursor:pointer;';
-        input.onchange=()=>{
-          selectedDate=input.value||'';
+        clear.title='Clear entry date range';
+        clear.setAttribute('aria-label','Clear entry date range');
+        clear.style.cssText='width:22px;height:22px;padding:0;margin-bottom:1px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#475569;font-size:15px;font-weight:700;line-height:18px;cursor:pointer;';
+
+        const sync=()=>{
+          fromDate=from.input.value||'';
+          toDate=to.input.value||'';
+          if(fromDate&&toDate&&fromDate>toDate){
+            const temp=fromDate;
+            fromDate=toDate;
+            toDate=temp;
+            from.input.value=fromDate;
+            to.input.value=toDate;
+          }
           applyFilter(table);
         };
+        from.input.onchange=sync;
+        to.input.onchange=sync;
         clear.onclick=e=>{
           e.preventDefault();
-          selectedDate='';
-          input.value='';
+          fromDate='';
+          toDate='';
+          from.input.value='';
+          to.input.value='';
           applyFilter(table);
         };
-        wrap.appendChild(input);
+
+        wrap.appendChild(from.box);
+        wrap.appendChild(to.box);
         wrap.appendChild(clear);
         dateHeader.appendChild(wrap);
       }else if(dateHeader){
-        const input=dateHeader.querySelector('input[data-entry-date-filter]');
-        if(input&&input.value!==selectedDate)input.value=selectedDate;
+        const from=dateHeader.querySelector('input[data-entry-date-from]');
+        const to=dateHeader.querySelector('input[data-entry-date-to]');
+        if(from&&from.value!==fromDate)from.value=fromDate;
+        if(to&&to.value!==toDate)to.value=toDate;
       }
 
       applyFilter(table);
