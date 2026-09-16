@@ -3,17 +3,21 @@ import { useEffect } from 'react';
 
 function digits(value=''){return String(value||'').replace(/\D/g,'')}
 function text(el){return String(el?.textContent||'').trim()}
-function formatEntryDate(value=''){
-  if(!value)return '—';
+function dateKey(value=''){
+  if(!value)return'';
   const d=new Date(value);
-  if(Number.isNaN(d.getTime()))return '—';
-  return new Intl.DateTimeFormat('en-GB',{
-    timeZone:'Asia/Kolkata',
-    day:'2-digit',
-    month:'2-digit',
-    year:'numeric'
-  }).format(d);
+  if(Number.isNaN(d.getTime()))return'';
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(d);
+  const map=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+  return map.year&&map.month&&map.day?`${map.year}-${map.month}-${map.day}`:'';
 }
+function formatDateKey(key=''){
+  const m=String(key).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?`${m[3]}/${m[2]}/${m[1]}`:'—';
+}
+function formatEntryDate(value=''){return formatDateKey(dateKey(value))}
 function rowMawb(tr){
   const cells=[...tr.querySelectorAll('td')];
   for(const td of cells){
@@ -30,7 +34,16 @@ export default function EntryDateColumn(){
     let scheduled=false;
     let loading=false;
     let reloadTimer=null;
+    let selectedDate='';
     const enteredAtByAwb=new Map();
+
+    let style=document.getElementById('mayavi-entry-date-filter-style');
+    if(!style){
+      style=document.createElement('style');
+      style.id='mayavi-entry-date-filter-style';
+      style.textContent='.mayavi-entry-date-hidden{display:none!important;}';
+      document.head.appendChild(style);
+    }
 
     async function loadEntryDates(){
       if(loading||stopped)return;
@@ -59,6 +72,18 @@ export default function EntryDateColumn(){
       },350);
     }
 
+    function applyFilter(table){
+      const rows=[...table.querySelectorAll('tbody tr')];
+      for(const tr of rows){
+        if(tr.querySelectorAll('td').length<=1)continue;
+        const awb=rowMawb(tr);
+        if(!awb)continue;
+        const key=digits(awb);
+        const rowDate=dateKey(enteredAtByAwb.get(key)||'');
+        tr.classList.toggle('mayavi-entry-date-hidden',Boolean(selectedDate&&rowDate!==selectedDate));
+      }
+    }
+
     function install(){
       if(stopped)return;
       scheduled=false;
@@ -66,16 +91,16 @@ export default function EntryDateColumn(){
       if(!table)return;
 
       const headerRow=table.querySelector('thead tr');
-      if(headerRow&&!headerRow.querySelector('th[data-entry-date-column]')){
+      let dateHeader=headerRow?.querySelector('th[data-entry-date-column]')||null;
+      if(headerRow&&!dateHeader){
         const headers=[...headerRow.querySelectorAll('th')];
         if(headers.length){
-          const th=document.createElement('th');
-          th.setAttribute('data-entry-date-column','1');
-          th.textContent='Entry Date';
-          th.style.minWidth='96px';
-          th.style.width='96px';
-          th.style.whiteSpace='nowrap';
-          headers[0].insertAdjacentElement('afterend',th);
+          dateHeader=document.createElement('th');
+          dateHeader.setAttribute('data-entry-date-column','1');
+          dateHeader.style.minWidth='112px';
+          dateHeader.style.width='112px';
+          dateHeader.style.whiteSpace='nowrap';
+          headers[0].insertAdjacentElement('afterend',dateHeader);
         }
       }
 
@@ -101,8 +126,8 @@ export default function EntryDateColumn(){
         if(!td){
           td=document.createElement('td');
           td.setAttribute('data-entry-date-column','1');
-          td.style.minWidth='96px';
-          td.style.width='96px';
+          td.style.minWidth='112px';
+          td.style.width='112px';
           td.style.whiteSpace='nowrap';
           td.style.fontWeight='700';
           cells[0].insertAdjacentElement('afterend',td);
@@ -111,6 +136,38 @@ export default function EntryDateColumn(){
         td.textContent=formatEntryDate(enteredAtByAwb.get(key)||'');
         if(!enteredAtByAwb.has(key))missingKnownDate=true;
       }
+
+      if(dateHeader){
+        const dates=[...new Set(rows.map(tr=>{
+          const awb=rowMawb(tr);
+          return awb?dateKey(enteredAtByAwb.get(digits(awb))||''):'';
+        }).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+        const signature=JSON.stringify(dates);
+        let select=dateHeader.querySelector('select[data-entry-date-filter]');
+        if(!select){
+          dateHeader.innerHTML='<span>Entry Date</span>';
+          select=document.createElement('select');
+          select.setAttribute('data-entry-date-filter','1');
+          select.setAttribute('aria-label','Entry date filter');
+          select.style.cssText='display:block;width:100%;min-width:104px;margin-top:4px;padding:3px 20px 3px 5px;font-size:11px;line-height:1.2;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;';
+          dateHeader.appendChild(select);
+          select.onchange=()=>{
+            selectedDate=select.value||'';
+            applyFilter(table);
+          };
+        }
+        if(dateHeader.dataset.entryDateSignature!==signature){
+          const previous=selectedDate;
+          select.innerHTML=`<option value="">All Dates</option>${dates.map(d=>`<option value="${d}">${formatDateKey(d)}</option>`).join('')}`;
+          if(previous){
+            if(!dates.includes(previous))select.insertAdjacentHTML('beforeend',`<option value="${previous}">${formatDateKey(previous)}</option>`);
+            select.value=previous;
+          }
+          dateHeader.dataset.entryDateSignature=signature;
+        }
+      }
+
+      applyFilter(table);
       if(missingKnownDate)requestReload();
     }
 
@@ -129,12 +186,14 @@ export default function EntryDateColumn(){
       stopped=true;
       observer.disconnect();
       if(reloadTimer)clearTimeout(reloadTimer);
+      document.querySelectorAll('.mayavi-entry-date-hidden').forEach(el=>el.classList.remove('mayavi-entry-date-hidden'));
       document.querySelectorAll('[data-entry-date-column]').forEach(el=>el.remove());
       document.querySelectorAll('[data-entry-date-colspan-adjusted]').forEach(el=>{
         const current=Number(el.getAttribute('colspan'));
         if(Number.isFinite(current)&&current>1)el.setAttribute('colspan',String(current-1));
         el.removeAttribute('data-entry-date-colspan-adjusted');
       });
+      document.getElementById('mayavi-entry-date-filter-style')?.remove();
     };
   },[]);
   return null;
