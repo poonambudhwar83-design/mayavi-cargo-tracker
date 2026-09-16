@@ -1,5 +1,5 @@
-import { trackBritish } from '../../../../lib/british.js';
-import { normalizeMawb } from '../../../../lib/airlines.js';
+import { trackBritish } from '../../../lib/british.js';
+import { normalizeMawb } from '../../../lib/airlines.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
