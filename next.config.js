@@ -15,6 +15,9 @@ module.exports = {
       './node_modules/wasm-feature-detect/**/*',
       './node_modules/bmp-js/**/*'
     ],
+    '/api/cathay-hkg-test': [
+      './node_modules/@sparticuz/chromium/bin/**/*'
+    ],
     '/api/etihad-test': [
       './node_modules/@sparticuz/chromium/bin/**/*',
       './node_modules/tesseract.js/**/*',
