@@ -38,6 +38,7 @@ const AIRLINES={
 '607':{name:'Etihad Cargo',iata:'EY',official:'https://www.etihadcargo.com/'},
 '618':{name:'Singapore Airlines Cargo',iata:'SQ',official:'https://www.singaporeair.com/'},
 '724':{name:'SWISS WorldCargo',iata:'LX',official:'https://www.swissworldcargo.com/'},
+'738':{name:'Vietnam Airlines Cargo',iata:'VN',official:'https://track.champ.aero/vn'},
 '988':{name:'Asiana Cargo',iata:'OZ',official:'https://www.asiana-cargo.com/'},
 '999':{name:'Air China Cargo',iata:'CA',official:'https://www.airchinacargo.com/'}
 };
