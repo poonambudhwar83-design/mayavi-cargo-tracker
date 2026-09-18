@@ -21,8 +21,36 @@ async function handle(mawb){
   const prefix=mawb.replace(/\D/g,'').slice(0,3);
 
   if(prefix==='065'){
+    // Saudia is intentionally multi-source. SAL is authoritative for the full
+    // timeline/part-load logic, while the older official Saudia reader is kept
+    // as a field-level fallback so useful booking/route/master data never goes
+    // blank just because one SAL card or selector changes.
     const sal=await trackSaudiaSal(mawb);
-    if(sal.ok)return Response.json({ok:true,configured:true,provider:'SAL official shipment tracker',source:sal.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:sal.shipment,trackingDebug:sal.debug});
+    let fallback=null;
+    try{
+      const oldReader=await trackExactOfficial(mawb);
+      if(oldReader?.ok)fallback=oldReader.shipment;
+    }catch{}
+    if(sal.ok){
+      const s=sal.shipment||{};
+      const shipment={...fallback,...s,
+        origin:s.origin||fallback?.origin||'',
+        destination:s.destination||fallback?.destination||'',
+        bookingDate:s.bookingDate||fallback?.bookingDate||fallback?.bookedDate||'',
+        bags:s.bags||s.pieces||fallback?.bags||fallback?.pieces||'',
+        pieces:s.pieces||s.bags||fallback?.pieces||fallback?.bags||'',
+        weight:s.weight||fallback?.weight||'',
+        flightNo:s.flightNo||fallback?.flightNo||'',
+        arrivalDate:s.arrivalDate||fallback?.arrivalDate||'',
+        arrivalTime:s.arrivalTime||fallback?.arrivalTime||'',
+        eta:s.eta||fallback?.eta||null,
+        actualArrival:s.actualArrival||fallback?.actualArrival||null,
+        status:s.status||fallback?.status||'TRACKING',
+        source:fallback?'SAL full timeline + Saudia official fallback':'SAL official full timeline'
+      };
+      return Response.json({ok:true,configured:true,provider:'SAL + Saudia official shipment trackers',source:shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:{sal:sal.debug,fallbackUsed:Boolean(fallback)}});
+    }
+    if(fallback)return Response.json({ok:true,configured:true,provider:'Saudia official shipment tracker',source:fallback.source||'Saudia Cargo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback,trackingDebug:{salError:sal.reason,fallbackUsed:true}});
     return Response.json({ok:true,configured:true,provider:'SAL official shipment tracker',source:'SAL official shipment tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:sal.reason,trackingDebug:sal.debug,officialTracker:'https://sal.sa/trackshipment',shipment:waiting(mawb,sal.airline||airline,sal.reason)});
   }
 
