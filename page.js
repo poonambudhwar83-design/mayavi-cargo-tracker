@@ -162,7 +162,7 @@ export default function Home(){
         const i=next.findIndex(x=>normalizeMawb(x.mawb)===mawb);
         if(i<0){
           next.unshift({
-            id:crypto.randomUUID(),mawb,clientName:clientName||'',bags:seed.bags||'',weight:seed.weight||'',origin:'',arrivalDate:'',arrivalTime:'',flightNo:'',
+            id:crypto.randomUUID(),mawb,clientName:clientName||'',bags:seed.bags||'',weight:seed.weight||'',origin:'',destination:'',bookingDate:'',arrivalDate:'',arrivalTime:'',flightNo:'',
             airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,status:'CHECKING',baselineArrival:'',dataSource:'Official airline website',
             remarks:sourceLabel?`Read from ${sourceLabel}`:'',updatedAt:new Date().toISOString()
           });
@@ -197,6 +197,8 @@ export default function Home(){
           bags:live.bags||live.pieces||prev.bags||'',
           weight:live.weight||prev.weight||'',
           origin:live.origin||prev.origin||'',
+          destination:live.destination||prev.destination||'',
+          bookingDate:live.bookingDate||prev.bookingDate||'',
           arrivalDate:parts.date||prev.arrivalDate||'',
           arrivalTime:parts.time||prev.arrivalTime||'',
           baselineArrival:prev.baselineArrival||etaIso||'',
@@ -320,8 +322,8 @@ export default function Home(){
     {(notice||ocrProgress)&&<div className="notice">{ocrProgress||notice}</div>}
 
     <section className="tableWrap"><table>
-      <thead><tr><th>Client</th><th>MAWB</th><th>Airline</th><th>Flight</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Estimated Arrival Date</th><th>Estimated Arrival Time</th><th>Mail Time (-5h)</th><th>Status</th><th>Live Source</th><th></th></tr></thead>
-      <tbody>{!shipments.length?<tr><td colSpan="13" className="empty">Upload a clear MAWB photo/PDF or enter a MAWB manually. One photo may contain multiple MAWBs.</td></tr>:shipments.map(s=>{
+      <thead><tr><th>Client</th><th>MAWB</th><th>Airline</th><th>Flight</th><th>Bags</th><th>Weight</th><th>Origin</th><th>Destination</th><th>Booking Date</th><th>Estimated Arrival Date</th><th>Estimated Arrival Time</th><th>Mail Time (-5h)</th><th>Status</th><th>Live Source</th><th></th></tr></thead>
+      <tbody>{!shipments.length?<tr><td colSpan="15" className="empty">Upload a clear MAWB photo/PDF or enter a MAWB manually. One photo may contain multiple MAWBs.</td></tr>:shipments.map(s=>{
         const airline=airlineFromMawb(s.mawb);
         return <tr key={s.id} className={statusClass(s.status)}>
           <td><input className="cellInput" value={s.clientName||''} onChange={e=>patchRow(s.id,{clientName:e.target.value})} placeholder="Client name"/></td>
@@ -331,6 +333,8 @@ export default function Home(){
           <td><input className="cellInput smallInput" value={s.bags||''} onChange={e=>patchRow(s.id,{bags:e.target.value.replace(/\D/g,'')})} placeholder="—"/></td>
           <td><input className="cellInput smallInput" value={s.weight||''} onChange={e=>patchRow(s.id,{weight:e.target.value})} placeholder="—"/></td>
           <td>{s.origin||'—'}</td>
+          <td>{s.destination||'—'}</td>
+          <td>{s.bookingDate||'—'}</td>
           <td>{s.arrivalDate||'—'}</td>
           <td><b>{s.arrivalTime||'—'}</b></td>
           <td><b>{mailTime(s)}</b></td>
