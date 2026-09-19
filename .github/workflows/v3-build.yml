@@ -20,3 +20,17 @@ jobs:
           node-version: '24'
       - run: npm install
       - run: npm run build
+      - name: Package Mayavi source
+        uses: actions/upload-artifact@v4
+        with:
+          name: mayavi-tracker-source
+          path: |
+            app
+            lib
+            browser-bridge
+            scripts
+            package.json
+            next.config.js
+            vercel.json
+            V3.md
+          if-no-files-found: error
