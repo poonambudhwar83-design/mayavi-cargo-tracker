@@ -33,12 +33,27 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   if(!(mawb.startsWith('098-')||mawb.startsWith('932-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
-  const patch={...shipment,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
+  const sql=neon(url);
+  // Tracking refresh owns movement data, but the operator owns Mail YES/NO.
+  // Preserve the saved per-part mail choice when fresh tracking rebuilds partShipments.
+  let tracked={...shipment};
+  if(Array.isArray(tracked.partShipments)){
+    const existing=await sql`SELECT data FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+    const savedParts=Array.isArray(existing?.[0]?.data?.partShipments)?existing[0].data.partShipments:[];
+    tracked.partShipments=tracked.partShipments.map((p,i)=>{
+      const id=String(p?.partId||`P${i+1}`);
+      const saved=savedParts.find((x,j)=>String(x?.partId||`P${j+1}`)===id)
+        ||savedParts.find(x=>String(x?.pieces||'')===String(p?.pieces||'')&&String(x?.weight||'').replace(/,/g,'')===String(p?.weight||'').replace(/,/g,''));
+      return saved&&Object.prototype.hasOwnProperty.call(saved,'mailSent')
+        ? {...p,mailSent:saved.mailSent===true,mailUpdatedAt:saved.mailUpdatedAt||''}
+        : p;
+    });
+  }
+  const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
   for(const key of Object.keys(patch)){
     const value=patch[key];
     if(value===''||value===null||value===undefined)delete patch[key];
   }
-  const sql=neon(url);
   const rows=await sql`
     UPDATE mayavi_shipments
     SET data=data || ${JSON.stringify(patch)}::jsonb,
