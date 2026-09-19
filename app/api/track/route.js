@@ -225,6 +225,13 @@ async function handle(mawb){
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
+  // Preserve Air India split-load display fields from the dedicated Activity View
+  // adapter. Generic merging/arrival selection must not collapse 20/33 back to 33.
+  if(airIndiaFastPath&&direct){
+    for(const k of ['bags','pieces','weight','masterPieces','masterWeight','arrivedPieces','arrivedWeight','arrivedPiecesDisplay','arrivedWeightDisplay','departedPieces','departedWeight','remainingPieces','remainingWeight','nextFlightNo','nextFlightDate','nextPieces','nextWeight','remarks']){
+      if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
+    }
+  }
   if(!shipment.bookingDate){
     const officialText=[debugText(directResult),debugText(browserResult),debugText(apiResult)].filter(Boolean).join(' ');
     const derivedBookingDate=bookingDateFromOfficialText(officialText,shipment.arrivalDate);
