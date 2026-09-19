@@ -22,9 +22,13 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   const via=String(row.via||row.transit||row.transitAirport||row.currentLocation||row.location||'').toUpperCase();
   const origin=String(row.origin||'').toUpperCase(),destination=String(row.destination||'').toUpperCase();
   const directDelhi=destination==='DEL'&&!via;
-  if(s.includes('PART ARRIVED')||s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
+  if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+  if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
+  // Emirates: a generic DEP can be an intermediate/via leg. Only the parser's
+  // explicit final-leg departure should display DEPARTED; otherwise keep it IN TRANSIT.
+  if(n.startsWith('176-')&&(s.includes('IN TRANSIT')||s==='DEP'||s.includes('DEPART')))return s==='DEPARTED'?'DEPARTED':'IN TRANSIT';
   if(s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'DEPARTED';
   if((n.startsWith('065-')||via==='RUH')&&(s.includes('FOW')||s.includes('FOH')||s.includes('TRANSIT')||s.includes('IN TRANSIT')))return'IN TRANSIT';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT'))return directDelhi?'DEPARTED':'IN TRANSIT';
