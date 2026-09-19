@@ -241,6 +241,14 @@ async function handle(mawb){
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
+  // Air India dedicated adapter already normalizes international arrival date/time to IST.
+  // Do not let generic preferred-arrival selection replace it with an unconverted value.
+  if(airIndiaFastPath&&direct){
+    if(direct.arrivalDate)shipment.arrivalDate=direct.arrivalDate;
+    if(direct.arrivalTime)shipment.arrivalTime=direct.arrivalTime;
+    if(direct.arrivalTimeZone)shipment.arrivalTimeZone=direct.arrivalTimeZone;
+    if(direct.arrivalTimeSource)shipment.arrivalTimeSource=direct.arrivalTimeSource;
+  }
   // Export dashboard needs a usable departure time. Reuse the tracked final
   // flight/date and enrich only the departure fields; airline cargo parsers stay untouched.
   if(shipment.flightNo&&shipment.origin&&shipment.destination){
