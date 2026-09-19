@@ -62,6 +62,32 @@ function decorateTiming(existing={},incoming={}){
   return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+function retryDelay(attempt){
+  // 1.25s, 2.5s, 5s. Keeps one temporary Vercel/Neon/SAL failure
+  // from cancelling the whole 2-hour refresh cycle.
+  return Math.min(5000,1250*(2**attempt));
+}
+async function fetchJsonWithRetry(url,options={},attempts=3,label='request'){
+  let lastError='';
+  for(let i=0;i<attempts;i+=1){
+    try{
+      const res=await fetch(url,{...options,cache:'no-store'});
+      const data=await readJson(res);
+      if(res.ok)return{res,data,attempt:i+1};
+
+      lastError=data?.trackingError||data?.error||`${label} HTTP ${res.status}`;
+      const retryable=res.status===408||res.status===425||res.status===429||res.status>=500;
+      if(!retryable||i===attempts-1)break;
+    }catch(e){
+      lastError=e?.message||String(e);
+      if(i===attempts-1)break;
+    }
+    await sleep(retryDelay(i));
+  }
+  throw new Error(`${label} failed after ${attempts} attempt${attempts===1?'':'s'}: ${lastError||'unknown error'}`);
+}
 
 export async function GET(request){
   const secret=process.env.CRON_SECRET;
@@ -69,24 +95,66 @@ export async function GET(request){
   const origin=new URL(request.url).origin;
   const internalKey=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
   const internalHeaders=internalKey?{'x-mayavi-internal-key':internalKey}:{};
-  const shipmentsRes=await fetch(`${origin}/api/shipments`,{cache:'no-store',headers:internalHeaders});
-  const shipments=await readJson(shipmentsRes);
-  if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments'},{status:503});
+
+  // Previously one temporary /api/shipments 503 aborted the entire cron run.
+  // Retry the shared list before giving up, so a transient DB/function error
+  // does not postpone movement updates until the next 2-hour schedule.
+  let shipmentsCall;
+  try{
+    shipmentsCall=await fetchJsonWithRetry(`${origin}/api/shipments`,{headers:internalHeaders},4,'Shipment list');
+  }catch(e){
+    return Response.json({ok:false,error:e?.message||'Could not read shipments',retryExhausted:true},{status:503});
+  }
+  const shipments=shipmentsCall.data;
+  if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments',retryExhausted:true},{status:503});
+
   const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
   const results=await Promise.allSettled(rows.map(async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
-    const trackRes=await fetch(`${origin}/api/track`,{method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({mawb}),cache:'no-store'});
-    const track=await readJson(trackRes);
+    let track=null,trackAttempts=0,trackError='';
+
+    try{
+      // Saudia gets one extra attempt because its SAL chronology may briefly
+      // lag or time out while FOW/flight cards are being published.
+      const call=await fetchJsonWithRetry(
+        `${origin}/api/track`,
+        {method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({mawb})},
+        mawb.startsWith('065-')?3:2,
+        `Tracking ${mawb}`
+      );
+      track=call.data;
+      trackAttempts=call.attempt;
+    }catch(e){
+      trackError=e?.message||String(e);
+    }
+
     let next;
     if(track?.ok&&track.shipment){
-      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
+      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||1,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
     }else{
-      next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true});
+      next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:trackError||track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||0});
     }
-    const saveRes=await fetch(`${origin}/api/shipments`,{method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({rows:[next]}),cache:'no-store'});
-    const saved=await readJson(saveRes);if(!saved?.ok)throw new Error(saved?.error||'Save failed');
-    return {mawb,status:next.status||'',shipmentType:next.shipmentType,backendOcrUsed:Boolean(next.backendOcrUsed)};
+
+    const saveCall=await fetchJsonWithRetry(
+      `${origin}/api/shipments`,
+      {method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({rows:[next]})},
+      3,
+      `Save ${mawb}`
+    );
+    const saved=saveCall.data;
+    if(!saved?.ok)throw new Error(saved?.error||'Save failed');
+
+    return {mawb,status:next.status||'',shipmentType:next.shipmentType,trackingAttempts:trackAttempts||0,saveAttempts:saveCall.attempt,backendOcrUsed:Boolean(next.backendOcrUsed)};
   }));
-  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value),failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
-  return Response.json({ok:true,refreshed:ok.length,failed:failed.length,results:ok,errors:failed});
+
+  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+  const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
+  return Response.json({
+    ok:true,
+    shipmentListAttempts:shipmentsCall.attempt,
+    refreshed:ok.length,
+    failed:failed.length,
+    results:ok,
+    errors:failed
+  });
 }
