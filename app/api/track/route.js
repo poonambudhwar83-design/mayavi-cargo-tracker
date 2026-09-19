@@ -18,6 +18,7 @@ import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
+import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -240,6 +241,20 @@ async function handle(mawb){
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
+  // Export dashboard needs a usable departure time. Reuse the tracked final
+  // flight/date and enrich only the departure fields; airline cargo parsers stay untouched.
+  if(shipment.flightNo&&shipment.origin&&shipment.destination){
+    const departureDate=shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'';
+    if(departureDate){
+      const dep=await trackFlightStatusSnapshot({flightNo:shipment.flightNo,origin:shipment.origin,destination:shipment.destination,date:departureDate}).catch(()=>null);
+      if(dep?.ok&&dep.departureTime){
+        shipment.departureDate=dep.departureDate||departureDate;
+        shipment.departureTime=dep.departureTime;
+        shipment.departureIsActual=dep.departureIsActual===true;
+        shipment.departureTimeSource=dep.source||'flight status';
+      }
+    }
+  }
   // Preserve Air India split-load display fields from the dedicated Activity View
   // adapter. Generic merging/arrival selection must not collapse 20/33 back to 33.
   if(airIndiaFastPath&&direct){
