@@ -118,7 +118,7 @@ export async function GET(request){
       // lag or time out while FOW/flight cards are being published.
       const call=await fetchJsonWithRetry(
         `${origin}/api/track`,
-        {method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({mawb})},
+        {method:'POST',headers:{'content-type':'application/json',...internalHeaders},body:JSON.stringify({mawb,currentShipment:existing})},
         mawb.startsWith('065-')?3:2,
         `Tracking ${mawb}`
       );
