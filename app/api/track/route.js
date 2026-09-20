@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.23';
+const VERSION='3.9.24';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -292,7 +292,7 @@ async function handle(mawb,fallback={}){
       shipment.departureTimeSource=direct.departureTimeSource||'Turkish Cargo TK SMART origin-leg ETD';
     }else{
       const scheduled=String(shipment.scheduledDeparture||fallback.scheduledDeparture||'');
-      const m=scheduled.match(/^(20\\d{2}-\\d{2}-\\d{2})[T\\s](\\d{2}:\\d{2})/);
+      const m=scheduled.match(/^(20\d{2}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
       if(m&&shipment.origin){
         shipment.departureDate=m[1];
         shipment.departureTime=m[2];
