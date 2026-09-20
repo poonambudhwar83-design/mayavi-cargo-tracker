@@ -32,16 +32,18 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   // Arrived/Delivered = ARRIVED
   if(isAirIndia(mawb)){
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
-    if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+    if(s.includes('DELIVER'))return'DELIVERED';
+    if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
     if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
     if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
     return'BOOKED';
   }
 
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+  if(s.includes('DELIVER'))return'DELIVERED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
-  if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
-  if(s.includes('ARRIVED')||s.includes('DELIVER')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+  if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
+  if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
@@ -115,8 +117,8 @@ export async function GET(request){
   const shipments=shipmentsCall.data;
   if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments',retryExhausted:true},{status:503});
 
-  const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb)).sort((a,b)=>(a.shipmentType==='EXPORT'?1:0)-(b.shipmentType==='EXPORT'?1:0));
-  const results=await Promise.allSettled(rows.map(async existing=>{
+  const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
+  const refreshExisting=async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
     let track=null,trackAttempts=0,trackError='';
 
@@ -152,9 +154,15 @@ export async function GET(request){
     if(!saved?.ok)throw new Error(saved?.error||'Save failed');
 
     return {mawb,status:next.status||'',shipmentType:next.shipmentType,trackingAttempts:trackAttempts||0,saveAttempts:saveCall.attempt,backendOcrUsed:Boolean(next.backendOcrUsed)};
-  }));
 
-  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+  };
+  const importRows=rows.filter(r=>r.shipmentType!=='EXPORT');
+  const exportRows=rows.filter(r=>r.shipmentType==='EXPORT');
+  const importResults=await Promise.allSettled(importRows.map(refreshExisting));
+  const exportResults=await Promise.allSettled(exportRows.map(refreshExisting));
+  const results=[...importResults,...exportResults];
+
+  const ok=results.filter  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
   const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
   return Response.json({
     ok:true,
