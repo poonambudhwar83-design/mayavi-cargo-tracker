@@ -17,7 +17,7 @@ function formatTime12(value=''){
 }
 function mailTimeFrom(date='',time=''){
   const d=dateTimeValue(date,time);if(!d)return'';
-  d.setHours(d.getHours()-5);
+  d.setHours(d.getHours()-6);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
 }
 function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(mawb||''));}
@@ -66,7 +66,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 function retryDelay(attempt){
   // 1.25s, 2.5s, 5s. Keeps one temporary Vercel/Neon/SAL failure
-  // from cancelling the whole 2-hour refresh cycle.
+  // from cancelling the whole hourly refresh cycle.
   return Math.min(5000,1250*(2**attempt));
 }
 async function fetchJsonWithRetry(url,options={},attempts=3,label='request'){
@@ -98,7 +98,7 @@ export async function GET(request){
 
   // Previously one temporary /api/shipments 503 aborted the entire cron run.
   // Retry the shared list before giving up, so a transient DB/function error
-  // does not postpone movement updates until the next 2-hour schedule.
+  // does not postpone movement updates until the next hourly schedule.
   let shipmentsCall;
   try{
     shipmentsCall=await fetchJsonWithRetry(`${origin}/api/shipments`,{headers:internalHeaders},4,'Shipment list');
@@ -108,7 +108,7 @@ export async function GET(request){
   const shipments=shipmentsCall.data;
   if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments',retryExhausted:true},{status:503});
 
-  const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
+  const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb)).sort((a,b)=>(a.shipmentType==='EXPORT'?1:0)-(b.shipmentType==='EXPORT'?1:0));
   const results=await Promise.allSettled(rows.map(async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
     let track=null,trackAttempts=0,trackError='';
