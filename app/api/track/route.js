@@ -251,10 +251,11 @@ async function handle(mawb){
   }
   // Export dashboard needs a usable departure time. Reuse the tracked final
   // flight/date and enrich only the departure fields; airline cargo parsers stay untouched.
-  if(shipment.flightNo&&shipment.origin&&shipment.destination){
+  const departureFlightNo=shipment.departureFlightNo||shipment.flightNo||'';
+  if(departureFlightNo&&shipment.origin&&shipment.destination){
     const departureDate=shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'';
     if(departureDate){
-      const dep=await trackFlightStatusSnapshot({flightNo:shipment.flightNo,origin:shipment.origin,destination:shipment.destination,date:departureDate}).catch(()=>null);
+      const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:shipment.origin,destination:shipment.destination,date:departureDate}).catch(()=>null);
       if(dep?.ok&&dep.departureTime){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
