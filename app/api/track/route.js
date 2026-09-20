@@ -23,9 +23,18 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.20';
+const VERSION='3.9.21';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
+function persistedHandoverTime(date='',time=''){
+  const dm=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/),tm=String(time||'').match(/^(\d{1,2}):(\d{2})$/);
+  if(!dm||!tm)return'';
+  const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),Number(tm[1]),Number(tm[2]),0,0);
+  if(!Number.isFinite(d.getTime()))return'';
+  d.setHours(d.getHours()-5);
+  let h=d.getHours(),suffix=h>=12?'PM':'AM';h=h%12||12;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${h}:${pad(d.getMinutes())} ${suffix}`;
+}
 
 function trackingDbUrl(){
   return process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
@@ -49,6 +58,9 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
         ? {...p,mailSent:saved.mailSent===true,mailUpdatedAt:saved.mailUpdatedAt||''}
         : p;
     });
+  }
+  if(mawb.startsWith('932-')&&tracked.departureDate&&tracked.departureTime){
+    tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
   for(const key of Object.keys(patch)){
