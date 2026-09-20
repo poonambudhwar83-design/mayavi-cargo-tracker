@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.26';
+const VERSION='3.9.27';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -372,7 +372,7 @@ async function handle(mawb,fallback={}){
   const hasUseful=concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct)));
   if(hasUseful){
     let serverSaved=false;
-    if(airIndiaFastPath||qatarFastPath||turkishFastPath||virginFastPath||vietnamFastPath){
+    if(airIndiaFastPath||qatarFastPath||turkishFastPath||indigoFastPath||virginFastPath||vietnamFastPath||mawb.startsWith('607-')){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
