@@ -63,7 +63,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT');
   const [adminView,setAdminView]=useState('ACTIVE'),[clientFilter,setClientFilter]=useState(''),[originFilter,setOriginFilter]=useState(''),[destinationFilter,setDestinationFilter]=useState('');
   const employeeName=String(currentUser?.displayName||'').trim(),employeeUsername=String(currentUser?.username||'').trim();
-  const canWeightMinus=isAdmin||employeeUsername.toLowerCase()==='rahul';
+  const canWeightMinus=isAdmin;
   async function persistRows(list,markEntry=false){const clean=list.filter(x=>normalize(x?.mawb)).map(withoutMeta);if(!clean.length)return[];const res=await fetch('/api/shipments',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean,markEntry})});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database save failed.');return data.rows||[]}
   async function persistRow(row,markEntry=false){return persistRows([row],markEntry)}
   useEffect(()=>{try{const saved=localStorage.getItem(TAB_KEY);if(saved==='IMPORT'||saved==='EXPORT')setActiveTab(saved)}catch{}},[]);
