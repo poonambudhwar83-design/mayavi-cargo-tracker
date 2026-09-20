@@ -77,7 +77,21 @@ function internalAllowed(request){
 }
 function access(request){
   const session=readSession(request);
-  return {session,internal:internalAllowed(request),allowed:Boolean(session||internalAllowed(request))};
+  const internal=internalAllowed(request);
+  return {session,internal,allowed:Boolean(session||internal)};
+}
+function canManageWeightMinus(session=null,internal=false){
+  const username=String(session?.username||'').trim().toLowerCase();
+  return Boolean(internal||session?.role==='admin'||username==='rahul');
+}
+function dataForViewer(data={},session=null,internal=false){
+  const out={...data};
+  if(!canManageWeightMinus(session,internal)){
+    delete out.weightMinus;
+    delete out.weightMinusUpdatedAt;
+    delete out.weightMinusUpdatedBy;
+  }
+  return out;
 }
 function safeData(row={},session=null,markEntry=false){
   const awb=normalize(row.mawb||row.awb);
@@ -98,7 +112,7 @@ export async function GET(request){
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
     const rawRows=await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`;
-    const rows=rawRows.map(row=>({...row,data:sanitizeShipment(row.data||{},row.awb)}));
+    const rows=rawRows.map(row=>({...row,data:dataForViewer(sanitizeShipment(row.data||{},row.awb),auth.session,auth.internal)}));
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
@@ -114,8 +128,25 @@ export async function POST(request){
     const markEntry=body?.markEntry===true&&!auth.internal;
     const sql=db();
     const saved=[];
+    const weightMinusAllowed=canManageWeightMinus(auth.session,auth.internal);
     for(const row of incoming){
-      const {awb,data}=safeData(row,auth.session,markEntry);
+      const incomingAwb=normalize(row?.mawb||row?.awb);
+      if(!incomingAwb)throw new Error('Invalid MAWB.');
+      let rowForSave={...row};
+      const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
+      if(!weightMinusAllowed||!hasWeightMinus){
+        const [existing]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${incomingAwb} LIMIT 1`;
+        if(existing?.data&&Object.prototype.hasOwnProperty.call(existing.data,'weightMinus')){
+          rowForSave.weightMinus=existing.data.weightMinus;
+          if(existing.data.weightMinusUpdatedAt!==undefined)rowForSave.weightMinusUpdatedAt=existing.data.weightMinusUpdatedAt;
+          if(existing.data.weightMinusUpdatedBy!==undefined)rowForSave.weightMinusUpdatedBy=existing.data.weightMinusUpdatedBy;
+        }else{
+          delete rowForSave.weightMinus;
+          delete rowForSave.weightMinusUpdatedAt;
+          delete rowForSave.weightMinusUpdatedBy;
+        }
+      }
+      const {awb,data}=safeData(rowForSave,auth.session,markEntry);
       const checked=data.lastChecked?new Date(data.lastChecked):null;
       const [result]=await sql`
         INSERT INTO mayavi_shipments (awb,data,version,updated_at,tracking_checked_at)
@@ -150,7 +181,7 @@ export async function POST(request){
           tracking_checked_at=EXCLUDED.tracking_checked_at
         RETURNING awb,data,version,updated_at,tracking_checked_at
       `;
-      saved.push({...result,data:sanitizeShipment(result.data||{},result.awb)});
+      saved.push({...result,data:dataForViewer(sanitizeShipment(result.data||{},result.awb),auth.session,auth.internal)});
     }
     return Response.json({ok:true,shared:true,rows:saved});
   }catch(e){
