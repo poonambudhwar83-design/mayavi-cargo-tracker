@@ -81,8 +81,7 @@ function access(request){
   return {session,internal,allowed:Boolean(session||internal)};
 }
 function canManageWeightMinus(session=null,internal=false){
-  const username=String(session?.username||'').trim().toLowerCase();
-  return Boolean(internal||session?.role==='admin'||username==='rahul');
+  return Boolean(internal||session?.role==='admin');
 }
 function dataForViewer(data={},session=null,internal=false){
   const out={...data};
