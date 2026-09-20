@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
 
 export const runtime='nodejs';
@@ -70,8 +71,14 @@ function secureEqual(a='',b=''){
   const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));
   return aa.length===bb.length&&aa.equals(bb);
 }
-function internalAllowed(request){
+function internalAccessKey(){
   const configured=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  if(configured)return configured;
+  const url=connectionString();
+  return url?createHash('sha256').update(`mayavi-cron|${url}`).digest('hex'):'';
+}
+function internalAllowed(request){
+  const configured=internalAccessKey();
   const supplied=request.headers.get('x-mayavi-internal-key')||'';
   return Boolean(configured&&supplied&&secureEqual(supplied,configured));
 }
