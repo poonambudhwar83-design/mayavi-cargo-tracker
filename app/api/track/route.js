@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.24';
+const VERSION='3.9.25';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -68,7 +68,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
         : p;
     });
   }
-  if((mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
+  if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
