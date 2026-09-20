@@ -162,7 +162,7 @@ export async function GET(request){
   const exportResults=await Promise.allSettled(exportRows.map(refreshExisting));
   const results=[...importResults,...exportResults];
 
-  const ok=results.filter  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
   const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
   return Response.json({
     ok:true,
