@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.25';
+const VERSION='3.9.26';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -49,7 +49,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -68,7 +68,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
         : p;
     });
   }
-  if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
+  if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
