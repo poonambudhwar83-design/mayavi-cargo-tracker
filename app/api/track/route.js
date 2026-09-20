@@ -195,7 +195,7 @@ async function browserOfficial(mawb){
   return mawb.startsWith('065-')?trackSaudiaDirect(mawb):trackWithBrowser(mawb);
 }
 
-async function handle(mawb){
+async function handle(mawb,fallback={}){
   const airline=airlineForMawb(mawb);
   if(!airline)return Response.json({ok:false,error:`Airline prefix ${mawb.slice(0,3)} is not mapped yet.`},{status:422});
 
@@ -234,7 +234,10 @@ async function handle(mawb){
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
 
-  let shipment={mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
+  const savedFallback=turkishFastPath?{
+    flightNo:fallback.flightNo||'',flightDate:fallback.flightDate||'',departureDate:fallback.departureDate||'',departureTime:fallback.departureTime||'',origin:fallback.origin||'',destination:fallback.destination||'',departureFlightNo:fallback.departureFlightNo||'',departureOrigin:fallback.departureOrigin||'',departureDestination:fallback.departureDestination||''
+  }:{};
+  let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
   if(api)shipment=mergeNonEmpty(shipment,api);
   if(direct)shipment=mergeNonEmpty(shipment,direct);
   if(browser)shipment=mergeNonEmpty(shipment,browser);
@@ -252,10 +255,12 @@ async function handle(mawb){
   // Export dashboard needs a usable departure time. Reuse the tracked final
   // flight/date and enrich only the departure fields; airline cargo parsers stay untouched.
   const departureFlightNo=shipment.departureFlightNo||shipment.flightNo||'';
-  if(departureFlightNo&&shipment.origin&&shipment.destination){
+  const departureOrigin=shipment.departureOrigin||shipment.origin||'';
+  const departureDestination=shipment.departureDestination||(turkishFastPath?'':shipment.destination)||'';
+  if(departureFlightNo&&departureOrigin){
     const departureDate=shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'';
     if(departureDate){
-      const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:shipment.origin,destination:shipment.destination,date:departureDate}).catch(()=>null);
+      const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate}).catch(()=>null);
       if(dep?.ok&&dep.departureTime){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
@@ -306,7 +311,7 @@ async function handle(mawb){
 export async function POST(request){
   let body={};try{body=await request.json()}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400})}
   const mawb=normalizeMawb(body?.mawb);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
-  return handle(mawb);
+  return handle(mawb,body?.currentShipment||{});
 }
 
 export async function GET(request){
