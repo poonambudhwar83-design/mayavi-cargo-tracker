@@ -41,7 +41,63 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   return'BOOKED';
 }
 function tone(status=''){const s=String(status).toUpperCase();if(s.includes('PART ARRIVED')||s.includes('PART LOAD'))return'transit';if(s.includes('ARRIVED'))return'arrived';if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return'transit';if(s.includes('DELAY'))return'delayed';if(s.includes('EARLY'))return'early';return'booked'}
-function decorateTiming(existing={},incoming={}){const merged={...existing,...incoming};const shipmentType=merged.shipmentType==='EXPORT'?'EXPORT':'IMPORT';const rowMawb=normalize(incoming.mawb||existing.mawb||existing.awb||'');const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';const scheduledArrivalTime=incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'';const saudiaMawb=normalize(rowMawb).startsWith('065-');const saudiaFlightDate=String(incoming.flightDate||existing.flightDate||'').match(/^(20\d{2}-\d{2}-\d{2})/)?.[1]||'';const hasIncomingArrivalDate=Object.prototype.hasOwnProperty.call(incoming,'arrivalDate');const arrivalDate=saudiaMawb?(hasIncomingArrivalDate?incoming.arrivalDate:(saudiaFlightDate||existing.arrivalDate||'')):(hasIncomingArrivalDate?incoming.arrivalDate:(existing.arrivalDate||''));const arrivalTime=Object.prototype.hasOwnProperty.call(incoming,'arrivalTime')?incoming.arrivalTime:(existing.arrivalTime||'');const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);let timingDeltaMinutes=null,timingStatus='';if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME'}const rawStatus=incoming.status||existing.status||'';const status=businessStatus(rawStatus,timingStatus,arrivalDate,incoming.mawb||existing.mawb||existing.awb||'',merged);const wasDelayed=existing.wasDelayed===true||incoming.wasDelayed===true||String(existing.status||'').toUpperCase().includes('DELAY')||String(incoming.status||'').toUpperCase().includes('DELAY')||existing.timingStatus==='DELAYED'||incoming.timingStatus==='DELAYED'||timingStatus==='DELAYED';const movedAfterDelay=wasDelayed&&(status==='DEPARTED'||status==='IN TRANSIT'||status==='ARRIVED'||status==='PART ARRIVED');const remarks=movedAfterDelay?(merged.remarks?String(merged.remarks).includes('Flight was delayed')?merged.remarks:`${merged.remarks} / Flight was delayed`:'Flight was delayed'):(merged.remarks||'');const hasIncomingFlight=Object.prototype.hasOwnProperty.call(incoming,'flightNo')||Object.prototype.hasOwnProperty.call(incoming,'flight');const flightNo=normalizeFlightNo(rowMawb,hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||''));const bookingDate=incoming.bookingDate||existing.bookingDate||'';const bookingTime=incoming.bookingTime||existing.bookingTime||'';const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';const mailTime=shipmentType==='IMPORT'?mailTimeFrom(mailArrivalDate,arrivalTime):'';const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;const customsCleared=shipmentType==='IMPORT'?merged.customsCleared===true:undefined;const masterCopyReceived=shipmentType==='EXPORT'?merged.masterCopyReceived===true:undefined;const departureDate=shipmentType==='EXPORT'?(merged.departureDate||merged.flightDate||''):merged.departureDate;const departureTime=shipmentType==='EXPORT'?(merged.departureTime||merged.etd||merged.estimatedDepartureTime||merged.scheduledDepartureTime||''):merged.departureTime;const handoverDone=shipmentType==='EXPORT'?merged.handoverDone===true:undefined;const timed=normalizeExportTimesToIst({...merged,flightNo,bookingDate,bookingTime,destination:merged.destination||'',shipmentType,departureDate,departureTime,handoverDone,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,wasDelayed,remarks,mailTime,mailSent,customsCleared,masterCopyReceived});const handoverTime=shipmentType==='EXPORT'?handoverTimeFrom(timed.departureDate||timed.flightDate||'',timed.departureTime||''):'';return {...timed,handoverTime}}
+function decorateTiming(existing={},incoming={}){
+  const raw={...existing,...incoming};
+  const shipmentType=raw.shipmentType==='EXPORT'?'EXPORT':'IMPORT';
+  const arrivalChanged=Object.prototype.hasOwnProperty.call(incoming,'arrivalDate')||Object.prototype.hasOwnProperty.call(incoming,'arrivalTime');
+  const departureChanged=Object.prototype.hasOwnProperty.call(incoming,'departureDate')||Object.prototype.hasOwnProperty.call(incoming,'departureTime')||Object.prototype.hasOwnProperty.call(incoming,'flightDate');
+  const scheduledChanged=Object.prototype.hasOwnProperty.call(incoming,'scheduledArrivalDate')||Object.prototype.hasOwnProperty.call(incoming,'scheduledArrivalTime');
+  const merged=normalizeExportTimesToIst({
+    ...raw,
+    shipmentType,
+    arrivalTimeZone:arrivalChanged?(incoming.arrivalTimeZone||''):(raw.arrivalTimeZone||''),
+    departureTimeZone:departureChanged?(incoming.departureTimeZone||''):(raw.departureTimeZone||''),
+    scheduledArrivalTimeZone:scheduledChanged?(incoming.scheduledArrivalTimeZone||''):(raw.scheduledArrivalTimeZone||'')
+  });
+
+  const rowMawb=normalize(incoming.mawb||existing.mawb||existing.awb||'');
+  const scheduledArrivalDate=merged.scheduledArrivalDate||merged.arrivalDate||'';
+  const scheduledArrivalTime=merged.scheduledArrivalTime||merged.arrivalTime||'';
+  const saudiaMawb=normalize(rowMawb).startsWith('065-');
+  const saudiaFlightDate=String(merged.flightDate||'').match(/^(20\d{2}-\d{2}-\d{2})/)?.[1]||'';
+  const hasIncomingArrivalDate=Object.prototype.hasOwnProperty.call(incoming,'arrivalDate');
+  const arrivalDate=saudiaMawb
+    ? (hasIncomingArrivalDate?(merged.arrivalDate||''):(saudiaFlightDate||merged.arrivalDate||''))
+    : (hasIncomingArrivalDate?(merged.arrivalDate||''):(merged.arrivalDate||''));
+  const arrivalTime=Object.prototype.hasOwnProperty.call(incoming,'arrivalTime')?(merged.arrivalTime||''):(merged.arrivalTime||'');
+
+  const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime);
+  const current=dateTimeValue(arrivalDate,arrivalTime);
+  let timingDeltaMinutes=null,timingStatus='';
+  if(planned&&current){
+    timingDeltaMinutes=Math.round((current-planned)/60000);
+    timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';
+  }
+
+  const rawStatus=incoming.status||existing.status||'';
+  const status=businessStatus(rawStatus,timingStatus,arrivalDate,incoming.mawb||existing.mawb||existing.awb||'',merged);
+  const wasDelayed=existing.wasDelayed===true||incoming.wasDelayed===true||String(existing.status||'').toUpperCase().includes('DELAY')||String(incoming.status||'').toUpperCase().includes('DELAY')||existing.timingStatus==='DELAYED'||incoming.timingStatus==='DELAYED'||timingStatus==='DELAYED';
+  const movedAfterDelay=wasDelayed&&(status==='DEPARTED'||status==='IN TRANSIT'||status==='ARRIVED'||status==='PART ARRIVED');
+  const remarks=movedAfterDelay
+    ? (merged.remarks?String(merged.remarks).includes('Flight was delayed')?merged.remarks:`${merged.remarks} / Flight was delayed`:'Flight was delayed')
+    : (merged.remarks||'');
+
+  const hasIncomingFlight=Object.prototype.hasOwnProperty.call(incoming,'flightNo')||Object.prototype.hasOwnProperty.call(incoming,'flight');
+  const flightNo=normalizeFlightNo(rowMawb,hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||''));
+  const bookingDate=incoming.bookingDate||existing.bookingDate||'';
+  const bookingTime=incoming.bookingTime||existing.bookingTime||'';
+  const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
+  const mailTime=shipmentType==='IMPORT'?mailTimeFrom(mailArrivalDate,arrivalTime):'';
+  const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;
+  const customsCleared=shipmentType==='IMPORT'?merged.customsCleared===true:undefined;
+  const masterCopyReceived=shipmentType==='EXPORT'?merged.masterCopyReceived===true:undefined;
+  const departureDate=shipmentType==='EXPORT'?(merged.departureDate||merged.flightDate||''):merged.departureDate;
+  const departureTime=shipmentType==='EXPORT'?(merged.departureTime||merged.etd||merged.estimatedDepartureTime||merged.scheduledDepartureTime||''):merged.departureTime;
+  const handoverTime=shipmentType==='EXPORT'?handoverTimeFrom(departureDate,departureTime):'';
+  const handoverDone=shipmentType==='EXPORT'?merged.handoverDone===true:undefined;
+
+  return {...merged,flightNo,bookingDate,bookingTime,destination:merged.destination||'',shipmentType,departureDate,departureTime,handoverTime,handoverDone,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,wasDelayed,remarks,mailTime,mailSent,customsCleared,masterCopyReceived};
+}
 function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return {backgroundColor:`hsl(${h} 75% 92%)`,color:`hsl(${h} 48% 28%)`,borderColor:`hsl(${h} 55% 76%)`}}
 function officialUrl(row={}){const n=normalize(row.mawb),airline=airlineForMawb(n);if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';return airline?.url||row.officialTracker||''}
 function openOfficial(row={}){const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;if(n.startsWith('514-')){try{navigator.clipboard?.writeText(digits(n)).catch(()=>{})}catch{}}window.open(url,'_blank','noopener,noreferrer')}
