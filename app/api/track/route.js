@@ -235,7 +235,7 @@ async function handle(mawb,fallback={}){
   const cathay=null;
 
   const savedFallback=turkishFastPath?{
-    flightNo:fallback.flightNo||'',flightDate:fallback.flightDate||'',departureDate:fallback.departureDate||'',departureTime:fallback.departureTime||'',origin:fallback.origin||'',destination:fallback.destination||'',departureFlightNo:fallback.departureFlightNo||'',departureOrigin:fallback.departureOrigin||'',departureDestination:fallback.departureDestination||''
+    flightNo:fallback.flightNo||'',flightDate:fallback.flightDate||'',departureDate:fallback.departureDate||'',departureTime:fallback.departureTime||'',origin:fallback.origin||'',destination:fallback.destination||'',departureFlightNo:fallback.departureFlightNo||'',departureOrigin:'',departureDestination:''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
   if(api)shipment=mergeNonEmpty(shipment,api);
@@ -261,7 +261,7 @@ async function handle(mawb,fallback={}){
     const departureDate=turkishFastPath?(shipment.flightDate||shipment.departureDate||shipment.arrivalDate||''):(shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'');
     if(departureDate){
       const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate,departureOnly:true}).catch(()=>null);
-      if(dep?.ok&&dep.departureTime){
+      if(dep?.ok&&dep.departureTime&&(!turkishFastPath||dep.departureOrigin)){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
         shipment.departureIsActual=dep.departureIsActual===true;
