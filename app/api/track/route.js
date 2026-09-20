@@ -235,7 +235,7 @@ async function handle(mawb,fallback={}){
   const cathay=null;
 
   const savedFallback=turkishFastPath?{
-    flightNo:fallback.flightNo||'',flightDate:fallback.flightDate||'',departureDate:fallback.departureDate||'',departureTime:fallback.departureTime||'',origin:fallback.origin||'',destination:fallback.destination||'',departureFlightNo:fallback.departureFlightNo||'',departureOrigin:'',departureDestination:''
+    flightNo:fallback.flightNo||'',flightDate:fallback.flightDate||'',departureDate:fallback.departureDate||'',departureTime:fallback.departureTime||'',origin:fallback.origin||'',destination:fallback.destination||'',departureFlightNo:fallback.departureFlightNo||'',departureOrigin:fallback.departureOrigin||'',departureDestination:fallback.departureDestination||'',scheduledDeparture:fallback.scheduledDeparture||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
   if(api)shipment=mergeNonEmpty(shipment,api);
@@ -252,16 +252,43 @@ async function handle(mawb,fallback={}){
     if(direct.arrivalTimeZone)shipment.arrivalTimeZone=direct.arrivalTimeZone;
     if(direct.arrivalTimeSource)shipment.arrivalTimeSource=direct.arrivalTimeSource;
   }
-  // Export dashboard needs a usable departure time. Reuse the tracked final
-  // flight/date and enrich only the departure fields; airline cargo parsers stay untouched.
-  const departureFlightNo=shipment.departureFlightNo||shipment.flightNo||'';
-  const departureOrigin=shipment.departureOrigin||shipment.origin||'';
-  const departureDestination=shipment.departureDestination||(turkishFastPath?'':shipment.destination)||'';
-  if(departureFlightNo&&(departureOrigin||turkishFastPath)){
-    const departureDate=turkishFastPath?(shipment.flightDate||shipment.departureDate||shipment.arrivalDate||''):(shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'');
+  // Export departure must use the shipment's origin leg. For Turkish Cargo,
+  // never use the final TK flight (for example IST->YUL) as the DEL departure leg.
+  if(turkishFastPath){
+    const directOrigin=String(direct?.origin||shipment.origin||'').toUpperCase();
+    const directDepartureOrigin=String(direct?.departureOrigin||'').toUpperCase();
+    const directHasOriginDeparture=Boolean(direct?.departureTime&&directOrigin&&directDepartureOrigin===directOrigin);
+    if(directHasOriginDeparture){
+      shipment.departureDate=direct.departureDate||shipment.departureDate||'';
+      shipment.departureTime=direct.departureTime;
+      shipment.departureOrigin=directDepartureOrigin;
+      shipment.departureDestination=direct.departureDestination||'';
+      shipment.departureFlightNo=direct.departureFlightNo||'';
+      shipment.departureIsActual=direct.departureIsActual===true;
+      shipment.departureTimeSource=direct.departureTimeSource||'Turkish Cargo TK SMART origin-leg ETD';
+    }else{
+      const scheduled=String(shipment.scheduledDeparture||fallback.scheduledDeparture||'');
+      const m=scheduled.match(/^(20\\d{2}-\\d{2}-\\d{2})[T\\s](\\d{2}:\\d{2})/);
+      if(m&&shipment.origin){
+        shipment.departureDate=m[1];
+        shipment.departureTime=m[2];
+        shipment.departureOrigin=String(shipment.origin).toUpperCase();
+        shipment.departureDestination='';
+        shipment.departureFlightNo='';
+        shipment.departureIsActual=false;
+        shipment.departureTimeSource='Turkish Cargo TK SMART origin-leg scheduled departure';
+      }
+    }
+  }
+
+  const departureFlightNo=turkishFastPath?(shipment.departureFlightNo||''):(shipment.departureFlightNo||shipment.flightNo||'');
+  const departureOrigin=turkishFastPath?(shipment.departureOrigin||shipment.origin||''):(shipment.departureOrigin||shipment.origin||'');
+  const departureDestination=turkishFastPath?(shipment.departureDestination||''):(shipment.departureDestination||shipment.destination||'');
+  if(departureFlightNo&&departureOrigin){
+    const departureDate=shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'';
     if(departureDate){
       const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate,departureOnly:true}).catch(()=>null);
-      if(dep?.ok&&dep.departureTime&&(!turkishFastPath||dep.departureOrigin)){
+      if(dep?.ok&&dep.departureTime&&(!turkishFastPath||String(dep.departureOrigin||'').toUpperCase()===String(shipment.origin||'').toUpperCase())){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
         shipment.departureIsActual=dep.departureIsActual===true;
