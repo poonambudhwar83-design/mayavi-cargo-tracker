@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.27';
+const VERSION='3.9.28';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -248,7 +248,7 @@ async function handle(mawb,fallback={}){
   const cathayResult=null;
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
-  const skipGenericOcr=mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-');
+  const skipGenericOcr=mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('607-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-');
   const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||!browserShipment.bookingDate||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr)ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
 
