@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
@@ -63,6 +64,12 @@ function decorateTiming(existing={},incoming={}){
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function cronInternalKey(){
+  const configured=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  if(configured)return configured;
+  const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
+  return url?createHash('sha256').update(`mayavi-cron|${url}`).digest('hex'):'';
+}
 
 function retryDelay(attempt){
   // 1.25s, 2.5s, 5s. Keeps one temporary Vercel/Neon/SAL failure
@@ -93,7 +100,7 @@ export async function GET(request){
   const secret=process.env.CRON_SECRET;
   if(secret&&request.headers.get('authorization')!==`Bearer ${secret}`)return Response.json({ok:false,error:'Unauthorized'},{status:401});
   const origin=new URL(request.url).origin;
-  const internalKey=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  const internalKey=cronInternalKey();
   const internalHeaders=internalKey?{'x-mayavi-internal-key':internalKey}:{};
 
   // Previously one temporary /api/shipments 503 aborted the entire cron run.
