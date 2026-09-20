@@ -257,10 +257,10 @@ async function handle(mawb,fallback={}){
   const departureFlightNo=shipment.departureFlightNo||shipment.flightNo||'';
   const departureOrigin=shipment.departureOrigin||shipment.origin||'';
   const departureDestination=shipment.departureDestination||(turkishFastPath?'':shipment.destination)||'';
-  if(departureFlightNo&&departureOrigin){
+  if(departureFlightNo&&(departureOrigin||turkishFastPath)){
     const departureDate=turkishFastPath?(shipment.flightDate||shipment.departureDate||shipment.arrivalDate||''):(shipment.departureDate||shipment.flightDate||shipment.arrivalDate||'');
     if(departureDate){
-      const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate}).catch(()=>null);
+      const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate,departureOnly:true}).catch(()=>null);
       if(dep?.ok&&dep.departureTime){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
