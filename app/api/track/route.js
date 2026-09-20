@@ -23,7 +23,7 @@ import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js'
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.22';
+const VERSION='3.9.23';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -49,7 +49,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('098-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -68,7 +68,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
         : p;
     });
   }
-  if((mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
+  if((mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
@@ -234,8 +234,9 @@ async function handle(mawb,fallback={}){
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
   const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
-  const storedFallback=vietnamFastPath?await loadStoredTrackingFallback(mawb):{};
-  const effectiveFallback=vietnamFastPath?{...storedFallback,...fallback}:fallback;
+  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath;
+  const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
+  const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
     skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:britishFastPath?'BRITISH AIRWAYS IAG TRACK AND TRACE ADAPTER IS PRIMARY':airIndiaFastPath?'AIR INDIA DEDICATED CARGO PORTAL ADAPTER IS PRIMARY':qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':thaiFastPath?'THAI CARGO CHORUS PUBLIC TRACKER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':indigoFastPath?'INDIGO DEDICATED SMARTKARGO FORM ADAPTER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
     dedicatedOfficial(mawb),browserOfficial(mawb)
@@ -257,8 +258,8 @@ async function handle(mawb,fallback={}){
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
 
-  const savedFallback=(turkishFastPath||vietnamFastPath)?{
-    flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',scheduledDeparture:effectiveFallback.scheduledDeparture||'',status:effectiveFallback.status||''
+  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath)?{
+    flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
   if(api)shipment=mergeNonEmpty(shipment,api);
@@ -359,7 +360,7 @@ async function handle(mawb,fallback={}){
     if(derivedBookingDate){shipment.bookingDate=derivedBookingDate;shipment.bookingDateSource='Official Booked/Accepted/RCS event';}
   }
   shipment.status=chooseStatus({api,direct,browser,ocr,cathay});
-  if(vietnamFastPath&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
+  if((vietnamFastPath||turkishFastPath||qatarFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
@@ -371,7 +372,7 @@ async function handle(mawb,fallback={}){
   const hasUseful=concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct)));
   if(hasUseful){
     let serverSaved=false;
-    if(airIndiaFastPath||virginFastPath||vietnamFastPath){
+    if(airIndiaFastPath||qatarFastPath||turkishFastPath||virginFastPath||vietnamFastPath){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
