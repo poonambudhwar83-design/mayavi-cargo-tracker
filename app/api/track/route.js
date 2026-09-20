@@ -265,6 +265,8 @@ async function handle(mawb,fallback={}){
         shipment.departureDate=dep.departureDate||departureDate;
         shipment.departureTime=dep.departureTime;
         shipment.departureIsActual=dep.departureIsActual===true;
+        if(dep.departureOrigin)shipment.departureOrigin=dep.departureOrigin;
+        if(dep.departureDestination)shipment.departureDestination=dep.departureDestination;
         shipment.departureTimeSource=dep.source||'flight status';
       }
     }
