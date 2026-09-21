@@ -22,7 +22,7 @@ async function liveEtaOverlay(shipment={}){
   if(!shipment?.flightNo || shipment?.arrivalIsActual || shipment?.actualArrival) return shipment;
   let live=null; try{ live=await fetchFlightEta(shipment.flightNo); }catch{}
   if(!live?.eta) return shipment;
-  const m=String(live.eta).match(/(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2})/);
+  const m=String(live.eta).match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   if(!m) return shipment;
   return {...shipment,
     arrivalDate:`${m[1]}-${m[2]}-${m[3]}`, arrivalTime:`${m[4]}:${m[5]}`,
