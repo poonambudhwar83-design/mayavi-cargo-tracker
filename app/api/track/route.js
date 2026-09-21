@@ -19,6 +19,7 @@ import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js';
+import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -362,6 +363,7 @@ async function handle(mawb,fallback={}){
   shipment.status=chooseStatus({api,direct,browser,ocr,cathay});
   if((vietnamFastPath||turkishFastPath||qatarFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
+  shipment=normalizeShipmentTimesToIst(shipment);
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
   const directScreenshot=Boolean(directResult?.screenshotCaptured);
