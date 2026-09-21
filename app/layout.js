@@ -1,7 +1,20 @@
 import './globals.css';
 import './colorful.css';
 
-export const metadata={title:'Mayavi Cargo — MAWB Tracker',description:'Shared admin and employee MAWB dashboards with backend airline tracking and OCR'};
+export const metadata={
+  metadataBase:new URL('https://mayavicargo.com'),
+  title:'Mayavi Cargo — MAWB Import & Export Tracker',
+  description:'Mayavi Cargo live MAWB tracker for import and export shipments with airline tracking, arrival and departure updates.',
+  alternates:{canonical:'/'},
+  robots:{index:true,follow:true,googleBot:{index:true,follow:true}},
+  openGraph:{
+    title:'Mayavi Cargo — MAWB Import & Export Tracker',
+    description:'Live MAWB import and export shipment tracking by Mayavi Cargo.',
+    url:'https://mayavicargo.com',
+    siteName:'Mayavi Cargo',
+    type:'website'
+  }
+};
 
 const qatarSeed=`(()=>{try{const k='mayavi_v3_shipments',r=JSON.parse(localStorage.getItem(k)||'[]');let c=false;const n=r.map(x=>{const d=String(x?.mawb||'').replace(/\\D/g,'');if(d==='15751777880'&&!x?.arrivalDate){c=true;return {...x,arrivalDate:'2026-08-21',arrivalTime:x?.arrivalTime||'05:20',status:'ARRIVED',source:x?.source||'Verified Qatar browser capture'};}return x});if(c)localStorage.setItem(k,JSON.stringify(n));}catch{}})();`;
 
