@@ -46,6 +46,27 @@ async function snapshot(page){
 
 export async function GET(req){
   const u=new globalThis.URL(req.url);const raw=(u.searchParams.get('mawb')||'').replace(/\D/g,'');
+  if(raw.length===11&&raw.startsWith('235')&&u.searchParams.get('direct')==='1'){
+    const serial=raw.slice(3),prefix=raw.slice(0,3);
+    try{
+      const res=await fetch('https://www.turkishcargo.com/api/proxy/onlineServices/shipmentTracking',{
+        method:'POST',
+        headers:{
+          'content-type':'application/json',
+          'accept':'application/json, text/plain, */*',
+          'origin':'https://www.turkishcargo.com',
+          'referer':'https://www.turkishcargo.com/en/cargo-tracking',
+          'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36'
+        },
+        body:JSON.stringify({trackingFilters:[{shipmentPrefix:prefix,masterDocumentNumber:serial}]}),
+        cache:'no-store',
+        signal:AbortSignal.timeout(20000)
+      });
+      const text=await res.text();
+      let json=null;try{json=JSON.parse(text)}catch{}
+      return Response.json({ok:res.ok,status:res.status,prefix,serial,json,text:text.slice(0,30000)});
+    }catch(e){return Response.json({ok:false,error:e?.message||String(e)},{status:500})}
+  }
   if(raw.length!==11||!raw.startsWith('235'))return Response.json({ok:false,reason:'Use mawb=235xxxxxxxx'},{status:400});
   const serial=raw.slice(3),prefix=raw.slice(0,3),requests=[],responses=[];let browser;
   try{
