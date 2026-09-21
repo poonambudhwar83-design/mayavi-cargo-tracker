@@ -29,7 +29,7 @@ async function post(body){
 export async function GET(request){
   const key=process.env.TRACK123_API_KEY;
   const q=new URL(request.url).searchParams.get('mawb');
-  if(!q)return NextResponse.json({configured:Boolean(key)});
+  if(!q)return NextResponse.json({configured:Boolean(key),airCargoMcpConfigured:Boolean(process.env.AIRCARGO_MCP_API_KEY),trackingMoreConfigured:Boolean(process.env.TRACKINGMORE_API_KEY)});
   const mawb=normalizeMawb(q);
   if(!mawb)return NextResponse.json({configured:Boolean(key),ok:false,error:'invalid mawb'},{status:400});
   if(!key)return NextResponse.json({configured:false,ok:false,error:'TRACK123_API_KEY missing'},{status:503});
