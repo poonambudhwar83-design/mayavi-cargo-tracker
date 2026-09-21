@@ -371,7 +371,9 @@ async function handle(mawb,fallback={}){
   const screenshotCaptured=Boolean(browserResult?.screenshotBase64)||directScreenshot;
   const screenshotVerified=Boolean(browserResult?.screenshotBase64)||Boolean(directResult?.screenshotVerified);
   const screenshotOcrUsed=Boolean(ocrResult?.ok)||directOcr;
-  const hasUseful=concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct)));
+  const hasUseful=turkishFastPath
+    ? concrete(shipment)
+    : (concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct))));
   if(hasUseful){
     let serverSaved=false;
     if(airIndiaFastPath||qatarFastPath||turkishFastPath||indigoFastPath||virginFastPath||vietnamFastPath||mawb.startsWith('607-')){
