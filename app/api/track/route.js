@@ -8,6 +8,7 @@ import { trackSaudiaSal } from '../../../lib/adapters/saudia-sal.js';
 import { trackCathayLive } from '../../../lib/adapters/cathay-live.js';
 import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
+import { fetchFlightEta } from '../../../lib/aerodatabox.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -15,6 +16,24 @@ export const maxDuration=60;
 
 function waiting(mawb,airline,reason=''){
   return{mawb,carrierCode:airline?.iata||'',airlineName:airline?.name||'',origin:'',destination:'',bags:'',pieces:'',weight:'',flightNo:'',arrivalDate:'',arrivalTime:'',eta:null,actualArrival:null,status:'CHECKING',officialTracker:airline?.url||'',source:`${airline?.name||'Official airline'} official tracker`,message:reason};
+}
+
+async function liveEtaOverlay(shipment={}){
+  if(!shipment?.flightNo || shipment?.arrivalIsActual || shipment?.actualArrival) return shipment;
+  let live=null; try{ live=await fetchFlightEta(shipment.flightNo); }catch{}
+  if(!live?.eta) return shipment;
+  const m=String(live.eta).match(/(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2})/);
+  if(!m) return shipment;
+  return {...shipment,
+    arrivalDate:`${m[1]}-${m[2]}-${m[3]}`, arrivalTime:`${m[4]}:${m[5]}`,
+    eta:`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`,
+    liveFlightEta:true,
+    source:`${shipment.source||'Official airline tracker'} + live flight ETA`
+  };
+}
+function liveJson(payload){
+  if(!payload?.shipment) return Response.json(payload);
+  return liveEtaOverlay(payload.shipment).then(shipment=>Response.json({...payload,shipment}));
 }
 
 async function handle(mawb){
@@ -51,20 +70,20 @@ async function handle(mawb){
       };
       return Response.json({ok:true,configured:true,provider:'SAL + Saudia official shipment trackers',source:shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:{sal:sal.debug,fallbackUsed:Boolean(fallback)}});
     }
-    if(fallback)return Response.json({ok:true,configured:true,provider:'Saudia official shipment tracker',source:fallback.source||'Saudia Cargo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback,trackingDebug:{salError:sal.reason,fallbackUsed:true}});
-    return Response.json({ok:true,configured:true,provider:'SAL official shipment tracker',source:'SAL official shipment tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:sal.reason,trackingDebug:sal.debug,officialTracker:'https://sal.sa/trackshipment',shipment:waiting(mawb,sal.airline||airline,sal.reason)});
+    if(fallback)return liveJson({ok:true,configured:true,provider:'Saudia official shipment tracker',source:fallback.source||'Saudia Cargo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback,trackingDebug:{salError:sal.reason,fallbackUsed:true}});
+    return liveJson({ok:true,configured:true,provider:'SAL official shipment tracker',source:'SAL official shipment tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:sal.reason,trackingDebug:sal.debug,officialTracker:'https://sal.sa/trackshipment',shipment:waiting(mawb,sal.airline||airline,sal.reason)});
   }
 
   if(prefix==='229'){
     const x=await trackKuwaitLive(mawb);
-    if(x.ok)return Response.json({ok:true,configured:true,provider:'Kuwait Airways official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
-    return Response.json({ok:true,configured:true,provider:'Kuwait Airways official website',source:'Kuwait Airways official cargo tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(x.ok)return liveJson({ok:true,configured:true,provider:'Kuwait Airways official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    return liveJson({ok:true,configured:true,provider:'Kuwait Airways official website',source:'Kuwait Airways official cargo tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
   if(prefix==='910'){
     const x=await trackOmanLive(mawb);
-    if(x.ok)return Response.json({ok:true,configured:true,provider:'Oman Air Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
-    return Response.json({ok:true,configured:true,provider:'Oman Air Cargo official website',source:'Oman Air Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(x.ok)return liveJson({ok:true,configured:true,provider:'Oman Air Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    return liveJson({ok:true,configured:true,provider:'Oman Air Cargo official website',source:'Oman Air Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
   if(prefix==='160'){
@@ -94,30 +113,30 @@ async function handle(mawb){
     // If terminal markup changes, retain the existing official reader rather than
     // returning blank data.
     const fallback=await trackOfficial(mawb);
-    if(fallback.ok)return Response.json({ok:true,configured:true,provider:'Cathay Cargo official website',source:fallback.shipment.source||'Cathay Cargo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{cathayTerminal:cathay.reason,fallback:fallback.debug}});
-    return Response.json({ok:true,configured:true,provider:'Cathay Cargo official website',source:'Cathay Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:cathay.reason,trackingDebug:cathay.debug,officialTracker:airline?.url||'',shipment:waiting(mawb,airline,cathay.reason)});
+    if(fallback.ok)return liveJson({ok:true,configured:true,provider:'Cathay Cargo official website',source:fallback.shipment.source||'Cathay Cargo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{cathayTerminal:cathay.reason,fallback:fallback.debug}});
+    return liveJson({ok:true,configured:true,provider:'Cathay Cargo official website',source:'Cathay Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:cathay.reason,trackingDebug:cathay.debug,officialTracker:airline?.url||'',shipment:waiting(mawb,airline,cathay.reason)});
   }
 
   if(prefix==='738'){
     const x=await trackVietnamChamp(mawb);
-    if(x.ok)return Response.json({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    if(x.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
     // Keep the generic official reader as a resilience fallback if CHAMP changes markup.
     let fallback=null;
     try{const r=await trackOfficial(mawb);if(r?.ok)fallback=r;}catch{}
-    if(fallback?.ok)return Response.json({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:fallback.shipment.source||'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{champ:x.debug,fallback:fallback.debug}});
-    return Response.json({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:'https://track.champ.aero/vn',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(fallback?.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:fallback.shipment.source||'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{champ:x.debug,fallback:fallback.debug}});
+    return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:'https://track.champ.aero/vn',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
   if(prefix==='235'){
     const x=await trackTurkishLive(mawb);
-    if(x.ok)return Response.json({ok:true,configured:true,provider:'Turkish Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
-    return Response.json({ok:true,configured:true,provider:'Turkish Cargo official website',source:'Turkish Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(x.ok)return liveJson({ok:true,configured:true,provider:'Turkish Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    return liveJson({ok:true,configured:true,provider:'Turkish Cargo official website',source:'Turkish Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
   const exact=prefix==='157'||hasExactOfficialAdapter(prefix);
   const result=prefix==='157'?await trackQatarLiveV2(mawb):hasExactOfficialAdapter(prefix)?await trackExactOfficial(mawb):await trackOfficial(mawb);
-  if(result.ok)return Response.json({ok:true,configured:true,provider:`${result.airline.name} official website`,source:`${result.airline.name} official website`,airlinePrimary:true,exactCarrierAdapter:exact,officialNetworkCapture:exact,noPaidApi:true,noTrackJet:true,shipment:result.shipment,trackingDebug:result.debug});
-  return Response.json({ok:true,configured:true,provider:'Official airline websites',source:'Official airline tracker',airlinePrimary:true,exactCarrierAdapter:exact,officialNetworkCapture:exact,noPaidApi:true,noTrackJet:true,trackingError:result.reason,trackingDebug:result.debug,officialTracker:result.airline?.url||airline?.url||'',shipment:waiting(mawb,result.airline||airline,result.reason)});
+  if(result.ok)return liveJson({ok:true,configured:true,provider:`${result.airline.name} official website`,source:`${result.airline.name} official website`,airlinePrimary:true,exactCarrierAdapter:exact,officialNetworkCapture:exact,noPaidApi:true,noTrackJet:true,shipment:result.shipment,trackingDebug:result.debug});
+  return liveJson({ok:true,configured:true,provider:'Official airline websites',source:'Official airline tracker',airlinePrimary:true,exactCarrierAdapter:exact,officialNetworkCapture:exact,noPaidApi:true,noTrackJet:true,trackingError:result.reason,trackingDebug:result.debug,officialTracker:result.airline?.url||airline?.url||'',shipment:waiting(mawb,result.airline||airline,result.reason)});
 }
 
 export async function GET(request){
