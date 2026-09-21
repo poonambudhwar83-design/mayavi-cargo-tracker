@@ -4,7 +4,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 
-const TRACK_URL='https://turkishcargo.com/en/cargo-tracking';
+const TRACK_URL='https://www.turkishcargo.com/en/online-services/shipment-tracking';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const clean=v=>String(v||'').replace(/\s+/g,' ').trim();
 
