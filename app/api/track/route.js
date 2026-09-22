@@ -24,7 +24,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.29';
+const VERSION='3.9.30';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -234,7 +234,7 @@ async function handle(mawb,fallback={}){
   const omanFastPath=mawb.startsWith('910-');
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
-  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
+  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
   const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
