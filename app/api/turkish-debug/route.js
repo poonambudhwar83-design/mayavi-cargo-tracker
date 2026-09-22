@@ -96,6 +96,44 @@ export async function GET(req){
     if(pf){await pf.input.click({clickCount:3});await page.keyboard.press('Backspace');await pf.input.type(prefix,{delay:40});}
     await nf.input.click({clickCount:3});await page.keyboard.press('Backspace');await nf.input.type(nf.m.max===8?serial:(pf?serial:raw),{delay:40});await sleep(1200);
     const afterType=await snapshot(page);
+
+    if(u.searchParams.get('home')==='1'){
+      // Homepage has a simpler AWB widget: keep prefilled 235, enter 8-digit serial, click Track.
+      if(pf){
+        const currentPrefix=await pf.input.evaluate(e=>String(e.value||'').replace(/\D/g,''));
+        if(currentPrefix!==prefix){
+          await pf.input.evaluate((e,v)=>{
+            const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+            if(setter)setter.call(e,v);else e.value=v;
+            e.dispatchEvent(new Event('input',{bubbles:true}));
+            e.dispatchEvent(new Event('change',{bubbles:true}));
+            e.dispatchEvent(new Event('blur',{bubbles:true}));
+          },prefix);
+        }
+      }
+      await nf.input.click({clickCount:3});
+      await page.keyboard.press('Backspace');
+      await nf.input.type(serial,{delay:35});
+      await sleep(700);
+      const beforeTrack=await snapshot(page);
+      const tracked=await clickText(formFrame,'Track');
+      if(!tracked){
+        for(const fr of page.frames()){
+          if(await clickText(fr,'Track'))break;
+        }
+      }
+      await sleep(4500);
+      const afterTrack=await snapshot(page);
+      for(const fr of page.frames())try{await fr.evaluate(()=>window.scrollBy(0,700))}catch{}
+      await sleep(1200);
+      const afterScroll=await snapshot(page);
+      if(u.searchParams.get('compact')==='1'){
+        const brief=arr=>(arr||[]).map(x=>({url:x.url,text:clean(x.text||'').slice(0,5200),inputs:x.inputs,buttons:x.buttons}));
+        return Response.json({ok:true,mode:'HOME_TRACK',tracked,beforeTrack:brief(beforeTrack),afterTrack:brief(afterTrack),afterScroll:brief(afterScroll),requests:requests.slice(-40),responses:responses.slice(-40)});
+      }
+      return Response.json({ok:true,mode:'HOME_TRACK',tracked,beforeTrack,afterTrack,afterScroll,requests,responses});
+    }
+
     let added=await clickText(formFrame,`Add: ${serial}`);let addMode='CLICK_ADD';
     if(!added){await nf.input.press('ArrowDown');await nf.input.press('Enter');addMode='ARROWDOWN_ENTER';}
     await sleep(1200);
