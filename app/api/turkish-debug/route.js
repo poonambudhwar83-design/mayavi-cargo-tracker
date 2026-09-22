@@ -105,6 +105,14 @@ export async function GET(req){
     for(const f of page.frames())try{await f.evaluate(()=>window.scrollBy(0,650))}catch{}
     await sleep(1800);
     const afterScroll=await snapshot(page);
+    if(u.searchParams.get('compact')==='1'){
+      const brief=arr=>(arr||[]).map(x=>({url:x.url,text:clean(x.text||'').slice(0,4200),inputs:x.inputs,buttons:x.buttons}));
+      return Response.json({
+        ok:true,addMode,searched,
+        afterAdd:brief(afterAdd),afterSearch:brief(afterSearch),afterScroll:brief(afterScroll),
+        requests:requests.slice(-30),responses:responses.slice(-30)
+      });
+    }
     return Response.json({ok:true,addMode,searched,before,afterType,afterAdd,afterSearch,afterScroll,requests,responses});
   }catch(e){return Response.json({ok:false,error:e?.message||String(e),requests,responses},{status:500})}
   finally{if(browser)try{await browser.close()}catch{}}
