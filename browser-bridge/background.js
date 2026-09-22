@@ -15,7 +15,6 @@ function waitForComplete(tabId,timeout=30000){
 
 async function runSaudia(mawb){
   let tab;
-  let completed=false;
   try{
     tab=await chrome.tabs.create({url:SAUDIA_TRACK_URL,active:false});
     await waitForComplete(tab.id,35000);
@@ -40,6 +39,7 @@ async function runTurkish(mawb,returnTabId){
   const serial=digits.slice(3);
   const url=`${TURKISH_TRACK_URL}?awbPrefix=235&awbNumber=${encodeURIComponent(serial)}`;
   let tab;
+  let completed=false;
   try{
     // Turkish may require a human Press & Hold check. Open an ACTIVE normal Chrome tab
     // so the user can complete that check personally; the extension never clicks it.
