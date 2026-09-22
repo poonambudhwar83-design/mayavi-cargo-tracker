@@ -136,9 +136,12 @@ async function handle(mawb){
   }
 
   if(prefix==='235'){
+    // Keep Turkish on its proven carrier-specific path. Do not pass TK data through
+    // the generic live-flight overlay; the Turkish adapter already reads the official
+    // TK Smart card and owns its arrival/departure fields.
     const x=await trackTurkishLive(mawb);
-    if(x.ok)return liveJson({ok:true,configured:true,provider:'Turkish Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
-    return liveJson({ok:true,configured:true,provider:'Turkish Cargo official website',source:'Turkish Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(x.ok)return Response.json({ok:true,configured:true,provider:'Turkish Cargo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    return Response.json({ok:true,configured:true,provider:'Turkish Cargo official website',source:'Turkish Cargo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.airline?.url||airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
   const exact=prefix==='157'||hasExactOfficialAdapter(prefix);
