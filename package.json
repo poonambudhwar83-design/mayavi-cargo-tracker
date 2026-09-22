@@ -1,8 +1,12 @@
 {
-  "name": "mayavi-cargo-tracker-v3",
-  "version": "3.8.0",
+  "name": "igcse-progress-scanner",
+  "version": "1.0.0",
   "private": true,
-  "scripts": {"dev":"next dev","build":"next build","start":"next start"},
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
   "dependencies": {
     "next": "16.1.6",
     "react": "19.2.3",
@@ -12,6 +16,7 @@
     "bmp-js": "0.1.0",
     "puppeteer-core": "25.9.0",
     "@sparticuz/chromium": "149.0.0",
-    "@neondatabase/serverless": "1.1.0"
+    "@neondatabase/serverless": "1.1.0",
+    "pdfjs-dist": "5.4.149"
   }
 }
