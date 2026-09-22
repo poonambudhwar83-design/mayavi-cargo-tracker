@@ -110,6 +110,9 @@ function statusFromLive(previous,live,etaIso){
     return'ARRIVED';
   }
   if(/PRE[-_ ]?MANIFEST/.test(raw))return'PRE-MANIFESTED';
+  // Kuwait flight cards may publish ETA before the aircraft has actually departed.
+  // Preserve the carrier's scheduled state instead of inferring IN TRANSIT from ETA alone.
+  if((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PLANNED|EXPECTED/.test(raw))return'SCHEDULED';
   if(/DELAY|LATE|EXCEPTION/.test(raw))return'DELAYED';
   if(/EARLY/.test(raw))return'EARLY ARRIVAL';
   const etaDiff=compare(etaIso);
