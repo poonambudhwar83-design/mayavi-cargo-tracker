@@ -6,6 +6,7 @@ export const maxDuration=60;
 
 const TRACK_URL='https://www.turkishcargo.com/en/online-services/shipment-tracking';
 const NEW_TRACK_URL='https://www.turkishcargo.com/en/cargo-tracking';
+const HOME_URL='https://www.turkishcargo.com/en';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const clean=v=>String(v||'').replace(/\s+/g,' ').trim();
 
@@ -77,7 +78,7 @@ export async function GET(req){
     await page.setExtraHTTPHeaders({'Accept-Language':'en-US,en;q=0.9'});
     page.on('request',r=>{try{const method=r.method(),url=r.url(),post=r.postData()||'';if(method!=='GET'||/awb|cargo|track|shipment|search|api/i.test(url)){requests.push({method,url,post:post.slice(0,2000),type:r.resourceType()});if(requests.length>120)requests.shift();}}catch{}});
     page.on('response',async r=>{try{const url=r.url(),ct=r.headers()['content-type']||'';if(/json|text/i.test(ct)||/awb|cargo|track|shipment|search|api/i.test(url)){let body='';try{body=(await r.text()).slice(0,5000)}catch{}responses.push({status:r.status(),url,ct,body:clean(body)});if(responses.length>80)responses.shift();}}catch{}});
-    const targetUrl=u.searchParams.get('new')==='1'?NEW_TRACK_URL:TRACK_URL;
+    const targetUrl=u.searchParams.get('home')==='1'?HOME_URL:(u.searchParams.get('new')==='1'?NEW_TRACK_URL:TRACK_URL);
     await page.goto(targetUrl,{waitUntil:'domcontentloaded',timeout:30000});await sleep(1800);
     for(const f of page.frames())await clickText(f,'Accept all');
     const before=await snapshot(page);
