@@ -13,7 +13,8 @@
     "https://mayavi-cargo-shared-tracker.vercel.app/*",
     "https://mayavicargo.com/*",
     "https://www.mayavicargo.com/*",
-    "https://www.turkishcargo.com/*"
+    "https://www.turkishcargo.com/*",
+    "https://tracker.mayavicargo.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -23,7 +24,8 @@
       "matches": [
         "https://mayavi-cargo-shared-tracker.vercel.app/*",
         "https://mayavicargo.com/*",
-        "https://www.mayavicargo.com/*"
+        "https://www.mayavicargo.com/*",
+        "https://tracker.mayavicargo.com/*"
       ],
       "js": [
         "mayavi-content.js"
@@ -58,7 +60,8 @@
       "matches": [
         "https://mayavi-cargo-shared-tracker.vercel.app/*",
         "https://mayavicargo.com/*",
-        "https://www.mayavicargo.com/*"
+        "https://www.mayavicargo.com/*",
+        "https://tracker.mayavicargo.com/*"
       ]
     }
   ]
