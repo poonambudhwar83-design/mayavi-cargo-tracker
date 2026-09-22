@@ -109,6 +109,7 @@ function statusFromLive(previous,live,etaIso){
     if(diff>=EARLY_LATE_MINUTES)return'DELAYED ARRIVAL';
     return'ARRIVED';
   }
+  if(/PRE[-_ ]?MANIFEST/.test(raw))return'PRE-MANIFESTED';
   if(/DELAY|LATE|EXCEPTION/.test(raw))return'DELAYED';
   if(/EARLY/.test(raw))return'EARLY ARRIVAL';
   const etaDiff=compare(etaIso);
