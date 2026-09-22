@@ -110,6 +110,8 @@ function statusFromLive(previous,live,etaIso){
     return'ARRIVED';
   }
   if(/PRE[-_ ]?MANIFEST/.test(raw))return'PRE-MANIFESTED';
+  if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/MANIFESTED/.test(raw))return'MANIFESTED';
+  if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/ACCEPTED|EXECUTED|FREIGHT ON HAND/.test(raw))return raw;
   // Kuwait flight cards may publish ETA before the aircraft has actually departed.
   // Preserve the carrier's scheduled state instead of inferring IN TRANSIT from ETA alone.
   if((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PLANNED|EXPECTED/.test(raw))return'SCHEDULED';
