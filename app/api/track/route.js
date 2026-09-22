@@ -19,6 +19,11 @@ function waiting(mawb,airline,reason=''){
 }
 
 async function liveEtaOverlay(shipment={}){
+  const carrier=String(shipment?.carrierCode||'').toUpperCase();
+  const status=String(shipment?.status||'').toUpperCase();
+  // Air India may publish the operating flight at MANIFESTED/ACCEPTED stage.
+  // Do not turn that into an arrival clock before an actual DEP/IN TRANSIT milestone.
+  if(carrier==='AI' && /MANIFESTED|ACCEPTED|EXECUTED|FREIGHT ON HAND|BOOKED|RCS|TRACKING/.test(status)) return shipment;
   if(!shipment?.flightNo || shipment?.arrivalIsActual || shipment?.actualArrival) return shipment;
   let live=null; try{ live=await fetchFlightEta(shipment.flightNo); }catch{}
   if(!live?.eta) return shipment;
