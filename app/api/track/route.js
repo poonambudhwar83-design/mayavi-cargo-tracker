@@ -23,7 +23,7 @@ async function liveEtaOverlay(shipment={}){
   const status=String(shipment?.status||'').toUpperCase();
   // Air India may publish the operating flight at MANIFESTED/ACCEPTED stage.
   // Do not turn that into an arrival clock before an actual DEP/IN TRANSIT milestone.
-  if(carrier==='AI' && /MANIFESTED|ACCEPTED|EXECUTED|FREIGHT ON HAND|BOOKED|RCS|TRACKING/.test(status)) return shipment;
+  if(carrier==='AI' && /MANIFESTED|ACCEPTED|EXECUTED|FREIGHT ON HAND|BOOKED|RCS|TRACKING|ARRIVED|DELIVERED|RCF|DLV/.test(status)) return shipment;
   // Kuwait: flight-number timetable/live data must not create an arrival before
   // the cargo tracker confirms DEP. This prevents stale previous-flight ETAs.
   if(carrier==='KU' && !/IN TRANSIT|DEPARTED|ARRIVED/.test(status)) return shipment;
