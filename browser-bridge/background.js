@@ -15,6 +15,7 @@ function waitForComplete(tabId,timeout=30000){
 
 async function runSaudia(mawb){
   let tab;
+  let completed=false;
   try{
     tab=await chrome.tabs.create({url:SAUDIA_TRACK_URL,active:false});
     await waitForComplete(tab.id,35000);
@@ -33,7 +34,7 @@ async function runSaudia(mawb){
   }
 }
 
-async function runTurkish(mawb){
+async function runTurkish(mawb,returnTabId){
   const digits=String(mawb||'').replace(/\D/g,'');
   if(digits.length!==11||!digits.startsWith('235'))return{ok:false,trackingError:'Invalid Turkish Cargo 235 MAWB.',officialTracker:TURKISH_TRACK_URL};
   const serial=digits.slice(3);
@@ -52,7 +53,7 @@ async function runTurkish(mawb){
       }catch(error){
         result={ok:false,trackingError:error?.message||String(error),officialTracker:url};
       }
-      if(result?.ok)return result;
+      if(result?.ok){completed=true;return result;}
       if(result?.humanVerificationRequired){
         // Content script stays in the tab and waits for the user to finish verification.
         return result;
@@ -63,12 +64,10 @@ async function runTurkish(mawb){
   }catch(error){
     return{ok:false,trackingError:`Turkish browser session failed: ${error?.message||error}`,officialTracker:url};
   }finally{
-    // Close only after a completed successful read. When verification is still pending,
-    // keep the Turkish tab open so the user can interact with it.
-    if(tab?.id){
+    if(tab?.id&&completed){
       try{
-        const current=await chrome.tabs.get(tab.id);
-        if(current&&current.id&&current.active===false)await chrome.tabs.remove(tab.id);
+        if(returnTabId)await chrome.tabs.update(returnTabId,{active:true});
+        await chrome.tabs.remove(tab.id);
       }catch{}
     }
   }
@@ -80,7 +79,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     return true;
   }
   if(message?.type==='TRACK_TURKISH'){
-    runTurkish(message.mawb).then(sendResponse);
+    runTurkish(message.mawb,sender?.tab?.id).then(sendResponse);
     return true;
   }
 });
