@@ -23,18 +23,39 @@
 
   function reservationRows(text=''){
     const rows=[];
-    const rx=/\b(TK\s*0*\d{2,4})\b\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})\s+([A-Z]{3})\s*[-–—]\s*([A-Z]{3})\b/ig;
-    for(const m of text.matchAll(rx)){
+    const normalized=String(text||'').replace(/\u00a0/g,' ').replace(/[–—]/g,'-');
+    const exact=/\b(TK\s*0*\d{2,4})\b\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})\s+([A-Z]{3})\s*-\s*([A-Z]{3})\b/ig;
+    for(const m of normalized.matchAll(exact)){
       rows.push({
         flightNo:`TK${String(m[1]).replace(/\D/g,'').padStart(4,'0')}`,
-        flightDate:dateISO(m[2]),
-        etaDate:dateISO(m[3]),
-        etaTime:m[4],
-        etdDate:dateISO(m[5]),
-        etdTime:m[6],
-        origin:m[7].toUpperCase(),
-        destination:m[8].toUpperCase()
+        flightDate:dateISO(m[2]),etaDate:dateISO(m[3]),etaTime:m[4],
+        etdDate:dateISO(m[5]),etdTime:m[6],
+        origin:m[7].toUpperCase(),destination:m[8].toUpperCase()
       });
+    }
+    if(!rows.length){
+      const flexible=/\b(TK\s*0*\d{2,4})\b[^\n]{0,80}?([A-Z]{3})\s*(?:-|TO|>)\s*([A-Z]{3})[^\n]{0,160}?(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})[^\n]{0,100}?(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})/ig;
+      for(const m of normalized.matchAll(flexible)){
+        rows.push({
+          flightNo:`TK${String(m[1]).replace(/\D/g,'').padStart(4,'0')}`,
+          flightDate:'',origin:m[2].toUpperCase(),destination:m[3].toUpperCase(),
+          etaDate:dateISO(m[4]),etaTime:m[5],etdDate:dateISO(m[6]),etdTime:m[7]
+        });
+      }
+    }
+    if(!rows.length){
+      const flight=normalized.match(/\bTK\s*0*(\d{2,4})\b/i);
+      const route=normalized.match(/\b([A-Z]{3})\s*(?:-|TO|>)\s*([A-Z]{3})\b/i);
+      const times=[...normalized.matchAll(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s+(\d{1,2}:\d{2})/g)];
+      if(flight&&route&&times.length){
+        const eta=times.at(-1),etd=times.length>1?times[0]:null;
+        rows.push({
+          flightNo:`TK${flight[1].padStart(4,'0')}`,flightDate:'',
+          origin:route[1].toUpperCase(),destination:route[2].toUpperCase(),
+          etaDate:dateISO(eta[1]),etaTime:eta[2],
+          etdDate:etd?dateISO(etd[1]):'',etdTime:etd?etd[2]:''
+        });
+      }
     }
     return rows;
   }
@@ -135,6 +156,104 @@
     };
   }
 
+  function visible(el){
+    if(!el)return false;
+    const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+    return r.width>3&&r.height>3&&s.display!=='none'&&s.visibility!=='hidden'&&!el.disabled;
+  }
+
+  function setValue(el,value){
+    if(!el)return false;
+    try{
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+      if(setter)setter.call(el,value);else el.value=value;
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      el.dispatchEvent(new Event('blur',{bubbles:true}));
+      return digits(el.value)===digits(value);
+    }catch{return false;}
+  }
+
+  function findTrackFields(){
+    const fields=[...document.querySelectorAll('input:not([type="hidden"]),textarea')].filter(visible);
+    const meta=el=>({
+      max:Number(el.maxLength||-1),
+      value:String(el.value||''),
+      label:`${el.placeholder||''} ${el.name||''} ${el.id||''} ${el.getAttribute('aria-label')||''}`
+    });
+    const prefix=fields.find(el=>{const m=meta(el);return m.max===3||/prefix|awb code|airline code/i.test(m.label)||digits(m.value)==='235';})||null;
+    const number=fields.find(el=>el!==prefix&&(()=>{const m=meta(el);return m.max===8||/awb|air waybill|waybill|shipment|master document|document number|tracking number/i.test(m.label);})())
+      ||fields.find(el=>el!==prefix&&[11,12,14].includes(meta(el).max))
+      ||null;
+    return{prefix,number};
+  }
+
+  async function clickAdd(serial){
+    const end=Date.now()+10000;
+    while(Date.now()<end){
+      const nodes=[...document.querySelectorAll('button,a,[role="button"],mat-option,.mat-mdc-option,.mat-option,[role="option"],li,div,span,p')];
+      const hits=[];
+      for(const el of nodes){
+        if(!visible(el))continue;
+        const text=clean(el.innerText||el.textContent||el.value||'');
+        if(!(/^Add$/i.test(text)||(/^Add\s*:/i.test(text)&&digits(text).includes(serial))))continue;
+        const target=el.closest('button,a,[role="button"],mat-option,.mat-mdc-option,.mat-option,[role="option"],li')||el;
+        if(visible(target))hits.push({target,text,score:/^Add\s*:/i.test(text)?0:1});
+      }
+      hits.sort((a,b)=>a.score-b.score);
+      if(hits[0]){
+        hits[0].target.scrollIntoView({block:'center',behavior:'auto'});
+        hits[0].target.click();
+        await sleep(700);
+        return{ok:true,text:hits[0].text};
+      }
+      await sleep(250);
+    }
+    return{ok:false};
+  }
+
+  async function clickSearch(){
+    const end=Date.now()+9000;
+    while(Date.now()<end){
+      const nodes=[...document.querySelectorAll('button,a,[role="button"],input[type="submit"],input[type="button"],div,span')];
+      const hit=nodes.find(el=>visible(el)&&/^Search$/i.test(clean(el.innerText||el.textContent||el.value||'')));
+      if(hit){
+        const target=hit.closest('button,a,[role="button"]')||hit;
+        target.scrollIntoView({block:'center',behavior:'auto'});
+        target.click();
+        await sleep(900);
+        return true;
+      }
+      await sleep(250);
+    }
+    return false;
+  }
+
+  async function prepareTracking(mawb){
+    const d=digits(mawb),serial=d.slice(3);
+    const end=Date.now()+15000;
+    while(Date.now()<end){
+      const {prefix,number}=findTrackFields();
+      if(number){
+        if(prefix&&digits(prefix.value)!=='235')setValue(prefix,'235');
+        const wanted=prefix?serial:(Number(number.maxLength||-1)===8?serial:d);
+        if(digits(number.value)!==digits(wanted))setValue(number,wanted);
+        await sleep(600);
+        const add=await clickAdd(serial);
+        if(!add.ok){
+          number.focus();
+          number.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true}));
+          number.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true}));
+          await sleep(600);
+        }
+        const searched=await clickSearch();
+        return{ok:searched,add:add.ok};
+      }
+      await sleep(350);
+    }
+    return{ok:false,reason:'FORM_NOT_FOUND'};
+  }
+
   function challengeVisible(){
     const text=clean(document.body?.innerText||'');
     return /Press\s*&\s*Hold|confirm\s+you\s+are\s+a\s+human|Human Challenge requires verification/i.test(text);
@@ -144,6 +263,10 @@
     const normalized=normalize(mawb);
     if(!normalized)return{ok:false,trackingError:'Invalid Turkish Cargo 235 MAWB.',officialTracker:location.href};
 
+    // Use the normal Turkish Cargo UI exactly as a person would up to the
+    // anti-bot checkpoint: fill AWB -> Add -> Search. Never interact with the
+    // Press & Hold verification itself; that remains a user action.
+    const prepared=await prepareTracking(normalized);
     const end=Date.now()+180000;
     let last='';
     let challengeSeen=false;
