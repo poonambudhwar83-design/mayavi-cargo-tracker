@@ -14,6 +14,7 @@ import { trackVirgin } from '../../../lib/virgin.js';
 import { trackIndigo } from '../../../lib/indigo.js';
 import { trackThai } from '../../../lib/thai.js';
 import { trackVietnam } from '../../../lib/vietnam.js';
+import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
@@ -24,7 +25,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.31';
+const VERSION='3.9.32';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -196,7 +197,7 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('235-')) return trackTurkish(mawb);
   if(mawb.startsWith('312-')) return trackIndigo(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
-  if(mawb.startsWith('738-')) return trackVietnam(mawb);
+  if(mawb.startsWith('738-')) { const freight=await trackVietnamFreight(mawb); if(freight?.ok)return freight; return trackVietnam(mawb); }
   if(mawb.startsWith('910-')) return trackOman(mawb);
   if(mawb.startsWith('932-')){
     let result=await trackVirgin(mawb);
