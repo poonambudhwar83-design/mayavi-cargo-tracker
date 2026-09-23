@@ -7,6 +7,7 @@ import { trackOmanLive } from '../../../lib/adapters/oman-live.js';
 import { trackSaudiaSal } from '../../../lib/adapters/saudia-sal.js';
 import { trackCathayLive } from '../../../lib/adapters/cathay-live.js';
 import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
+import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
 
@@ -126,13 +127,16 @@ async function handle(mawb){
   }
 
   if(prefix==='738'){
+    // Restore the older working Vietnam path first: CHAMP Freight.aero JSON.
+    // It is substantially less brittle than scraping the rendered CHAMP card.
+    const freight=await trackVietnamFreight(mawb);
+    if(freight.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP Freight.aero',source:freight.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:freight.shipment,trackingDebug:freight.debug});
     const x=await trackVietnamChamp(mawb);
-    if(x.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
-    // Keep the generic official reader as a resilience fallback if CHAMP changes markup.
+    if(x.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:{freightError:freight.reason,champ:x.debug}});
     let fallback=null;
     try{const r=await trackOfficial(mawb);if(r?.ok)fallback=r;}catch{}
-    if(fallback?.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:fallback.shipment.source||'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{champ:x.debug,fallback:fallback.debug}});
-    return liveJson({ok:true,configured:true,provider:'Vietnam Airlines CHAMP official Track & Trace',source:'Vietnam Airlines CHAMP official Track & Trace',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:'https://track.champ.aero/vn',shipment:waiting(mawb,x.airline||airline,x.reason)});
+    if(fallback?.ok)return liveJson({ok:true,configured:true,provider:'Vietnam Airlines official tracking',source:fallback.shipment.source||'Vietnam Airlines official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{freightError:freight.reason,champ:x.debug,fallback:fallback.debug}});
+    return liveJson({ok:true,configured:true,provider:'Vietnam Airlines official tracking',source:'Vietnam Airlines official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:freight.reason||x.reason,trackingDebug:{freight:freight.debug,champ:x.debug},officialTracker:'https://track.champ.aero/vn',shipment:waiting(mawb,x.airline||airline,freight.reason||x.reason)});
   }
 
   if(prefix==='235'){
