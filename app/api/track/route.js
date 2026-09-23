@@ -72,10 +72,17 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
+  const clearStaleAirIndiaArrival=mawb.startsWith('098-')&&tracked.arrivalIsActual!==true&&!tracked.arrivalDate&&!tracked.arrivalTime;
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
   for(const key of Object.keys(patch)){
     const value=patch[key];
     if(value===''||value===null||value===undefined)delete patch[key];
+  }
+  if(clearStaleAirIndiaArrival){
+    patch.arrivalDate='';
+    patch.arrivalTime='';
+    patch.arrivalTimeZone='IST';
+    patch.arrivalTimeSource='Air India official refresh cleared stale arrival';
   }
   const rows=await sql`
     UPDATE mayavi_shipments
