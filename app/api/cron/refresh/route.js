@@ -52,11 +52,13 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
 function decorateTiming(existing={},incoming={}){
   const shipmentType=(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT';
   const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
-  const scheduledArrivalDate=existing.scheduledArrivalDate||incoming.scheduledArrivalDate||existing.arrivalDate||incoming.arrivalDate||'';
-  const scheduledArrivalTime=existing.scheduledArrivalTime||incoming.scheduledArrivalTime||existing.arrivalTime||incoming.arrivalTime||'';
-  const arrivalDate=incoming.arrivalDate||existing.arrivalDate||'';
-  const arrivalTime=incoming.arrivalTime||existing.arrivalTime||'';
-  const arrivalIsActual=Boolean(incoming.arrivalIsActual===true||existing.arrivalIsActual===true);
+  const clearArrival=incoming.arrivalVerifiedAbsent===true;
+  const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';
+  const scheduledArrivalTime=incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'';
+  const arrivalDate=clearArrival?'':(incoming.arrivalDate||existing.arrivalDate||'');
+  const arrivalTime=clearArrival?'':(incoming.arrivalTime||existing.arrivalTime||'');
+  const incomingActualKnown=Object.prototype.hasOwnProperty.call(incoming,'arrivalIsActual');
+  const arrivalIsActual=clearArrival?false:(incomingActualKnown?incoming.arrivalIsActual===true:existing.arrivalIsActual===true);
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
