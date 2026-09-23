@@ -24,7 +24,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.30';
+const VERSION='3.9.31';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -267,6 +267,15 @@ async function handle(mawb,fallback={}){
   if(direct)shipment=mergeNonEmpty(shipment,direct);
   if(browser)shipment=mergeNonEmpty(shipment,browser);
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
+
+  // IAG sometimes publishes the movement row before it publishes a verified
+  // kg value. A refresh must not erase a previously saved BA piece/weight value
+  // just because today's official page omits that field.
+  if(britishFastPath){
+    if(!shipment.bags&&effectiveFallback.bags)shipment.bags=effectiveFallback.bags;
+    if(!shipment.pieces&&(effectiveFallback.pieces||effectiveFallback.bags))shipment.pieces=effectiveFallback.pieces||effectiveFallback.bags;
+    if(!shipment.weight&&effectiveFallback.weight)shipment.weight=effectiveFallback.weight;
+  }
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
   // Air India dedicated adapter already normalizes international arrival date/time to IST.
