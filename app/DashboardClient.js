@@ -60,6 +60,24 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   return'BOOKED';
 }
 function tone(status=''){const s=String(status).toUpperCase();if(s.includes('PART ARRIVED')||s.includes('PART LOAD'))return'transit';if(s.includes('DELIVER')||s.includes('ARRIVED'))return'arrived';if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return'transit';if(s.includes('DELAY'))return'delayed';if(s.includes('EARLY'))return'early';return'booked'}
+function trackingProgress(status=''){const s=String(status||'').toUpperCase();if(s.includes('DELIVER'))return 6;if(s.includes('ARRIVED')||s.includes('RCF')||s.includes('LANDED'))return 5;if(s.includes('DELAY'))return 4;if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 3;if(s.includes('BOOK')||s.includes('ACCEPT')||s.includes('MANIFEST'))return 2;return 0}
+function recoverTurkishLocal(server={},local={}){
+  const out={...server};let changed=false;
+  const keys=['bookingDate','bookingTime','flightNo','flightDate','origin','destination','via','bags','pieces','weight','volume','departureDate','departureTime','departureFlightNo','departureOrigin','departureDestination','scheduledDeparture','scheduledArrivalDate','scheduledArrivalTime','arrivalDate','arrivalTime','actualArrivalDate','actualArrivalTime','actualArrival','deliveryStation','deliveryDate','deliveryTime','deliveredAt','arrivalTimeSource','departureTimeSource','source','provider'];
+  for(const key of keys){
+    const sv=out[key],lv=local?.[key];
+    if((sv===''||sv===null||sv===undefined)&&lv!==''&&lv!==null&&lv!==undefined){out[key]=lv;changed=true}
+  }
+  if(local?.arrivalIsActual===true&&out.arrivalIsActual!==true){out.arrivalIsActual=true;changed=true}
+  if(trackingProgress(local?.status)>trackingProgress(out.status)){out.status=local.status;changed=true}
+  if(changed){
+    out.trackingError='';
+    out.manualHint='';
+    out.localRecoveryAt=new Date().toISOString();
+    out.source=out.source||'Recovered verified Turkish browser data';
+  }
+  return{row:out,changed};
+}
 function decorateTiming(existing={},incoming={}){
   const raw={...existing,...incoming};
   const shipmentType=raw.shipmentType==='EXPORT'?'EXPORT':'IMPORT';
@@ -158,7 +176,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   async function persistRow(row,markEntry=false){return persistRows([row],markEntry)}
   useEffect(()=>{try{const saved=localStorage.getItem(TAB_KEY);if(saved==='IMPORT'||saved==='EXPORT')setActiveTab(saved)}catch{}},[]);
   useEffect(()=>{try{localStorage.setItem(TAB_KEY,activeTab)}catch{}},[activeTab]);
-  useEffect(()=>{let active=true;(async()=>{let local=[];try{local=JSON.parse(localStorage.getItem(KEY)||'[]').map(x=>decorateTiming({}, {...x,mawb:normalize(x?.mawb||x?.awb),shipmentType:x?.shipmentType==='EXPORT'?'EXPORT':'IMPORT'})).filter(x=>x.mawb)}catch{}try{const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database unavailable');const server=(data.rows||[]).map(dbToRow).filter(x=>x.mawb);const map=new Map(server.map(x=>[digits(x.mawb),x]));const migrate=[];for(const l of local){const key=digits(l.mawb),s=map.get(key);if(!s){map.set(key,l);migrate.push(l);continue}const lt=Date.parse(l.lastChecked||l._dbUpdatedAt||0)||0,st=Date.parse(s.lastChecked||s._dbUpdatedAt||0)||0;const serverAuthoritative=key.startsWith('098')||key.startsWith('235');if(!serverAuthoritative&&lt>st)map.set(key,l)}const merged=[...map.values()].sort((a,b)=>(Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0));if(!active)return;setRows(merged);setShared(true);setLoaded(true);localStorage.setItem(KEY,JSON.stringify(merged.map(withoutMeta)));if(migrate.length)persistRows(migrate).catch(()=>{})}catch(e){if(!active)return;setRows(local);setLoaded(true);setShared(false);setNote(`Shared database unavailable — showing this browser backup only. ${e.message||''}`)}})();return()=>{active=false}},[isAdmin]);
+  useEffect(()=>{let active=true;(async()=>{let local=[];try{local=JSON.parse(localStorage.getItem(KEY)||'[]').map(x=>decorateTiming({}, {...x,mawb:normalize(x?.mawb||x?.awb),shipmentType:x?.shipmentType==='EXPORT'?'EXPORT':'IMPORT'})).filter(x=>x.mawb)}catch{}try{const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database unavailable');const server=(data.rows||[]).map(dbToRow).filter(x=>x.mawb);const map=new Map(server.map(x=>[digits(x.mawb),x]));const migrate=[];for(const l of local){const key=digits(l.mawb),s=map.get(key);if(!s){map.set(key,l);migrate.push(l);continue}const lt=Date.parse(l.lastChecked||l._dbUpdatedAt||0)||0,st=Date.parse(s.lastChecked||s._dbUpdatedAt||0)||0;if(key.startsWith('235')){const recovered=recoverTurkishLocal(s,l);if(recovered.changed){map.set(key,recovered.row);migrate.push(recovered.row)}continue}const serverAuthoritative=key.startsWith('098');if(!serverAuthoritative&&lt>st)map.set(key,l)}const merged=[...map.values()].sort((a,b)=>(Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0));if(!active)return;setRows(merged);setShared(true);setLoaded(true);localStorage.setItem(KEY,JSON.stringify(merged.map(withoutMeta)));if(migrate.length)persistRows(migrate).catch(()=>{})}catch(e){if(!active)return;setRows(local);setLoaded(true);setShared(false);setNote(`Shared database unavailable — showing this browser backup only. ${e.message||''}`)}})();return()=>{active=false}},[isAdmin]);
   useEffect(()=>{if(typeof window!=='undefined'&&loaded)localStorage.setItem(KEY,JSON.stringify(rows.map(withoutMeta)))},[rows,loaded]);useEffect(()=>{const id=setInterval(()=>window.location.reload(),ONE_HOUR);return()=>clearInterval(id)},[]);
   // Keep active masters fresh from their airline source; manual row refresh should not be required for status changes.
   useEffect(()=>{if(!loaded||!rows.length)return;let stopped=false,running=false;const syncActive=async()=>{if(stopped||running)return;running=true;try{const list=rows.filter(r=>!['ARRIVED','DELIVERED'].includes(String(r.status||'').toUpperCase())).sort((a,b)=>(a.shipmentType==='IMPORT'?0:1)-(b.shipmentType==='IMPORT'?0:1));for(const r of list){if(stopped)break;await refreshByMawb(r.mawb)}}finally{running=false}};syncActive();const id=setInterval(syncActive,10*60*1000);return()=>{stopped=true;clearInterval(id)}},[loaded,rows.length]);useEffect(()=>{setClientFilter('');setOriginFilter('');setDestinationFilter('');setPrefixFilter('')},[activeTab,adminView]);
