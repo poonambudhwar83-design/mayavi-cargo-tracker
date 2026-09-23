@@ -72,17 +72,18 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
   }
-  const clearStaleAirIndiaArrival=mawb.startsWith('098-')&&tracked.arrivalIsActual!==true&&!tracked.arrivalDate&&!tracked.arrivalTime;
+  const clearStaleArrival=tracked.arrivalVerifiedAbsent===true;
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
   for(const key of Object.keys(patch)){
     const value=patch[key];
     if(value===''||value===null||value===undefined)delete patch[key];
   }
-  if(clearStaleAirIndiaArrival){
+  if(clearStaleArrival){
     patch.arrivalDate='';
     patch.arrivalTime='';
+    patch.arrivalIsActual=false;
     patch.arrivalTimeZone='IST';
-    patch.arrivalTimeSource='Air India official refresh cleared stale arrival';
+    patch.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
   }
   const rows=await sql`
     UPDATE mayavi_shipments
@@ -376,8 +377,24 @@ async function handle(mawb,fallback={}){
     const derivedBookingDate=bookingDateFromOfficialText(officialText,shipment.arrivalDate);
     if(derivedBookingDate){shipment.bookingDate=derivedBookingDate;shipment.bookingDateSource='Official Booked/Accepted/RCS event';}
   }
-  shipment.status=chooseStatus({api,direct,browser,ocr,cathay});
+  const freshStatus=chooseStatus({api,direct,browser,ocr,cathay});
+  const freshArrival=preferredArrival(direct,browser,api,ocr);
+  const officialSourceSucceeded=Boolean(direct||browser||api||ocr);
+  shipment.status=freshStatus;
   if((vietnamFastPath||turkishFastPath||qatarFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
+  // If a successful current official response gives a definite pre-arrival status
+  // but no current arrival at all, old database arrival values are stale and must
+  // not survive another refresh. Blank is safer than a false old ETA/ATA.
+  if(officialSourceSucceeded&&freshStatus!=='TRACKING'&&statusRank(freshStatus)<5&&!freshArrival){
+    shipment.arrivalDate='';
+    shipment.arrivalTime='';
+    shipment.arrivalIsActual=false;
+    shipment.arrivalVerifiedAbsent=true;
+    shipment.arrivalTimeZone='IST';
+    shipment.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
+  }else{
+    shipment.arrivalVerifiedAbsent=false;
+  }
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
   shipment=normalizeShipmentTimesToIst(shipment);
 
