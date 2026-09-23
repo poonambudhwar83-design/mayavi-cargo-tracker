@@ -3,6 +3,7 @@ import { trackCathay } from '../../../lib/cathay.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
 import { trackTurkish } from '../../../lib/turkish.js';
+import { trackTurkishFreight } from '../../../lib/turkishFreight.js';
 import { trackLufthansa } from '../../../lib/lufthansa.js';
 import { trackQatar } from '../../../lib/qatar.js';
 import { trackEmirates } from '../../../lib/emirates.js';
@@ -25,7 +26,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.32';
+const VERSION='3.9.33';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -194,7 +195,17 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('176-')) return trackEmirates(mawb);
   if(mawb.startsWith('217-')) return trackThai(mawb);
   if(mawb.startsWith('229-')) return trackKuwait(mawb);
-  if(mawb.startsWith('235-')) return trackTurkish(mawb);
+  if(mawb.startsWith('235-')) {
+    const official=await trackTurkish(mawb);
+    if(official?.ok)return official;
+    const blocked=/HUMAN VERIFICATION|HTTP 403|PRESS\s*&\s*HOLD/i.test(String(official?.reason||'')+' '+JSON.stringify(official?.debug||{}));
+    if(blocked){
+      const freight=await trackTurkishFreight(mawb);
+      if(freight?.ok)return freight;
+      return {...official,debug:{...(official?.debug||{}),freightFallback:freight?.reason||'FREIGHT FALLBACK FAILED'}};
+    }
+    return official;
+  }
   if(mawb.startsWith('312-')) return trackIndigo(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
   if(mawb.startsWith('738-')) { const freight=await trackVietnamFreight(mawb); if(freight?.ok)return freight; return trackVietnam(mawb); }
