@@ -22,7 +22,7 @@ import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
-import { trackFlightStatusSnapshot, trackFlightArrivalEstimate } from '../../../lib/flightStatusSnapshot.js';
+import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 
 export const runtime='nodejs';
@@ -416,39 +416,31 @@ async function handle(mawb,fallback={}){
     }
   }
 
-  // VN origin-leg departure probe: CHAMP can temporarily return only the search form.
-  // Use the saved VN flight + booking context to resolve the DEL-origin departure date/time.
+  // VN origin departure: fast HTTP schedule/history path only.
   if(vietnamFastPath&&!shipment.departureTime&&shipment.origin){
     const originCode=String(shipment.origin||'').toUpperCase();
     const viaCode=String(shipment.via||shipment.departureDestination||'').toUpperCase();
     const candidateFlights=[...new Set([
       ...(originCode==='VTE'&&viaCode==='HAN'?['VN920']:[]),
-      shipment.departureFlightNo,
-      shipment.originFlightNo,
-      shipment.flightNo,
+      shipment.departureFlightNo,shipment.originFlightNo,shipment.flightNo,
       ...(Array.isArray(shipment.flightLegs)?shipment.flightLegs.map(l=>l?.flightNo):[])
     ].map(x=>String(x||'').toUpperCase()).filter(Boolean))];
-    const baseDate=shipment.departureDate||shipment.originFlightDate||shipment.bookingDate||effectiveFallback.bookingDate||shipment.flightDate||'';
-    const dm=String(baseDate).match(/^(20\d{2})-(\d{2})-(\d{2})$/);
-    if(dm&&candidateFlights.length){
+    const anchor=shipment.transitArrivalDate||shipment.originFlightDate||shipment.departureDate||shipment.bookingDate||effectiveFallback.bookingDate||shipment.flightDate||'';
+    const dm=String(anchor).match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+    if(dm){
       const base=new Date(Date.UTC(Number(dm[1]),Number(dm[2])-1,Number(dm[3])));
+      const dates=[];
+      for(const offset of [0,-1,1,-2,2]){
+        const d=new Date(base.getTime()+offset*86400000);
+        dates.push(d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'));
+      }
       outer:
       for(const vnOriginFlight of candidateFlights){
-        for(let add=0;add<=4;add++){
-          const d=new Date(base.getTime()+add*86400000);
-          const candidate=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
-          const dep=await trackFlightStatusSnapshot({
-            flightNo:vnOriginFlight,
-            origin:originCode,
-            destination:viaCode,
-            date:candidate,
-            departureOnly:true
-          }).catch(()=>null);
+        for(const candidate of dates){
+          const dep=await trackFlightScheduleFast({flightNo:vnOriginFlight,date:candidate,destination:viaCode}).catch(()=>null);
           const depOrigin=String(dep?.departureOrigin||'').toUpperCase();
           const depDestination=String(dep?.departureDestination||'').toUpperCase();
-          const originMatches=!depOrigin||depOrigin===originCode;
-          const viaMatches=!viaCode||!depDestination||depDestination===viaCode;
-          if(dep?.ok&&dep.departureTime&&originMatches&&viaMatches){
+          if(dep?.ok&&dep.departureTime&&(!depOrigin||depOrigin===originCode)&&(!depDestination||depDestination===viaCode)){
             shipment.departureDate=dep.departureDate||candidate;
             shipment.departureTime=dep.departureTime;
             shipment.departureIsActual=dep.departureIsActual===true;
@@ -456,14 +448,13 @@ async function handle(mawb,fallback={}){
             shipment.departureDestination=depDestination||viaCode;
             shipment.departureFlightNo=vnOriginFlight;
             shipment.originFlightNo=vnOriginFlight;
-            shipment.departureTimeSource=dep.source||'VN verified origin-leg departure probe';
+            shipment.departureTimeSource=dep.source||'VN fast origin-leg schedule';
             break outer;
           }
         }
       }
     }
   }
-
   // Vietnam multi-leg export:
   // departure comes from the shipment origin leg, while arrival comes from the
   // final leg whose destination matches the MAWB's final destination (e.g. LHR).
@@ -507,13 +498,7 @@ async function handle(mawb,fallback={}){
         for(let add=0;add<=7;add++){
           const d=new Date(base.getTime()+add*86400000);
           const candidate=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
-          const probe=await trackFlightStatusSnapshot({
-            flightNo:finalFlightNo,
-            origin:viaCode,
-            destination:finalDestination,
-            date:candidate,
-            departureOnly:true
-          }).catch(()=>null);
+          const probe=await trackFlightScheduleFast({flightNo:finalFlightNo,date:candidate,destination:finalDestination}).catch(()=>null);
           if(probe?.ok&&probe.departureTime&&(!probe.departureOrigin||String(probe.departureOrigin).toUpperCase()===viaCode)&&(!probe.departureDestination||String(probe.departureDestination).toUpperCase()===finalDestination)){
             // If cargo reached the via hub later on the same calendar day,
             // this flight had already left and cannot carry the shipment.
@@ -530,11 +515,10 @@ async function handle(mawb,fallback={}){
     }
 
     if(finalFlightNo&&finalFlightDate&&finalDestination){
-      const eta=await trackFlightArrivalEstimate({
-        flightNo:finalFlightNo,
-        date:finalFlightDate,
-        destination:finalDestination
-      }).catch(()=>null);
+      const fastEta=await trackFlightScheduleFast({flightNo:finalFlightNo,date:finalFlightDate,destination:finalDestination}).catch(()=>null);
+      const eta=(fastEta?.scheduledArrivalTime||fastEta?.arrivalTime)
+        ? {...fastEta,arrivalDate:fastEta.arrivalDate||fastEta.scheduledArrivalDate||finalFlightDate,arrivalTime:fastEta.arrivalTime||fastEta.scheduledArrivalTime,arrivalIsActual:fastEta.arrivalIsActual===true}
+        : await trackFlightArrivalEstimate({flightNo:finalFlightNo,date:finalFlightDate,destination:finalDestination}).catch(()=>null);
       if(eta?.ok&&eta.arrivalTime){
         shipment.scheduledArrivalDate=eta.arrivalDate||shipment.scheduledArrivalDate||'';
         shipment.scheduledArrivalTime=eta.arrivalTime;
