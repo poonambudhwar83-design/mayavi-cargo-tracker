@@ -335,7 +335,7 @@ async function handle(mawb,fallback={}){
   const cathay=null;
 
   const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath)?{
-    flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',bookingTime:effectiveFallback.bookingTime||'',bags:effectiveFallback.bags||'',pieces:effectiveFallback.pieces||effectiveFallback.bags||'',weight:effectiveFallback.weight||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',via:effectiveFallback.via||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
+    flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',bookingTime:effectiveFallback.bookingTime||'',bags:effectiveFallback.bags||'',pieces:effectiveFallback.pieces||effectiveFallback.bags||'',weight:effectiveFallback.weight||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',via:effectiveFallback.via||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',finalFlightNo:effectiveFallback.finalFlightNo||'',finalFlightDate:effectiveFallback.finalFlightDate||'',finalFlightOrigin:effectiveFallback.finalFlightOrigin||'',finalFlightDestination:effectiveFallback.finalFlightDestination||'',finalFlightDeparted:effectiveFallback.finalFlightDeparted===true,scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
   if(api)shipment=mergeNonEmpty(shipment,api);
@@ -415,6 +415,35 @@ async function handle(mawb,fallback={}){
     }
   }
 
+  // Vietnam multi-leg export:
+  // departure comes from the shipment origin leg, while arrival comes from the
+  // final leg whose destination matches the MAWB's final destination (e.g. LHR).
+  if(vietnamFastPath&&shipment.arrivalIsActual!==true){
+    const finalFlightNo=shipment.finalFlightNo||'';
+    const finalFlightDate=shipment.finalFlightDate||shipment.flightDate||'';
+    const finalDestination=String(shipment.finalFlightDestination||shipment.destination||'').toUpperCase();
+    if(finalFlightNo&&finalFlightDate&&finalDestination){
+      const eta=await trackFlightArrivalEstimate({
+        flightNo:finalFlightNo,
+        date:finalFlightDate,
+        destination:finalDestination
+      }).catch(()=>null);
+      if(eta?.ok&&eta.arrivalTime){
+        shipment.scheduledArrivalDate=eta.arrivalDate||shipment.scheduledArrivalDate||'';
+        shipment.scheduledArrivalTime=eta.arrivalTime;
+        shipment.arrivalDate=eta.arrivalDate||shipment.arrivalDate||'';
+        shipment.arrivalTime=eta.arrivalTime;
+        shipment.arrivalIsActual=eta.arrivalIsActual===true;
+        shipment.arrivalEstimate=eta.arrivalIsActual!==true;
+        shipment.arrivalTimeZone=eta.arrivalTimeZone||'';
+        shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'Final-leg flight ETA';
+      }
+      // Even when the final-flight ETA source is temporarily unavailable,
+      // an intermediate-station arrival can never be promoted to final ARRIVED.
+      if(shipment.status==='ARRIVED'&&shipment.arrivalIsActual!==true)shipment.status='IN TRANSIT';
+    }
+  }
+
   const departureFlightNo=turkishFastPath?(shipment.departureFlightNo||''):(shipment.departureFlightNo||shipment.flightNo||'');
   const departureOrigin=turkishFastPath?(shipment.departureOrigin||shipment.origin||''):(shipment.departureOrigin||shipment.origin||'');
   const departureDestination=turkishFastPath?(shipment.departureDestination||''):(shipment.departureDestination||shipment.destination||'');
@@ -449,6 +478,12 @@ async function handle(mawb,fallback={}){
       shipment.arrivalEstimate=eta.arrivalIsActual!==true;
       shipment.arrivalTimeZone=eta.arrivalTimeZone||'IST';
       shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'Live flight-status ETA';
+    }
+  }
+
+  if(vietnamFastPath&&direct){
+    for(const k of ['via','currentLocation','flightNo','flightDate','finalFlightNo','finalFlightDate','finalFlightOrigin','finalFlightDestination','finalFlightDeparted','departureFlightNo','departureOrigin','departureDestination','departureDate','departureTime','departureIsActual','departureTimeSource','arrivalStation']){
+      if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
     }
   }
 
