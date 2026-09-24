@@ -5,6 +5,7 @@ export const maxDuration=300;
 
 function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:''}
+function shipmentTypeOf(value=''){const t=String(value||'').trim().toUpperCase();return t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT'}
 function pad(v){return String(v).padStart(2,'0')}
 function dateTimeValue(date='',time=''){
   const dm=String(date).match(/^(\d{4})-(\d{2})-(\d{2})$/),tm=String(time).match(/^(\d{1,2}):(\d{2})/);
@@ -50,7 +51,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   return'BOOKED';
 }
 function decorateTiming(existing={},incoming={}){
-  const shipmentType=(incoming.shipmentType||existing.shipmentType)==='EXPORT'?'EXPORT':'IMPORT';
+  const shipmentType=shipmentTypeOf(incoming.shipmentType||existing.shipmentType);
   const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
   const clearArrival=incoming.arrivalVerifiedAbsent===true;
   const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';
@@ -141,7 +142,7 @@ export async function GET(request){
 
     let next;
     if(track?.ok&&track.shipment){
-      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:existing.shipmentType==='EXPORT'?'EXPORT':'IMPORT',clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||1,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
+      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:shipmentTypeOf(existing.shipmentType),clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||1,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
     }else{
       next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:trackError||track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||0});
     }
@@ -158,11 +159,13 @@ export async function GET(request){
     return {mawb,status:next.status||'',shipmentType:next.shipmentType,trackingAttempts:trackAttempts||0,saveAttempts:saveCall.attempt,backendOcrUsed:Boolean(next.backendOcrUsed)};
 
   };
-  const importRows=rows.filter(r=>r.shipmentType!=='EXPORT');
-  const exportRows=rows.filter(r=>r.shipmentType==='EXPORT');
+  const importRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='IMPORT');
+  const exportRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='EXPORT');
+  const privateRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='OTHER_COUNTRIES');
   const importResults=await Promise.allSettled(importRows.map(refreshExisting));
   const exportResults=await Promise.allSettled(exportRows.map(refreshExisting));
-  const results=[...importResults,...exportResults];
+  const privateResults=await Promise.allSettled(privateRows.map(refreshExisting));
+  const results=[...importResults,...exportResults,...privateResults];
 
   const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
   const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
