@@ -62,7 +62,11 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   if(s.includes('DELIVER'))return'DELIVERED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
-  if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+  if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){
+    const destination=airportCode(row.destination),station=explicitMovementStation(row),via=explicitViaForStatus(row);
+    if(destination&&((station&&station!==destination)||(!station&&via&&airportCode(row.departureDestination)===via)))return'IN TRANSIT';
+    return'ARRIVED';
+  }
   if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
