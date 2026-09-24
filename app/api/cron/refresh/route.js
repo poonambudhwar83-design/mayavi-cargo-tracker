@@ -24,7 +24,21 @@ function mailTimeFrom(date='',time=''){
 }
 function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(mawb||''));}
 function isAirIndia(mawb=''){return /^098-/.test(String(mawb||''));}
-function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
+function airportCode(value=''){const m=String(value||'').toUpperCase().match(/\b([A-Z]{3})\b/);return m?.[1]||''}
+function explicitMovementStation(row={}){
+  for(const value of [row.arrivalStation,row.arrivalAirport,row.currentLocation,row.lastLocation,row.eventStation,row.deliveryStation,row.airport,row.location]){
+    const code=airportCode(value);if(code)return code;
+  }
+  return'';
+}
+function explicitViaForStatus(row={}){
+  const origin=airportCode(row.origin),destination=airportCode(row.destination);
+  for(const value of [row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub,row.departureDestination]){
+    const code=airportCode(value);if(code&&code!==origin&&code!==destination)return code;
+  }
+  return'';
+}
+function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row={}){
   const s=String(raw||'').toUpperCase();
 
   // AIR INDIA: official Activity View movement always wins over ETA/timing calculations.
@@ -34,7 +48,11 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb=''){
   if(isAirIndia(mawb)){
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
     if(s.includes('DELIVER'))return'DELIVERED';
-    if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+    if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){
+    const destination=airportCode(row.destination),station=explicitMovementStation(row),via=explicitViaForStatus(row);
+    if(destination&&((station&&station!==destination)||(!station&&via&&airportCode(row.departureDestination)===via)))return'IN TRANSIT';
+    return'ARRIVED';
+  }
     if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT')||s==='DEP')return'IN TRANSIT';
     if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
     return'BOOKED';
@@ -63,7 +81,8 @@ function decorateTiming(existing={},incoming={}){
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
   let timingDeltaMinutes=null,timingStatus='';
   if(planned&&current){timingDeltaMinutes=Math.round((current-planned)/60000);timingStatus=timingDeltaMinutes>60?'DELAYED':timingDeltaMinutes<-60?'EARLY':'ON TIME';}
-  let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb);
+  const combined={...existing,...incoming,mawb,shipmentType,arrivalDate,arrivalTime,arrivalIsActual};
+  let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb,combined);
   if(!isAirIndia(mawb)&&isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
   return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
