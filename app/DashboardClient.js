@@ -23,6 +23,19 @@ function mailTimeFrom(date='',time=''){if(!String(date||'').trim()||!String(time
 function handoverTimeFrom(date='',time=''){const d=dateTimeValue(date,time);if(!d)return'';d.setHours(d.getHours()-5);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`}
 function departurePassed(row={}){const d=dateTimeValue(row.departureDate||row.flightDate||'',row.departureTime||'');return Boolean(d&&Date.now()>=d.getTime())}
 function airportCode(value=''){const m=String(value||'').toUpperCase().match(/\b([A-Z]{3})\b/);return m?.[1]||''}
+function explicitMovementStation(row={}){
+  for(const value of [row.arrivalStation,row.arrivalAirport,row.currentLocation,row.lastLocation,row.eventStation,row.deliveryStation,row.airport,row.location]){
+    const code=airportCode(value);if(code)return code;
+  }
+  return'';
+}
+function explicitViaForStatus(row={}){
+  const origin=airportCode(row.origin),destination=airportCode(row.destination);
+  for(const value of [row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub,row.departureDestination]){
+    const code=airportCode(value);if(code&&code!==origin&&code!==destination)return code;
+  }
+  return'';
+}
 function viaForRow(row={}){
   const origin=airportCode(row.origin),destination=airportCode(row.destination),n=normalize(row.mawb||row.awb||'');
   const explicit=[row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub].map(airportCode).find(Boolean);
@@ -47,7 +60,14 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('DELIVER'))return'DELIVERED';
-  if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF'))return'ARRIVED';
+  const arrivedSignal=s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF');
+  if(arrivedSignal){
+    const finalDestination=airportCode(row.destination);
+    const movementStation=explicitMovementStation(row);
+    const explicitVia=explicitViaForStatus(row);
+    if(finalDestination&&((movementStation&&movementStation!==finalDestination)||(!movementStation&&explicitVia&&airportCode(row.departureDestination)===explicitVia)))return'IN TRANSIT';
+    return'ARRIVED';
+  }
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   // Emirates: a generic DEP can be an intermediate/via leg. Only the parser's
   // explicit final-leg departure should display DEPARTED; otherwise keep it IN TRANSIT.
