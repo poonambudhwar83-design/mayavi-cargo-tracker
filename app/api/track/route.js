@@ -1,4 +1,6 @@
 import { neon } from '@neondatabase/serverless';
+import { createHash } from 'node:crypto';
+import { readSession } from '../../../lib/mayaviAuth.js';
 import { trackCathay } from '../../../lib/cathay.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
@@ -41,6 +43,28 @@ function persistedHandoverTime(date='',time=''){
 
 function trackingDbUrl(){
   return process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
+}
+function trackInternalKey(){
+  const configured=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
+  if(configured)return configured;
+  const url=trackingDbUrl();
+  return url?createHash('sha256').update(`mayavi-cron|${url}`).digest('hex'):'';
+}
+function trackInternalAllowed(request){
+  const configured=trackInternalKey();
+  const supplied=request?.headers?.get('x-mayavi-internal-key')||'';
+  return Boolean(configured&&supplied&&configured===supplied);
+}
+async function privateTrackingBlocked(request,mawb=''){
+  const url=trackingDbUrl();if(!url)return false;
+  const awb=String(mawb||'').replace(/\D/g,'');if(!awb)return false;
+  try{
+    const sql=neon(url);
+    const rows=await sql`SELECT data->>'shipmentType' AS shipment_type FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+    if(String(rows?.[0]?.shipment_type||'').toUpperCase()!=='OTHER_COUNTRIES')return false;
+    const session=readSession(request);
+    return !(session?.role==='admin'||trackInternalAllowed(request));
+  }catch{return false}
 }
 async function loadStoredTrackingFallback(mawb=''){
   const url=trackingDbUrl();if(!url)return{};
@@ -439,6 +463,7 @@ async function handle(mawb,fallback={}){
 export async function POST(request){
   let body={};try{body=await request.json()}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400})}
   const mawb=normalizeMawb(body?.mawb);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
   return handle(mawb,body?.currentShipment||{});
 }
 
@@ -446,5 +471,6 @@ export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
   if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['020 Lufthansa','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
+  if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
   return handle(mawb);
 }
