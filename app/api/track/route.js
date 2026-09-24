@@ -126,6 +126,37 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
 function concrete(s={}){
   return Boolean((s.origin&&s.destination)||s.bags||s.pieces||s.weight||s.flightNo||s.bookingDate||s.arrivalDate||s.arrivalTime);
 }
+function airportCode(value=''){const m=String(value||'').toUpperCase().match(/\b([A-Z]{3})\b/);return m?.[1]||''}
+function movementStation(shipment={}){
+  for(const value of [shipment.arrivalStation,shipment.arrivalAirport,shipment.currentLocation,shipment.lastLocation,shipment.eventStation,shipment.deliveryStation,shipment.airport,shipment.location]){
+    const code=airportCode(value);if(code)return code;
+  }
+  return'';
+}
+function explicitVia(shipment={}){
+  const origin=airportCode(shipment.origin),destination=airportCode(shipment.destination);
+  for(const value of [shipment.via,shipment.transitAirport,shipment.routeVia,shipment.connectionAirport,shipment.hub,shipment.departureDestination]){
+    const code=airportCode(value);if(code&&code!==origin&&code!==destination)return code;
+  }
+  return'';
+}
+function guardFinalDestinationArrival(shipment={}){
+  const out={...shipment};
+  const s=String(out.status||'').toUpperCase();
+  const arrived=/ARRIVED|DESTINATION|LANDED|\bRCF\b/.test(s)&&!s.includes('PART ARRIVED');
+  if(!arrived)return out;
+  const destination=airportCode(out.destination);
+  const station=movementStation(out);
+  const via=explicitVia(out);
+  const clearlyAtVia=destination&&((station&&station!==destination)||(!station&&via&&airportCode(out.departureDestination)===via));
+  if(clearlyAtVia){
+    out.status='IN TRANSIT';
+    out.transitAirport=station||via;
+    out.finalArrivalPending=true;
+    out.statusSource='Transit arrival detected; final destination not reached';
+  }
+  return out;
+}
 function statusRank(status=''){
   const s=String(status).toUpperCase();
   if(s.includes('DELIVER'))return 6;
@@ -433,6 +464,7 @@ async function handle(mawb,fallback={}){
   }
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
   shipment=normalizeShipmentTimesToIst(shipment);
+  shipment=guardFinalDestinationArrival(shipment);
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
   const directScreenshot=Boolean(directResult?.screenshotCaptured);
