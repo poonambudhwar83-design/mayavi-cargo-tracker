@@ -390,24 +390,51 @@ async function handle(mawb,fallback={}){
     }
   }
 
+  // THAI origin-leg departure fallback: CHORUS may publish the flight leg/STD
+  // before a separate Departed event. Use only the origin leg; never the final leg.
+  if(thaiFastPath&&!shipment.departureTime&&(shipment.departureFlightNo||shipment.flightNo)&&shipment.origin){
+    const tgOriginFlight=shipment.departureFlightNo||shipment.flightNo;
+    const tgBaseDate=shipment.departureDate||shipment.bookingDate||shipment.flightDate||'';
+    const dm=String(tgBaseDate).match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+    if(dm){
+      const base=new Date(Date.UTC(Number(dm[1]),Number(dm[2])-1,Number(dm[3])));
+      for(let add=0;add<=7;add++){
+        const d=new Date(base.getTime()+add*86400000);
+        const candidate=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+        const dep=await trackFlightStatusSnapshot({flightNo:tgOriginFlight,origin:shipment.origin,destination:shipment.departureDestination||'',date:candidate,departureOnly:true}).catch(()=>null);
+        if(dep?.ok&&dep.departureTime&&(!dep.departureOrigin||String(dep.departureOrigin).toUpperCase()===String(shipment.origin).toUpperCase())){
+          shipment.departureDate=dep.departureDate||candidate;
+          shipment.departureTime=dep.departureTime;
+          shipment.departureIsActual=dep.departureIsActual===true;
+          shipment.departureOrigin=dep.departureOrigin||shipment.origin;
+          shipment.departureDestination=dep.departureDestination||shipment.departureDestination||'';
+          shipment.departureFlightNo=tgOriginFlight;
+          shipment.departureTimeSource=dep.source||'THAI origin-leg flight status';
+          break;
+        }
+      }
+    }
+  }
+
   // VN origin-leg departure probe: CHAMP can temporarily return only the search form.
   // Use the saved VN flight + booking context to resolve the DEL-origin departure date/time.
-  if(vietnamFastPath&&!shipment.departureTime&&shipment.flightNo&&shipment.origin){
-    const baseDate=shipment.flightDate||shipment.departureDate||shipment.bookingDate||effectiveFallback.bookingDate||'';
+  if(vietnamFastPath&&!shipment.departureTime&&(shipment.departureFlightNo||shipment.flightNo)&&shipment.origin){
+    const vnOriginFlight=shipment.departureFlightNo||shipment.flightNo;
+    const baseDate=shipment.departureDate||shipment.bookingDate||effectiveFallback.bookingDate||shipment.flightDate||'';
     const dm=String(baseDate).match(/^(20\d{2})-(\d{2})-(\d{2})$/);
     if(dm){
       const base=new Date(Date.UTC(Number(dm[1]),Number(dm[2])-1,Number(dm[3])));
       for(let add=0;add<=4;add++){
         const d=new Date(base.getTime()+add*86400000);
         const candidate=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
-        const dep=await trackFlightStatusSnapshot({flightNo:shipment.flightNo,origin:shipment.origin,destination:shipment.destination||'',date:candidate,departureOnly:true}).catch(()=>null);
+        const dep=await trackFlightStatusSnapshot({flightNo:vnOriginFlight,origin:shipment.origin,destination:shipment.departureDestination||shipment.via||'',date:candidate,departureOnly:true}).catch(()=>null);
         if(dep?.ok&&dep.departureTime&&(!dep.departureOrigin||String(dep.departureOrigin).toUpperCase()===String(shipment.origin).toUpperCase())){
           shipment.departureDate=dep.departureDate||candidate;
           shipment.departureTime=dep.departureTime;
           shipment.departureIsActual=dep.departureIsActual===true;
           shipment.departureOrigin=dep.departureOrigin||String(shipment.origin).toUpperCase();
           shipment.departureDestination=dep.departureDestination||shipment.destination||'';
-          shipment.departureFlightNo=shipment.flightNo;
+          shipment.departureFlightNo=vnOriginFlight;
           shipment.departureTimeSource=dep.source||'VN origin-leg departure probe';
           break;
         }
