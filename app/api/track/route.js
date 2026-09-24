@@ -643,6 +643,50 @@ async function handle(mawb,fallback={}){
   }else{
     shipment.arrivalVerifiedAbsent=false;
   }
+
+  // Vietnam final-leg ETA must survive generic official-status reconciliation.
+  // CHAMP can correctly say IN TRANSIT while omitting an ETA, even though the
+  // carried final flight/date is already visible (for example VN055/27Sep to LHR).
+  if(vietnamFastPath&&shipment.arrivalIsActual!==true){
+    const vnFinalFlight=String(shipment.finalFlightNo||'').toUpperCase();
+    const vnFinalDate=String(shipment.finalFlightDate||'');
+    const vnFinalDestination=String(shipment.finalFlightDestination||shipment.destination||'').toUpperCase();
+    if(vnFinalFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(vnFinalDate)&&vnFinalDestination){
+      const vnSchedule=await trackFlightScheduleFast({
+        flightNo:vnFinalFlight,
+        date:vnFinalDate,
+        destination:vnFinalDestination
+      }).catch(()=>null);
+      const vnEta=(vnSchedule?.scheduledArrivalTime||vnSchedule?.arrivalTime)
+        ? {
+            arrivalDate:vnSchedule.arrivalDate||vnSchedule.scheduledArrivalDate||vnFinalDate,
+            arrivalTime:vnSchedule.arrivalTime||vnSchedule.scheduledArrivalTime,
+            arrivalIsActual:vnSchedule.arrivalIsActual===true,
+            arrivalTimeZone:vnSchedule.arrivalTimeZone||vnSchedule.scheduledArrivalTimeZone||'',
+            arrivalTimeSource:vnSchedule.arrivalTimeSource||vnSchedule.source||'VN final-leg schedule'
+          }
+        : await trackFlightArrivalEstimate({
+            flightNo:vnFinalFlight,
+            date:vnFinalDate,
+            destination:vnFinalDestination
+          }).catch(()=>null);
+
+      if(vnEta?.arrivalTime){
+        shipment.scheduledArrivalDate=vnEta.arrivalDate||vnFinalDate;
+        shipment.scheduledArrivalTime=vnEta.arrivalTime;
+        shipment.scheduledArrivalTimeZone=vnEta.arrivalTimeZone||'';
+        shipment.arrivalDate=vnEta.arrivalDate||vnFinalDate;
+        shipment.arrivalTime=vnEta.arrivalTime;
+        shipment.arrivalIsActual=vnEta.arrivalIsActual===true;
+        shipment.arrivalEstimate=vnEta.arrivalIsActual!==true;
+        shipment.arrivalVerifiedAbsent=false;
+        shipment.arrivalTimeZone=vnEta.arrivalTimeZone||'';
+        shipment.arrivalTimeSource=vnEta.arrivalTimeSource||'VN final-leg schedule';
+        shipment.status=shipment.arrivalIsActual===true?'ARRIVED':'IN TRANSIT';
+      }
+    }
+  }
+
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
   shipment=normalizeShipmentTimesToIst(shipment);
   shipment=guardFinalDestinationArrival(shipment);
