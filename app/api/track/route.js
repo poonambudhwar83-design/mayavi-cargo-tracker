@@ -263,7 +263,40 @@ async function dedicatedOfficial(mawb){
   }
   if(mawb.startsWith('312-')) return trackIndigo(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
-  if(mawb.startsWith('738-')) { const freight=await trackVietnamFreight(mawb); if(freight?.ok)return freight; return trackVietnam(mawb); }
+  if(mawb.startsWith('738-')) {
+    const freight=await trackVietnamFreight(mawb);
+    // Freight.aero is fast for pieces/weight/events, but CHAMP's visible route
+    // panel can carry a newer transferred-flight date (e.g. VN055/27Sep).
+    // Read that scrolled Details/route panel when the final leg is still
+    // pending or its date is not newer than the HAN transit arrival.
+    if(freight?.ok){
+      const fs=freight.shipment||{};
+      const transitDate=String(fs.transitArrivalDate||'');
+      const finalDate=String(fs.finalFlightDate||'');
+      const needChampRoute=!fs.finalFlightNo||!finalDate||fs.finalFlightDeparted!==true||(transitDate&&finalDate<=transitDate);
+      if(needChampRoute){
+        const champ=await trackVietnam(mawb).catch(()=>null);
+        if(champ?.ok){
+          const cs=champ.shipment||{};
+          const merged={...fs};
+          for(const k of ['finalFlightNo','finalFlightDate','finalFlightDestination']){
+            if(cs[k])merged[k]=cs[k];
+          }
+          if(cs.finalFlightNo){
+            merged.flightNo=cs.finalFlightNo;
+            merged.flightDate=cs.finalFlightDate||merged.flightDate||'';
+          }
+          // Do not let an intermediate HAN receipt become final ARRIVED.
+          if(String(merged.destination||'').toUpperCase()!=='HAN'&&merged.finalFlightNo&&merged.arrivalIsActual!==true){
+            merged.status='IN TRANSIT';
+          }
+          return {...freight,shipment:merged,screenshotBase64:champ.screenshotBase64||null,screenshotCaptured:champ.screenshotCaptured===true,screenshotVerified:champ.screenshotVerified===true,debug:{...(freight.debug||{}),champRoute:champ.debug||null}};
+        }
+      }
+      return freight;
+    }
+    return trackVietnam(mawb);
+  }
   if(mawb.startsWith('910-')) return trackOman(mawb);
   if(mawb.startsWith('932-')){
     let result=await trackVirgin(mawb);
