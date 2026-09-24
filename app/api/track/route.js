@@ -422,6 +422,7 @@ async function handle(mawb,fallback={}){
     const originCode=String(shipment.origin||'').toUpperCase();
     const viaCode=String(shipment.via||shipment.departureDestination||'').toUpperCase();
     const candidateFlights=[...new Set([
+      ...(originCode==='VTE'&&viaCode==='HAN'?['VN920']:[]),
       shipment.departureFlightNo,
       shipment.originFlightNo,
       shipment.flightNo,
@@ -490,8 +491,41 @@ async function handle(mawb,fallback={}){
       }
     }
     const finalFlightNo=shipment.finalFlightNo||'';
-    const finalFlightDate=shipment.finalFlightDate||shipment.flightDate||'';
+    let finalFlightDate=shipment.finalFlightDate||shipment.flightDate||'';
     const finalDestination=String(shipment.finalFlightDestination||shipment.destination||'').toUpperCase();
+    const viaCode=String(shipment.via||shipment.finalFlightOrigin||'').toUpperCase();
+    const transitDate=shipment.transitArrivalDate||'';
+    const transitTime=shipment.transitArrivalTime||'';
+
+    // A final-flight booking/event dated before the cargo reached the via hub
+    // cannot be the carried leg. Search the next verified schedule occurrence.
+    if(finalFlightNo&&finalDestination&&transitDate){
+      const transitStamp=Date.parse(`${transitDate}T${transitTime||'00:00'}:00Z`);
+      const recordedStamp=finalFlightDate?Date.parse(`${finalFlightDate}T00:00:00Z`):0;
+      if(!finalFlightDate||(!Number.isNaN(transitStamp)&&recordedStamp<transitStamp)){
+        const base=new Date(`${transitDate}T00:00:00Z`);
+        for(let add=0;add<=7;add++){
+          const d=new Date(base.getTime()+add*86400000);
+          const candidate=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+          const probe=await trackFlightStatusSnapshot({
+            flightNo:finalFlightNo,
+            origin:viaCode,
+            destination:finalDestination,
+            date:candidate,
+            departureOnly:true
+          }).catch(()=>null);
+          if(probe?.ok&&probe.departureTime&&(!probe.departureOrigin||String(probe.departureOrigin).toUpperCase()===viaCode)&&(!probe.departureDestination||String(probe.departureDestination).toUpperCase()===finalDestination)){
+            finalFlightDate=candidate;
+            shipment.finalFlightDate=candidate;
+            shipment.finalFlightOrigin=probe.departureOrigin||viaCode;
+            shipment.finalFlightDestination=probe.departureDestination||finalDestination;
+            shipment.finalFlightScheduledDepartureTime=probe.departureTime;
+            break;
+          }
+        }
+      }
+    }
+
     if(finalFlightNo&&finalFlightDate&&finalDestination){
       const eta=await trackFlightArrivalEstimate({
         flightNo:finalFlightNo,
@@ -507,6 +541,8 @@ async function handle(mawb,fallback={}){
         shipment.arrivalEstimate=eta.arrivalIsActual!==true;
         shipment.arrivalTimeZone=eta.arrivalTimeZone||'';
         shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'Final-leg flight ETA';
+        shipment.arrivalEstimate=shipment.arrivalIsActual!==true;
+        shipment.status=shipment.arrivalIsActual===true?'ARRIVED':'IN TRANSIT';
       }
       // Even when the final-flight ETA source is temporarily unavailable,
       // an intermediate-station arrival can never be promoted to final ARRIVED.
@@ -552,7 +588,7 @@ async function handle(mawb,fallback={}){
   }
 
   if(vietnamFastPath&&direct){
-    for(const k of ['via','currentLocation','flightNo','flightDate','originFlightNo','originFlightDate','flightLegs','finalFlightNo','finalFlightDate','finalFlightOrigin','finalFlightDestination','finalFlightDeparted','departureFlightNo','departureOrigin','departureDestination','departureDate','departureTime','departureIsActual','departureTimeSource','arrivalStation']){
+    for(const k of ['via','currentLocation','flightNo','flightDate','originFlightNo','originFlightDate','flightLegs','finalFlightNo','finalFlightDate','finalFlightOrigin','finalFlightDestination','finalFlightDeparted','transitArrivalDate','transitArrivalTime','transitArrivalStation','departureFlightNo','departureOrigin','departureDestination','departureDate','departureTime','departureIsActual','departureTimeSource','arrivalStation']){
       if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
     }
   }
