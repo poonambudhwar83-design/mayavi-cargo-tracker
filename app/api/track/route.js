@@ -419,8 +419,8 @@ async function handle(mawb,fallback={}){
   // VN origin-leg departure probe: CHAMP can temporarily return only the search form.
   // Use the saved VN flight + booking context to resolve the DEL-origin departure date/time.
   if(vietnamFastPath&&!shipment.departureTime&&(shipment.departureFlightNo||shipment.flightNo)&&shipment.origin){
-    const vnOriginFlight=shipment.departureFlightNo||shipment.flightNo;
-    const baseDate=shipment.departureDate||shipment.bookingDate||effectiveFallback.bookingDate||shipment.flightDate||'';
+    const vnOriginFlight=shipment.departureFlightNo||shipment.originFlightNo||shipment.flightNo;
+    const baseDate=shipment.departureDate||shipment.originFlightDate||shipment.bookingDate||effectiveFallback.bookingDate||shipment.flightDate||'';
     const dm=String(baseDate).match(/^(20\d{2})-(\d{2})-(\d{2})$/);
     if(dm){
       const base=new Date(Date.UTC(Number(dm[1]),Number(dm[2])-1,Number(dm[3])));
@@ -446,6 +446,28 @@ async function handle(mawb,fallback={}){
   // departure comes from the shipment origin leg, while arrival comes from the
   // final leg whose destination matches the MAWB's final destination (e.g. LHR).
   if(vietnamFastPath&&shipment.arrivalIsActual!==true){
+    if(!shipment.finalFlightNo&&Array.isArray(shipment.flightLegs)&&shipment.destination){
+      const viaCode=String(shipment.via||'').toUpperCase();
+      const candidates=shipment.flightLegs
+        .filter(l=>l?.flightNo&&String(l?.origin||'').toUpperCase()===viaCode)
+        .sort((a,b)=>String(a?.date||'').localeCompare(String(b?.date||'')));
+      for(const leg of candidates){
+        const probeDate=leg.date||leg.departureDate||shipment.flightDate||shipment.bookingDate||'';
+        if(!probeDate)continue;
+        const etaProbe=await trackFlightArrivalEstimate({
+          flightNo:leg.flightNo,
+          date:probeDate,
+          destination:shipment.destination
+        }).catch(()=>null);
+        if(etaProbe?.ok&&etaProbe.arrivalTime){
+          shipment.finalFlightNo=leg.flightNo;
+          shipment.finalFlightDate=probeDate;
+          shipment.finalFlightOrigin=viaCode||leg.origin||'';
+          shipment.finalFlightDestination=shipment.destination;
+          break;
+        }
+      }
+    }
     const finalFlightNo=shipment.finalFlightNo||'';
     const finalFlightDate=shipment.finalFlightDate||shipment.flightDate||'';
     const finalDestination=String(shipment.finalFlightDestination||shipment.destination||'').toUpperCase();
@@ -509,7 +531,7 @@ async function handle(mawb,fallback={}){
   }
 
   if(vietnamFastPath&&direct){
-    for(const k of ['via','currentLocation','flightNo','flightDate','finalFlightNo','finalFlightDate','finalFlightOrigin','finalFlightDestination','finalFlightDeparted','departureFlightNo','departureOrigin','departureDestination','departureDate','departureTime','departureIsActual','departureTimeSource','arrivalStation']){
+    for(const k of ['via','currentLocation','flightNo','flightDate','originFlightNo','originFlightDate','flightLegs','finalFlightNo','finalFlightDate','finalFlightOrigin','finalFlightDestination','finalFlightDeparted','departureFlightNo','departureOrigin','departureDestination','departureDate','departureTime','departureIsActual','departureTimeSource','arrivalStation']){
       if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
     }
   }
