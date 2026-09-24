@@ -470,7 +470,7 @@ async function handle(mawb,fallback={}){
     if(!shipment.finalFlightNo&&Array.isArray(shipment.flightLegs)&&shipment.destination){
       const viaCode=String(shipment.via||'').toUpperCase();
       const candidates=shipment.flightLegs
-        .filter(l=>l?.flightNo&&String(l?.origin||'').toUpperCase()===viaCode)
+        .filter(l=>l?.flightNo&&String(l?.origin||'').toUpperCase()===viaCode&&(l?.manifested===true||l?.departed===true))
         .sort((a,b)=>String(a?.date||'').localeCompare(String(b?.date||'')));
       for(const leg of candidates){
         const probeDate=leg.date||leg.departureDate||shipment.flightDate||shipment.bookingDate||'';
