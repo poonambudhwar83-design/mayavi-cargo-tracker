@@ -22,7 +22,7 @@ import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
 import { trackWithBrowser } from '../../../lib/browserTracker.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
-import { trackFlightStatusSnapshot } from '../../../lib/flightStatusSnapshot.js';
+import { trackFlightStatusSnapshot, trackFlightArrivalEstimate } from '../../../lib/flightStatusSnapshot.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 
 export const runtime='nodejs';
@@ -432,6 +432,26 @@ async function handle(mawb,fallback={}){
       }
     }
   }
+  // Air India: once the flight has departed, show verified scheduled/estimated
+  // destination arrival instead of leaving Arrival blank. This is ETA, not ATA.
+  if(airIndiaFastPath&&shipment.flightNo&&shipment.departureDate&&shipment.origin&&shipment.destination&&shipment.arrivalIsActual!==true){
+    const eta=await trackFlightArrivalEstimate({
+      flightNo:shipment.flightNo,
+      date:shipment.departureDate,
+      destination:shipment.destination
+    }).catch(()=>null);
+    if(eta?.ok&&eta.arrivalTime){
+      shipment.scheduledArrivalDate=eta.arrivalDate||shipment.scheduledArrivalDate||'';
+      shipment.scheduledArrivalTime=eta.arrivalTime;
+      shipment.arrivalDate=eta.arrivalDate||shipment.arrivalDate||'';
+      shipment.arrivalTime=eta.arrivalTime;
+      shipment.arrivalIsActual=eta.arrivalIsActual===true;
+      shipment.arrivalEstimate=eta.arrivalIsActual!==true;
+      shipment.arrivalTimeZone=eta.arrivalTimeZone||'IST';
+      shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'Live flight-status ETA';
+    }
+  }
+
   // Preserve Air India split-load display fields from the dedicated Activity View
   // adapter. Generic merging/arrival selection must not collapse 20/33 back to 33.
   if(airIndiaFastPath&&direct){
@@ -452,7 +472,7 @@ async function handle(mawb,fallback={}){
   // If a successful current official response gives a definite pre-arrival status
   // but no current arrival at all, old database arrival values are stale and must
   // not survive another refresh. Blank is safer than a false old ETA/ATA.
-  if(officialSourceSucceeded&&freshStatus!=='TRACKING'&&statusRank(freshStatus)<5&&!freshArrival){
+  if(officialSourceSucceeded&&freshStatus!=='TRACKING'&&statusRank(freshStatus)<5&&!freshArrival&&shipment.arrivalEstimate!==true){
     shipment.arrivalDate='';
     shipment.arrivalTime='';
     shipment.arrivalIsActual=false;
