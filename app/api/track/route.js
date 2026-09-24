@@ -515,6 +515,9 @@ async function handle(mawb,fallback={}){
             departureOnly:true
           }).catch(()=>null);
           if(probe?.ok&&probe.departureTime&&(!probe.departureOrigin||String(probe.departureOrigin).toUpperCase()===viaCode)&&(!probe.departureDestination||String(probe.departureDestination).toUpperCase()===finalDestination)){
+            // If cargo reached the via hub later on the same calendar day,
+            // this flight had already left and cannot carry the shipment.
+            if(candidate===transitDate&&transitTime&&String(probe.departureTime).padStart(5,'0')<=String(transitTime).padStart(5,'0'))continue;
             finalFlightDate=candidate;
             shipment.finalFlightDate=candidate;
             shipment.finalFlightOrigin=probe.departureOrigin||viaCode;
