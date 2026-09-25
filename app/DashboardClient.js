@@ -253,7 +253,29 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const customsFilterMode=clearedFilterMode&&activeTab==='IMPORT';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
   const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clearedFilterMode||((!clientFilter||r.clientName===clientFilter)&&(!customsFilterMode||((!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter))))));return sortForDashboard(expandPartRows(filtered),activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,originFilter,destinationFilter,prefixFilter,activeTab]);
-  const totalWeight=useMemo(()=>visibleRows.reduce((sum,r)=>sum+weightForTotal(r),0),[visibleRows]);
+  const totalWeight=useMemo(()=>{
+    const groups=new Map();
+    for(const r of visibleRows){
+      const key=digits(r.mawb);
+      if(!key)continue;
+      if(!groups.has(key))groups.set(key,[]);
+      groups.get(key).push(r);
+    }
+    let total=0;
+    for(const group of groups.values()){
+      const slashTotals=group.map(r=>{
+        const s=cleanWeight(r.weight).replace(/,/g,'').trim();
+        if(!s.includes('/'))return 0;
+        const p=s.split('/').map(x=>Number(String(x).replace(/[^0-9.\-]/g,''))).filter(Number.isFinite);
+        return p.length>1?p.at(-1):0;
+      }).filter(x=>x>0);
+      if(slashTotals.length){total+=Math.max(...slashTotals);continue}
+      const parts=group.filter(r=>r._partKey);
+      if(parts.length>1){total+=parts.reduce((sum,r)=>sum+weightForTotal(r),0);continue}
+      total+=Math.max(0,...group.map(weightForTotal));
+    }
+    return total;
+  },[visibleRows]);
   const totalWeightMinus=useMemo(()=>{const seen=new Set();return visibleRows.reduce((sum,r)=>{const key=digits(r.mawb);if(!key||seen.has(key))return sum;seen.add(key);return sum+weightMinusForTotal(r)},0)},[visibleRows]);
   const stats=useMemo(()=>({total:visibleRows.length,booked:visibleRows.filter(x=>x.status==='BOOKED'||x.status==='PRE-MANIFESTED').length,transit:visibleRows.filter(x=>x.status==='IN TRANSIT'||x.status==='PART ARRIVED').length,arrived:visibleRows.filter(x=>x.status==='ARRIVED'||x.status==='DELIVERED').length,attention:visibleRows.filter(x=>x.status==='DELAYED'||x.status==='EARLY ARRIVAL').length}),[visibleRows]);
   async function track(one,currentShipment={}){const n=normalize(one);if(!n)throw new Error('Enter valid 11-digit MAWB.');const fallback=normalize(n).startsWith('235-')?{flightNo:currentShipment.flightNo||'',flightDate:currentShipment.flightDate||'',departureDate:currentShipment.departureDate||'',departureTime:currentShipment.departureTime||'',origin:currentShipment.origin||'',destination:currentShipment.destination||'',departureFlightNo:currentShipment.departureFlightNo||'',departureOrigin:currentShipment.departureOrigin||'',departureDestination:currentShipment.departureDestination||'',scheduledDeparture:currentShipment.scheduledDeparture||''}:{};const res=await fetch('/api/track',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb:n,currentShipment:fallback})});const data=await res.json();if(!data.ok){const err=new Error(data.trackingError||data.apiError||data.error||'Tracking failed');err.payload=data;throw err}return {...data.shipment,provider:data.provider||data.shipment?.source||''}}
