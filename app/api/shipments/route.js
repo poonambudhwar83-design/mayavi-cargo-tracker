@@ -132,7 +132,12 @@ export async function GET(request){
     const rawRows=canViewOtherCountries(auth.session,auth.internal)
       ? await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`
       : await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments WHERE COALESCE(data->>'shipmentType','IMPORT') <> 'OTHER_COUNTRIES' ORDER BY updated_at DESC`;
-    const rows=rawRows.map(row=>({...row,data:dataForViewer(sanitizeShipment(row.data||{},row.awb),auth.session,auth.internal)}));
+    const newestByAwb=new Map();
+    for(const row of rawRows){
+      const key=normalize(row.awb);
+      if(key&&!newestByAwb.has(key))newestByAwb.set(key,row);
+    }
+    const rows=[...newestByAwb.values()].map(row=>({...row,data:dataForViewer(sanitizeShipment(row.data||{},row.awb),auth.session,auth.internal)}));
     return Response.json({ok:true,shared:true,count:rows.length,rows});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
