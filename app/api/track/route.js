@@ -28,7 +28,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.33';
+const VERSION='3.9.34';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -642,6 +642,47 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
   }else{
     shipment.arrivalVerifiedAbsent=false;
+  }
+
+  // IndiGo publishes the booked operating flight and flight date before an
+  // ARRIVED cargo milestone. Use that verified flight/date to show a scheduled
+  // destination arrival while keeping the cargo status BOOKED/ACCEPTED until
+  // the official SmartKargo timeline itself confirms departure/arrival.
+  if(indigoFastPath&&shipment.arrivalIsActual!==true){
+    const indigoFlight=String(shipment.flightNo||'').toUpperCase();
+    const indigoDate=String(shipment.flightDate||'');
+    const indigoDestination=String(shipment.destination||'').toUpperCase();
+    if(indigoFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(indigoDate)&&indigoDestination){
+      const fast=await trackFlightScheduleFast({
+        flightNo:indigoFlight,
+        date:indigoDate,
+        destination:indigoDestination
+      }).catch(()=>null);
+      const eta=(fast?.scheduledArrivalTime||fast?.arrivalTime)
+        ? {
+            arrivalDate:fast.arrivalDate||fast.scheduledArrivalDate||indigoDate,
+            arrivalTime:fast.arrivalTime||fast.scheduledArrivalTime,
+            arrivalTimeZone:fast.arrivalTimeZone||fast.scheduledArrivalTimeZone||'',
+            arrivalTimeSource:fast.arrivalTimeSource||fast.source||'IndiGo booked-flight schedule'
+          }
+        : await trackFlightArrivalEstimate({
+            flightNo:indigoFlight,
+            date:indigoDate,
+            destination:indigoDestination
+          }).catch(()=>null);
+      if(eta?.arrivalTime){
+        shipment.scheduledArrivalDate=eta.arrivalDate||indigoDate;
+        shipment.scheduledArrivalTime=eta.arrivalTime;
+        shipment.scheduledArrivalTimeZone=eta.arrivalTimeZone||'';
+        shipment.arrivalDate=eta.arrivalDate||indigoDate;
+        shipment.arrivalTime=eta.arrivalTime;
+        shipment.arrivalIsActual=false;
+        shipment.arrivalEstimate=true;
+        shipment.arrivalVerifiedAbsent=false;
+        shipment.arrivalTimeZone=eta.arrivalTimeZone||'';
+        shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'IndiGo booked-flight schedule';
+      }
+    }
   }
 
   // Vietnam final-leg ETA must survive generic official-status reconciliation.
