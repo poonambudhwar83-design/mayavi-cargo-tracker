@@ -28,7 +28,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.34';
+const VERSION='3.9.35';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -656,6 +656,7 @@ async function handle(mawb,fallback={}){
       const fast=await trackFlightScheduleFast({
         flightNo:indigoFlight,
         date:indigoDate,
+        origin:String(shipment.origin||'').toUpperCase(),
         destination:indigoDestination
       }).catch(()=>null);
       const eta=(fast?.scheduledArrivalTime||fast?.arrivalTime)
