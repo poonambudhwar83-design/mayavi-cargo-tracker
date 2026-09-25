@@ -6,6 +6,7 @@ import { normalizeExportTimesToIst } from '../lib/exportIst.js';
 const KEY='mayavi_v3_shipments';
 const TAB_KEY='mayavi_dashboard_active_tab';
 const ONE_HOUR=60*60*1000;
+const SERVER_POLL=60*1000;
 function normalize(v=''){const d=String(v).replace(/\D/g,'');return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:''}
 function digits(v=''){return String(v).replace(/\D/g,'')}
 function pad(v){return String(v).padStart(2,'0')}
@@ -202,7 +203,32 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   useEffect(()=>{try{const saved=localStorage.getItem(TAB_KEY);if(saved==='IMPORT'||saved==='EXPORT'||(isAdmin&&saved==='OTHER_COUNTRIES'))setActiveTab(saved)}catch{}},[isAdmin]);
   useEffect(()=>{try{localStorage.setItem(TAB_KEY,activeTab)}catch{}},[activeTab]);
   useEffect(()=>{let active=true;(async()=>{let local=[];try{local=JSON.parse(localStorage.getItem(KEY)||'[]').map(x=>decorateTiming({}, {...x,mawb:normalize(x?.mawb||x?.awb),shipmentType:shipmentTypeOf(x?.shipmentType)})).filter(x=>x.mawb&&(isAdmin||x.shipmentType!=='OTHER_COUNTRIES'))}catch{}try{const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database unavailable');const server=(data.rows||[]).map(dbToRow).filter(x=>x.mawb);const map=new Map(server.map(x=>[digits(x.mawb),x]));const migrate=[];for(const l of local){const key=digits(l.mawb),s=map.get(key);if(!s)continue;const lt=Date.parse(l.lastChecked||l._dbUpdatedAt||0)||0,st=Date.parse(s.lastChecked||s._dbUpdatedAt||0)||0;if(key.startsWith('235')){const recovered=recoverTurkishLocal(s,l);if(recovered.changed){map.set(key,recovered.row);migrate.push(recovered.row)}continue}const serverAuthoritative=key.startsWith('098');if(!serverAuthoritative&&lt>st){const mergedLocal={...l};for(const wk of ['shipmentType','clientName','client','companyType','companyName','goodsDescription','enteredBy','enteredByUsername','enteredAt','mailSent','mailUpdatedAt','customsCleared','customsClearedAt','customsClearedBy','masterCopyReceived','masterCopyReceivedAt','masterCopyReceivedBy','handoverDone','handoverUpdatedAt','handoverUpdatedBy','weightMinus','weightMinusUpdatedAt','weightMinusUpdatedBy']){if(Object.prototype.hasOwnProperty.call(s,wk))mergedLocal[wk]=s[wk];else delete mergedLocal[wk]}map.set(key,mergedLocal)}}const merged=[...map.values()].sort((a,b)=>(Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0));if(!active)return;setRows(merged);setShared(true);setLoaded(true);localStorage.setItem(KEY,JSON.stringify(merged.map(withoutMeta)));if(migrate.length)persistRows(migrate).catch(()=>{})}catch(e){if(!active)return;setRows(local);setLoaded(true);setShared(false);setNote(`Shared database unavailable — showing this browser backup only. ${e.message||''}`)}})();return()=>{active=false}},[isAdmin]);
-  useEffect(()=>{if(typeof window!=='undefined'&&loaded)localStorage.setItem(KEY,JSON.stringify(rows.map(withoutMeta)))},[rows,loaded]);useEffect(()=>{const id=setInterval(()=>window.location.reload(),ONE_HOUR);return()=>clearInterval(id)},[]);
+  useEffect(()=>{if(typeof window!=='undefined'&&loaded)localStorage.setItem(KEY,JSON.stringify(rows.map(withoutMeta)))},[rows,loaded]);
+  // Pull fresh rows from our own shared database once a minute. This does NOT
+  // call airline websites; it only makes the open dashboard reflect tracking
+  // results that the backend/another tab has already saved, so stale ETA/ATA
+  // values cannot sit on screen until the one-hour page reload.
+  useEffect(()=>{if(!loaded)return;let stopped=false,running=false;const syncServer=async()=>{if(stopped||running)return;running=true;try{
+    const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});
+    const data=await res.json();if(!data.ok)return;
+    const server=(data.rows||[]).map(dbToRow).filter(x=>x.mawb&&(isAdmin||x.shipmentType!=='OTHER_COUNTRIES'));
+    setRows(current=>{
+      const localMap=new Map(current.map(x=>[digits(x.mawb),x]));
+      const out=[];
+      for(const sr of server){
+        const key=digits(sr.mawb),lr=localMap.get(key);localMap.delete(key);
+        if(!lr){out.push(sr);continue}
+        if(key.startsWith('235')){out.push(recoverTurkishLocal(sr,lr).row);continue}
+        const st=Math.max(Date.parse(sr._dbUpdatedAt||0)||0,Date.parse(sr.lastChecked||0)||0);
+        const lt=Math.max(Date.parse(lr._dbUpdatedAt||0)||0,Date.parse(lr.lastChecked||0)||0);
+        out.push(key.startsWith('098')||st>=lt?sr:lr);
+      }
+      for(const lr of localMap.values())if(isAdmin||shipmentTypeOf(lr.shipmentType)!=='OTHER_COUNTRIES')out.push(lr);
+      return out;
+    });
+    setShared(true);
+  }catch{}finally{running=false}};syncServer();const id=setInterval(syncServer,SERVER_POLL);return()=>{stopped=true;clearInterval(id)}},[loaded,isAdmin]);
+  useEffect(()=>{const id=setInterval(()=>window.location.reload(),ONE_HOUR);return()=>clearInterval(id)},[]);
   // Keep active masters fresh from their airline source; manual row refresh should not be required for status changes.
   useEffect(()=>{if(!loaded||!rows.length)return;let stopped=false,running=false;const syncActive=async()=>{if(stopped||running)return;running=true;try{const list=rows.filter(r=>!['ARRIVED','DELIVERED'].includes(String(r.status||'').toUpperCase())).sort((a,b)=>(a.shipmentType==='IMPORT'?0:1)-(b.shipmentType==='IMPORT'?0:1));for(const r of list){if(stopped)break;await refreshByMawb(r.mawb)}}finally{running=false}};syncActive();const id=setInterval(syncActive,10*60*1000);return()=>{stopped=true;clearInterval(id)}},[loaded,rows.length]);useEffect(()=>{setClientFilter('');setOriginFilter('');setDestinationFilter('');setPrefixFilter('')},[activeTab,adminView]);
   const tabRows=useMemo(()=>rows.filter(r=>shipmentTypeOf(r.shipmentType)===activeTab),[rows,activeTab]);
