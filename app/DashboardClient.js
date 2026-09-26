@@ -164,12 +164,13 @@ function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let
 function officialUrl(row={}){
   const n=normalize(row.mawb),airline=airlineForMawb(n),serial=n.slice(4),allDigits=digits(n);
   if(n.startsWith('157-'))return `https://www.qrcargo.com/s/track-your-shipment?documentNumber=${encodeURIComponent(serial)}&documentPrefix=157&documentType=MAWB`;
+  if(n.startsWith('232-'))return `https://www.maskargo.com/en/shipment-tracking.html?prefixNumber=232&awbNumber=${encodeURIComponent(serial)}`;
   if(n.startsWith('607-'))return `https://www.etihadcargo.com/en/e-services/track-shipment?awb=${encodeURIComponent(allDigits)}`;
   if(n.startsWith('235-'))return 'https://www.turkishcargo.com/en/cargo-tracking';
   if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
 }
-function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return n.startsWith('157-')||n.startsWith('607-')}
+function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return n.startsWith('157-')||n.startsWith('232-')||n.startsWith('607-')}
 function openOfficial(row={}){
   const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;
   try{navigator.clipboard?.writeText(digits(n)).catch(()=>{})}catch{}
