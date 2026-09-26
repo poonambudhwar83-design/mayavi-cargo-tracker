@@ -29,7 +29,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.36';
+const VERSION='3.9.37';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -347,7 +347,7 @@ async function handle(mawb,fallback={}){
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
   const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
-  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
+  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
@@ -371,7 +371,7 @@ async function handle(mawb,fallback={}){
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
 
-  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath||malaysiaFastPath)?{
+  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath)?{
     flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',bookingTime:effectiveFallback.bookingTime||'',bags:effectiveFallback.bags||'',pieces:effectiveFallback.pieces||effectiveFallback.bags||'',weight:effectiveFallback.weight||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',via:effectiveFallback.via||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',finalFlightNo:effectiveFallback.finalFlightNo||'',finalFlightDate:effectiveFallback.finalFlightDate||'',finalFlightOrigin:effectiveFallback.finalFlightOrigin||'',finalFlightDestination:effectiveFallback.finalFlightDestination||'',finalFlightDeparted:effectiveFallback.finalFlightDeparted===true,scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
