@@ -346,7 +346,7 @@ async function handle(mawb,fallback={}){
   const omanFastPath=mawb.startsWith('910-');
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
-  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
+  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
   const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
@@ -357,6 +357,7 @@ async function handle(mawb,fallback={}){
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
   const directResult=directSettled.status==='fulfilled'?directSettled.value:{ok:false,reason:directSettled.reason?.message||'DIRECT ADAPTER FAILED'};
   const browserResult=browserSettled.status==='fulfilled'?browserSettled.value:{ok:false,reason:browserSettled.reason?.message||'BROWSER FAILED'};
+  if(malaysiaFastPath)console.log('malaysia_tracking_debug',mawb,'api',apiResult?.ok?'OK':(apiResult?.reason||'NO'),'direct',directResult?.ok?'OK':(directResult?.reason||'NO'),'directStage',directResult?.debug?.stage||'');
 
   const cathayResult=null;
   let ocrResult=null;
