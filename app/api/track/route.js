@@ -33,6 +33,15 @@ export const maxDuration=300;
 const VERSION='3.9.38';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
+function plusIsoDays(date='',days=1){
+  const m=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/);if(!m)return'';
+  const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])+days));
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
+}
+function istWallClockMs(date='',time=''){
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(String(date||''))||!/^\d{2}:\d{2}$/.test(String(time||'')))return NaN;
+  return Date.parse(`${date}T${time}:00+05:30`);
+}
 function persistedHandoverTime(date='',time=''){
   const dm=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/),tm=String(time||'').match(/^(\d{1,2}):(\d{2})$/);
   if(!dm||!tm)return'';
@@ -702,17 +711,19 @@ async function handle(mawb,fallback={}){
 
   // IndiGo publishes the booked operating flight and flight date before an
   // ARRIVED cargo milestone. Use that verified flight/date to show a scheduled
-  // destination arrival while keeping the cargo status BOOKED/ACCEPTED until
-  // the official SmartKargo timeline itself confirms departure/arrival.
+  // destination arrival. If that scheduled arrival has already passed but
+  // SmartKargo still has no actual departure, treat the shipment as DELAYED
+  // and look for the next verified occurrence of the same operating flight.
   if(indigoFastPath&&shipment.arrivalIsActual!==true){
     const indigoFlight=String(shipment.flightNo||'').toUpperCase();
     const indigoDate=String(shipment.flightDate||'');
+    const indigoOrigin=String(shipment.origin||'').toUpperCase();
     const indigoDestination=String(shipment.destination||'').toUpperCase();
     if(indigoFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(indigoDate)&&indigoDestination){
       const fast=await trackFlightScheduleFast({
         flightNo:indigoFlight,
         date:indigoDate,
-        origin:String(shipment.origin||'').toUpperCase(),
+        origin:indigoOrigin,
         destination:indigoDestination
       }).catch(()=>null);
       const eta=(fast?.scheduledArrivalTime||fast?.arrivalTime)
@@ -738,6 +749,52 @@ async function handle(mawb,fallback={}){
         shipment.arrivalVerifiedAbsent=false;
         shipment.arrivalTimeZone=eta.arrivalTimeZone||'';
         shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'IndiGo booked-flight schedule';
+
+        const currentIst=normalizeShipmentTimesToIst({...shipment});
+        const scheduledArrivalMs=istWallClockMs(currentIst.arrivalDate,currentIst.arrivalTime);
+        const missedWithoutDeparture=shipment.departureIsActual!==true&&Number.isFinite(scheduledArrivalMs)&&scheduledArrivalMs<Date.now();
+        if(missedWithoutDeparture){
+          shipment.status='DELAYED';
+          shipment.delayReason='Scheduled arrival passed but no actual IndiGo departure event is available';
+          shipment.delaySource='IndiGo SmartKargo + next flight schedule';
+
+          // Search forward for the next real occurrence rather than simply
+          // adding one day; some IndiGo flight numbers do not operate daily.
+          for(let day=1;day<=7;day++){
+            const candidateDate=plusIsoDays(indigoDate,day);if(!candidateDate)break;
+            const next=await trackFlightScheduleFast({
+              flightNo:indigoFlight,
+              date:candidateDate,
+              origin:indigoOrigin,
+              destination:indigoDestination
+            }).catch(()=>null);
+            const nextArrivalTime=next?.arrivalTime||next?.scheduledArrivalTime||'';
+            if(!next?.ok||!nextArrivalTime)continue;
+            const rawNext={
+              origin:indigoOrigin,
+              destination:indigoDestination,
+              arrivalDate:next.arrivalDate||next.scheduledArrivalDate||candidateDate,
+              arrivalTime:nextArrivalTime,
+              arrivalTimeZone:next.arrivalTimeZone||next.scheduledArrivalTimeZone||'',
+              arrivalTimeSource:next.arrivalTimeSource||next.source||'IndiGo next-flight schedule'
+            };
+            const nextIst=normalizeShipmentTimesToIst(rawNext);
+            const nextArrivalMs=istWallClockMs(nextIst.arrivalDate,nextIst.arrivalTime);
+            if(!Number.isFinite(nextArrivalMs)||nextArrivalMs<=Date.now())continue;
+
+            shipment.scheduledArrivalDate=rawNext.arrivalDate;
+            shipment.scheduledArrivalTime=rawNext.arrivalTime;
+            shipment.scheduledArrivalTimeZone=rawNext.arrivalTimeZone;
+            shipment.arrivalDate=rawNext.arrivalDate;
+            shipment.arrivalTime=rawNext.arrivalTime;
+            shipment.arrivalTimeZone=rawNext.arrivalTimeZone;
+            shipment.arrivalTimeSource=`${rawNext.arrivalTimeSource}; next occurrence after missed booked flight`;
+            shipment.arrivalEstimate=true;
+            shipment.arrivalVerifiedAbsent=false;
+            shipment.delayedToFlightDate=candidateDate;
+            break;
+          }
+        }
       }
     }
   }
