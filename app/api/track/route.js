@@ -17,6 +17,7 @@ import { trackVirgin } from '../../../lib/virgin.js';
 import { trackIndigo } from '../../../lib/indigo.js';
 import { trackThai } from '../../../lib/thai.js';
 import { trackMalaysia } from '../../../lib/malaysia.js';
+import { trackMalaysiaTrackingOne } from '../../../lib/malaysiaTrackingOne.js';
 import { trackVietnam } from '../../../lib/vietnam.js';
 import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackWithTrackingMore } from '../../../lib/trackingmore.js';
@@ -251,7 +252,13 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('176-')) return trackEmirates(mawb);
   if(mawb.startsWith('217-')) return trackThai(mawb);
   if(mawb.startsWith('229-')) return trackKuwait(mawb);
-  if(mawb.startsWith('232-')) return trackMalaysia(mawb);
+  if(mawb.startsWith('232-')) {
+    const guest=await trackMalaysiaTrackingOne(mawb);
+    if(guest?.ok)return guest;
+    const official=await trackMalaysia(mawb);
+    if(official?.ok)return official;
+    return {...official,debug:{...(official?.debug||{}),trackingOneFallback:guest?.debug||null,trackingOneError:guest?.reason||''}};
+  }
   if(mawb.startsWith('235-')) {
     const official=await trackTurkish(mawb);
     if(official?.ok)return official;
