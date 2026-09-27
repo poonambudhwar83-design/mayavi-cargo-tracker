@@ -678,6 +678,26 @@ async function handle(mawb,fallback={}){
     if(direct.flightNo)shipment.flightNo=direct.flightNo;
     if(direct.via)shipment.via=direct.via;
     shipment.arrivalTimeSource=direct.source||'Malaysia final DEL connection schedule';
+
+    // Verify the final Malaysia Airlines flight schedule by flight number/date.
+    // This keeps the arrival time live instead of relying only on a hard-coded fallback.
+    if(direct.arrivalIsActual!==true&&direct.flightNo&&direct.destination){
+      const mhSchedule=await trackFlightScheduleFast({
+        flightNo:direct.flightNo,
+        date:direct.arrivalDate,
+        destination:direct.destination
+      }).catch(()=>null);
+      const mhArrivalTime=mhSchedule?.arrivalTime||mhSchedule?.scheduledArrivalTime||'';
+      if(mhSchedule?.ok&&mhArrivalTime){
+        shipment.arrivalDate=mhSchedule.arrivalDate||mhSchedule.scheduledArrivalDate||direct.arrivalDate;
+        shipment.arrivalTime=mhArrivalTime;
+        shipment.arrivalIsActual=mhSchedule.arrivalIsActual===true;
+        shipment.arrivalEstimate=mhSchedule.arrivalIsActual!==true;
+        shipment.arrivalVerifiedAbsent=false;
+        shipment.arrivalTimeZone=mhSchedule.arrivalTimeZone||mhSchedule.scheduledArrivalTimeZone||'';
+        shipment.arrivalTimeSource=mhSchedule.arrivalTimeSource||mhSchedule.source||'Malaysia final-flight schedule';
+      }
+    }
   }
 
   // IndiGo publishes the booked operating flight and flight date before an
