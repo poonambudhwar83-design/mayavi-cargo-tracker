@@ -10,19 +10,17 @@
     const data=event.data||{};
     if(data.source!=='MAYAVI_CARGO_PAGE'||data.type!=='TRACK_REQUEST')return;
     const carrier=String(data.carrier||'').toUpperCase();
-    const type=carrier==='TURKISH'?'TRACK_TURKISH':carrier==='MALAYSIA'?'TRACK_MALAYSIA':'TRACK_SAUDIA';
+    const type=carrier==='TURKISH'?'TRACK_TURKISH':'TRACK_SAUDIA';
     let payload;
     try{
       payload=await chrome.runtime.sendMessage({type,mawb:data.mawb});
     }catch(error){
       payload={
         ok:false,
-        trackingError:`${carrier==='TURKISH'?'Turkish':carrier==='MALAYSIA'?'MASkargo':'Saudia'} browser bridge error: ${error?.message||error}`,
+        trackingError:`${carrier==='TURKISH'?'Turkish':'Saudia'} browser bridge error: ${error?.message||error}`,
         officialTracker:carrier==='TURKISH'
           ?'https://www.turkishcargo.com/en/cargo-tracking'
-          :carrier==='MALAYSIA'
-            ?'https://www.maskargo.com/en/shipment-tracking.html'
-            :'https://saudiacargo.com/en/digital-services?tab=trackShipment'
+          :'https://saudiacargo.com/en/digital-services?tab=trackShipment'
       };
     }
     window.postMessage({source:'MAYAVI_CARGO_CONTENT',type:'TRACK_RESPONSE',requestId:data.requestId,payload},'*');
