@@ -1,5 +1,6 @@
 const SAUDIA_TRACK_URL='https://saudiacargo.com/en/digital-services?tab=trackShipment';
 const TURKISH_TRACK_URL='https://www.turkishcargo.com/en/cargo-tracking';
+const MALAYSIA_TRACK_URL='https://www.maskargo.com/en/shipment-tracking.html';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function waitForComplete(tabId,timeout=30000){
@@ -73,6 +74,32 @@ async function runTurkish(mawb,returnTabId){
   }
 }
 
+async function runMalaysia(mawb){
+  const digits=String(mawb||'').replace(/\D/g,'');
+  if(digits.length!==11||!digits.startsWith('232'))return{ok:false,trackingError:'Invalid MASkargo 232 MAWB.',officialTracker:MALAYSIA_TRACK_URL};
+  const serial=digits.slice(3);
+  const url=`${MALAYSIA_TRACK_URL}?prefixNumber=232&awbNumber=${encodeURIComponent(serial)}`;
+  let tab;
+  try{
+    tab=await chrome.tabs.create({url,active:false});
+    await waitForComplete(tab.id,35000);
+    await sleep(1600);
+    let result=null;
+    for(let attempt=0;attempt<3;attempt++){
+      try{result=await chrome.tabs.sendMessage(tab.id,{type:'RUN_MALAYSIA_TRACK',mawb,attempt});}catch(error){
+        result={ok:false,trackingError:error?.message||String(error),officialTracker:url};
+      }
+      if(result?.ok)return result;
+      if(attempt<2)await sleep(1200);
+    }
+    return result||{ok:false,trackingError:'MASkargo result could not be read in the normal browser session.',officialTracker:url};
+  }catch(error){
+    return{ok:false,trackingError:`MASkargo browser session failed: ${error?.message||error}`,officialTracker:url};
+  }finally{
+    if(tab?.id)chrome.tabs.remove(tab.id).catch(()=>{});
+  }
+}
+
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.type==='TRACK_SAUDIA'){
     runSaudia(message.mawb).then(sendResponse);
@@ -80,6 +107,10 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   }
   if(message?.type==='TRACK_TURKISH'){
     runTurkish(message.mawb,sender?.tab?.id).then(sendResponse);
+    return true;
+  }
+  if(message?.type==='TRACK_MALAYSIA'){
+    runMalaysia(message.mawb).then(sendResponse);
     return true;
   }
 });
