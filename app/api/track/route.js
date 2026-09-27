@@ -667,6 +667,19 @@ async function handle(mawb,fallback={}){
     shipment.arrivalVerifiedAbsent=false;
   }
 
+  // Malaysia: the dedicated adapter may supply the scheduled final DEL connection
+  // even when MASkargo has not yet published a final-leg cargo milestone. Keep that
+  // verified schedule instead of letting the generic pre-arrival cleanup blank it.
+  if(malaysiaFastPath&&direct?.arrivalDate){
+    shipment.arrivalDate=direct.arrivalDate;
+    shipment.arrivalTime=direct.arrivalTime||'';
+    shipment.arrivalIsActual=direct.arrivalIsActual===true;
+    shipment.arrivalVerifiedAbsent=false;
+    if(direct.flightNo)shipment.flightNo=direct.flightNo;
+    if(direct.via)shipment.via=direct.via;
+    shipment.arrivalTimeSource=direct.source||'Malaysia final DEL connection schedule';
+  }
+
   // IndiGo publishes the booked operating flight and flight date before an
   // ARRIVED cargo milestone. Use that verified flight/date to show a scheduled
   // destination arrival while keeping the cargo status BOOKED/ACCEPTED until
