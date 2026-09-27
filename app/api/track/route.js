@@ -400,6 +400,15 @@ async function handle(mawb,fallback={}){
   }
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
+  // A verified Malaysia response with no final-destination arrival must clear
+  // stale UI/database arrival values instead of preserving an old date.
+  if(malaysiaFastPath&&direct?.arrivalVerifiedAbsent===true){
+    shipment.arrivalVerifiedAbsent=true;
+    shipment.arrivalDate='';
+    shipment.arrivalTime='';
+    shipment.arrivalIsActual=false;
+    shipment.arrivalTimeSource='Malaysia final DEL arrival not yet published';
+  }
   // Air India dedicated adapter already normalizes international arrival date/time to IST.
   // Do not let generic preferred-arrival selection replace it with an unconverted value.
   if(airIndiaFastPath&&direct){
