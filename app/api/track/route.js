@@ -5,6 +5,7 @@ import { trackCathay } from '../../../lib/cathay.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
 import { trackTurkish } from '../../../lib/turkish.js';
+import { trackTurkishTrackingOne } from '../../../lib/turkishTrackingOne.js';
 import { trackTurkishFreight } from '../../../lib/turkishFreight.js';
 import { trackLufthansa } from '../../../lib/lufthansa.js';
 import { trackQatar } from '../../../lib/qatar.js';
@@ -273,13 +274,24 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('235-')) {
     const official=await trackTurkish(mawb);
     if(official?.ok)return official;
-    const blocked=/HUMAN VERIFICATION|HTTP 403|PRESS\s*&\s*HOLD/i.test(String(official?.reason||'')+' '+JSON.stringify(official?.debug||{}));
-    if(blocked){
-      const freight=await trackTurkishFreight(mawb);
-      if(freight?.ok)return freight;
-      return {...official,debug:{...(official?.debug||{}),freightFallback:freight?.reason||'FREIGHT FALLBACK FAILED'}};
-    }
-    return official;
+
+    // Turkish Cargo can present a Press & Hold human-verification screen after
+    // the correct Add -> Search flow. Do not automate around that challenge.
+    // Instead use structured shipment feeds as fallbacks.
+    const guest=await trackTurkishTrackingOne(mawb).catch(()=>null);
+    if(guest?.ok)return {...guest,debug:{...(guest?.debug||{}),officialError:official?.reason||'',officialDebug:official?.debug||null}};
+
+    const freight=await trackTurkishFreight(mawb).catch(()=>null);
+    if(freight?.ok)return {...freight,debug:{...(freight?.debug||{}),officialError:official?.reason||'',trackingOneError:guest?.reason||''}};
+
+    return {
+      ...official,
+      debug:{
+        ...(official?.debug||{}),
+        trackingOneFallback:guest?.reason||'TRACKING ONE FALLBACK FAILED',
+        freightFallback:freight?.reason||'FREIGHT FALLBACK FAILED'
+      }
+    };
   }
   if(mawb.startsWith('312-')) return trackIndigo(mawb);
   if(mawb.startsWith('514-')) return trackAirArabia(mawb);
