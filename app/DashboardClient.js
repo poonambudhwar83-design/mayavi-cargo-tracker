@@ -151,7 +151,7 @@ function decorateTiming(existing={},incoming={}){
 
   const hasIncomingFlight=Object.prototype.hasOwnProperty.call(incoming,'flightNo')||Object.prototype.hasOwnProperty.call(incoming,'flight');
   const flightNo=normalizeFlightNo(rowMawb,hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||''));
-  const bookingDate=Object.prototype.hasOwnProperty.call(incoming,'bookingDate')?(incoming.bookingDate||''):(existing.bookingDate||'');
+  const bookingDate=incoming.bookingDate||existing.bookingDate||'';
   const bookingTime=incoming.bookingTime||existing.bookingTime||'';
   const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
   const mailTime=shipmentType==='IMPORT'?mailTimeFrom(mailArrivalDate,arrivalTime):'';
