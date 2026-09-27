@@ -30,7 +30,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.37';
+const VERSION='3.9.38';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function persistedHandoverTime(date='',time=''){
@@ -253,10 +253,12 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('217-')) return trackThai(mawb);
   if(mawb.startsWith('229-')) return trackKuwait(mawb);
   if(mawb.startsWith('232-')) {
-    const guest=await trackMalaysiaTrackingOne(mawb);
-    if(guest?.ok)return guest;
+    // MASkargo is authoritative for shipment details. Do not let the
+    // Tracking One fallback short-circuit official route/weight/date fields.
     const official=await trackMalaysia(mawb);
     if(official?.ok)return official;
+    const guest=await trackMalaysiaTrackingOne(mawb);
+    if(guest?.ok)return {...guest,debug:{...(guest?.debug||{}),maskargoError:official?.reason||'',maskargoDebug:official?.debug||null}};
     return {...official,debug:{...(official?.debug||{}),trackingOneFallback:guest?.debug||null,trackingOneError:guest?.reason||''}};
   }
   if(mawb.startsWith('235-')) {
