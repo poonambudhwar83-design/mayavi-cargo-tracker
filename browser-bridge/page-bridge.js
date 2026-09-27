@@ -17,21 +17,17 @@
   function requestBrowserTrack(mawb,carrier){
     return new Promise(resolve=>{
       const requestId=`${carrier.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const timeout=carrier==='TURKISH'?190000:carrier==='MALAYSIA'?75000:75000;
+      const timeout=carrier==='TURKISH'?190000:75000;
       const timer=setTimeout(()=>{
         pending.delete(requestId);
         resolve({
           ok:false,
           trackingError:carrier==='TURKISH'
             ? 'Turkish browser verification timed out. Complete Press & Hold in the Turkish Cargo tab and refresh again.'
-            : carrier==='MALAYSIA'
-              ? 'MASkargo browser bridge timed out.'
-              : 'Saudia browser bridge timed out.',
+            : 'Saudia browser bridge timed out.',
           officialTracker:carrier==='TURKISH'
             ? 'https://www.turkishcargo.com/en/cargo-tracking'
-            : carrier==='MALAYSIA'
-              ? 'https://www.maskargo.com/en/shipment-tracking.html'
-              : 'https://saudiacargo.com/en/digital-services?tab=trackShipment'
+            : 'https://saudiacargo.com/en/digital-services?tab=trackShipment'
         });
       },timeout);
       pending.set(requestId,{resolve,timer});
@@ -55,7 +51,6 @@
 
     let carrier='';
     if(mawb.startsWith('065-'))carrier='SAUDIA';
-    else if(mawb.startsWith('232-'))carrier='MALAYSIA';
     else if(mawb.startsWith('235-'))carrier='TURKISH';
     else return originalFetch(input,init);
 
