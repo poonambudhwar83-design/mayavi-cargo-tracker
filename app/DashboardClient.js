@@ -244,7 +244,12 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       return dedupeRowsByMawb(out);
     });
     setShared(true);
-  }catch{}finally{running=false}};syncServer();const id=setInterval(syncServer,SERVER_POLL);return()=>{stopped=true;clearInterval(id)}},[loaded,isAdmin]);
+  }catch{}finally{running=false}};
+  const onIndigoSynced=()=>syncServer();
+  window.addEventListener('mayavi:indigo-synced',onIndigoSynced);
+  syncServer();const id=setInterval(syncServer,SERVER_POLL);
+  return()=>{stopped=true;clearInterval(id);window.removeEventListener('mayavi:indigo-synced',onIndigoSynced)}
+  },[loaded,isAdmin]);
   useEffect(()=>{const id=setInterval(()=>window.location.reload(),ONE_HOUR);return()=>clearInterval(id)},[]);
   // Keep active masters fresh from their airline source; manual row refresh should not be required for status changes.
   useEffect(()=>{if(!loaded||!rows.length)return;let stopped=false,running=false;const syncActive=async()=>{if(stopped||running)return;running=true;try{const list=dedupeRowsByMawb(rows).filter(r=>!['ARRIVED','DELIVERED'].includes(String(r.status||'').toUpperCase())).sort((a,b)=>(a.shipmentType==='IMPORT'?0:1)-(b.shipmentType==='IMPORT'?0:1));for(const r of list){if(stopped)break;await refreshByMawb(r.mawb)}}finally{running=false}};syncActive();const id=setInterval(syncActive,10*60*1000);return()=>{stopped=true;clearInterval(id)}},[loaded,rows.length]);useEffect(()=>{setClientFilter('');setOriginFilter('');setDestinationFilter('');setPrefixFilter('')},[activeTab,adminView]);
