@@ -103,6 +103,11 @@ function recoverTurkishLocal(server={},local={}){
 }
 function decorateTiming(existing={},incoming={}){
   const raw={...existing,...incoming};
+  // Malaysia final-arrival absence is an explicit value, not a missing value.
+  // Never let scheduled/legacy fields rebuild a stale arrival after refresh.
+  if(normalize(incoming.mawb||existing.mawb||existing.awb||'').startsWith('232-')&&incoming.arrivalVerifiedAbsent===true){
+    raw.arrivalDate=''; raw.arrivalTime=''; raw.scheduledArrivalDate=''; raw.scheduledArrivalTime='';
+  }
   const shipmentType=shipmentTypeOf(raw.shipmentType);
   const exportLike=isExportLikeType(shipmentType);
   const arrivalChanged=Object.prototype.hasOwnProperty.call(incoming,'arrivalDate')||Object.prototype.hasOwnProperty.call(incoming,'arrivalTime');
@@ -146,7 +151,7 @@ function decorateTiming(existing={},incoming={}){
 
   const hasIncomingFlight=Object.prototype.hasOwnProperty.call(incoming,'flightNo')||Object.prototype.hasOwnProperty.call(incoming,'flight');
   const flightNo=normalizeFlightNo(rowMawb,hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||''));
-  const bookingDate=incoming.bookingDate||existing.bookingDate||'';
+  const bookingDate=Object.prototype.hasOwnProperty.call(incoming,'bookingDate')?(incoming.bookingDate||''):(existing.bookingDate||'');
   const bookingTime=incoming.bookingTime||existing.bookingTime||'';
   const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
   const mailTime=shipmentType==='IMPORT'?mailTimeFrom(mailArrivalDate,arrivalTime):'';
