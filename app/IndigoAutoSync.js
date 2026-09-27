@@ -2,7 +2,6 @@
 import { useEffect } from 'react';
 
 const KEY='mayavi_indigo_sync_at';
-const RELOAD_KEY='mayavi_indigo_sync_reload';
 const INTERVAL=5*60*1000;
 
 export default function IndigoAutoSync(){
@@ -17,11 +16,10 @@ export default function IndigoAutoSync(){
         const res=await fetch('/api/indigo-sync',{method:'POST',credentials:'include',cache:'no-store'});
         const data=await res.json();
         if(cancelled||!data?.ok||!data.updated)return;
-        const lastReload=Number(sessionStorage.getItem(RELOAD_KEY)||0);
-        if(now-lastReload>60*1000){
-          sessionStorage.setItem(RELOAD_KEY,String(now));
-          window.location.reload();
-        }
+        // Avoid a second full-page reload after IndiGo sync. It caused the
+        // dashboard rows to flash/blink a moment after the user refreshed.
+        // Ask the mounted dashboard to pull the just-saved server rows in place.
+        window.dispatchEvent(new CustomEvent('mayavi:indigo-synced',{detail:{updated:data.updated}}));
       }catch{}
     })();
     return()=>{cancelled=true};
