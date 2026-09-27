@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Mayavi Cargo Browser Bridge",
-  "version": "1.3.0",
-  "description": "Uses the user's normal Chrome session to read Saudia, Turkish Cargo, and MASkargo tracking results for Mayavi Cargo Tracker.",
+  "version": "1.2.0",
+  "description": "Uses the user's normal Chrome session to read Saudia and Turkish Cargo tracking results for Mayavi Cargo Tracker.",
   "permissions": [
     "tabs",
     "storage"
@@ -14,9 +14,7 @@
     "https://mayavicargo.com/*",
     "https://www.mayavicargo.com/*",
     "https://www.turkishcargo.com/*",
-    "https://tracker.mayavicargo.com/*",
-    "https://www.maskargo.com/*",
-    "https://maskargo.com/*"
+    "https://tracker.mayavicargo.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -50,16 +48,6 @@
       ],
       "js": [
         "turkish-content.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://www.maskargo.com/*",
-        "https://maskargo.com/*"
-      ],
-      "js": [
-        "malaysia-content.js"
       ],
       "run_at": "document_idle"
     }
