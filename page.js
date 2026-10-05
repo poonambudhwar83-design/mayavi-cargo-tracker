@@ -148,7 +148,8 @@ export default function Home(){
   },[shipments,hydrated]);
   useEffect(()=>{
     const id=setInterval(async()=>{
-      const active=shipmentsRef.current.filter(s=>!isFinished(s.status)).slice(0,6);
+      const activeRows=shipmentsRef.current.filter(s=>!isFinished(s.status));
+      const active=[...new Map(activeRows.map(s=>[normalizeMawb(s.mawb),s])).values()].slice(0,6);
       for(const s of active)await trackMawb(s.mawb,false,true);
     },AUTO_REFRESH_MS);
     return()=>clearInterval(id);
@@ -190,33 +191,99 @@ export default function Home(){
       const d=await r.json();
       if(!r.ok)throw new Error(d.error||'Tracking request failed');
       const live=d.shipment||{};
-      const parts=(live.arrivalDate&&live.arrivalTime)?{date:live.arrivalDate,time:live.arrivalTime}:localParts(live.actualArrival||live.eta);
-      const etaIso=arrivalIso(parts.date,parts.time)||(live.actualArrival||live.eta||'');
+      const arrivalParts=(live.arrivalDate&&live.arrivalTime)?{date:live.arrivalDate,time:live.arrivalTime}:localParts(live.actualArrival||live.eta);
+      const etaIso=arrivalIso(arrivalParts.date,arrivalParts.time)||(live.actualArrival||live.eta||'');
       const debug=d.trackingDebug||{};
-      setShipments(list=>list.map(prev=>{
-        if(normalizeMawb(prev.mawb)!==key)return prev;
-        const status=statusFromLive(prev,live,etaIso);
-        const routeNote=d.fallbackUsed?`Official blocked: ${d.officialError||'technical block'} · Track123 fallback used`:(d.officialError?`Official issue: ${d.officialError}`:'Official airline checked');
-        return{
-          ...prev,
-          airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,
-          flightNo:live.flightNo||prev.flightNo||'',
-          bags:live.bags||live.pieces||prev.bags||'',
-          weight:live.weight||prev.weight||'',
-          origin:live.origin||prev.origin||'',
-          destination:live.destination||prev.destination||'',
-          bookingDate:live.bookingDate||prev.bookingDate||'',
-          arrivalDate:((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PRE[-_ ]?MANIFESTED/.test(String(live?.status||'').toUpperCase())&&!live?.actualArrival&&!live?.arrivalIsActual)?'':(parts.date||prev.arrivalDate||''),
-          arrivalTime:((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PRE[-_ ]?MANIFESTED/.test(String(live?.status||'').toUpperCase())&&!live?.actualArrival&&!live?.arrivalIsActual)?'':(parts.time||prev.arrivalTime||''),
-          baselineArrival:prev.baselineArrival||etaIso||'',
-          status,
-          dataSource:d.source||live.source||'Official airline website',
-          remarks:d.trackingError?`${routeNote} · ${debug.stage||'Carrier check'} · ${d.trackingError}`:(parts.date&&parts.time?`${routeNote} · live arrival ${parts.date} ${parts.time}`:`${routeNote} · ${debug.stage||'waiting for ETA'}`),
-          updatedAt:new Date().toISOString()
-        };
-      }));
+      const routeNote=d.fallbackUsed?`Official blocked: ${d.officialError||'technical block'} · Track123 fallback used`:(d.officialError?`Official issue: ${d.officialError}`:'Official airline checked');
+
+      setShipments(list=>{
+        const matches=list.filter(prev=>normalizeMawb(prev.mawb)===key);
+
+        // IndiGo (and any later carrier-specific adapter) may return one MAWB as
+        // multiple physical part movements. Keep each movement on its own stable
+        // dashboard row instead of overwriting every duplicate MAWB with one value.
+        if(live.partLoad&&Array.isArray(live.parts)&&live.parts.length){
+          const base=matches[0]||{
+            id:crypto.randomUUID(),mawb:key,clientName:'',bags:'',weight:'',origin:'',destination:'',bookingDate:'',arrivalDate:'',arrivalTime:'',flightNo:'',
+            airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,status:'CHECKING',baselineArrival:'',dataSource:'Official airline website',remarks:''
+          };
+          const usedIds=new Set();
+          const partRows=live.parts.map((part,index)=>{
+            let prev=matches.find(x=>x.partKey&&part.partKey&&x.partKey===part.partKey);
+            if(!prev)prev=matches.find(x=>!usedIds.has(x.id));
+            if(!prev)prev=base;
+            usedIds.add(prev.id);
+
+            const partArrival=(part.arrivalDate&&part.arrivalTime)?{date:part.arrivalDate,time:part.arrivalTime}:localParts(part.actualArrival||part.eta);
+            const partEtaIso=arrivalIso(partArrival.date,partArrival.time)||(part.actualArrival||part.eta||'');
+            const partLive={...live,...part,carrierCode:live.carrierCode||airline.iata,airlineName:live.airlineName||airline.name,status:part.status||live.status};
+            const status=statusFromLive(prev,partLive,partEtaIso);
+            const partPieces=part.pieces||'';
+            const displayBags=part.bags||(partPieces&&live.totalPieces?`${partPieces}/${live.totalPieces}`:partPieces)||(index===0?(live.bags||live.pieces||prev.bags||''):'');
+            const partRemark=part.remarks||(`Part shipment ${index+1}/${live.parts.length}`);
+
+            return{
+              ...prev,
+              id:prev===base&&index>0?crypto.randomUUID():prev.id,
+              mawb:key,
+              partKey:part.partKey||`${key}-part-${index+1}`,
+              partLoad:true,
+              partIndex:index+1,
+              partCount:live.parts.length,
+              airlineName:airline.name,
+              airlineIata:airline.iata,
+              officialTracker:airline.official,
+              flightNo:part.flightNo||live.flightNo||'',
+              bags:displayBags,
+              weight:part.weight||'',
+              origin:part.origin||live.origin||prev.origin||'',
+              destination:part.destination||live.destination||prev.destination||'',
+              bookingDate:live.bookingDate||prev.bookingDate||'',
+              arrivalDate:partArrival.date||'',
+              arrivalTime:partArrival.time||'',
+              baselineArrival:prev.baselineArrival||partEtaIso||'',
+              status,
+              dataSource:part.source||d.source||live.source||'Official airline website',
+              remarks:(`${partRemark} · ${part.flightDate?('Flight date '+part.flightDate):''}`).replace(/ · $/,''),
+              updatedAt:new Date().toISOString()
+            };
+          });
+
+          const firstIndex=list.findIndex(prev=>normalizeMawb(prev.mawb)===key);
+          if(firstIndex<0)return[...partRows,...list];
+          const before=list.slice(0,firstIndex).filter(prev=>normalizeMawb(prev.mawb)!==key);
+          const after=list.slice(firstIndex).filter(prev=>normalizeMawb(prev.mawb)!==key);
+          return[...before,...partRows,...after];
+        }
+
+        return list.map(prev=>{
+          if(normalizeMawb(prev.mawb)!==key)return prev;
+          const status=statusFromLive(prev,live,etaIso);
+          return{
+            ...prev,
+            partLoad:false,
+            partKey:'',
+            airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,
+            flightNo:live.flightNo||prev.flightNo||'',
+            bags:live.bags||live.pieces||prev.bags||'',
+            weight:live.weight||prev.weight||'',
+            origin:live.origin||prev.origin||'',
+            destination:live.destination||prev.destination||'',
+            bookingDate:live.bookingDate||prev.bookingDate||'',
+            arrivalDate:((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PRE[-_ ]?MANIFESTED/.test(String(live?.status||'').toUpperCase())&&!live?.actualArrival&&!live?.arrivalIsActual)?'':(arrivalParts.date||prev.arrivalDate||''),
+            arrivalTime:((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PRE[-_ ]?MANIFESTED/.test(String(live?.status||'').toUpperCase())&&!live?.actualArrival&&!live?.arrivalIsActual)?'':(arrivalParts.time||prev.arrivalTime||''),
+            baselineArrival:prev.baselineArrival||etaIso||'',
+            status,
+            dataSource:d.source||live.source||'Official airline website',
+            remarks:d.trackingError?`${routeNote} · ${debug.stage||'Carrier check'} · ${d.trackingError}`:(arrivalParts.date&&arrivalParts.time?`${routeNote} · live arrival ${arrivalParts.date} ${arrivalParts.time}`:`${routeNote} · ${debug.stage||'waiting for ETA'}`),
+            updatedAt:new Date().toISOString()
+          };
+        });
+      });
+
       if(!silent){
-        if(parts.date&&parts.time)setNotice(`${airline.name}: live arrival ${parts.date} ${parts.time} received${d.fallbackUsed?' from fallback because the official site was technically blocked':' directly from the official airline'}. Mail time is 5 hours earlier.`);
+        if(live.partLoad&&Array.isArray(live.parts)&&live.parts.length)setNotice(`${airline.name}: part load detected. ${live.parts.length} movement row(s) read directly from the official Status History.`);
+        else if(arrivalParts.date&&arrivalParts.time)setNotice(`${airline.name}: live arrival ${arrivalParts.date} ${arrivalParts.time} received${d.fallbackUsed?' from fallback because the official site was technically blocked':' directly from the official airline'}. Mail time is 5 hours earlier.`);
         else if(d.fallbackUsed)setNotice(`${airline.name} official site was blocked (${d.officialError||'technical block'}), so this MAWB alone used the fallback tracker.`);
         else setNotice(`${airline.name} official website checked. ${d.trackingError||'Arrival time is not published yet.'}`);
       }
@@ -232,7 +299,8 @@ export default function Home(){
   }
 
   async function refreshAll(){
-    const active=shipmentsRef.current.filter(s=>!isFinished(s.status));
+    const activeRows=shipmentsRef.current.filter(s=>!isFinished(s.status));
+    const active=[...new Map(activeRows.map(s=>[normalizeMawb(s.mawb),s])).values()];
     if(!active.length)return setNotice('No active shipments to refresh.');
     setBusy(true);
     try{
