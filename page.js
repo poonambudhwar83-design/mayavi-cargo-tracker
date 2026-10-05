@@ -110,6 +110,15 @@ function statusFromLive(previous,live,etaIso){
     return'ARRIVED';
   }
   if(/PRE[-_ ]?MANIFEST/.test(raw))return'PRE-MANIFESTED';
+  // IndiGo part-load rows come from the carrier's Status History table.
+  // Preserve physical milestones exactly: DEPARTED means the part actually
+  // departed; OFFLOADED means that later event superseded departure.
+  if((String(live?.carrierCode||'').toUpperCase()==='6E'||/INDIGO/i.test(String(live?.airlineName||'')))){
+    if(/OFFLOADED/.test(raw))return'OFFLOADED';
+    if(/DEPARTED/.test(raw))return'DEPARTED';
+    if(/ACCEPTED/.test(raw))return'ACCEPTED';
+    if(/BOOKED/.test(raw))return'BOOKED';
+  }
   if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/MANIFESTED/.test(raw))return'MANIFESTED';
   if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/ACCEPTED|EXECUTED|FREIGHT ON HAND/.test(raw))return raw;
   // Kuwait flight cards may publish ETA before the aircraft has actually departed.
