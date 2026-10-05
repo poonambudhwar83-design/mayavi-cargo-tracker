@@ -59,6 +59,8 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   }
 
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+  if(s.includes('PART LOAD')||s.includes('PART SHIPMENT'))return'PART LOAD';
+  if(s.includes('OFFLOAD'))return'OFFLOADED';
   if(s.includes('DELIVER'))return'DELIVERED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
@@ -165,7 +167,20 @@ export async function GET(request){
 
     let next;
     if(track?.ok&&track.shipment){
-      next=decorateTiming(existing,{...track.shipment,mawb,shipmentType:shipmentTypeOf(existing.shipmentType),clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||1,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
+      const live={...track.shipment};
+      // Keep per-part operator Mail choices when an airline refresh rebuilds
+      // split-load movement rows (including IndiGo 312).
+      if(Array.isArray(live.partShipments)&&Array.isArray(existing.partShipments)){
+        live.partShipments=live.partShipments.map((p,i)=>{
+          const id=String(p?.partId||`P${i+1}`);
+          const saved=existing.partShipments.find((x,j)=>String(x?.partId||`P${j+1}`)===id)
+            ||existing.partShipments.find(x=>String(x?.pieces||'')===String(p?.pieces||'')&&String(x?.weight||'').replace(/,/g,'')===String(p?.weight||'').replace(/,/g,''));
+          return saved&&Object.prototype.hasOwnProperty.call(saved,'mailSent')
+            ? {...p,mailSent:saved.mailSent===true,mailUpdatedAt:saved.mailUpdatedAt||''}
+            : p;
+        });
+      }
+      next=decorateTiming(existing,{...live,mawb,shipmentType:shipmentTypeOf(existing.shipmentType),clientName:existing.clientName||existing.client||'',enteredBy:existing.enteredBy||'',enteredByUsername:existing.enteredByUsername||'',enteredAt:existing.enteredAt||'',mailSent:existing.mailSent===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:'',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||1,backendOcrUsed:Boolean(track.screenshotOcrUsed),backendScreenshotCaptured:Boolean(track.screenshotCaptured)});
     }else{
       next=decorateTiming(existing,{mawb,status:existing.status||'BOOKED',lastChecked:new Date().toISOString(),trackingError:trackError||track?.trackingError||track?.error||'Auto refresh failed',backendAutoRefresh:true,backendAutoRefreshAttempts:trackAttempts||0});
     }
