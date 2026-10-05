@@ -2,7 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "app/api/track/route.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "regions": [
+        "sin1"
+      ]
     },
     "app/api/etihad-test/route.js": {
       "maxDuration": 300,
