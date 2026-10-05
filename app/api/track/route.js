@@ -46,6 +46,92 @@ function liveJson(payload){
   return liveEtaOverlay(payload.shipment).then(shipment=>Response.json({...payload,shipment}));
 }
 
+function localDateTimeParts(value=''){
+  const s=String(value||'');
+  const m=s.match(/(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  return m?{date:`${m[1]}-${m[2]}-${m[3]}`,time:`${m[4]}:${m[5]}`}:{date:'',time:''};
+}
+
+async function indigoFlightArrivalOverlay(shipment={}){
+  if(!Array.isArray(shipment?.parts)||!shipment.parts.length)return shipment;
+  const cache=new Map();
+  const parts=[];
+
+  for(const part of shipment.parts){
+    const raw=String(part?.status||'').toUpperCase();
+
+    // OFFLOADED is a later physical event for that part and must not be
+    // converted to ARRIVED from the flight status.
+    if(raw!=='DEPARTED'||!part?.flightNo){
+      parts.push(part);
+      continue;
+    }
+
+    const flightDate=part.flightDate||part.departureDate||'';
+    const origin=part.origin||shipment.origin||'';
+    const destination=part.destination||shipment.destination||'';
+    const key=[part.flightNo,flightDate,origin,destination].join('|');
+
+    let live=cache.get(key);
+    if(live===undefined){
+      try{
+        live=await fetchFlightEta(part.flightNo,{date:flightDate,origin,destination});
+      }catch{live=null;}
+      cache.set(key,live);
+    }
+
+    if(!live){
+      parts.push(part);
+      continue;
+    }
+
+    const expectedDest=String(destination||'').toUpperCase();
+    const liveDest=String(live.destination||'').toUpperCase();
+    const routeMatches=!expectedDest||!liveDest||expectedDest===liveDest;
+    const liveStatus=String(live.status||'').toUpperCase();
+    const arrivedByFlight=Boolean(live.actualArrival)||/ARRIV|LANDED|COMPLETED/.test(liveStatus);
+
+    if(routeMatches&&arrivedByFlight){
+      const actual=live.actualArrival||live.eta||'';
+      const dt=localDateTimeParts(actual);
+      parts.push({...part,
+        arrivalDate:dt.date||part.arrivalDate||'',
+        arrivalTime:dt.time||part.arrivalTime||'',
+        arrivalIsActual:Boolean(dt.date),
+        actualArrival:actual||part.actualArrival||null,
+        eta:live.eta||part.eta||null,
+        status:'ARRIVED',
+        remarks:`Part shipment arrived at ${expectedDest||liveDest||'destination'} (flight actual arrival)`,
+        source:`${part.source||'IndiGo CarGo official status history'} + live flight arrival`
+      });
+      continue;
+    }
+
+    // The cargo event says the part really departed. Until the matching flight
+    // has an actual arrival, retain DEPARTED but publish its ETA.
+    const eta=localDateTimeParts(live.eta||'');
+    parts.push({...part,
+      arrivalDate:eta.date||part.arrivalDate||'',
+      arrivalTime:eta.time||part.arrivalTime||'',
+      eta:live.eta||part.eta||null,
+      remarks:part.remarks||'Part shipment departed (actual carrier event)',
+      source:live.eta?`${part.source||'IndiGo CarGo official status history'} + live flight ETA`:(part.source||'IndiGo CarGo official status history')
+    });
+  }
+
+  const current=[...parts].reverse().find(p=>String(p.status||'').toUpperCase()!=='OFFLOADED')||parts.at(-1)||null;
+  const allTerminal=parts.length>0&&parts.every(p=>/ARRIVED|OFFLOADED/.test(String(p.status||'').toUpperCase()));
+  return {...shipment,
+    parts,
+    arrivalDate:current?.arrivalDate||shipment.arrivalDate||'',
+    arrivalTime:current?.arrivalTime||shipment.arrivalTime||'',
+    arrivalIsActual:Boolean(current?.arrivalIsActual),
+    actualArrival:current?.actualArrival||shipment.actualArrival||null,
+    eta:current?.eta||shipment.eta||null,
+    status:allTerminal&&parts.some(p=>String(p.status||'').toUpperCase()==='ARRIVED')?'PART LOAD':shipment.status
+  };
+}
+
 async function handle(mawb){
   const airline=airlineForMawb(mawb);
   const prefix=mawb.replace(/\D/g,'').slice(0,3);
@@ -146,7 +232,10 @@ async function handle(mawb){
     // quantity becomes its own part row instead of being collapsed into one
     // master-level status.
     const x=await trackIndigoLive(mawb);
-    if(x.ok)return Response.json({ok:true,configured:true,provider:'IndiGo CarGo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+    if(x.ok){
+      const shipment=await indigoFlightArrivalOverlay(x.shipment);
+      return Response.json({ok:true,configured:true,provider:'IndiGo CarGo official website + live flight arrival',source:shipment.source||x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:x.debug});
+    }
 
     // Preserve the older generic official reader only as a field-level fallback
     // if IndiGo changes the ASP.NET result markup. It must never override a
