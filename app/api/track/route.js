@@ -10,6 +10,7 @@ import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
 import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackIndigoLive } from '../../../lib/adapters/indigo-live.js';
 import { trackMalaysia } from '../../../lib/adapters/malaysia-live.js';
+import { trackMalaysiaTrackingOne } from '../../../lib/adapters/malaysia-trackingone.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
 
@@ -272,12 +273,20 @@ async function handle(mawb){
   }
 
   if(prefix==='232'){
+    // MASkargo blocks Vercel/cloud IPs with Cloudflare. Use the structured
+    // Tracking One air-cargo feed first, then fall back to the official site.
+    let guest=null;
+    try{ guest=await trackMalaysiaTrackingOne(mawb); }catch{}
+    if(guest?.ok){
+      const shipment=await malaysiaFlightOverlay(guest.shipment);
+      return Response.json({ok:true,configured:true,provider:'Malaysia Airlines structured cargo feed',source:shipment.source||'Malaysia cargo structured fallback',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:{trackingOne:guest.debug}});
+    }
     const x=await trackMalaysia(mawb);
     if(x.ok){
       const shipment=await malaysiaFlightOverlay(x.shipment);
-      return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:shipment.source||'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:x.debug});
+      return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:shipment.source||'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:{trackingOneError:guest?.reason||'',maskargo:x.debug}});
     }
-    return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.officialTracker||airline?.url||'',shipment:waiting(mawb,airline,x.reason)});
+    return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason||guest?.reason,trackingDebug:{trackingOne:guest?.debug,trackingOneError:guest?.reason||'',maskargo:x.debug},officialTracker:x.officialTracker||airline?.url||'',shipment:waiting(mawb,airline,x.reason||guest?.reason)});
   }
 
   if(prefix==='235'){
