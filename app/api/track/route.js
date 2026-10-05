@@ -31,7 +31,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.38';
+const VERSION='3.9.39';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function plusIsoDays(date='',days=1){
@@ -721,12 +721,80 @@ async function handle(mawb,fallback={}){
     }
   }
 
+  // IndiGo part loads: keep carrier physical milestones separate. A DEPARTED
+  // part is matched to that exact flight/date/route; only an actual flight
+  // arrival can promote that part to ARRIVED. OFFLOADED is never promoted.
+  if(indigoFastPath&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length){
+    const refreshedParts=[];
+    for(const originalPart of shipment.partShipments){
+      let part={...originalPart};
+      const partStatus=String(part.status||'').toUpperCase();
+      const partFlight=String(part.flightNo||'').toUpperCase();
+      const partDate=String(part.flightDate||part.departureDate||'');
+      const partOrigin=String(part.origin||shipment.origin||'').toUpperCase();
+      const partDestination=String(part.destination||shipment.destination||'').toUpperCase();
+
+      if(partStatus==='DEPARTED'&&partFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(partDate)&&partDestination){
+        const live=await trackFlightScheduleFast({
+          flightNo:partFlight,
+          date:partDate,
+          origin:partOrigin,
+          destination:partDestination
+        }).catch(()=>null);
+        const liveDestination=String(live?.departureDestination||partDestination||'').toUpperCase();
+        const routeMatches=!partDestination||!liveDestination||liveDestination===partDestination;
+        const rawArrivalTime=live?.arrivalTime||live?.scheduledArrivalTime||'';
+        const rawArrivalDate=live?.arrivalDate||live?.scheduledArrivalDate||partDate;
+
+        if(live?.ok&&routeMatches&&live?.arrivalIsActual===true&&rawArrivalTime){
+          part=normalizeShipmentTimesToIst({...part,
+            arrivalDate:rawArrivalDate,
+            arrivalTime:rawArrivalTime,
+            arrivalTimeZone:live.arrivalTimeZone||live.scheduledArrivalTimeZone||'',
+            arrivalIsActual:true,
+            arrivalEstimate:false,
+            status:'ARRIVED',
+            remarks:\`Part shipment arrived at ${partDestination||'destination'} (matching flight actual arrival)\`,
+            arrivalTimeSource:live.arrivalTimeSource||live.source||'Matching flight actual arrival'
+          });
+        }else if(live?.ok&&routeMatches&&rawArrivalTime){
+          part=normalizeShipmentTimesToIst({...part,
+            arrivalDate:rawArrivalDate,
+            arrivalTime:rawArrivalTime,
+            arrivalTimeZone:live.arrivalTimeZone||live.scheduledArrivalTimeZone||'',
+            arrivalIsActual:false,
+            arrivalEstimate:true,
+            status:'DEPARTED',
+            remarks:part.remarks||'Part shipment departed (actual carrier event)',
+            arrivalTimeSource:live.arrivalTimeSource||live.source||'Matching flight ETA'
+          });
+        }
+      }
+      refreshedParts.push(part);
+    }
+
+    shipment.partShipments=refreshedParts;
+    shipment.partLoad=refreshedParts.length>1||shipment.partLoad===true;
+    const arrivedParts=refreshedParts.filter(p=>String(p.status||'').toUpperCase()==='ARRIVED'&&p.arrivalDate);
+    if(arrivedParts.length){
+      const latest=[...arrivedParts].sort((a,b)=>\`${a.arrivalDate||''} ${a.arrivalTime||''}\`.localeCompare(\`${b.arrivalDate||''} ${b.arrivalTime||''}\`)).at(-1);
+      shipment.arrivalDate=latest.arrivalDate||shipment.arrivalDate||'';
+      shipment.arrivalTime=latest.arrivalTime||shipment.arrivalTime||'';
+      shipment.arrivalIsActual=true;
+      shipment.arrivalEstimate=false;
+      shipment.arrivalVerifiedAbsent=false;
+      shipment.arrivalTimeZone='IST';
+      shipment.arrivalTimeSource=latest.arrivalTimeSource||'IndiGo part-flight actual arrival';
+    }
+    shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);
+  }
+
   // IndiGo publishes the booked operating flight and flight date before an
   // ARRIVED cargo milestone. Use that verified flight/date to show a scheduled
   // destination arrival. If that scheduled arrival has already passed but
   // SmartKargo still has no actual departure, treat the shipment as DELAYED
   // and look for the next verified occurrence of the same operating flight.
-  if(indigoFastPath&&shipment.arrivalIsActual!==true){
+  if(indigoFastPath&&(!Array.isArray(shipment.partShipments)||!shipment.partShipments.length)&&shipment.arrivalIsActual!==true){
     const indigoFlight=String(shipment.flightNo||'').toUpperCase();
     const indigoDate=String(shipment.flightDate||'');
     const indigoOrigin=String(shipment.origin||'').toUpperCase();
