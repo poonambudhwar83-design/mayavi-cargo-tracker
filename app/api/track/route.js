@@ -755,6 +755,7 @@ async function handle(mawb,fallback={}){
             live=historical;
           }
         }
+        console.log('indigo_part_flight_debug',mawb,partFlight,partDate,partOrigin,partDestination,JSON.stringify({ok:live?.ok||false,status:live?.status||'',arrivalDate:live?.arrivalDate||live?.scheduledArrivalDate||'',arrivalTime:live?.arrivalTime||live?.scheduledArrivalTime||'',arrivalIsActual:live?.arrivalIsActual===true,source:live?.source||'',pattern:live?.debugPattern||'',url:live?.url||''}));
         const liveDestination=String(live?.departureDestination||partDestination||'').toUpperCase();
         const routeMatches=!partDestination||!liveDestination||liveDestination===partDestination;
         const rawArrivalTime=live?.arrivalTime||live?.scheduledArrivalTime||'';
