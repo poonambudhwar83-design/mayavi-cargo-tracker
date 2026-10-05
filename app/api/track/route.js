@@ -31,7 +31,7 @@ import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.38';
+const VERSION='3.9.39';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 function plusIsoDays(date='',days=1){
@@ -664,6 +664,14 @@ async function handle(mawb,fallback={}){
       if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
     }
   }
+  // Preserve IndiGo SmartKargo split-load movements. Each quantity/weight
+  // movement remains independent so an OFFLOADED part cannot overwrite a
+  // different part that already departed.
+  if(indigoFastPath&&direct){
+    for(const k of ['bags','pieces','weight','totalPieces','totalWeight','isPartLoad','partShipments']){
+      if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
+    }
+  }
   if(!shipment.bookingDate){
     const officialText=[debugText(directResult),debugText(browserResult),debugText(apiResult)].filter(Boolean).join(' ');
     const derivedBookingDate=bookingDateFromOfficialText(officialText,shipment.arrivalDate);
@@ -672,7 +680,7 @@ async function handle(mawb,fallback={}){
   const freshStatus=chooseStatus({api,direct,browser,ocr,cathay});
   const freshArrival=preferredArrival(direct,browser,api,ocr);
   const officialSourceSucceeded=Boolean(direct||browser||api||ocr);
-  shipment.status=freshStatus;
+  shipment.status=indigoFastPath&&direct?.isPartLoad===true?(direct.status||'PART LOAD'):freshStatus;
   if((vietnamFastPath||turkishFastPath||qatarFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
   // If a successful current official response gives a definite pre-arrival status
   // but no current arrival at all, old database arrival values are stale and must
@@ -718,6 +726,42 @@ async function handle(mawb,fallback={}){
         shipment.arrivalTimeZone=mhSchedule.arrivalTimeZone||mhSchedule.scheduledArrivalTimeZone||'';
         shipment.arrivalTimeSource=mhSchedule.arrivalTimeSource||mhSchedule.source||'Malaysia final-flight schedule';
       }
+    }
+  }
+
+  // IndiGo part-load: obtain arrival timing per physical part using that
+  // part's own flight number and flight date. OFFLOADED parts deliberately keep
+  // Arrival blank until SmartKargo shows a new departure for that same part.
+  if(indigoFastPath&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length){
+    const enriched=[];
+    for(const originalPart of shipment.partShipments){
+      let part={...originalPart};
+      const partStatus=String(part.status||'').toUpperCase();
+      if(partStatus==='OFFLOADED'||part.arrivalIsActual===true){
+        enriched.push(part);continue;
+      }
+      const partFlight=String(part.flightNo||'').toUpperCase();
+      const partDate=String(part.flightDate||part.departureDate||'');
+      const partOrigin=String(part.origin||shipment.origin||'').toUpperCase();
+      const partDestination=String(part.destination||shipment.destination||'').toUpperCase();
+      if(partFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(partDate)&&partDestination){
+        const fast=await trackFlightScheduleFast({flightNo:partFlight,date:partDate,origin:partOrigin,destination:partDestination}).catch(()=>null);
+        const eta=(fast?.scheduledArrivalTime||fast?.arrivalTime)
+          ? {ok:true,arrivalDate:fast.arrivalDate||fast.scheduledArrivalDate||partDate,arrivalTime:fast.arrivalTime||fast.scheduledArrivalTime,arrivalIsActual:fast.arrivalIsActual===true,arrivalTimeZone:fast.arrivalTimeZone||fast.scheduledArrivalTimeZone||'',arrivalTimeSource:fast.arrivalTimeSource||fast.source||'IndiGo part-flight schedule'}
+          : await trackFlightArrivalEstimate({flightNo:partFlight,date:partDate,destination:partDestination}).catch(()=>null);
+        if(eta?.arrivalTime){
+          const normalized=normalizeShipmentTimesToIst({origin:partOrigin,destination:partDestination,arrivalDate:eta.arrivalDate||partDate,arrivalTime:eta.arrivalTime,arrivalIsActual:eta.arrivalIsActual===true,arrivalTimeZone:eta.arrivalTimeZone||'',arrivalTimeSource:eta.arrivalTimeSource||eta.source||'IndiGo part-flight schedule'});
+          part={...part,scheduledArrivalDate:normalized.arrivalDate||eta.arrivalDate||partDate,scheduledArrivalTime:normalized.arrivalTime||eta.arrivalTime,arrivalDate:normalized.arrivalDate||eta.arrivalDate||partDate,arrivalTime:normalized.arrivalTime||eta.arrivalTime,arrivalIsActual:eta.arrivalIsActual===true,arrivalTimeZone:'IST',arrivalTimeSource:(eta.arrivalTimeSource||eta.source||'IndiGo part-flight schedule')+'; normalized to IST'};
+          if(part.arrivalIsActual===true)part.status='ARRIVED';
+        }
+      }
+      enriched.push(part);
+    }
+    shipment.partShipments=enriched;
+    if(shipment.isPartLoad===true){
+      const allArrived=enriched.length>0&&enriched.every(p=>['ARRIVED','DELIVERED'].includes(String(p.status||'').toUpperCase()));
+      const anyArrived=enriched.some(p=>['ARRIVED','DELIVERED'].includes(String(p.status||'').toUpperCase()));
+      shipment.status=allArrived?'ARRIVED':anyArrived?'PART ARRIVED':'PART LOAD';
     }
   }
 
