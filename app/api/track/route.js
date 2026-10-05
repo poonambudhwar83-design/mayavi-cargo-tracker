@@ -8,6 +8,7 @@ import { trackSaudiaSal } from '../../../lib/adapters/saudia-sal.js';
 import { trackCathayLive } from '../../../lib/adapters/cathay-live.js';
 import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
 import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
+import { trackIndigoLive } from '../../../lib/adapters/indigo-live.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
 
@@ -139,6 +140,23 @@ async function handle(mawb){
     return liveJson({ok:true,configured:true,provider:'Vietnam Airlines official tracking',source:'Vietnam Airlines official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:freight.reason||x.reason,trackingDebug:{freight:freight.debug,champ:x.debug},officialTracker:'https://track.champ.aero/vn',shipment:waiting(mawb,x.airline||airline,freight.reason||x.reason)});
   }
 
+  if(prefix==='312'){
+    // IndiGo can move one MAWB in multiple physical parts. The carrier's
+    // Status History table is authoritative: each DEPARTED/OFFLOADED/ARRIVED
+    // quantity becomes its own part row instead of being collapsed into one
+    // master-level status.
+    const x=await trackIndigoLive(mawb);
+    if(x.ok)return Response.json({ok:true,configured:true,provider:'IndiGo CarGo official website',source:x.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment:x.shipment,trackingDebug:x.debug});
+
+    // Preserve the older generic official reader only as a field-level fallback
+    // if IndiGo changes the ASP.NET result markup. It must never override a
+    // successful part-load timeline.
+    let fallback=null;
+    try{const r=await trackOfficial(mawb);if(r?.ok)fallback=r;}catch{}
+    if(fallback?.ok)return liveJson({ok:true,configured:true,provider:'IndiGo CarGo official website',source:fallback.shipment.source||'IndiGo CarGo official website',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{indigoPartReader:x.debug,fallback:fallback.debug}});
+    return Response.json({ok:true,configured:true,provider:'IndiGo CarGo official website',source:'IndiGo CarGo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
+  }
+
   if(prefix==='235'){
     // Keep Turkish on its proven carrier-specific path. Do not pass TK data through
     // the generic live-flight overlay; the Turkish adapter already reads the official
@@ -156,7 +174,7 @@ async function handle(mawb){
 
 export async function GET(request){
   const url=new URL(request.url);const query=url.searchParams.get('mawb');
-  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
+  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)','312 IndiGo CarGo (part-load timeline)'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
   const mawb=normalizeMawb(query);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});return handle(mawb);
 }
 export async function POST(request){
