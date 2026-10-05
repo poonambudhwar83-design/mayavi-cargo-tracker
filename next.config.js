@@ -1,6 +1,9 @@
 module.exports = {
   serverExternalPackages: ['@sparticuz/chromium','puppeteer-core','tesseract.js','tesseract.js-core','wasm-feature-detect','bmp-js'],
   outputFileTracingIncludes: {
+    '/api/mh-gocomet-test': [
+      './node_modules/@sparticuz/chromium/bin/**/*'
+    ],
     '/api/mh-trackcargo-test': [
       './node_modules/@sparticuz/chromium/bin/**/*'
     ],
