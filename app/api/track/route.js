@@ -9,6 +9,7 @@ import { trackCathayLive } from '../../../lib/adapters/cathay-live.js';
 import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
 import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackIndigoLive } from '../../../lib/adapters/indigo-live.js';
+import { trackMalaysia } from '../../../lib/adapters/malaysia-live.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
 
@@ -41,6 +42,30 @@ async function liveEtaOverlay(shipment={}){
     source:`${shipment.source||'Official airline tracker'} + live flight ETA`
   };
 }
+async function malaysiaFlightOverlay(shipment={}){
+  if(!shipment?.flightNo || shipment?.arrivalIsActual || shipment?.actualArrival) return shipment;
+  const date=shipment.flightDate||shipment.arrivalDate||'';
+  const origin=shipment.finalFlightOrigin||shipment.origin||'';
+  const destination=shipment.finalFlightDestination||shipment.destination||'';
+  let live=null;
+  try{ live=await fetchFlightEta(shipment.flightNo,{date,origin,destination}); }catch{}
+  const stamp=live?.actualArrival||live?.eta||'';
+  const m=String(stamp).match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if(!m) return shipment;
+  const actual=Boolean(live?.actualArrival);
+  return {...shipment,
+    arrivalDate:`${m[1]}-${m[2]}-${m[3]}`,
+    arrivalTime:`${m[4]}:${m[5]}`,
+    arrivalIsActual:actual,
+    arrivalEstimate:!actual,
+    eta:live?.eta||shipment.eta||null,
+    actualArrival:live?.actualArrival||shipment.actualArrival||null,
+    status:actual?'ARRIVED':(shipment.status==='TRACKING'?'IN TRANSIT':shipment.status),
+    arrivalTimeSource:actual?'Matching MH flight actual arrival':'Matching MH flight ETA',
+    source:`${shipment.source||'MASkargo official tracking'} + matching MH flight status`
+  };
+}
+
 function liveJson(payload){
   if(!payload?.shipment) return Response.json(payload);
   return liveEtaOverlay(payload.shipment).then(shipment=>Response.json({...payload,shipment}));
@@ -246,6 +271,15 @@ async function handle(mawb){
     return Response.json({ok:true,configured:true,provider:'IndiGo CarGo official website',source:'IndiGo CarGo official tracker',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:airline?.url||'',shipment:waiting(mawb,x.airline||airline,x.reason)});
   }
 
+  if(prefix==='232'){
+    const x=await trackMalaysia(mawb);
+    if(x.ok){
+      const shipment=await malaysiaFlightOverlay(x.shipment);
+      return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:shipment.source||'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment,trackingDebug:x.debug});
+    }
+    return Response.json({ok:true,configured:true,provider:'Malaysia Airlines MASkargo official website',source:'MASkargo official tracking',airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,trackingError:x.reason,trackingDebug:x.debug,officialTracker:x.officialTracker||airline?.url||'',shipment:waiting(mawb,airline,x.reason)});
+  }
+
   if(prefix==='235'){
     // Keep Turkish on its proven carrier-specific path. Do not pass TK data through
     // the generic live-flight overlay; the Turkish adapter already reads the official
@@ -263,7 +297,7 @@ async function handle(mawb){
 
 export async function GET(request){
   const url=new URL(request.url);const query=url.searchParams.get('mawb');
-  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)','312 IndiGo CarGo (part-load timeline)'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
+  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)','312 IndiGo CarGo (part-load timeline)','232 Malaysia Airlines MASkargo'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
   const mawb=normalizeMawb(query);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});return handle(mawb);
 }
 export async function POST(request){
