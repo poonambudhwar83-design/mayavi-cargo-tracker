@@ -754,7 +754,7 @@ async function handle(mawb,fallback={}){
             arrivalIsActual:true,
             arrivalEstimate:false,
             status:'ARRIVED',
-            remarks:\`Part shipment arrived at ${partDestination||'destination'} (matching flight actual arrival)\`,
+            remarks:`Part shipment arrived at ${partDestination||'destination'} (matching flight actual arrival)`,
             arrivalTimeSource:live.arrivalTimeSource||live.source||'Matching flight actual arrival'
           });
         }else if(live?.ok&&routeMatches&&rawArrivalTime){
@@ -777,7 +777,7 @@ async function handle(mawb,fallback={}){
     shipment.partLoad=refreshedParts.length>1||shipment.partLoad===true;
     const arrivedParts=refreshedParts.filter(p=>String(p.status||'').toUpperCase()==='ARRIVED'&&p.arrivalDate);
     if(arrivedParts.length){
-      const latest=[...arrivedParts].sort((a,b)=>\`${a.arrivalDate||''} ${a.arrivalTime||''}\`.localeCompare(\`${b.arrivalDate||''} ${b.arrivalTime||''}\`)).at(-1);
+      const latest=[...arrivedParts].sort((a,b)=>`${a.arrivalDate||''} ${a.arrivalTime||''}`.localeCompare(`${b.arrivalDate||''} ${b.arrivalTime||''}`)).at(-1);
       shipment.arrivalDate=latest.arrivalDate||shipment.arrivalDate||'';
       shipment.arrivalTime=latest.arrivalTime||shipment.arrivalTime||'';
       shipment.arrivalIsActual=true;
