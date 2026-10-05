@@ -384,8 +384,8 @@ async function handle(mawb,fallback={}){
   const omanFastPath=mawb.startsWith('910-');
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
-  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
-  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath;
+  const skipGenericApi=airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
+  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
@@ -410,7 +410,7 @@ async function handle(mawb,fallback={}){
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
 
-  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath)?{
+  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath||malaysiaFastPath)?{
     flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',bookingTime:effectiveFallback.bookingTime||'',bags:effectiveFallback.bags||'',pieces:effectiveFallback.pieces||effectiveFallback.bags||'',weight:effectiveFallback.weight||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',via:effectiveFallback.via||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',finalFlightNo:effectiveFallback.finalFlightNo||'',finalFlightDate:effectiveFallback.finalFlightDate||'',finalFlightOrigin:effectiveFallback.finalFlightOrigin||'',finalFlightDestination:effectiveFallback.finalFlightDestination||'',finalFlightDeparted:effectiveFallback.finalFlightDeparted===true,scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
@@ -681,7 +681,7 @@ async function handle(mawb,fallback={}){
   const freshArrival=preferredArrival(direct,browser,api,ocr);
   const officialSourceSucceeded=Boolean(direct||browser||api||ocr);
   shipment.status=freshStatus;
-  if((vietnamFastPath||turkishFastPath||qatarFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
+  if((vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
   // If a successful current official response gives a definite pre-arrival status
   // but no current arrival at all, old database arrival values are stale and must
   // not survive another refresh. Blank is safer than a false old ETA/ATA.
@@ -694,6 +694,50 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
   }else{
     shipment.arrivalVerifiedAbsent=false;
+  }
+
+  // Malaysia resilience: MASkargo currently blocks some cloud/Vercel IP requests
+  // with Cloudflare, and the public guest fallback can also temporarily return
+  // CARRIER_NO_RESPONSE. When that happens, keep the last verified shared
+  // Malaysia row instead of turning the dashboard blank / 503. If the stored
+  // row contains a final MH flight and date, refresh that flight's arrival
+  // independently so ETA/ATA can still advance while MASkargo is unavailable.
+  if(malaysiaFastPath&&!direct&&!browser&&!api&&concrete(savedFallback)){
+    shipment={...savedFallback,...shipment};
+    shipment.mawb=mawb;
+    shipment.carrierCode=shipment.carrierCode||'MH';
+    shipment.airlineName=shipment.airlineName||'Malaysia Airlines Cargo / MASkargo';
+    shipment.officialTracker=shipment.officialTracker||airline.url||'';
+    shipment.status=(shipment.status&&shipment.status!=='TRACKING')?shipment.status:(savedFallback.status||'BOOKED');
+    shipment.trackingError='';
+    shipment.manualHint='';
+    shipment.source=`${savedFallback.source||'Saved verified Malaysia shipment'} + resilient shared fallback`;
+
+    const mhFlight=shipment.finalFlightNo||shipment.flightNo||'';
+    const mhDate=shipment.finalFlightDate||shipment.flightDate||shipment.arrivalDate||'';
+    const mhDestination=shipment.finalFlightDestination||shipment.destination||'';
+    if(mhFlight&&mhDate&&mhDestination){
+      const mhLive=await trackFlightStatusSnapshot({
+        flightNo:mhFlight,
+        date:mhDate,
+        destination:mhDestination
+      }).catch(()=>null);
+      if(mhLive?.ok){
+        const liveArrivalDate=mhLive.arrivalDate||mhLive.scheduledArrivalDate||'';
+        const liveArrivalTime=mhLive.arrivalTime||mhLive.scheduledArrivalTime||'';
+        if(liveArrivalDate)shipment.arrivalDate=liveArrivalDate;
+        if(liveArrivalTime)shipment.arrivalTime=liveArrivalTime;
+        if(liveArrivalDate||liveArrivalTime){
+          shipment.arrivalVerifiedAbsent=false;
+          shipment.arrivalIsActual=mhLive.arrivalIsActual===true;
+          shipment.arrivalEstimate=mhLive.arrivalIsActual!==true;
+          shipment.arrivalTimeZone=mhLive.arrivalTimeZone||mhLive.scheduledArrivalTimeZone||shipment.arrivalTimeZone||'';
+          shipment.arrivalTimeSource=mhLive.arrivalTimeSource||mhLive.source||'Malaysia final-flight status fallback';
+        }
+        if(mhLive.status==='ARRIVED'&&mhLive.arrivalIsActual===true)shipment.status='ARRIVED';
+        else if(/DEPART|IN TRANSIT|AIRBORNE/i.test(String(mhLive.status||'')))shipment.status='IN TRANSIT';
+      }
+    }
   }
 
   // Malaysia: the dedicated adapter may supply the scheduled final DEL connection
