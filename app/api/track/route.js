@@ -29,6 +29,7 @@ import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightSched
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 
 export const runtime='nodejs';
+export const preferredRegion='sin1';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
 const VERSION='3.9.39';
