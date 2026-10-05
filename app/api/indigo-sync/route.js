@@ -16,7 +16,10 @@ function db(){
 }
 function needsRefresh(data={}){
   const s=String(data.status||'').toUpperCase();
-  return !data.bookingDate||!data.origin||!data.destination||!data.flightNo||!data.weight||!data.arrivalDate||!data.arrivalTime||s==='BOOKED'||s==='IN TRANSIT';
+  // A split IndiGo MAWB must keep polling until every physical part completes.
+  // A master may already have an ETA while one part is OFFLOADED, so status
+  // and isPartLoad are explicit refresh signals in addition to missing fields.
+  return data.isPartLoad===true||!data.bookingDate||!data.origin||!data.destination||!data.flightNo||!data.weight||!data.arrivalDate||!data.arrivalTime||s==='BOOKED'||s==='IN TRANSIT'||s==='PART LOAD'||s==='PART ARRIVED'||s==='OFFLOADED';
 }
 
 export async function POST(request){
@@ -34,8 +37,20 @@ export async function POST(request){
       try{
         const result=await trackIndigo(row.awb);
         if(!result?.ok||!result.shipment){errors.push({awb:row.awb,error:result?.reason||'No verified IndiGo result'});continue;}
-        const live=result.shipment;
-        const merged={...current,...live,mawb:live.mawb||current.mawb||`${row.awb.slice(0,3)}-${row.awb.slice(3)}`,clientName:current.clientName||current.client||'',companyType:current.companyType||'',companyName:current.companyName||'',goodsDescription:current.goodsDescription||'',shipmentType:current.shipmentType==='EXPORT'?'EXPORT':'IMPORT',enteredBy:current.enteredBy||'',enteredByUsername:current.enteredByUsername||'',enteredAt:current.enteredAt||'',mailSent:current.mailSent===true,customsCleared:current.customsCleared===true,masterCopyReceived:current.masterCopyReceived===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
+        const live={...result.shipment};
+        // Tracking owns part movement; the operator owns each part's Mail YES/NO.
+        // Reattach saved choices when SmartKargo rebuilds the part list.
+        if(Array.isArray(live.partShipments)&&Array.isArray(current.partShipments)){
+          live.partShipments=live.partShipments.map((p,i)=>{
+            const id=String(p?.partId||`P${i+1}`);
+            const saved=current.partShipments.find((x,j)=>String(x?.partId||`P${j+1}`)===id)
+              ||current.partShipments.find(x=>String(x?.pieces||'')===String(p?.pieces||'')&&String(x?.weight||'').replace(/,/g,'')===String(p?.weight||'').replace(/,/g,''));
+            return saved&&Object.prototype.hasOwnProperty.call(saved,'mailSent')
+              ? {...p,mailSent:saved.mailSent===true,mailUpdatedAt:saved.mailUpdatedAt||''}
+              : p;
+          });
+        }
+        const merged={...current,...live,mawb:live.mawb||current.mawb||`${row.awb.slice(0,3)}-${row.awb.slice(3)}`,clientName:current.clientName||current.client||'',companyType:current.companyType||'',companyName:current.companyName||'',goodsDescription:current.goodsDescription||'',shipmentType:current.shipmentType==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':current.shipmentType==='EXPORT'?'EXPORT':'IMPORT',enteredBy:current.enteredBy||'',enteredByUsername:current.enteredByUsername||'',enteredAt:current.enteredAt||'',mailSent:current.mailSent===true,customsCleared:current.customsCleared===true,masterCopyReceived:current.masterCopyReceived===true,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
         await sql`UPDATE mayavi_shipments SET data=${JSON.stringify(merged)}::jsonb, version=version+1, updated_at=now(), tracking_checked_at=now() WHERE awb=${row.awb}`;
         updated++;
       }catch(e){errors.push({awb:row.awb,error:e?.message||String(e)});}
