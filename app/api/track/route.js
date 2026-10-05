@@ -735,12 +735,26 @@ async function handle(mawb,fallback={}){
       const partDestination=String(part.destination||shipment.destination||'').toUpperCase();
 
       if(partStatus==='DEPARTED'&&partFlight&&/^20\d{2}-\d{2}-\d{2}$/.test(partDate)&&partDestination){
-        const live=await trackFlightScheduleFast({
+        let live=await trackFlightScheduleFast({
           flightNo:partFlight,
           date:partDate,
           origin:partOrigin,
           destination:partDestination
         }).catch(()=>null);
+        // Fast schedule sources do not always expose historical ATA. For a
+        // physically DEPARTED part, fall back to the dated flight-status reader
+        // before deciding that it has not arrived.
+        if(!(live?.ok&&live?.arrivalIsActual===true&&live?.arrivalTime)){
+          const historical=await trackFlightStatusSnapshot({
+            flightNo:partFlight,
+            date:partDate,
+            origin:partOrigin,
+            destination:partDestination
+          }).catch(()=>null);
+          if(historical?.ok&&historical?.arrivalIsActual===true&&historical?.arrivalTime){
+            live=historical;
+          }
+        }
         const liveDestination=String(live?.departureDestination||partDestination||'').toUpperCase();
         const routeMatches=!partDestination||!liveDestination||liveDestination===partDestination;
         const rawArrivalTime=live?.arrivalTime||live?.scheduledArrivalTime||'';
