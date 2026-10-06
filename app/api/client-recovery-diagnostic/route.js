@@ -26,13 +26,27 @@ export async function GET(request){
     `;
   }catch{}
   const latestArchive=new Map(archived.map(r=>[String(r.awb||''),r]));
-  const counts={};
-  let tpl=0,recoverable=0,blank=0;
+  const counts={},activeImportCounts={},clearedImportCounts={},activeExportCounts={};
+  let tpl=0,recoverable=0,blank=0,activeImport=0,clearedImport=0,activeExport=0;
   const recoverableRows=[];
   for(const row of current){
-    const cur=clientOf(row.data||{});
+    const d=row.data||{};
+    const cur=clientOf(d);
     counts[cur||'(blank)']=(counts[cur||'(blank)']||0)+1;
     if(!cur)blank++;
+    const type=String(d.shipmentType||'IMPORT').trim().toUpperCase();
+    if(type==='IMPORT'){
+      if(d.customsCleared===true){
+        clearedImport++;
+        clearedImportCounts[cur||'(blank)']=(clearedImportCounts[cur||'(blank)']||0)+1;
+      }else{
+        activeImport++;
+        activeImportCounts[cur||'(blank)']=(activeImportCounts[cur||'(blank)']||0)+1;
+      }
+    }else if((type==='EXPORT'||type==='OTHER_COUNTRIES')&&!(d.handoverDone===true&&d.masterCopyReceived===true)){
+      activeExport++;
+      activeExportCounts[cur||'(blank)']=(activeExportCounts[cur||'(blank)']||0)+1;
+    }
     if(cur.toUpperCase()==='TPL'){
       tpl++;
       const old=latestArchive.get(String(row.awb||''));
@@ -43,5 +57,5 @@ export async function GET(request){
       }
     }
   }
-  return Response.json({ok:true,currentCount:current.length,counts,tpl,blank,archiveCount:archived.length,recoverable,recoverableRows});
+  return Response.json({ok:true,currentCount:current.length,counts,tpl,blank,activeImport,activeImportCounts,clearedImport,clearedImportCounts,activeExport,activeExportCounts,archiveCount:archived.length,recoverable,recoverableRows});
 }
