@@ -151,6 +151,10 @@ export async function POST(request){
     const incoming=Array.isArray(body?.rows)?body.rows:(body?.row?[body.row]:[]);
     if(!incoming.length)return Response.json({ok:false,error:'No shipment rows supplied.'},{status:400});
     const markEntry=body?.markEntry===true&&!auth.internal;
+    // Client ownership is operator-entered master data. Normal tracking refreshes,
+    // company/goods edits and stale browser saves must never overwrite it.
+    // Only an explicit Admin client-edit request may change clientName/client.
+    const allowClientUpdate=body?.allowClientUpdate===true&&Boolean(auth.internal||auth.session?.role==='admin');
     const sql=db();
     const saved=[];
     const weightMinusAllowed=canManageWeightMinus(auth.session,auth.internal);
@@ -185,6 +189,14 @@ export async function POST(request){
             'enteredBy',COALESCE(mayavi_shipments.data->>'enteredBy',EXCLUDED.data->>'enteredBy'),
             'enteredByUsername',COALESCE(mayavi_shipments.data->>'enteredByUsername',EXCLUDED.data->>'enteredByUsername'),
             'enteredAt',COALESCE(mayavi_shipments.data->>'enteredAt',EXCLUDED.data->>'enteredAt'),
+            'clientName',CASE
+              WHEN ${allowClientUpdate} THEN COALESCE(NULLIF(EXCLUDED.data->>'clientName',''),NULLIF(EXCLUDED.data->>'client',''),mayavi_shipments.data->>'clientName',mayavi_shipments.data->>'client','')
+              ELSE COALESCE(NULLIF(mayavi_shipments.data->>'clientName',''),NULLIF(mayavi_shipments.data->>'client',''),EXCLUDED.data->>'clientName',EXCLUDED.data->>'client','')
+            END,
+            'client',CASE
+              WHEN ${allowClientUpdate} THEN COALESCE(NULLIF(EXCLUDED.data->>'client',''),NULLIF(EXCLUDED.data->>'clientName',''),mayavi_shipments.data->>'client',mayavi_shipments.data->>'clientName','')
+              ELSE COALESCE(NULLIF(mayavi_shipments.data->>'client',''),NULLIF(mayavi_shipments.data->>'clientName',''),EXCLUDED.data->>'client',EXCLUDED.data->>'clientName','')
+            END,
             'bookingDate',COALESCE(NULLIF(EXCLUDED.data->>'bookingDate',''),mayavi_shipments.data->>'bookingDate',''),
             'bookingTime',COALESCE(NULLIF(EXCLUDED.data->>'bookingTime',''),mayavi_shipments.data->>'bookingTime',''),
             'bookingDateSource',COALESCE(NULLIF(EXCLUDED.data->>'bookingDateSource',''),mayavi_shipments.data->>'bookingDateSource',''),
