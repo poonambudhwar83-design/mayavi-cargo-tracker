@@ -121,6 +121,12 @@ function statusFromLive(previous,live,etaIso){
   }
   if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/MANIFESTED/.test(raw))return'MANIFESTED';
   if((String(live?.carrierCode||'').toUpperCase()==='AI'||/AIR INDIA/i.test(String(live?.airlineName||'')))&&/ACCEPTED|EXECUTED|FREIGHT ON HAND/.test(raw))return raw;
+  // Saudia part-load rows must preserve the physical SAL milestone even when a
+  // scheduled arrival clock is available. FOW is expected/on-hand, not departed.
+  if((String(live?.carrierCode||'').toUpperCase()==='SV'||/SAUDIA/i.test(String(live?.airlineName||'')))){
+    if(/FREIGHT ON HAND|PART LOAD EXPECTED|\bFOW\b|EXPECTED/.test(raw))return'PART LOAD EXPECTED';
+    if(/DEPARTED/.test(raw))return'DEPARTED';
+  }
   // Kuwait flight cards may publish ETA before the aircraft has actually departed.
   // Preserve the carrier's scheduled state instead of inferring IN TRANSIT from ETA alone.
   if((String(live?.carrierCode||'').toUpperCase()==='KU'||/KUWAIT/i.test(String(live?.airlineName||'')))&&/SCHEDULED|PLANNED|EXPECTED/.test(raw))return'SCHEDULED';
@@ -265,10 +271,10 @@ export default function Home(){
           return[...before,...partRows,...after];
         }
 
-        // IndiGo normal/full shipment: keep exactly ONE dashboard row.
-        // This also cleans up any old duplicate rows left from a previous
-        // part-load state once the carrier no longer reports a part load.
-        if(airline.iata==='6E'&&matches.length){
+        // IndiGo/Saudia normal or full shipment: keep exactly ONE dashboard row.
+        // This also cleans up old duplicate rows left from a previous part-load
+        // state once the carrier no longer reports separate physical parts.
+        if(['6E','SV'].includes(airline.iata)&&matches.length){
           const prev=matches[0];
           const status=statusFromLive(prev,live,etaIso);
           const updated={
