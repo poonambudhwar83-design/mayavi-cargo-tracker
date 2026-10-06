@@ -225,6 +225,18 @@ function expandPartRows(list=[]){
     // least two distinct physical parts. Otherwise always show one master row.
     if(parts.length<2)return[{...row,partLoad:false,isPartLoad:false}];
 
+    // IndiGo safeguard: if the master total is known and every movement carries
+    // the full master quantity, this is offload/rebooking history, not part load.
+    // A repeated MAWB row is allowed only when at least one physical movement is
+    // smaller than the master total (for example 17/32 and 15/32).
+    if(prefix==='312'){
+      const total=Number(row.masterPieces||parts.find(p=>Number(p.totalPieces)>0)?.totalPieces||row.pieces||row.bags||0);
+      if(total>0){
+        const hasPartial=parts.some(p=>{const n=Number(p.pieces||0);return n>0&&n<total});
+        if(!hasPartial)return[{...row,partLoad:false,isPartLoad:false}];
+      }
+    }
+
     return parts.map((p,idx)=>({...row,
       _partKey:`${digits(row.mawb)}::${String(p.partKey||p.partId||idx)}`,
       _partIndex:idx,
