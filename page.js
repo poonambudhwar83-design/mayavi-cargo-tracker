@@ -265,6 +265,39 @@ export default function Home(){
           return[...before,...partRows,...after];
         }
 
+        // IndiGo normal/full shipment: keep exactly ONE dashboard row.
+        // This also cleans up any old duplicate rows left from a previous
+        // part-load state once the carrier no longer reports a part load.
+        if(airline.iata==='6E'&&matches.length){
+          const prev=matches[0];
+          const status=statusFromLive(prev,live,etaIso);
+          const updated={
+            ...prev,
+            partLoad:false,
+            partKey:'',
+            partIndex:undefined,
+            partCount:undefined,
+            airlineName:airline.name,airlineIata:airline.iata,officialTracker:airline.official,
+            flightNo:live.flightNo||prev.flightNo||'',
+            bags:live.bags||live.pieces||prev.bags||'',
+            weight:live.weight||prev.weight||'',
+            origin:live.origin||prev.origin||'',
+            destination:live.destination||prev.destination||'',
+            bookingDate:live.bookingDate||prev.bookingDate||'',
+            arrivalDate:arrivalParts.date||prev.arrivalDate||'',
+            arrivalTime:arrivalParts.time||prev.arrivalTime||'',
+            baselineArrival:prev.baselineArrival||etaIso||'',
+            status,
+            dataSource:d.source||live.source||'Official airline website',
+            remarks:d.trackingError?`${routeNote} · ${debug.stage||'Carrier check'} · ${d.trackingError}`:(arrivalParts.date&&arrivalParts.time?`${routeNote} · live arrival ${arrivalParts.date} ${arrivalParts.time}`:`${routeNote} · ${debug.stage||'waiting for ETA'}`),
+            updatedAt:new Date().toISOString()
+          };
+          const firstIndex=list.findIndex(row=>normalizeMawb(row.mawb)===key);
+          const before=list.slice(0,firstIndex).filter(row=>normalizeMawb(row.mawb)!==key);
+          const after=list.slice(firstIndex+1).filter(row=>normalizeMawb(row.mawb)!==key);
+          return[...before,updated,...after];
+        }
+
         return list.map(prev=>{
           if(normalizeMawb(prev.mawb)!==key)return prev;
           const status=statusFromLive(prev,live,etaIso);
