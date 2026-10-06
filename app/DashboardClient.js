@@ -193,7 +193,57 @@ function handoverSortTime(row={}){const d=dateTimeValue(row.departureDate||row.f
 function priorityValue(row={}){const s=String(row.status||'').toUpperCase();if(s.includes('ARRIVED')&&!s.includes('PART ARRIVED'))return 0;if(s.includes('PART ARRIVED'))return 1;if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 2;if(s.includes('DELAY'))return 3;return 4}
 function sortPriority(list=[]){return [...list].sort((a,b)=>{const p=priorityValue(a)-priorityValue(b);if(p)return p;const at=arrivalSortTime(a),bt=arrivalSortTime(b);if(at!==bt)return at-bt;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)})}
 function sortForDashboard(list=[],activeTab='IMPORT'){if(isExportLikeType(activeTab))return [...list].sort((a,b)=>{const ah=handoverSortTime(a),bh=handoverSortTime(b);if(ah!==bh)return ah-bh;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)});return [...list].sort((a,b)=>{const am=mailSortTime(a),bm=mailSortTime(b);if(am!==bm)return am-bm;const p=priorityValue(a)-priorityValue(b);if(p)return p;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)})}
-function expandPartRows(list=[]){return list.flatMap(row=>{const prefix=digits(row.mawb).slice(0,3);if(prefix!=='065'&&prefix!=='098'&&prefix!=='312')return[row];const raw=Array.isArray(row.partShipments)?row.partShipments.filter(Boolean):[];const status=String(row.status||'').toUpperCase();const fractional=[row.bags,row.pieces,row.weight].some(v=>/^\s*[^/]+\/[^/]+\s*$/.test(String(v||'')));const genuinePartLoad=row.isPartLoad===true||row.partLoad===true||status.includes('PART ARRIVED')||status.includes('PART LOAD')||status.includes('PART SHIPMENT')||fractional;if(!genuinePartLoad)return[row];const seen=new Set(),parts=[];for(const p of raw){const k=`${String(p.pieces||'').trim()}|${String(p.weight||'').replace(/,/g,'').trim()}|${String(p.flightNo||'').trim()}|${String(p.arrivalDate||'').trim()}|${String(p.arrivalTime||'').trim()}`;if(k==='||||'||seen.has(k))continue;seen.add(k);parts.push(p)}if(parts.length<2)return[row];return parts.map((p,idx)=>({...row,_partKey:`${digits(row.mawb)}::${idx}`,_partIndex:idx,bags:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.bags),pieces:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.pieces),weight:p.totalWeight?`${p.weight}/${p.totalWeight}`:(p.weight||row.weight),flightNo:p.flightNo||'',flightDate:p.flightDate||'',arrivalDate:p.arrivalDate||'',arrivalTime:p.arrivalTime||'',arrivalIsActual:p.arrivalIsActual===true,status:p.status||row.status,mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||''),mailSent:p.mailSent===true,mailUpdatedAt:p.mailUpdatedAt||'',remarks:p.remarks||'Part Shipment'}))})}
+function expandPartRows(list=[]){
+  return list.flatMap(row=>{
+    const prefix=digits(row.mawb).slice(0,3);
+    if(prefix!=='065'&&prefix!=='098'&&prefix!=='312')return[row];
+
+    const raw=Array.isArray(row.partShipments)?row.partShipments.filter(Boolean):[];
+    const status=String(row.status||'').toUpperCase();
+    const fractional=[row.bags,row.pieces,row.weight].some(v=>/^\s*[^/]+\/[^/]+\s*$/.test(String(v||'')));
+    const genuinePartLoad=row.isPartLoad===true||row.partLoad===true||status.includes('PART ARRIVED')||status.includes('PART LOAD')||status.includes('PART SHIPMENT')||fractional;
+    if(!genuinePartLoad)return[row];
+
+    // A part row represents a physical movement. Arrival date/time can change
+    // while that same part progresses, so they must NOT be used to decide that
+    // another dashboard row exists.
+    const seen=new Set(),parts=[];
+    for(const p of raw){
+      const identity=String(p.partKey||p.partId||'').trim()||[
+        String(p.flightNo||'').trim().toUpperCase(),
+        String(p.flightDate||p.departureDate||'').trim(),
+        String(p.pieces||'').trim(),
+        String(p.weight||'').replace(/,/g,'').trim()
+      ].join('|');
+      if(!identity||identity==='|||')continue;
+      if(seen.has(identity))continue;
+      seen.add(identity);
+      parts.push(p);
+    }
+
+    // Duplicate MAWB display is allowed only for a true split shipment with at
+    // least two distinct physical parts. Otherwise always show one master row.
+    if(parts.length<2)return[{...row,partLoad:false,isPartLoad:false}];
+
+    return parts.map((p,idx)=>({...row,
+      _partKey:`${digits(row.mawb)}::${String(p.partKey||p.partId||idx)}`,
+      _partIndex:idx,
+      bags:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.bags),
+      pieces:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.pieces),
+      weight:p.totalWeight?`${p.weight}/${p.totalWeight}`:(p.weight||row.weight),
+      flightNo:p.flightNo||'',
+      flightDate:p.flightDate||'',
+      arrivalDate:p.arrivalDate||'',
+      arrivalTime:p.arrivalTime||'',
+      arrivalIsActual:p.arrivalIsActual===true,
+      status:p.status||row.status,
+      mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||''),
+      mailSent:p.mailSent===true,
+      mailUpdatedAt:p.mailUpdatedAt||'',
+      remarks:p.remarks||'Part Shipment'
+    }));
+  });
+}
 function uniq(rows,key){return [...new Set(rows.map(r=>String(r?.[key]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
 function dedupeRowsByMawb(list=[]){
   const byMawb=new Map();
