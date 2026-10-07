@@ -195,7 +195,7 @@ function sortForDashboard(list=[],activeTab='IMPORT'){if(isExportLikeType(active
 function expandPartRows(list=[]){
   return list.flatMap(row=>{
     const prefix=digits(row.mawb).slice(0,3);
-    if(prefix!=='065'&&prefix!=='098'&&prefix!=='312')return[row];
+    if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176')return[row];
 
     const raw=Array.isArray(row.partShipments)?row.partShipments.filter(Boolean):[];
     const status=String(row.status||'').toUpperCase();
