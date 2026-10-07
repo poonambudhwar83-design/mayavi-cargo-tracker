@@ -194,7 +194,12 @@ function mergeNonEmpty(base={},next={}){
   return out;
 }
 function isFalseArrival(s={}){
-  return statusRank(s?.status)>=5&&s?.arrivalIsActual===false;
+  const status=String(s?.status||'').toUpperCase();
+  // PART ARRIVED means a real portion reached destination while the master is
+  // still incomplete. arrivalIsActual=false applies to the whole master and
+  // must not downgrade this valid partial-arrival milestone to TRACKING.
+  if(status.includes('PART ARRIVED'))return false;
+  return statusRank(status)>=5&&s?.arrivalIsActual===false;
 }
 function chooseStatus({api,direct,browser,ocr,cathay}){
   const all=[direct,browser,api,ocr,cathay].filter(Boolean);
