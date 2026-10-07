@@ -229,7 +229,13 @@ export default function Home(){
             if(!prev)prev=base;
             usedIds.add(prev.id);
 
-            const partArrival=(part.arrivalDate&&part.arrivalTime)?{date:part.arrivalDate,time:part.arrivalTime}:localParts(part.actualArrival||part.eta);
+            const partStatusRaw=String(part.status||'').toUpperCase();
+            const parsedPartArrival=(part.arrivalDate&&part.arrivalTime)?{date:part.arrivalDate,time:part.arrivalTime}:localParts(part.actualArrival||part.eta);
+            const liveActualArrival=(live.arrivalDate&&live.arrivalTime)?{date:live.arrivalDate,time:live.arrivalTime}:localParts(live.actualArrival);
+            const partArrival={
+              date:parsedPartArrival.date||((/ARRIV|RCF|RECEIVED AT DESTINATION/.test(partStatusRaw))?(prev.arrivalDate||liveActualArrival.date||''):''),
+              time:parsedPartArrival.time||((/ARRIV|RCF|RECEIVED AT DESTINATION/.test(partStatusRaw))?(prev.arrivalTime||liveActualArrival.time||''):'')
+            };
             const partEtaIso=arrivalIso(partArrival.date,partArrival.time)||(part.actualArrival||part.eta||'');
             const partLive={...live,...part,carrierCode:live.carrierCode||airline.iata,airlineName:live.airlineName||airline.name,status:part.status||live.status};
             const status=statusFromLive(prev,partLive,partEtaIso);
@@ -254,8 +260,8 @@ export default function Home(){
               origin:part.origin||live.origin||prev.origin||'',
               destination:part.destination||live.destination||prev.destination||'',
               bookingDate:live.bookingDate||prev.bookingDate||'',
-              arrivalDate:partArrival.date||'',
-              arrivalTime:partArrival.time||'',
+              arrivalDate:partArrival.date||prev.arrivalDate||'',
+              arrivalTime:partArrival.time||prev.arrivalTime||'',
               baselineArrival:prev.baselineArrival||partEtaIso||'',
               status,
               dataSource:part.source||d.source||live.source||'Official airline website',
