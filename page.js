@@ -274,7 +274,7 @@ export default function Home(){
         // IndiGo/Saudia normal or full shipment: keep exactly ONE dashboard row.
         // This also cleans up old duplicate rows left from a previous part-load
         // state once the carrier no longer reports separate physical parts.
-        if(['6E','SV'].includes(airline.iata)&&matches.length){
+        if(['6E','SV','EK'].includes(airline.iata)&&matches.length){
           const prev=matches[0];
           const status=statusFromLive(prev,live,etaIso);
           const updated={
