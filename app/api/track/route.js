@@ -449,7 +449,9 @@ async function handle(mawb,fallback={}){
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
   const skipGenericApi=klmFastPath||airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
-  const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
+  // KLM official tracking can omit previously verified route/weight fields on a partial response.
+  // Keep the last saved AWB-specific values without touching other airline adapters.
+  const needsStoredFallback=klmFastPath||vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
@@ -474,7 +476,7 @@ async function handle(mawb,fallback={}){
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
 
-  const savedFallback=(turkishFastPath||vietnamFastPath||qatarFastPath||malaysiaFastPath)?{
+  const savedFallback=(klmFastPath||turkishFastPath||vietnamFastPath||qatarFastPath||malaysiaFastPath)?{
     flightNo:effectiveFallback.flightNo||'',flightDate:effectiveFallback.flightDate||'',bookingDate:effectiveFallback.bookingDate||'',bookingTime:effectiveFallback.bookingTime||'',bags:effectiveFallback.bags||'',pieces:effectiveFallback.pieces||effectiveFallback.bags||'',weight:effectiveFallback.weight||'',departureDate:effectiveFallback.departureDate||'',departureTime:effectiveFallback.departureTime||'',origin:effectiveFallback.origin||'',destination:effectiveFallback.destination||'',via:effectiveFallback.via||'',departureFlightNo:effectiveFallback.departureFlightNo||'',departureOrigin:effectiveFallback.departureOrigin||'',departureDestination:effectiveFallback.departureDestination||'',finalFlightNo:effectiveFallback.finalFlightNo||'',finalFlightDate:effectiveFallback.finalFlightDate||'',finalFlightOrigin:effectiveFallback.finalFlightOrigin||'',finalFlightDestination:effectiveFallback.finalFlightDestination||'',finalFlightDeparted:effectiveFallback.finalFlightDeparted===true,scheduledDeparture:effectiveFallback.scheduledDeparture||'',scheduledArrivalDate:effectiveFallback.scheduledArrivalDate||'',scheduledArrivalTime:effectiveFallback.scheduledArrivalTime||'',arrivalDate:effectiveFallback.arrivalDate||'',arrivalTime:effectiveFallback.arrivalTime||'',arrivalIsActual:effectiveFallback.arrivalIsActual===true,status:effectiveFallback.status||'',source:effectiveFallback.source||''
   }:{};
   let shipment={...savedFallback,mawb,carrierCode:airline.iata||'',airlineName:airline.name||'',officialTracker:airline.url||''};
@@ -492,6 +494,23 @@ async function handle(mawb,fallback={}){
     if(!shipment.weight&&effectiveFallback.weight)shipment.weight=effectiveFallback.weight;
   }
 
+  if(klmFastPath){
+    // Never let a partial live response blank an already verified Germany/FRA
+    // routing, flight, booking or gross weight stored for this exact AWB.
+    const keep=['origin','via','destination','bags','pieces','weight','masterWeight',
+      'flightNo','flightDate','finalFlightNo','finalFlightDate',
+      'bookingDate','bookingTime','scheduledArrivalDate','scheduledArrivalTime',
+      'arrivalDate','arrivalTime','arrivalTimeZone','arrivalTimeSource'];
+    for(const key of keep){
+      if((shipment[key]===''||shipment[key]===null||shipment[key]===undefined)
+        &&effectiveFallback[key]!==''&&effectiveFallback[key]!==null&&effectiveFallback[key]!==undefined)
+        shipment[key]=effectiveFallback[key];
+    }
+    // A screenshot-based schedule is an estimate, never an actual cargo arrival.
+    if(shipment.arrivalIsActual!==true&&shipment.arrivalDate&&shipment.arrivalTime&&
+       (direct?.arrivalEstimate===true||effectiveFallback.arrivalEstimate===true))
+      shipment.arrivalEstimate=true;
+  }
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
   // A verified Malaysia response with no final-destination arrival must clear
   // stale UI/database arrival values instead of preserving an old date.
