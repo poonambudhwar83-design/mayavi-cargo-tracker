@@ -98,7 +98,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('074-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -949,6 +949,36 @@ async function handle(mawb,fallback={}){
       }
     }
     shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);
+  }
+
+  // KLM 074: use the official shipment detail's confirmed FINAL LEG and
+  // check that precise flight. Flight landing must not be misrepresented as
+  // a cargo ARR/RCF milestone; source status remains its own field.
+  if(klmFastPath&&shipment.flightNo&&shipment.flightDate&&shipment.destination){
+    const result=await trackFlightScheduleFast({
+      flightNo:shipment.flightNo,date:shipment.flightDate,
+      origin:shipment.via?.split('/').at(-1)?.trim()||shipment.origin||'',
+      destination:shipment.destination
+    }).catch(()=>null);
+    if(result?.ok){
+      shipment.flightTrackingSource=result.source||result.arrivalTimeSource||'KLM final leg independent flight status';
+      shipment.flightTrackingCheckedAt=new Date().toISOString();
+      const finalMatches=!result.departureDestination||
+        String(result.departureDestination).toUpperCase()===String(shipment.destination).toUpperCase();
+      if(finalMatches&&result.arrivalIsActual===true&&result.arrivalDate&&result.arrivalTime){
+        const actual=normalizeShipmentTimesToIst({
+          arrivalDate:result.arrivalDate,arrivalTime:result.arrivalTime,
+          arrivalTimeZone:result.arrivalTimeZone||result.scheduledArrivalTimeZone||'',
+          destination:shipment.destination,arrivalTimeSource:result.source||'KLM flight status'
+        });
+        shipment.flightActualArrivalDate=actual.arrivalDate;
+        shipment.flightActualArrivalTime=actual.arrivalTime;
+        shipment.flightActualArrivalTimeZone='IST';
+        shipment.flightArrived=true;
+        // Cargo's arrivalIsActual is a cargo milestone; do not change it
+        // based solely on the operating aircraft's flight status.
+      }
+    }
   }
 
   // IndiGo publishes the booked operating flight and flight date before an
