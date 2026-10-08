@@ -1,13 +1,13 @@
 // Working-carrier freeze requested 2026-10-08.
 // Change these hashes ONLY after the owner explicitly approves unlocking
 // Saudia (065), Emirates (176), or Cathay Pacific (160).
-// Cathay's verified CX679 08 Oct 2026 ETA behavior is protected here.
+// Cathay's reusable, AWB-matched dated flight ETA extraction is protected here.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const locked = Object.freeze({
-  'lib/cathay.js':'a74c40aa46114cfbc9fbb37f64a3ba582f3c7023',
+  'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
   'lib/cathay-browser-fallback.js':'d1a1e1ecf6357b44d80db006dde40bce810e06aa',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
