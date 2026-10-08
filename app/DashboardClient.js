@@ -69,7 +69,15 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
     if(finalDestination&&((movementStation&&movementStation!==finalDestination)||(!movementStation&&explicitVia&&airportCode(row.departureDestination)===explicitVia)))return'IN TRANSIT';
     return'ARRIVED';
   }
-  if(s.includes('OFFLOAD'))return'OFFLOADED';
+  if(s.includes('OFFLOAD')){
+    // IndiGo status history can legitimately contain BOTH DEP and a later
+    // offload. Keep both events visible while latest airline status remains
+    // offloaded; neither event confirms cargo arrival at DEL.
+    if(n.startsWith('312-')&&row._partKey&&row.departureConfirmed===true&&row.offloadedAfterDeparture===true){
+      return 'DEPARTED → OFFLOADED';
+    }
+    return 'OFFLOADED';
+  }
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   // Emirates: a generic DEP can be an intermediate/via leg. Only the parser's
   // explicit final-leg departure should display DEPARTED; otherwise keep it IN TRANSIT.
@@ -269,6 +277,12 @@ function expandPartRows(list=[]){
       weight:p.totalWeight?`${p.weight}/${p.totalWeight}`:(p.weight||row.weight),
       flightNo:p.flightNo||'',
       flightDate:p.flightDate||'',
+      departureDate:p.departureDate||'',
+      departureTime:p.departureTime||'',
+      departureConfirmed:p.departureConfirmed===true,
+      offloadedAfterDeparture:p.offloadedAfterDeparture===true,
+      offloadDate:p.offloadDate||'',
+      offloadTime:p.offloadTime||'',
       arrivalDate:p.arrivalDate||'',
       arrivalTime:p.arrivalTime||'',
       arrivalIsActual:p.arrivalIsActual===true,
