@@ -1,10 +1,14 @@
 // Working-carrier freeze requested 2026-10-08.
 // Change these hashes ONLY after the owner explicitly approves unlocking
-// Saudia (065) or Emirates (176). No carrier parser is modified by this check.
+// Saudia (065), Emirates (176), or Cathay Pacific (160).
+// Cathay's verified CX679 08 Oct 2026 ETA behavior is protected here.
+// Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const locked = Object.freeze({
+  'lib/cathay.js':'a74c40aa46114cfbc9fbb37f64a3ba582f3c7023',
+  'lib/cathay-browser-fallback.js':'d1a1e1ecf6357b44d80db006dde40bce810e06aa',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
   'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
@@ -25,5 +29,22 @@ for (const [filename,expected] of Object.entries(locked)){
     }
   }catch(err){console.error(`LOCKED AIRLINE FILE UNREADABLE: ${filename}: ${err.message}`);changed=true;}
 }
+// Cathay relies on a shared track route which also contains other airlines.
+ // Avoid freezing the whole shared route; guard only the Cathay integration
+ // contract, so KLM/other fixes may still be deployed independently.
+const sharedRoute=readFileSync('app/api/track/route.js','utf8');
+const cathayRouteContract=[
+  ["Cathay official adapter import","import { trackCathay } from '../../../lib/cathay.js';"],
+  ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb);"],
+  ["Cathay prefix fast path","const cathayFastPath=mawb.startsWith('160-');"],
+  ["Cathay shared persistence","airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath"],
+  ["Cathay saved-row eligibility","mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')"]
+];
+for(const [label,fragment] of cathayRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED CATHAY INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Saudia (065) and Emirates (176) sources unchanged.');
+console.log('Airline lock check passed: Saudia (065), Emirates (176), and Cathay Pacific (160).');
