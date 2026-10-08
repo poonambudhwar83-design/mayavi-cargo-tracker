@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { trackCathay } from '../../../lib/cathay.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
@@ -322,7 +322,29 @@ function debugText(result={}){
 }
 
 async function dedicatedOfficial(mawb){
-  if(mawb.startsWith('074-')) return trackKlm(mawb);
+  if(mawb.startsWith('074-')){
+    // Only KLM tracking is delegated to a Frankfurt-region browser worker:
+    // isolate the airline's intermittent HTTP2 failure from other adapters.
+    // Keep the existing /api/track validation and persistence unchanged.
+    const secret=process.env.DATABASE_URL;
+    if(!secret)return trackKlm(mawb);
+    const issuedAt=String(Date.now());
+    const signature=createHmac('sha256',secret)
+      .update('klm-live|'+mawb+'|'+issuedAt).digest('hex');
+    try{
+      const res=await fetch('https://tracker.mayavicargo.com/api/klm-live?mawb='+encodeURIComponent(mawb),{
+        headers:{'x-mayavi-issued-at':issuedAt,'x-mayavi-signature':signature,
+          accept:'application/json'},
+        cache:'no-store',signal:AbortSignal.timeout(120000)
+      });
+      const data=await res.json();
+      return{...data,debug:{...(data?.debug||{}),executionRegion:'fra1',
+        regionalHttpStatus:res.status}};
+    }catch(e){
+      return{ok:false,reason:'KLM regional browser worker not reachable: '+String(e?.message||e),
+        debug:{stage:'KLM_REGION_CONNECT_FAILED',executionRegion:'fra1'}};
+    }
+  }
   if(mawb.startsWith('020-')) return trackLufthansa(mawb);
   if(mawb.startsWith('065-')) return {ok:false,skipped:true,reason:'SAUDIA USES DEEP DIRECT TRACK-SHIPMENT READER'};
   if(mawb.startsWith('098-')) return trackAirIndia(mawb);
