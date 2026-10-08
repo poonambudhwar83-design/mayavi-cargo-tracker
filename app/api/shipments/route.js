@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
-import { partIdentity, mergePartMail } from '../../../lib/partMail.js';
+import { partIdentity, mergePartMail, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -167,10 +167,20 @@ export async function POST(request){
       if((shipmentType(rowForSave.shipmentType)==='OTHER_COUNTRIES'||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
-      // Airline refreshes may rebuild part rows; preserve saved Mail choices by physical part ID.
-       if(Array.isArray(rowForSave.partShipments)){
-         rowForSave.partShipments=mergePartMail(rowForSave.partShipments,existingRow?.data?.partShipments);
-       }
+      // Preserve independently cleared Emirates parts across airline refresh.
+      if(incomingAwb.startsWith('176')&&(!Array.isArray(rowForSave.partShipments)||!rowForSave.partShipments.length)
+        &&Array.isArray(existingRow?.data?.partShipments)&&existingRow.data.partShipments.length>=2){
+        rowForSave.partShipments=existingRow.data.partShipments;
+      }
+      if(Array.isArray(rowForSave.partShipments)){
+        rowForSave.partShipments=mergePartMail(rowForSave.partShipments,existingRow?.data?.partShipments);
+        if(incomingAwb.startsWith('176')&&rowForSave.partShipments.length>=2){
+          rowForSave.partShipments=mergeEmiratesPartCustoms(rowForSave.partShipments,existingRow?.data?.partShipments);
+          rowForSave.customsCleared=false;
+          rowForSave.customsClearedAt='';
+          rowForSave.customsClearedBy='';
+        }
+      }
        const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
       if(!weightMinusAllowed||!hasWeightMinus){
         const existing=existingRow;
@@ -257,7 +267,12 @@ export async function PATCH(request){
     const body=await request.json();
     const awb=normalize(body?.mawb||body?.awb||'');
     const partKey=String(body?.partKey||'').trim();
-    if(!awb||typeof body?.mailSent!=='boolean'||partKey.length>256){
+    const emiratesPartCustoms=body?.operation==='emiratesPartCustoms';
+    if(!awb||partKey.length>256||(
+        emiratesPartCustoms
+          ? (!awb.startsWith('176')||!partKey||typeof body?.customsCleared!=='boolean')
+          : typeof body?.mailSent!=='boolean'
+      )){
       return Response.json({ok:false,error:'Invalid Mail update.'},{status:400});
     }
     const sql=db();
@@ -280,12 +295,23 @@ export async function PATCH(request){
         updated.partShipments=updated.partShipments.map((part,index)=>{
           if(partIdentity(part,index)!==partKey)return part;
           matches++;
-          return {...part,mailSent:body.mailSent,mailUpdatedAt:date};
+          return emiratesPartCustoms
+            ? {...part,customsCleared:body.customsCleared,
+                customsClearedAt:body.customsCleared?date:'',
+                customsClearedBy:body.customsCleared?String(auth.session?.displayName||auth.session?.username||'Operator'):''}
+            : {...part,mailSent:body.mailSent,mailUpdatedAt:date};
         });
         if(matches!==1){
           return Response.json({ok:false,error:'Part movement changed. Refresh and try again.'},{status:409});
         }
+        if(emiratesPartCustoms){
+          if(updated.partShipments.length<2)return Response.json({ok:false,error:'Not an Emirates split shipment.'},{status:409});
+          updated.customsCleared=false;
+          updated.customsClearedAt='';
+          updated.customsClearedBy='';
+        }
       }else{
+        if(emiratesPartCustoms)return Response.json({ok:false,error:'Part ID required.'},{status:400});
         if(Array.isArray(updated.partShipments)&&updated.partShipments.length>1){
           return Response.json({ok:false,error:'Select a specific part row to update Mail.'},{status:409});
         }
