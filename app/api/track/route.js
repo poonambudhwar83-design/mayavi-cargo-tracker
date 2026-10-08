@@ -27,7 +27,7 @@ import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
-import { mergePartMail, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
+import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -107,14 +107,14 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   if(Array.isArray(tracked.partShipments)){
     const existing=await sql`SELECT data FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
     const savedParts=Array.isArray(existing?.[0]?.data?.partShipments)?existing[0].data.partShipments:[];
-    tracked.partShipments=tracked.partShipments.map((p,i)=>{
-      const id=String(p?.partId||`P${i+1}`);
-      const saved=savedParts.find((x,j)=>String(x?.partId||`P${j+1}`)===id)
-        ||savedParts.find(x=>String(x?.pieces||'')===String(p?.pieces||'')&&String(x?.weight||'').replace(/,/g,'')===String(p?.weight||'').replace(/,/g,''));
-      return saved&&Object.prototype.hasOwnProperty.call(saved,'mailSent')
-        ? {...p,mailSent:saved.mailSent===true,mailUpdatedAt:saved.mailUpdatedAt||''}
-        : p;
-    });
+    // Operator Mail/Customs choices persist by stable physical-part identity.
+    tracked.partShipments=mergePartMail(tracked.partShipments,savedParts);
+    if((mawb.startsWith('098-')||mawb.startsWith('312-'))&&tracked.partShipments.length>=2){
+      tracked.partShipments=mergePartCustoms(tracked.partShipments,savedParts);
+      tracked.customsCleared=false;
+      tracked.customsClearedAt='';
+      tracked.customsClearedBy='';
+    }
   }
   if((mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-'))&&tracked.departureDate&&tracked.departureTime){
     tracked.handoverTime=persistedHandoverTime(tracked.departureDate,tracked.departureTime);
