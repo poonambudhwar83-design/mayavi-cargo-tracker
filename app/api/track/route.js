@@ -1147,9 +1147,11 @@ async function handle(mawb,fallback={}){
   }
 
   const apiConfigured=Boolean(process.env.TRACKINGMORE_API_KEY);
+  const klmCargoApiConfigured=Boolean(process.env.AFKLM_CARGO_API_TOKEN||process.env.AFKLM_CARGO_API_KEY||
+    (process.env.AFKLM_CARGO_CLIENT_ID&&process.env.AFKLM_CARGO_CLIENT_SECRET));
   const trackingError=directResult?.reason||browserResult?.reason||ocrResult?.reason||apiResult?.reason||'NO VERIFIED SHIPMENT DATA';
   console.log('mawb_tracking_result',mawb,'FAIL',trackingError);
-  return Response.json({ok:false,version:VERSION,mawb,airline,trackingError,apiError:apiResult?.reason||'',directAdapterError:directResult?.reason||'',browserError:browserResult?.reason||'',screenshotOcrError:ocrResult?.reason||'',apiConfigured,requiredSecret:apiConfigured?null:'TRACKINGMORE_API_KEY',officialTracker:directResult?.officialTracker||browserResult?.officialTracker||airline.url||null,manualHint:directResult?.manualHint||null,screenshotCaptured,screenshotVerified,debug:{direct:directResult?.debug||null,browser:browserResult?.debug||null,ocr:ocrResult?.debug||null}},{status:503});
+  return Response.json({ok:false,version:VERSION,mawb,airline,trackingError,apiError:apiResult?.reason||'',directAdapterError:directResult?.reason||'',browserError:browserResult?.reason||'',screenshotOcrError:ocrResult?.reason||'',apiConfigured,requiredSecret:klmFastPath?(klmCargoApiConfigured?null:'Approved AFKLM Cargo Tracking API credentials'):apiConfigured?null:'TRACKINGMORE_API_KEY',officialTracker:directResult?.officialTracker||browserResult?.officialTracker||airline.url||null,manualHint:directResult?.manualHint||null,screenshotCaptured,screenshotVerified,debug:{direct:directResult?.debug||null,browser:browserResult?.debug||null,ocr:ocrResult?.debug||null}},{status:503});
 }
 
 export async function POST(request){
