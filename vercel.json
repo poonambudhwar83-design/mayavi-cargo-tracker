@@ -4,6 +4,10 @@
     "app/api/track/route.js": {
       "maxDuration": 300
     },
+    "app/api/klm-live/route.js": {
+      "maxDuration": 180,
+      "regions": ["fra1"]
+    },
     "app/api/etihad-test/route.js": {
       "maxDuration": 300,
       "regions": [
