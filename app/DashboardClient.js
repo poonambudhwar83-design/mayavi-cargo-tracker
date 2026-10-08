@@ -223,7 +223,10 @@ function expandPartRows(list=[]){
 
     // Duplicate MAWB display is allowed only for a true split shipment with at
     // least two distinct physical parts. Otherwise always show one master row.
-    if(parts.length<2)return[{...row,partLoad:false,isPartLoad:false}];
+    // A single remaining Saudia physical part after DIS/DUS still owns its Mail flag.
+    // Show that one part with its own YES/NO rather than switching to master Mail.
+    if(parts.length<2&&!(prefix==='065'&&parts.length===1&&(row.partLoad===true||row.isPartLoad===true)))
+      return[{...row,partLoad:false,isPartLoad:false}];
 
     // IndiGo safeguard: if the master total is known and every movement carries
     // the full master quantity, this is offload/rebooking history, not part load.
