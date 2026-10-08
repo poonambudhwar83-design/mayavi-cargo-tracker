@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
-import { partIdentity, mergePartMail, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
+import { partIdentity, mergePartMail, mergePartCustoms } from '../../../lib/partMail.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -167,18 +167,23 @@ export async function POST(request){
       if((shipmentType(rowForSave.shipmentType)==='OTHER_COUNTRIES'||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
-      // Preserve independently cleared Emirates parts across airline refresh.
-      if(incomingAwb.startsWith('176')&&(!Array.isArray(rowForSave.partShipments)||!rowForSave.partShipments.length)
-        &&Array.isArray(existingRow?.data?.partShipments)&&existingRow.data.partShipments.length>=2){
+      // Import part-load decisions belong to each physical movement; tracking
+      // refreshes must never copy the first part's flags to all other parts.
+      const supportsPartCustoms=['065','098','176','312'].some(p=>incomingAwb.startsWith(p));
+      if(supportsPartCustoms&&(!Array.isArray(rowForSave.partShipments)||!rowForSave.partShipments.length)
+         &&Array.isArray(existingRow?.data?.partShipments)&&existingRow.data.partShipments.length>=2){
         rowForSave.partShipments=existingRow.data.partShipments;
       }
       if(Array.isArray(rowForSave.partShipments)){
         rowForSave.partShipments=mergePartMail(rowForSave.partShipments,existingRow?.data?.partShipments);
-        if(incomingAwb.startsWith('176')&&rowForSave.partShipments.length>=2){
-          rowForSave.partShipments=mergeEmiratesPartCustoms(rowForSave.partShipments,existingRow?.data?.partShipments);
-          rowForSave.customsCleared=false;
-          rowForSave.customsClearedAt='';
-          rowForSave.customsClearedBy='';
+        if(supportsPartCustoms&&rowForSave.partShipments.length>=1){
+          rowForSave.partShipments=mergePartCustoms(rowForSave.partShipments,existingRow?.data?.partShipments);
+          if(rowForSave.partShipments.length>=2||
+             (incomingAwb.startsWith('065')&&(rowForSave.partLoad===true||rowForSave.isPartLoad===true))){
+            rowForSave.customsCleared=false;
+            rowForSave.customsClearedAt='';
+            rowForSave.customsClearedBy='';
+          }
         }
       }
        const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
@@ -267,13 +272,14 @@ export async function PATCH(request){
     const body=await request.json();
     const awb=normalize(body?.mawb||body?.awb||'');
     const partKey=String(body?.partKey||'').trim();
-    const emiratesPartCustoms=body?.operation==='emiratesPartCustoms';
+    const partCustoms=body?.operation==='partCustoms'||body?.operation==='emiratesPartCustoms';
+    const supportedPart=Boolean(awb&&['065','098','176','312'].some(prefix=>awb.startsWith(prefix)));
     if(!awb||partKey.length>256||(
-        emiratesPartCustoms
-          ? (!awb.startsWith('176')||!partKey||typeof body?.customsCleared!=='boolean')
+        partCustoms
+          ? (!supportedPart||!partKey||typeof body?.customsCleared!=='boolean')
           : typeof body?.mailSent!=='boolean'
       )){
-      return Response.json({ok:false,error:'Invalid Mail update.'},{status:400});
+      return Response.json({ok:false,error:'Invalid per-part update.'},{status:400});
     }
     const sql=db();
     for(let attempt=0;attempt<5;attempt++){
@@ -291,11 +297,15 @@ export async function PATCH(request){
         if(!Array.isArray(updated.partShipments)){
           return Response.json({ok:false,error:'Part shipment changed. Refresh and try again.'},{status:409});
         }
-        let matches=0;
+        let matches=0,withoutMailYes=false;
         updated.partShipments=updated.partShipments.map((part,index)=>{
           if(partIdentity(part,index)!==partKey)return part;
           matches++;
-          return emiratesPartCustoms
+          if(partCustoms&&body.customsCleared===true&&part.mailSent!==true){
+            withoutMailYes=true;
+            return part;
+          }
+          return partCustoms
             ? {...part,customsCleared:body.customsCleared,
                 customsClearedAt:body.customsCleared?date:'',
                 customsClearedBy:body.customsCleared?String(auth.session?.displayName||auth.session?.username||'Operator'):''}
@@ -304,14 +314,18 @@ export async function PATCH(request){
         if(matches!==1){
           return Response.json({ok:false,error:'Part movement changed. Refresh and try again.'},{status:409});
         }
-        if(emiratesPartCustoms){
-          if(updated.partShipments.length<2)return Response.json({ok:false,error:'Not an Emirates split shipment.'},{status:409});
+        if(partCustoms){
+          if(withoutMailYes)return Response.json({ok:false,error:'Please select Mail YES for this part before Customs Clear.'},{status:409});
+          const saudiaSingle=awb.startsWith('065')&&updated.partShipments.length===1&&
+            (updated.partLoad===true||updated.isPartLoad===true);
+          if(updated.partShipments.length<2&&!saudiaSingle)
+            return Response.json({ok:false,error:'This is not a split shipment.'},{status:409});
           updated.customsCleared=false;
           updated.customsClearedAt='';
           updated.customsClearedBy='';
         }
       }else{
-        if(emiratesPartCustoms)return Response.json({ok:false,error:'Part ID required.'},{status:400});
+        if(partCustoms)return Response.json({ok:false,error:'Part ID required.'},{status:400});
         if(Array.isArray(updated.partShipments)&&updated.partShipments.length>1){
           return Response.json({ok:false,error:'Select a specific part row to update Mail.'},{status:409});
         }
