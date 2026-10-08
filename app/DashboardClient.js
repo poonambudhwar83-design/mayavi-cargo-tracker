@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { airlineForMawb, CONFIGURED_PREFIXES } from '../lib/airlines.js';
 import { normalizeExportTimesToIst } from '../lib/exportIst.js';
-import { partIdentity, mergePartMail, mergeEmiratesPartCustoms } from '../lib/partMail.js';
+import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.js';
 
 const KEY='mayavi_v3_shipments';
 const TAB_KEY='mayavi_dashboard_active_tab';
@@ -200,9 +200,10 @@ function openOfficial(row={}){
 }
 function dbToRow(record={}){const d=record.data||{};return decorateTiming({}, {...d,mawb:normalize(d.mawb||d.awb||record.awb),clientName:d.clientName??d.client??'',companyType:d.companyType||'',companyName:d.companyName||'',airlineName:d.airlineName??d.airline??'',carrierCode:d.carrierCode??d.airlineCode??'',flightNo:d.flightNo??d.flight??'',pieces:d.pieces??d.bags??'',bags:d.bags??d.pieces??'',weight:cleanWeight(d.weight),goodsDescription:d.goodsDescription??d.goods_description??'',bookingDate:d.bookingDate||'',shipmentType:shipmentTypeOf(d.shipmentType),officialTracker:d.officialTracker||d.sourceUrl||'',enteredBy:d.enteredBy||'',enteredByUsername:d.enteredByUsername||'',enteredAt:d.enteredAt||'',mailSent:shipmentTypeOf(d.shipmentType)==='IMPORT'?d.mailSent===true:undefined,customsCleared:shipmentTypeOf(d.shipmentType)==='IMPORT'?d.customsCleared===true:undefined,masterCopyReceived:isExportLikeType(d.shipmentType)?d.masterCopyReceived===true:undefined,lastChecked:d.lastChecked||record.tracking_checked_at||record.updated_at||'',_dbUpdatedAt:record.updated_at||''})}
 function withoutMeta(row={}){const {_dbUpdatedAt,...clean}=row;return clean}
-function isEmiratesSplit(row={}) {
-  return digits(row.mawb).startsWith('176')&&
-    Array.isArray(row.partShipments)&&row.partShipments.length>=2;
+function hasIndependentCustomsParts(row={}){
+  // Only rows which actually expand into physical part rows can be archived
+  // individually; a repeat/full-load flight does not qualify.
+  return expandPartRows([row]).some(part=>Boolean(part._partKey));
 }
 function isCustomsArchived(row={}){return shipmentTypeOf(row.shipmentType)==='IMPORT'&&row.customsCleared===true}
 function isExportArchived(row={}){return isExportLikeType(row.shipmentType)&&row.handoverDone===true&&row.masterCopyReceived===true}
@@ -277,9 +278,9 @@ function expandPartRows(list=[]){
       mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||''),
       mailSent:p.mailSent===true,
       mailUpdatedAt:p.mailUpdatedAt||'',
-      customsCleared:prefix==='176'?p.customsCleared===true:row.customsCleared===true,
-      customsClearedAt:prefix==='176'?(p.customsClearedAt||''):(row.customsClearedAt||''),
-      customsClearedBy:prefix==='176'?(p.customsClearedBy||''):(row.customsClearedBy||''),
+      customsCleared:p.customsCleared===true,
+      customsClearedAt:p.customsClearedAt||'',
+      customsClearedBy:p.customsClearedBy||'',
       remarks:p.remarks||'Part Shipment'
     }));
   });
@@ -358,18 +359,18 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     }
     // Emirates split loads must be included in both candidate views. After
     // expansion, only the cleared physical parts go to Customs Cleared.
-    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>isEmiratesSplit(r)||isCustomsArchived(r));
-    return tabRows.filter(r=>isEmiratesSplit(r)||!isCustomsArchived(r));
+    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r));
+    return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r));
   },[tabRows,activeTab,isAdmin,adminView]);
   const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>{
-    if(isEmiratesSplit(row))return sum+row.partShipments.filter(p=>p.customsCleared===true).length;
+    if(hasIndependentCustomsParts(row))return sum+expandPartRows([row]).filter(p=>p._partKey&&p.customsCleared===true).length;
     return sum+(isCustomsArchived(row)?1:0);
   },0),[tabRows]);
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&activeTab==='IMPORT';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
   const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clearedFilterMode||((!clientFilter||r.clientName===clientFilter)&&(!customsFilterMode||((!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter))))));const expanded=expandPartRows(filtered).filter(r=>{
-    if(!isEmiratesSplit(r)||!r._partKey)return true;
+    if(!r._partKey)return true;
     return clearedFilterMode?r.customsCleared===true:r.customsCleared!==true;
   });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,originFilter,destinationFilter,prefixFilter,activeTab]);
   const totalWeight=useMemo(()=>{
@@ -417,8 +418,8 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   async function add(){const n=normalize(mawb),clientName=String(client||'').trim();if(!n){setNote('Please enter valid 11-digit MAWB.');return}if(!clientName){setNote('Client Name is mandatory. Please enter the client name before adding the MAWB.');return}const airline=airlineForMawb(n);if(!airline){setNote(`Prefix ${n.slice(0,3)} is not mapped yet.`);return}const existing=rows.find(x=>normalize(x.mawb)===n);if(existing){setNote(`${n} is already fixed in ${existing.shipmentType||'IMPORT'} dashboard. Admin can move it if required.`);return}const enteredAt=new Date().toISOString();const base=decorateTiming({}, {mawb:n,shipmentType:activeTab,clientName,companyType:'',companyName:'',goodsDescription:activeTab==='IMPORT'?'':undefined,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,airlineName:airline.name,status:'BOOKED',officialTracker:airline.url||'',mailSent:activeTab==='IMPORT'?false:undefined,customsCleared:activeTab==='IMPORT'?false:undefined,masterCopyReceived:exportLikeTab?false:undefined,lastChecked:enteredAt});setRows(r=>[base,...r.filter(x=>normalize(x.mawb)!==n)]);setMawb('');setClient('');setBusy(true);setNote(`${n} added. Fetching live ${airline.name} details…`);try{await persistRow(base,true);setShared(true)}catch(e){setShared(false);setNote(`${n} added locally; shared save failed: ${e.message||e}`)}try{const s=await track(n);const next=decorateTiming(base,{...s,shipmentType:activeTab,clientName,companyType:base.companyType,companyName:base.companyName,goodsDescription:base.goodsDescription,enteredBy:employeeName,enteredByUsername:employeeUsername,enteredAt,mailSent:activeTab==='IMPORT'?false:undefined,customsCleared:activeTab==='IMPORT'?false:undefined,masterCopyReceived:exportLikeTab?base.masterCopyReceived===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});setRows(r=>r.map(x=>normalize(x.mawb)===n?next:x));try{await persistRow(next);setShared(true);setNote(`${n} live details filled and saved.`)}catch(e){setShared(false);setNote(`${n} live details filled locally; shared save failed: ${e.message||e}`)}}catch(e){const p=e.payload||{};const next=decorateTiming(base,{trackingError:e.message,manualHint:p.manualHint||'',officialTracker:airline.url||p.officialTracker||base.officialTracker,lastChecked:new Date().toISOString()});setRows(r=>r.map(x=>normalize(x.mawb)===n?next:x));try{await persistRow(next)}catch{}setNote(p.manualHint?`${n}: ${p.manualHint}`:`${n} saved. Live tracking will retry; use REFRESH if details stay blank.`)}finally{setBusy(false)}}
   async function refreshByMawb(value){const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));const saudiaLocked=normalize(row.mawb).startsWith('065-')&&row.saudiaExpectedArrivalLocked===true&&s.arrivalIsActual!==true&&!saudiaDis;if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}else if(saudiaLocked){live={...s,flightDate:s.flightDate||row.flightDate,arrivalDate:s.arrivalDate||row.arrivalDate,arrivalTime:s.arrivalTime||row.arrivalTime,bookingDate:s.bookingDate||row.bookingDate,arrivalIsActual:false,saudiaExpectedArrivalLocked:true,expectedDateOverrideSource:s.arrivalDate?'SAL live expected arrival':(row.expectedDateOverrideSource||'Verified Saudia/SAL expected arrival')};}if(Array.isArray(live.partShipments)){
   live.partShipments=mergePartMail(live.partShipments,row.partShipments||[]);
-  if(normalize(row.mawb).startsWith('176-')&&live.partShipments.length>=2){
-    live.partShipments=mergeEmiratesPartCustoms(live.partShipments,row.partShipments||[]);
+  if(['065','098','176','312'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
+    live.partShipments=mergePartCustoms(live.partShipments,row.partShipments||[]);
   }
 }if(normalize(row.mawb).startsWith('232-')&&s.arrivalVerifiedAbsent===true){live={...live,arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalVerifiedAbsent:true,mailTime:''};}next=decorateTiming(row,{...live,shipmentType:row.shipmentType,clientName:row.clientName,companyType:row.companyType||'',companyName:row.companyName||'',goodsDescription:row.goodsDescription||'',enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:row.shipmentType==='IMPORT'?row.mailSent:undefined,mailUpdatedAt:row.shipmentType==='IMPORT'?(row.mailUpdatedAt||''):undefined,customsCleared:row.shipmentType==='IMPORT'?row.customsCleared===true:undefined,masterCopyReceived:isExportLikeType(row.shipmentType)?row.masterCopyReceived===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});if(normalize(row.mawb).startsWith('098-')){if(s.arrivalDate)next.arrivalDate=s.arrivalDate;if(s.arrivalTime)next.arrivalTime=s.arrivalTime;next.arrivalIsActual=s.arrivalIsActual===true;if(s.arrivalTimeZone)next.arrivalTimeZone=s.arrivalTimeZone;if(s.arrivalTimeSource)next.arrivalTimeSource=s.arrivalTimeSource;next.mailTime=next.shipmentType==='IMPORT'?mailTimeFrom(next.arrivalDate,next.arrivalTime):next.mailTime;}if(saudiaDis){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.arrivalIsActual=false;next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';next.remarks=live.remarks||'Offloaded / not loaded to flight';}else if(normalize(row.mawb).startsWith('065-')&&!s.flightNo&&!s.arrivalDate&&!s.arrivalTime){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}else if(s.arrivalIsActual===true){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}setRows(r=>r.map((x,i)=>i===index?next:x))}catch(e){const p=e.payload||{};const retained=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?retained:x));setNote(p.manualHint?`${row.mawb}: ${p.manualHint}`:'Auto refresh had an issue; last verified details and status were retained.');return}try{await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}catch(e){setShared(false);setNote(`${row.mawb} refreshed. Live details retained; shared save needs a valid login session.`)}}
   async function refreshAll(){setBusy(true);try{const masters=[...new Set(visibleRows.map(r=>normalize(r.mawb)).filter(Boolean))];for(const m of masters)await refreshByMawb(m)}finally{setBusy(false)}}
@@ -453,10 +454,14 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
    async function setCustomsClear(value,cleared,partKey=''){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];
     if(!row||isExportLikeType(row.shipmentType))return;
-    if(isEmiratesSplit(row)){
+    if(hasIndependentCustomsParts(row)){
       const physicalId=String(partKey||'').split('::').slice(1).join('::');
       const partIndex=row.partShipments.findIndex((p,i)=>partIdentity(p,i)===physicalId);
-      if(!physicalId||partIndex<0){setNote('Select one Emirates part row. Refresh if its ID has changed.');return;}
+      if(!physicalId||partIndex<0){setNote('Select one part row. Refresh if its ID has changed.');return;}
+      if(cleared&&row.partShipments[partIndex].mailSent!==true){
+        setNote(`${row.mawb} • part ${partIndex+1}: Select Mail YES first; then click Customs Pending.`);
+        return;
+      }
       const date=new Date().toISOString();
       const updated={...row,customsCleared:false,customsClearedAt:'',customsClearedBy:'',
         partShipments:row.partShipments.map((p,i)=>i===partIndex?{...p,
@@ -467,7 +472,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       try{
         const res=await fetch('/api/shipments',{method:'PATCH',credentials:'include',
           headers:{'content-type':'application/json'},
-          body:JSON.stringify({mawb:row.mawb,operation:'emiratesPartCustoms',
+          body:JSON.stringify({mawb:row.mawb,operation:'partCustoms',
             partKey:physicalId,customsCleared:cleared})});
         const data=await res.json();
         if(!data.ok)throw new Error(data.error||'Customs clearance save failed');
@@ -476,7 +481,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
         setNote(`${row.mawb} • part ${partIndex+1}: Customs ${cleared?'CLEARED':'PENDING'} saved independently.`);
       }catch(e){
         setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?row:x));
-        setNote(`Emirates part clearance failed: ${e.message||e}`);
+        setNote(`Part customs clearance failed: ${e.message||e}`);
       }
       return;
     }
