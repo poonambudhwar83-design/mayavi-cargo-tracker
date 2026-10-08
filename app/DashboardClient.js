@@ -193,6 +193,7 @@ function decorateTiming(existing={},incoming={}){
 function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return {backgroundColor:`hsl(${h} 75% 92%)`,color:`hsl(${h} 48% 28%)`,borderColor:`hsl(${h} 55% 76%)`}}
 function officialUrl(row={}){
   const n=normalize(row.mawb),airline=airlineForMawb(n),serial=n.slice(4),allDigits=digits(n);
+  if(n.startsWith('074-'))return `https://www.afklcargo.com/mycargo/shipment/detail/${encodeURIComponent(n)}`;
   if(n.startsWith('157-'))return `https://www.qrcargo.com/s/track-your-shipment?documentNumber=${encodeURIComponent(serial)}&documentPrefix=157&documentType=MAWB`;
   if(n.startsWith('232-'))return `https://www.maskargo.com/en/shipment-tracking.html?prefixNumber=232&awbNumber=${encodeURIComponent(serial)}`;
   if(n.startsWith('607-'))return `https://www.etihadcargo.com/en/e-services/track-shipment?awb=${encodeURIComponent(allDigits)}`;
@@ -200,7 +201,7 @@ function officialUrl(row={}){
   if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
 }
-function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return n.startsWith('157-')||n.startsWith('232-')||n.startsWith('607-')}
+function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return n.startsWith('074-')||n.startsWith('157-')||n.startsWith('232-')||n.startsWith('607-')}
 function openOfficial(row={}){
   const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;
   try{navigator.clipboard?.writeText(digits(n)).catch(()=>{})}catch{}
