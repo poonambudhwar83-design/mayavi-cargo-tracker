@@ -91,7 +91,7 @@ function expectedArrivalLabel(row={}){
   const hasFowEvidence=/\bFOW\b/i.test([
     row.sourceStatus||'',row.arrivalTimeSource||'',row.remarks||''
   ].join(' '));
-  return isSaudia&&hasFowEvidence?'EXPECTED (FOW)':'EXPECTED ARRIVAL';
+  return isSaudia&&hasFowEvidence?'FLIGHT CONFIRMED • ETA':'EXPECTED ARRIVAL';
 }
 function tone(status=''){const s=String(status).toUpperCase();if(s.includes('OFFLOAD'))return'delayed';if(s.includes('PART ARRIVED')||s.includes('PART LOAD'))return'transit';if(s.includes('DELIVER')||s.includes('ARRIVED'))return'arrived';if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return'transit';if(s.includes('DELAY'))return'delayed';if(s.includes('EARLY'))return'early';return'booked'}
 function trackingProgress(status=''){const s=String(status||'').toUpperCase();if(s.includes('DELIVER'))return 6;if(s.includes('ARRIVED')||s.includes('RCF')||s.includes('LANDED'))return 5;if(s.includes('DELAY'))return 4;if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 3;if(s.includes('BOOK')||s.includes('ACCEPT')||s.includes('MANIFEST'))return 2;return 0}
