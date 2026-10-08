@@ -436,17 +436,16 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   if(['065','098','176','312'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
     live.partShipments=mergePartCustoms(live.partShipments,row.partShipments||[]);
   }
-}if(normalize(row.mawb).startsWith('232-')&&s.arrivalVerifiedAbsent===true){live={...live,arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalVerifiedAbsent:true,mailTime:''};}if(normalize(row.mawb).startsWith('074-')){
-   // Protect Germany/FRA and the last verified KLM flight/ETA/weight against
-   // incomplete official refreshes. Do not preserve a genuinely updated value.
+}if(normalize(row.mawb).startsWith('232-')&&s.arrivalVerifiedAbsent===true){live={...live,arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalVerifiedAbsent:true,mailTime:''};}if(normalize(row.mawb).startsWith('074-')&&s.klmLiveVerifiedAt&&!row.klmLiveVerifiedAt){
+   // When replacing an old operator screenshot with the first genuinely live
+   // AWB result, do not silently mix missing fields with screenshot values.
    for(const field of ['origin','via','destination','bags','pieces','weight','masterWeight',
      'bookingDate','bookingTime','flightNo','flightDate','finalFlightNo','finalFlightDate',
-     'scheduledArrivalDate','scheduledArrivalTime','arrivalDate','arrivalTime','arrivalTimeZone']){
-     if((live[field]===undefined||live[field]===null||live[field]==='')&&
-       row[field]!==undefined&&row[field]!==null&&row[field]!=='')live[field]=row[field];
+     'scheduledArrivalDate','scheduledArrivalTime','arrivalDate','arrivalTime',
+     'arrivalTimeZone','arrivalTimeSource','flightSchedule']){
+     if(s[field]===undefined||s[field]===null||s[field]==='')
+       live[field]=field==='flightSchedule'?[]:'';
    }
-   if(live.arrivalIsActual!==true&&live.arrivalDate&&live.arrivalTime&&row.arrivalEstimate===true)
-     live.arrivalEstimate=true;
  }next=decorateTiming(row,{...live,shipmentType:row.shipmentType,clientName:row.clientName,companyType:row.companyType||'',companyName:row.companyName||'',goodsDescription:row.goodsDescription||'',enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:row.shipmentType==='IMPORT'?row.mailSent:undefined,mailUpdatedAt:row.shipmentType==='IMPORT'?(row.mailUpdatedAt||''):undefined,customsCleared:row.shipmentType==='IMPORT'?row.customsCleared===true:undefined,masterCopyReceived:isExportLikeType(row.shipmentType)?row.masterCopyReceived===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});if(normalize(row.mawb).startsWith('098-')){if(s.arrivalDate)next.arrivalDate=s.arrivalDate;if(s.arrivalTime)next.arrivalTime=s.arrivalTime;next.arrivalIsActual=s.arrivalIsActual===true;if(s.arrivalTimeZone)next.arrivalTimeZone=s.arrivalTimeZone;if(s.arrivalTimeSource)next.arrivalTimeSource=s.arrivalTimeSource;next.mailTime=next.shipmentType==='IMPORT'?mailTimeFrom(next.arrivalDate,next.arrivalTime):next.mailTime;}if(saudiaDis){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.arrivalIsActual=false;next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';next.remarks=live.remarks||'Offloaded / not loaded to flight';}else if(normalize(row.mawb).startsWith('065-')&&!s.flightNo&&!s.arrivalDate&&!s.arrivalTime){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}else if(s.arrivalIsActual===true){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}setRows(r=>r.map((x,i)=>i===index?next:x))}catch(e){const p=e.payload||{};const retained=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?retained:x));setNote(p.manualHint?`${row.mawb}: ${p.manualHint}`:'Auto refresh had an issue; last verified details and status were retained.');return}try{await persistRow(next);setShared(true);setNote(`${row.mawb} refreshed and shared.`)}catch(e){setShared(false);setNote(`${row.mawb} refreshed. Live details retained; shared save needs a valid login session.`)}}
   async function refreshAll(){setBusy(true);try{const masters=[...new Set(visibleRows.map(r=>normalize(r.mawb)).filter(Boolean))];for(const m of masters)await refreshByMawb(m)}finally{setBusy(false)}}
   async function setMail(value,sent,partKey=''){
