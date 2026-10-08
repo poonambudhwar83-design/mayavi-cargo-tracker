@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
+import { partIdentity, mergePartMail } from '../../../lib/partMail.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -166,7 +167,11 @@ export async function POST(request){
       if((shipmentType(rowForSave.shipmentType)==='OTHER_COUNTRIES'||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
-      const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
+      // Airline refreshes may rebuild part rows; preserve saved Mail choices by physical part ID.
+       if(Array.isArray(rowForSave.partShipments)){
+         rowForSave.partShipments=mergePartMail(rowForSave.partShipments,existingRow?.data?.partShipments);
+       }
+       const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
       if(!weightMinusAllowed||!hasWeightMinus){
         const existing=existingRow;
         if(existing?.data&&Object.prototype.hasOwnProperty.call(existing.data,'weightMinus')){
@@ -241,5 +246,64 @@ export async function DELETE(request){
     return Response.json({ok:true,shared:true,awb});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
+  }
+}
+
+/** Save one Mail flag without overwriting other part rows or shipment fields. */
+export async function PATCH(request){
+  try{
+    const auth=access(request);
+    if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
+    const body=await request.json();
+    const awb=normalize(body?.mawb||body?.awb||'');
+    const partKey=String(body?.partKey||'').trim();
+    if(!awb||typeof body?.mailSent!=='boolean'||partKey.length>256){
+      return Response.json({ok:false,error:'Invalid Mail update.'},{status:400});
+    }
+    const sql=db();
+    for(let attempt=0;attempt<5;attempt++){
+      const [previous]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+      if(!previous)return Response.json({ok:false,error:'Shipment not found. Refresh the dashboard.'},{status:404});
+      if(shipmentType(previous.data?.shipmentType)!=='IMPORT'){
+        return Response.json({ok:false,error:'Mail is only available for Import.'},{status:400});
+      }
+      if(isOtherCountries(previous.data)&&!canViewOtherCountries(auth.session,auth.internal)){
+        return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+      }
+      const date=new Date().toISOString();
+      const updated={...previous.data};
+      if(partKey){
+        if(!Array.isArray(updated.partShipments)){
+          return Response.json({ok:false,error:'Part shipment changed. Refresh and try again.'},{status:409});
+        }
+        let matches=0;
+        updated.partShipments=updated.partShipments.map((part,index)=>{
+          if(partIdentity(part,index)!==partKey)return part;
+          matches++;
+          return {...part,mailSent:body.mailSent,mailUpdatedAt:date};
+        });
+        if(matches!==1){
+          return Response.json({ok:false,error:'Part movement changed. Refresh and try again.'},{status:409});
+        }
+      }else{
+        if(Array.isArray(updated.partShipments)&&updated.partShipments.length>1){
+          return Response.json({ok:false,error:'Select a specific part row to update Mail.'},{status:409});
+        }
+        updated.mailSent=body.mailSent;
+        updated.mailUpdatedAt=date;
+      }
+      const [saved]=await sql`
+        UPDATE mayavi_shipments
+        SET data=${JSON.stringify(updated)}::jsonb,version=version+1,updated_at=now()
+        WHERE awb=${awb} AND version=${previous.version}
+        RETURNING awb,data,version,updated_at,tracking_checked_at
+      `;
+      if(saved){
+        return Response.json({ok:true,row:{...saved,data:dataForViewer(sanitizeShipment(saved.data||{},saved.awb),auth.session,auth.internal)}});
+      }
+    }
+    return Response.json({ok:false,error:'Shipment changed during the save. Try again.'},{status:409});
+  }catch(e){
+    return Response.json({ok:false,error:e?.message||String(e)},{status:503});
   }
 }
