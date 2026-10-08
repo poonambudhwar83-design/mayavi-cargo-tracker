@@ -926,6 +926,24 @@ async function handle(mawb,fallback={}){
       shipment.arrivalTimeZone='IST';
       shipment.arrivalTimeSource=latest.arrivalTimeSource||'IndiGo part-flight actual arrival';
     }
+    // A single full-load movement stays ONE dashboard master, not a split row.
+    // When its matching flight has a published ETA but no cargo ARR yet, copy
+    // that ETA to the master fields displayed by the dashboard. Never mark
+    // flight schedule ETA as actual cargo arrival.
+    if(!arrivedParts.length&&refreshedParts.length===1&&shipment.partLoad!==true){
+      const only=refreshedParts[0];
+      if(only.arrivalDate&&only.arrivalTime){
+        shipment.arrivalDate=only.arrivalDate;
+        shipment.arrivalTime=only.arrivalTime;
+        shipment.scheduledArrivalDate=only.arrivalDate;
+        shipment.scheduledArrivalTime=only.arrivalTime;
+        shipment.arrivalIsActual=only.arrivalIsActual===true;
+        shipment.arrivalEstimate=only.arrivalIsActual!==true;
+        shipment.arrivalVerifiedAbsent=false;
+        shipment.arrivalTimeZone=only.arrivalTimeZone||'IST';
+        shipment.arrivalTimeSource=only.arrivalTimeSource||'IndiGo matching flight ETA';
+      }
+    }
     shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);
   }
 
