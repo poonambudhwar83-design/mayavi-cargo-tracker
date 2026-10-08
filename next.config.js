@@ -1,6 +1,9 @@
 module.exports = {
   serverExternalPackages: ['@sparticuz/chromium','puppeteer-core','tesseract.js','tesseract.js-core','wasm-feature-detect','bmp-js'],
   outputFileTracingIncludes: {
+    '/api/klm-live': [
+      './node_modules/@sparticuz/chromium/bin/**/*'
+    ],
     '/api/track': [
       './node_modules/@sparticuz/chromium/bin/**/*',
       './node_modules/tesseract.js/**/*',
