@@ -27,6 +27,7 @@ import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
+import { mergePartMail, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -141,6 +142,60 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     RETURNING awb
   `;
   return{saved:Boolean(rows?.length)};
+}
+
+
+/**
+ * Emirates is an independently split cargo movement: the operator's Mail and
+ * Customs flags belong to each physical part, while the official source owns
+ * each physical part's arrival timestamps. The dashboard may be closed when
+ * the second part lands; persist confirmed EK movement directly to shared DB.
+ *
+ * CAS prevents racing a user's Customs/Mail click with a tracking refresh.
+ * Other airlines and user-entered master metadata are never altered here.
+ */
+async function persistEmiratesSplitResult(mawb,shipment={}){
+  if(!mawb.startsWith('176-')||!Array.isArray(shipment.partShipments)||
+    shipment.partShipments.length<2||!shipment.partShipments.some(p=>p.arrivalIsActual===true&&p.arrivalDate&&p.arrivalTime))
+    return{saved:false,skipped:true};
+  const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
+  const sql=neon(url),awb=String(mawb).replace(/\D/g,'');
+  const keys=['carrierCode','airlineName','origin','destination','via',
+    'bags','pieces','weight','totalPieces','totalWeight','arrivedPieces',
+    'arrivedWeight','pendingPieces','pendingWeight','isPartLoad','partLoad',
+    'status','arrivalDate','arrivalTime','arrivalIsActual','arrivalEstimate',
+    'arrivalTimeZone','arrivalTimeSource','flightNo','flightDate',
+    'bookingDate','bookingTime','bookingDateSource','loadStatus','discrepancy',
+    'arrivalEvidence','scheduledArrivalDate','scheduledArrivalTime','source'];
+  for(let attempt=0;attempt<5;attempt++){
+    const [current]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+    if(!current)return{saved:false,reason:'MAWB_NOT_REGISTERED'};
+    const old=current.data||{};
+    if(String(old.shipmentType||'IMPORT').toUpperCase()!=='IMPORT')return{saved:false,reason:'NON_IMPORT'};
+    const updated={...old};
+    for(const k of keys){
+      const value=shipment[k];
+      if(value!==undefined&&value!==null&&value!=='')updated[k]=value;
+    }
+    updated.partShipments=mergeEmiratesPartCustoms(
+      mergePartMail(shipment.partShipments,old.partShipments||[]),
+      old.partShipments||[]);
+    // Old whole-master flag was incorrectly clearing both physical parts.
+    updated.customsCleared=false;
+    updated.customsClearedAt='';
+    updated.customsClearedBy='';
+    updated.lastChecked=new Date().toISOString();
+    updated.trackingError='';
+    updated.manualHint='';
+    const [saved]=await sql`
+      UPDATE mayavi_shipments
+      SET data=${JSON.stringify(updated)}::jsonb,
+          version=version+1,updated_at=now(),tracking_checked_at=now()
+      WHERE awb=${awb} AND version=${current.version}
+      RETURNING awb`;
+    if(saved)return{saved:true};
+  }
+  return{saved:false,reason:'CONCURRENT_UPDATE'};
 }
 
 function concrete(s={}){
@@ -1022,7 +1077,10 @@ async function handle(mawb,fallback={}){
     : (concrete(shipment)||(verifiedStatus&&(ocr?.statusEvidence==='strong'||statusRank(shipment.status)>=5||directOcr||directScreenshot||Boolean(browser)||Boolean(direct))));
   if(hasUseful){
     let serverSaved=false;
-    if(airIndiaFastPath||qatarFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||virginFastPath||vietnamFastPath||mawb.startsWith('607-')){
+    if(mawb.startsWith('176-')){
+      try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
+      catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
+    }else if(airIndiaFastPath||qatarFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||virginFastPath||vietnamFastPath||mawb.startsWith('607-')){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
