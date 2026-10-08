@@ -2,7 +2,7 @@
   "name": "mayavi-cargo-tracker-v3",
   "version": "3.8.0",
   "private": true,
-  "scripts": {"dev":"next dev","build":"next build","start":"next start"},
+  "scripts": {"dev":"next dev","prebuild":"node scripts/checkLockedAirlines.mjs","build":"next build","start":"next start"},
   "dependencies": {
     "next": "16.1.6",
     "react": "19.2.3",
