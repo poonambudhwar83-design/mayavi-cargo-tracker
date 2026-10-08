@@ -478,7 +478,10 @@ async function handle(mawb,fallback={}){
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
     skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:klmFastPath?'KLM OFFICIAL AFKLM TRACK & TRACE ADAPTER IS PRIMARY':britishFastPath?'BRITISH AIRWAYS IAG TRACK AND TRACE ADAPTER IS PRIMARY':airIndiaFastPath?'AIR INDIA DEDICATED CARGO PORTAL ADAPTER IS PRIMARY':qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':thaiFastPath?'THAI CARGO CHORUS PUBLIC TRACKER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':malaysiaFastPath?'MALAYSIA AIRLINES MASKARGO OFFICIAL TRACKER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':indigoFastPath?'INDIGO DEDICATED SMARTKARGO FORM ADAPTER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
-    dedicatedOfficial(mawb),browserOfficial(mawb)
+    dedicatedOfficial(mawb),
+    // KLM must never merge an unrelated generic page's weight/route.
+    klmFastPath?Promise.resolve({ok:false,skipped:true,
+      reason:'KLM USES EXCLUSIVELY AWB-MATCHED OFFICIAL DETAILS'}):browserOfficial(mawb)
   ]);
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
   const directResult=directSettled.status==='fulfilled'?directSettled.value:{ok:false,reason:directSettled.reason?.message||'DIRECT ADAPTER FAILED'};
@@ -506,6 +509,13 @@ async function handle(mawb,fallback={}){
   if(direct)shipment=mergeNonEmpty(shipment,direct);
   if(browser)shipment=mergeNonEmpty(shipment,browser);
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
+  if(klmFastPath&&direct){
+    // Authoritative KLM weight is only the AWB-matched Shipment Details
+    // card or matched live KLM JSON. Never keep old browser/manual values.
+    shipment.weight=direct.weight||'';
+    shipment.masterWeight=direct.masterWeight||direct.weight||'';
+    shipment.weightSource=direct.weightSource||'';
+  }
 
   // IAG sometimes publishes the movement row before it publishes a verified
   // kg value. A refresh must not erase a previously saved BA piece/weight value
