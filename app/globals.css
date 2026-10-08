@@ -6,6 +6,7 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
 .urgentBlink{animation:mayaviUrgentBlink .8s infinite;font-weight:900!important}
 
 
+.mobileAirIndiaRefresh{display:none}
 /* Phone-only responsive layer — desktop/laptop styles above remain unchanged */
 @media (max-width:640px){
   html,body{max-width:100%;overflow-x:hidden}
@@ -32,6 +33,7 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
   .entry{gap:8px;padding:12px;border-radius:13px}
   .entry input{height:40px;font-size:14px}
   .entry button{height:40px;font-size:11px}
+  .entry .mobileAirIndiaRefresh{display:block;background:#164da3;color:#fff;border:1px solid #164da3;font-weight:800}
 
   .note{margin:8px 0;padding:9px 10px;font-size:11px}
   .filters{gap:8px;margin-top:10px;padding:10px;border-radius:12px}
