@@ -33,3 +33,19 @@ jobs:
             done
           done
           echo 'Network inspection complete; no data was imported into Mayavi.'
+      - name: Test exact KLM shipment with native Chrome browser navigation
+        shell: bash
+        run: |
+          set +e
+          command -v google-chrome || true
+          command -v chromium || true
+          google-chrome --version || true
+          echo 'Navigating official AWB deep link with real Chrome (no proxy, no captcha bypass)'
+          timeout 32s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --disable-gpu --virtual-time-budget=15000 --dump-dom \
+            'https://www.afklcargo.com/mycargo/shipment/detail/074-06152790' \
+            > /tmp/klm-chrome-page 2> /tmp/klm-chrome-errors
+          echo "CHROME-DOM-SIZE=$(wc -c < /tmp/klm-chrome-page)"
+          echo "CHROME-AWB-EXACT-PRESENT=$(grep -Ec '074-06152790|07406152790' /tmp/klm-chrome-page || true)"
+          echo "CHROME-ERROR-CODES=$(grep -Eo 'ERR_[A-Z_]+|net::ERR_[A-Z_]+' /tmp/klm-chrome-errors | sort -u | tr '\n' ',' | head -c 300)"
+          echo "CHROME-TITLE=$(grep -o -m1 '<title>[^<]*</title>' /tmp/klm-chrome-page | head -c 160)"
