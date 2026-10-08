@@ -1,0 +1,35 @@
+name: KLM separate-network live access test
+on:
+  push:
+    branches: [v2-clean-scratch]
+    paths:
+      - '.github/workflows/klm-alternate-network-probe.yml'
+  workflow_dispatch:
+jobs:
+  check-klm-official:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check KLM public exact-AWB network from a non-Vercel runner
+        shell: bash
+        run: |
+          set +e
+          echo 'KLM official AWB networking from GitHub Actions, no credentials or captcha bypass'
+          URLS=(
+            'https://www.afklcargo.com/mycargo/shipment/detail/074-06152790'
+            'https://afklcargo.com/mycargo/shipment/detail/074-06152790'
+            'https://www.afklcargo.com/GB/en/homepage/homepage'
+            'https://www.afklcargo.com/mycargo/api/tnt-api/shipments/07406152790'
+            'https://www.afklcargo.com/mycargo/api/shipment/detail/074-06152790'
+          )
+          for u in "${URLS[@]}"; do
+            for proto in --http2 --http1.1; do
+              echo "URL=${u} PROTOCOL=${proto}"
+              curl -L -sS -4 "${proto}" --max-time 12 --connect-timeout 5 \
+                --output /tmp/klm-probe-body \
+                --write-out 'HTTP=%{http_code} BYTES=%{size_download} REMOTE=%{remote_ip} TOTAL=%{time_total}\n' \
+                "${u}"
+              echo "BODY-MATCHES=$(grep -o -Ei '074-06152790|07406152790|KL0871|shipment details|gross weight' /tmp/klm-probe-body 2>/dev/null | sort -u | tr '\n' ',' | head -c 100)"
+            done
+          done
+          echo 'Network inspection complete; no data was imported into Mayavi.'
