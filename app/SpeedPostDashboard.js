@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const API='/api/speedpost';
+const MAX_BATCH_PHOTOS=20;
+const PARALLEL_BATCH_OCR=2;
 const card={border:'1px solid #dce5f1',borderRadius:14,padding:17,background:'#fff',boxShadow:'0 2px 8px rgba(15,23,42,.04)'};
 const btn={border:0,borderRadius:8,padding:'10px 14px',background:'#2258ce',color:'#fff',fontWeight:800,cursor:'pointer'};
 const input={width:'100%',boxSizing:'border-box',height:42,border:'1px solid #c8d4e3',borderRadius:8,padding:'7px 11px',fontSize:14};
@@ -122,6 +124,9 @@ export default function SpeedPostDashboard({currentUser}){
   const [ocrCandidates,setOcrCandidates]=useState([]);
   const [photoRecipient,setPhotoRecipient]=useState({consigneeName:'',consigneeAddress:''});
   const [photoEdNeedsEntry,setPhotoEdNeedsEntry]=useState(false);
+  const [batchItems,setBatchItems]=useState([]);
+  const [batchRunning,setBatchRunning]=useState(false);
+  const [reviewBusy,setReviewBusy]=useState(false);
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -181,9 +186,91 @@ export default function SpeedPostDashboard({currentUser}){
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
   },[]);
+  function updateBatchItem(index,changes){
+    setBatchItems(old=>old.map((x,i)=>index===i?{...x,...changes}:x));
+  }
+  async function saveBatchED(ed,consigneeName,consigneeAddress){
+    const resp=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:'photo-add',trackingNo:ed,consigneeName,consigneeAddress})});
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok||!data.ok)throw Error(data.error||'Could not save parcel');
+    if(data.row)setRows(old=>[data.row,...old.filter(x=>x.trackingNo!==ed)]);
+    return data;
+  }
+  async function saveReviewedBatch(index,item){
+    if(batchRunning||reviewBusy)return;
+    const ed=normalizeED(item.ed||'');
+    if(!ed){updateBatchItem(index,{status:'review',error:'Enter the correct ED + 9 digits + IN.'});return;}
+    setReviewBusy(true);
+    updateBatchItem(index,{status:'saving',error:''});
+    try{
+      const data=await saveBatchED(ed,item.consigneeName,item.consigneeAddress);
+      updateBatchItem(index,{status:data.duplicate?'duplicate':'saved',ed,
+        error:data.duplicate?'Existing ED highlighted; no second row created.':''});
+    }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
+    finally{setReviewBusy(false);}
+  }
+  async function uploadBatch(files){
+    const queue=files.map((f,i)=>({index:i,name:f.name,status:'queued',ed:'',
+      candidates:[],consigneeName:'',consigneeAddress:'',error:''}));
+    setBatchItems(queue);
+    setBatchRunning(true);
+    setPhotoEdNeedsEntry(false);
+    setOcrCandidates([]);
+    setPhotoRecipient({consigneeName:'',consigneeAddress:''});
+    setMessage('Processing '+files.length+' photos separately, 2 at a time. Keep this page open.');
+    let next=0;
+    const work=async()=>{
+      while(next<files.length){
+        const i=next++;
+        const file=files[i];
+        if(file.size>8*1024*1024||file.size<20){
+          updateBatchItem(i,{status:'error',error:'Each photo must be 20 bytes to 8 MB.'});
+          continue;
+        }
+        updateBatchItem(i,{status:'reading'});
+        try{
+          const form=new FormData();form.append('photo',file);
+          const resp=await fetch('/api/speedpost/ocr',{method:'POST',body:form});
+          const data=await resp.json().catch(()=>({}));
+          if(!resp.ok||!data.ok)throw Error(data.error||'OCR unavailable');
+          const candidates=Array.isArray(data.candidates)?data.candidates.filter(c=>normalizeED(c.number)):[];
+          const ed=candidates[0]?.number||'';
+          const consigneeName=String(data.consigneeName||'').trim().slice(0,100);
+          const consigneeAddress=String(data.consigneeAddress||'').trim().slice(0,700);
+          const certain=data.autoSelect===true&&candidates.length===1
+            &&candidates[0].checkDigitValid===true&&candidates[0].emsNearby===true;
+          updateBatchItem(i,{ed,candidates,consigneeName,consigneeAddress,
+            status:certain?'saving':'review',
+            error:certain?'':'Check this photo’s ED number before saving.'});
+          if(!certain)continue;
+          const result=await saveBatchED(ed,consigneeName,consigneeAddress);
+          updateBatchItem(i,{status:result.duplicate?'duplicate':'saved',
+            error:result.duplicate?'Existing ED highlighted; no second row created.':''});
+          // Deliberately avoid a third-party tracking fetch inside this batch:
+          // the ED + TO fields are saved first and tracking can be refreshed.
+        }catch(e){
+          updateBatchItem(i,{status:'error',error:e.message||'Photo could not be processed'});
+        }
+      }
+    };
+    try{await Promise.all(Array.from({length:Math.min(PARALLEL_BATCH_OCR,files.length)},()=>work()));}
+    finally{
+      setBatchRunning(false);
+      setMessage('Bulk photo processing finished. Review any unclear EDs below; use individual REFRESH for live tracking.');
+    }
+  }
   async function uploadImage(event){
-    const file=event.target.files?.[0];
-    if(!file)return;
+    const files=Array.from(event.target.files||[]);
+    if(fileRef.current)fileRef.current.value='';
+    if(!files.length)return;
+    if(files.length>MAX_BATCH_PHOTOS){
+      setMessage('Select at most '+MAX_BATCH_PHOTOS+' photos per upload.');
+      return;
+    }
+    if(files.length>1){await uploadBatch(files);return;}
+    setBatchItems([]);
+    const file=files[0];
     setImageName(file.name);
     setMessage('');
     setOcrCandidates([]);
@@ -251,7 +338,7 @@ export default function SpeedPostDashboard({currentUser}){
     }catch(e){setMessage(e.message||'Remove failed.')}
     finally{setBusy('');}
   }
-  const anythingBusy=Boolean(busy||ocrBusy);
+  const anythingBusy=Boolean(busy||ocrBusy||batchRunning);
   const activeRows=rows.filter(r=>!isDelivered(r));
   const deliveredRows=rows.filter(isDelivered);
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
