@@ -10,6 +10,7 @@ import { trackVietnamChamp } from '../../../lib/adapters/vietnam-champ.js';
 import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackIndigoLive } from '../../../lib/adapters/indigo-live.js';
 import { trackMalaysia } from '../../../lib/adapters/malaysia-live.js';
+import { trackKlmLive } from '../../../lib/adapters/klm-live.js';
 import { trackMalaysiaTrackingOne } from '../../../lib/adapters/malaysia-trackingone.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
@@ -161,6 +162,12 @@ async function indigoFlightArrivalOverlay(shipment={}){
 async function handle(mawb){
   const airline=airlineForMawb(mawb);
   const prefix=mawb.replace(/\D/g,'').slice(0,3);
+
+  if(prefix==='074'){
+    const result=await trackKlmLive(mawb);
+    if(result.ok)return Response.json({ok:true,configured:true,provider:'KLM myCargo official Station View',source:result.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,noPaidApi:true,shipment:result.shipment,trackingDebug:result.debug});
+    return Response.json({ok:true,configured:true,provider:'KLM myCargo official Station View',trackingError:result.reason,trackingDebug:result.debug,shipment:waiting(mawb,airline,result.reason)});
+  }
 
   if(prefix==='065'){
     // Saudia is intentionally multi-source. SAL is authoritative for the full
