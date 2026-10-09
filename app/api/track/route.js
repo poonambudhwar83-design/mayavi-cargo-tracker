@@ -481,11 +481,11 @@ async function handle(mawb,fallback={}){
   const cathayIncomplete=Boolean(cathayFastPath&&directResult?.ok&&
     Array.isArray(directResult?.debug?.terminalFlights)&&
     directResult.debug.terminalFlights.length===0&&
-    !/Booking\\s+Status|Current\\s+status|Shipment\\s+History/i.test(
+    !/Booking\s+Status|Current\s+status|Shipment\s+History/i.test(
       String(directResult?.debug?.browser?.pageSample||'')));
   if(cathayFastPath&&(!directResult?.ok||cathayIncomplete)){
     const saved=await loadStoredTrackingFallback(mawb);
-    const digits=value=>String(value||'').replace(/\\D/g,'');
+    const digits=value=>String(value||'').replace(/\D/g,'');
     const exact=digits(saved?.mawb)===digits(mawb);
     const snapshot=saved?.operatorVerifiedCxSnapshot||null;
     const snapExact=Boolean(snapshot&&digits(snapshot.mawb)===digits(mawb));
@@ -506,7 +506,7 @@ async function handle(mawb,fallback={}){
       scheduledArrivalTimeZone:'IST'
     }:saved;
     const verified=exact&&String(source?.carrierCode||'').toUpperCase()==='CX'&&
-      /^CX\\d{1,4}[A-Z]?$/i.test(String(source?.flightNo||'').trim())&&
+      /^CX\d{1,4}[A-Z]?$/i.test(String(source?.flightNo||'').trim())&&
       /^[A-Z]{3}$/.test(String(source?.origin||''))&&
       /^[A-Z]{3}$/.test(String(source?.destination||''))&&
       (Boolean(source?.pieces)||Boolean(source?.bags)||Boolean(source?.weight));
