@@ -61,6 +61,17 @@ export async function POST(request){
     // Same ED entered again is a duplicate ADD, not a second shipment.
     // Return the existing row without expensive tracking or replacing its fields.
     if(action==='add'){
+      // First persist the ED number. Remote tracking must never prevent saving.
+      // Unique tracking_no enforces one row per packet even for simultaneous adds.
+      const inserted=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
+        VALUES (${trackingNo},jsonb_build_object(
+          'trackingNo',${trackingNo},'status','Pending Tracking',
+          'enteredBy',${auth.username},'savedAt',NOW()::text),NOW(),NOW())
+        ON CONFLICT (tracking_no) DO NOTHING
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(inserted.length)return json({ok:true,created:true,pendingTracking:true,row:rowToResult(inserted[0]),
+        message:'ED number saved. Tracking details are being checked.'});
+      // Duplicate entry: blink existing row and global warning, do not add another.
       const duplicate=await sql`UPDATE mayavi_speedpost
         SET data=jsonb_set(
           jsonb_set(
@@ -71,10 +82,20 @@ export async function POST(request){
         WHERE tracking_no=${trackingNo}
         RETURNING tracking_no,data,created_at,updated_at`;
       if(duplicate.length)return json({ok:true,duplicate:true,row:rowToResult(duplicate[0]),
-        message:'Duplicate ED number: the shipment already exists. No second row was created.'});
+        message:'Duplicate ED number: existing shipment highlighted. No second row created.'});
+      return json({ok:false,error:'Could not save or locate the ED record.'},503);
     }
+    // Refresh only fetches details for an existing record. Saving was already done.
+    const existing=await sql`SELECT tracking_no,data,created_at,updated_at
+      FROM mayavi_speedpost WHERE tracking_no=${trackingNo} LIMIT 1`;
+    if(!existing.length)return json({ok:false,error:'ED number not saved. Add it first.'},404);
     const result=await trackSpeedPost(trackingNo);
-    if(!result.ok)return json({ok:false,error:result.error,trackingUrl:result.trackingUrl},502);
+    if(!result.ok){
+      // Tracking may be inaccessible or rate-limited: keep the saved ED and all
+      // previous fields intact, and surface the pending/error state to the UI.
+      return json({ok:true,trackingPending:true,
+        error:result.error||'Source unavailable',row:rowToResult(existing[0])});
+    }
     const old=await sql`SELECT data FROM mayavi_speedpost WHERE tracking_no=${trackingNo} LIMIT 1`;
     const previous=old?.[0]?.data||{};
     const data={...result.shipment,enteredBy:previous.enteredBy||auth.username,
