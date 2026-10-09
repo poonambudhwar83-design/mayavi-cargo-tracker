@@ -59,6 +59,31 @@ function cashCost(row){
   const billedKg=billedWeightKg(row?.weight);
   return billedKg===null?null:billedKg*CASH_RATE_PER_KG;
 }
+function postalCost(row){
+  const text=String(row?.tariff??'').trim().replace(/[₹,\s]/g,'').replace(/INR/ig,'');
+  if(!/^\d+(?:\.\d+)?$/.test(text))return null;
+  const amount=Number(text);
+  return Number.isFinite(amount)&&amount>=0?amount:null;
+}
+// Aggregate by the date the record was FIRST entered in Mayavi, IST.
+// Include both Active and Delivered exactly once; missing-cost packets are
+// counted but excluded from confirmed totals.
+function entryDateCostGroups(allRows){
+  const groups=new Map();
+  for(const row of allRows){
+    const date=formatEntryDate(row.createdAt);
+    if(date==='—')continue;
+    if(!groups.has(date))groups.set(date,{totalPackets:0,completePackets:0,postal:0,cash:0});
+    const group=groups.get(date);
+    group.totalPackets++;
+    const postal=postalCost(row),cash=cashCost(row);
+    if(postal===null||cash===null)continue;
+    group.completePackets++;
+    group.postal+=postal;
+    group.cash+=cash;
+  }
+  return groups;
+}
 function costPerKg(row){
   const kg=weightInKg(row?.weight);
   const total=Number(String(row?.tariff??'').replace(/[,₹\s]/g,''));
@@ -221,6 +246,9 @@ export default function SpeedPostDashboard({currentUser}){
   const deliveredRows=rows.filter(isDelivered);
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
+  // Daily totals are calculated from ALL unique ED records so moving a
+  // Delivered packet does not change its original booking-date total.
+  const dateCostGroups=entryDateCostGroups(rows);
   return <main style={{padding:'18px min(4vw,36px) 35px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -285,12 +313,27 @@ export default function SpeedPostDashboard({currentUser}){
         <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1350}}>
-          <thead><tr>{['S.No.','Tracking No.','Entry Date','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1530}}>
+          <thead><tr>{['S.No.','Tracking No.','Entry Date','Entry-Date Total (₹)','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
             <td style={td}>{formatEntryDate(r.createdAt)}</td>
+            <td style={{...td,minWidth:180,whiteSpace:'normal'}}>
+              {(()=>{
+                const summary=dateCostGroups.get(formatEntryDate(r.createdAt));
+                if(!summary)return '—';
+                return <div>
+                  <strong style={{color:'#163c80'}}>{summary.completePackets?rupeePerKg.format(summary.postal+summary.cash):'—'}</strong>
+                  <small style={{display:'block',color:summary.completePackets===summary.totalPackets?'#166534':'#a16207'}}>
+                    {summary.completePackets}/{summary.totalPackets} packets costed{summary.completePackets===summary.totalPackets?'':' • PARTIAL'}
+                  </small>
+                  {summary.completePackets>0&&<small style={{display:'block',color:'#64748b'}}>
+                    Postal {rupeePerKg.format(summary.postal)} + Cash {rupeePerKg.format(summary.cash)}
+                  </small>}
+                </div>;
+              })()}
+            </td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{destinationWithCountry(r)||'—'}</td>
             <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
@@ -309,10 +352,10 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={16} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Cash Cost appears beside Weight: rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Entry-Date Total combines the postal and cash costs of ALL packets entered that day, across Active and Delivered. Only packets with both costs known count towards the amount; PARTIAL means some costs are still missing. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
