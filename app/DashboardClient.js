@@ -419,18 +419,22 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const tabRows=useMemo(()=>dedupeRowsByMawb(rows).filter(r=>shipmentTypeOf(r.shipmentType)===activeTab),[rows,activeTab]);
   const dashboardRows=useMemo(()=>{
     if(exportLikeTab){
-      if(isAdmin&&adminView==='CLEARED')return tabRows.filter(isExportArchived);
+      if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>isExportArchived(r)&&
+        (activeTab!=='EXPORT'||importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth));
       return tabRows.filter(r=>!isExportArchived(r));
     }
     // Emirates split loads must be included in both candidate views. After
     // expansion, only the cleared physical parts go to Customs Cleared.
     if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r));
     return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r));
-  },[tabRows,activeTab,isAdmin,adminView]);
+  },[tabRows,activeTab,isAdmin,adminView,currentImportMonth]);
   const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>
     sum+expandPartRows([row]).filter(p=>p.customsCleared===true&&
       importArrivalMonth(p.arrivalDate)===currentImportMonth).length
   ,0),[tabRows,currentImportMonth]);
+  const customsClearedExportCount=useMemo(()=>tabRows.filter(r=>
+    isExportArchived(r)&&importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth).length,
+    [tabRows,currentImportMonth]);
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&activeTab==='IMPORT';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
@@ -453,15 +457,18 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     }
     let total=0;
     for(const group of groups.values()){
-      const slashTotals=group.map(r=>{
-        const s=cleanWeight(r.weight).replace(/,/g,'').trim();
-        if(!s.includes('/'))return 0;
-        const p=s.split('/').map(x=>Number(String(x).replace(/[^0-9.\-]/g,''))).filter(Number.isFinite);
-        return p.length>1?p.at(-1):0;
-      }).filter(x=>x>0);
-      if(slashTotals.length){total+=Math.max(...slashTotals);continue}
+      // A part row's weight is the first value in "part/master kg".
+      // NEVER total the master denominator for only one cleared physical part,
+      // or count the same master twice when it has multiple parts.
       const parts=group.filter(r=>r._partKey);
-      if(parts.length>1){total+=parts.reduce((sum,r)=>sum+weightForTotal(r),0);continue}
+      if(parts.length){
+        total+=parts.reduce((sum,part)=>{
+          const raw=cleanWeight(part.weight).split('/')[0].replace(/,/g,'').trim();
+          const kg=Number(raw);
+          return sum+(raw&&Number.isFinite(kg)&&kg>0?kg:0);
+        },0);
+        continue;
+      }
       total+=Math.max(0,...group.map(weightForTotal));
     }
     return total;
@@ -599,7 +606,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   return <main>
     <section className="hero"><div><div className="eyebrow">MAYAVI CARGO • V4.3 • {isAdmin?'ADMIN':'EMPLOYEE'}</div><h1>{isAdmin?'Admin MAWB Dashboard':'Employee MAWB Dashboard'}</h1><p>In-place server sync • Active tracking sync every 10 minutes with Import first • Import masters are ordered by Mail Time ascending • live status automatically changes to Booked, Pre-Manifested, In Transit, Part Arrived, Arrived, Delayed or Early Arrival • every new MAWB records the employee who entered it.</p></div><div className="userPanel"><div className="version">{employeeName||'User'} • {shared?'SHARED ✓':'LOCAL'}</div>{onLogout&&<button className="logoutBtn" onClick={onLogout}>LOGOUT</button>}</div></section>
     {isAdmin&&<section className="adminBar"><div><b>ADMIN ACCESS</b><span>Choose Active Masters, Customs Cleared, Monthly Records, or the private Other Countries section. Monthly Records keeps closed-month Import and Export snapshots permanently. Other Countries has its own Active and Customs Cleared views and is visible only to Admin. PART ARRIVED import masters remain visible in both until fully arrived.</span></div></section>}
-    {isAdmin?<section className="adminNavGroup"><section className="adminViews"><button className={adminView==='ACTIVE'&&!privateTab?'active':''} onClick={()=>{if(privateTab)setActiveTab('IMPORT');setAdminView('ACTIVE')}}>ACTIVE MASTERS</button><button className={adminView==='CLEARED'&&!privateTab?'active':''} onClick={()=>{if(privateTab)setActiveTab('IMPORT');setAdminView('CLEARED')}}>CUSTOMS CLEARED ({privateTab?0:(activeTab==='IMPORT'?customsClearedImportCount:tabRows.filter(isExportArchived).length)})</button><button onClick={()=>{window.location.href='/monthly'}}>MONTHLY RECORDS</button><button className={privateTab?'active':''} onClick={()=>{setAdminView('ACTIVE');setActiveTab('OTHER_COUNTRIES')}}>OTHER COUNTRIES</button></section>{privateTab?<section className="typeTabs"><button className={adminView==='ACTIVE'?'active':''} onClick={()=>setAdminView('ACTIVE')}>ACTIVE ({tabRows.filter(r=>!isExportArchived(r)).length})</button><button className={adminView==='CLEARED'?'active':''} onClick={()=>setAdminView('CLEARED')}>CUSTOMS CLEARED ({tabRows.filter(isExportArchived).length})</button></section>:<section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>}</section>:<section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>}
+    {isAdmin?<section className="adminNavGroup"><section className="adminViews"><button className={adminView==='ACTIVE'&&!privateTab?'active':''} onClick={()=>{if(privateTab)setActiveTab('IMPORT');setAdminView('ACTIVE')}}>ACTIVE MASTERS</button><button className={adminView==='CLEARED'&&!privateTab?'active':''} onClick={()=>{if(privateTab)setActiveTab('IMPORT');setAdminView('CLEARED')}}>CUSTOMS CLEARED ({privateTab?0:(activeTab==='IMPORT'?customsClearedImportCount:customsClearedExportCount)})</button><button onClick={()=>{window.location.href='/monthly'}}>MONTHLY RECORDS</button><button className={privateTab?'active':''} onClick={()=>{setAdminView('ACTIVE');setActiveTab('OTHER_COUNTRIES')}}>OTHER COUNTRIES</button></section>{privateTab?<section className="typeTabs"><button className={adminView==='ACTIVE'?'active':''} onClick={()=>setAdminView('ACTIVE')}>ACTIVE ({tabRows.filter(r=>!isExportArchived(r)).length})</button><button className={adminView==='CLEARED'?'active':''} onClick={()=>setAdminView('CLEARED')}>CUSTOMS CLEARED ({tabRows.filter(isExportArchived).length})</button></section>:<section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>}</section>:<section className="typeTabs"><button className={activeTab==='IMPORT'?'active':''} onClick={()=>setActiveTab('IMPORT')}>IMPORT</button><button className={activeTab==='EXPORT'?'active':''} onClick={()=>setActiveTab('EXPORT')}>EXPORT</button></section>}
     <section className="stats"><div><b>{stats.total}</b><span>{isAdmin&&adminView==='CLEARED'?'Cleared':activeTab} MAWB</span></div><div><b>{stats.booked}</b><span>Booked</span></div><div><b>{stats.transit}</b><span>In Transit</span></div><div><b>{stats.arrived}</b><span>Arrived</span></div><div><b>{stats.attention}</b><span>Delayed / Early</span></div></section>
     {(!isAdmin||adminView==='ACTIVE')&&<section className="entry"><div><label>{privateTab?'OTHER COUNTRIES':activeTab} MAWB NUMBER</label><input value={mawb} onChange={e=>setMawb(e.target.value)} placeholder="e.g. 157-12345678" onKeyDown={e=>e.key==='Enter'&&add()}/></div><div><label>CLIENT NAME *</label><input required value={client} onChange={e=>setClient(e.target.value)} placeholder="Required client name" onKeyDown={e=>e.key==='Enter'&&add()}/></div><button disabled={busy} onClick={add}>{busy?'TRACKING…':`ADD TO ${privateTab?'OTHER COUNTRIES':activeTab}`}</button><button className="secondary" disabled={busy||!visibleRows.length} onClick={refreshAll}>REFRESH {activeTab}</button><button className="mobileAirIndiaRefresh" disabled={busy||!rows.some(r=>digits(r.mawb).startsWith('098'))} onClick={refreshAirIndiaMobile}>REFRESH AIR INDIA (098)</button></section>}
     {note&&<div className="note">{note}</div>}
