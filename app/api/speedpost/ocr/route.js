@@ -34,38 +34,68 @@ export async function POST(request){
     const {createWorker,PSM}=await import('tesseract.js');
     const metadata=await sharp(input,{limitInputPixels:40e6}).metadata();
     if(!metadata.width||!metadata.height)return respond({ok:false,error:'Photo could not be opened.'},422);
-    const base=sharp(input,{limitInputPixels:40e6}).rotate().resize({
-      width:Math.max(1300,Math.min(2400,metadata.width*2)),
-      withoutEnlargement:false,
-      fit:'inside'
-    }).greyscale().normalise().sharpen();
-    const variants=[
-      await base.clone().png().toBuffer(),
-      await base.clone().linear(1.4,-35).threshold(160).png().toBuffer()
-    ];
+    const base=await sharp(input,{limitInputPixels:40e6}).rotate().resize({
+      width:Math.max(1300,Math.min(2600,metadata.width*2)),
+      withoutEnlargement:false,fit:'inside'
+    }).greyscale().normalise().sharpen().png().toBuffer();
+    const size=await sharp(base).metadata();
     let output=[];
     const start=Date.now();
     worker=await createWorker('eng',1,{cachePath:'/tmp/speedpost-ocr',cacheMethod:'none'});
     await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});
-    for(let i=0;i<variants.length;i++){
-      const recognition=await Promise.race([
-        worker.recognize(variants[i]).then(result=>({result})).catch(error=>({error})),
-        new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),22000))
+    async function recognize(buffer,isEmsCrop=false){
+      const race=await Promise.race([
+        worker.recognize(buffer,{}, {text:true,tsv:true}).then(result=>({result})).catch(error=>({error})),
+        new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),16000))
       ]);
-      if(recognition.timeout)break;
-      if(recognition.error)throw recognition.error;
-      const candidates=edOcrCandidates(recognition.result?.data?.text||'');
+      if(race.timeout)throw Error('OCR_TIMED_OUT');
+      if(race.error)throw race.error;
+      const data=race.result?.data||{};
+      const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop});
       for(const item of candidates){
-        if(!output.some(other=>other.number===item.number))output.push(item);
+        const existing=output.find(x=>x.number===item.number);
+        if(!existing)output.push(item);
+        else{existing.emsNearby ||=item.emsNearby;existing.occurrences+=item.occurrences}
       }
-      if(output.some(x=>x.checkDigitValid))break;
-      if(Date.now()-start>38000)break;
+      return data;
     }
+    // Locate the literal EMS / SPEED POST printing first and zoom around it.
+    // The ED number on a physical EMS label is usually next to that heading,
+    // not the unrelated booking/tariff/details text elsewhere in the photo.
+    function emsCoordinates(tsv=''){
+      const rows=String(tsv).split(/\r?\n/);
+      const headers=rows.shift()?.split('\t')||[];
+      const at=name=>headers.indexOf(name);
+      if(['left','top','width','height','text'].some(h=>at(h)<0))return null;
+      const words=rows.map(line=>{
+        const cols=line.split('\t');
+        return {label:(cols.slice(at('text')).join('\t')||'').trim().toUpperCase(),
+          x:Number(cols[at('left')]),y:Number(cols[at('top')]),w:Number(cols[at('width')]),h:Number(cols[at('height')])};
+      });
+      return words.find(w=>/^(EMS|SPEED)$/.test(w.label)&&Number.isFinite(w.x)&&Number.isFinite(w.y))||null;
+    }
+    const data=await recognize(base,false);
+    const anchor=emsCoordinates(data.tsv||'');
+    if(anchor&&size.width&&size.height){
+      const cx=anchor.x+anchor.w/2,cy=anchor.y+anchor.h/2;
+      const cropWidth=Math.min(size.width,Math.max(600,Math.round(size.width*0.88)));
+      const cropHeight=Math.min(size.height,Math.max(450,Math.round(size.height*0.46)));
+      const left=Math.max(0,Math.min(size.width-cropWidth,Math.round(cx-cropWidth/2)));
+      const top=Math.max(0,Math.min(size.height-cropHeight,Math.round(cy-cropHeight/2)));
+      const region=await sharp(base).extract({left,top,width:cropWidth,height:cropHeight}).resize({width:Math.min(3200,cropWidth*2)}).sharpen().png().toBuffer();
+      await recognize(region,true);
+    }
+    if(!output.some(x=>x.checkDigitValid&&x.emsNearby)&&Date.now()-start<33000){
+      const enhanced=await sharp(base).linear(1.25,-18).threshold(175).png().toBuffer();
+      await recognize(enhanced,false);
+    }
+    output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
+      Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
     // The user must approve uncertain OCR candidates; no silent fabricated ED number.
-    output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid));
+    output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||Number(b.emsNearby)-Number(a.emsNearby));
     return respond({ok:true,candidates:output.slice(0,10),
-      autoSelect:output.length===1&&output[0].checkDigitValid,
-      message:output.length?'Review detected ED number against your photo.':'No ED number found. Try a closer photo or enter the number manually.'});
+      autoSelect:output.length===1&&output[0].checkDigitValid&&output[0].emsNearby,
+      message:output.length?'Confirm the ED number next to the printed EMS label.':'ED number by the EMS label was not readable. Crop closer around the EMS slip or type the number.'});
   }catch(e){
     return respond({ok:false,error:'Receipt OCR unavailable: '+String(e?.message||e).slice(0,160)},502);
   }finally{try{await worker?.terminate()}catch{}}
