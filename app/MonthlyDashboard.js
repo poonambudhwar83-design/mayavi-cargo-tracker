@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 
 function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function pad(v){return String(v).padStart(2,'0')}
@@ -16,17 +17,12 @@ function formatTime(value=''){
   const h=Number(m[1]);return `${pad(h%12||12)}:${m[2]} ${h>=12?'PM':'AM'}`;
 }
 function weightValue(row={},isPart=false){
-  // Use only explicitly stored cargo weights. Never infer kg from pieces,
-  // and never count the whole MAWB total for an individual physical part.
-  const direct=!isPart?Number(row.totalWeight||row.masterWeight):NaN;
-  if(Number.isFinite(direct)&&direct>0)return direct;
-  const raw=String(row.weight??'').replace(/\s*(kg|kgs|kilograms?)\s*$/i,'').trim();
-  if(!raw)return null;
-  const amount=isPart?raw.split('/')[0]:raw.includes('/')?raw.split('/').at(-1):raw;
-  const s=amount.replace(/,/g,'').trim();
-  if(!/^\d+(?:\.\d+)?$/.test(s))return null;
-  const n=Number(s);
-  return Number.isFinite(n)&&n>0?n:null;
+  // For split cargo, "350/1000" is 350 kg arrived, not 1000 kg booked.
+  if(isPart)return partKg(row.weight);
+  const isFractionalPart=(row.isPartLoad===true||row.partLoad===true||
+    /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(row.status||'')))&&
+    String(row.weight||'').includes('/');
+  return isFractionalPart?partKg(row.weight):masterKg(row);
 }
 function archiveDateMonth(value=''){
   const s=String(value||'').trim();
@@ -48,17 +44,21 @@ function archiveVisibleRows(records=[]){
     const parts=Array.isArray(d.partShipments)?d.partShipments.filter(Boolean):[];
     // One MAWB can have part arrivals in two different calendar months.
     // Each part must show its own received pieces/weight and arrival date.
-    const matches=parts.filter(p=>archiveDateMonth(p.arrivalDate)===month);
+    const matches=parts.filter(p=>confirmedPartArrival(p)&&archiveDateMonth(p.arrivalDate)===month);
     if(matches.length)return matches.map((p,i)=>({...record,archivePartIndex:i,
       isArchivePart:true,data:{...d,...p,weight:p.weight??'',totalWeight:'',
         masterWeight:'',bags:p.pieces||p.bags||'',pieces:p.pieces||p.bags||'',
         arrivalDate:p.arrivalDate||'',arrivalTime:p.arrivalTime||'',
         mailSent:p.mailSent===true,customsCleared:p.customsCleared===true,
         remarks:p.remarks||d.remarks||''}}));
-    // A legacy snapshot filed in the wrong month is not shown as a real
-    // arrival in that month. It remains in storage, never deleted.
-    if(parts.some(p=>archiveDateMonth(p.arrivalDate)))return[];
-    return archiveDateMonth(d.arrivalDate)===month?[record]:[];
+    // Never fall back to the full master for a shipment with individual
+    // physical parts. Pending/estimated parts have no arrived weight yet.
+    if(parts.length)return[];
+    const split=(d.isPartLoad===true||d.partLoad===true||
+      /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(d.status||'')))&&
+      String(d.weight||'').includes('/');
+    if(archiveDateMonth(d.arrivalDate)!==month)return[];
+    return split?(confirmedPartArrival(d)?[{...record,isArchivePart:true}]:[]):[record];
   });
 }
 function viaForRow(row={}){
