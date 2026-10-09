@@ -66,6 +66,15 @@ function costPerKg(row){
   return total/kg;
 }
 const rupeePerKg=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
+function formatEntryDate(value){
+  if(!value)return '—';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return '—';
+  return new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Kolkata'}).format(d);
+}
+function isDelivered(row){
+  return row?.delivered===true||/^delivered$/i.test(String(row?.status||'').trim());
+}
 function formatValue(value){return value?String(value):'—'}
 function field(row,key){
   const val=row?.[key];
@@ -77,6 +86,7 @@ function field(row,key){
 export default function SpeedPostDashboard({currentUser}){
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
+  const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
   const [busy,setBusy]=useState('');
   const [ocrBusy,setOcrBusy]=useState(false);
@@ -98,18 +108,24 @@ export default function SpeedPostDashboard({currentUser}){
   },[]);
   useEffect(()=>{load();},[load]);
 
-  const trackOne=useCallback(async(no)=>{
+  const trackOne=useCallback(async(no,action='add')=>{
     const id=normalizeED(no);
     if(!id){setMessage('Enter a valid tracking number such as ED977951280IN.');return;}
     setBusy(id);
     setMessage('Checking '+id+' individually on TrackParcel and MySpeedPost…');
     try{
-      const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trackingNo:id})});
+      const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trackingNo:id,action})});
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Tracking unavailable');
       setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
-      setMessage(id+' — latest available ED-matched tracking details saved. Fields not shown by the websites remain blank.');
+      if(result.duplicate===true){
+        setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
+        setMessage(id+' — DUPLICATE ED NUMBER! This packet is already saved; no additional row was added.');
+      }else{
+        if(isDelivered(result.row))setSpeedPostTab('DELIVERED');
+        setMessage(id+' — tracking checked and saved. Missing fields are not invented.');
+      }
     }catch(e){setMessage(id+' — '+(e.message||'Tracking unavailable')+'. Existing saved data remains unchanged.');}
     finally{setBusy('');}
   },[]);
@@ -150,6 +166,20 @@ export default function SpeedPostDashboard({currentUser}){
       if(fileRef.current)fileRef.current.value='';
     }
   }
+  async function acknowledgeDuplicate(number){
+    const id=normalizeED(number);
+    if(!id)return;
+    setDuplicateBusy(id);
+    try{
+      const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo:id,action:'acknowledge-duplicate'})});
+      const result=await response.json();
+      if(!response.ok||!result.ok)throw new Error(result.error||'Could not clear duplicate alert');
+      setRows(old=>old.map(r=>r.trackingNo===id?result.row:r));
+      setMessage('Duplicate warning acknowledged for '+id+'. Shipment remains saved.');
+    }catch(e){setMessage(e.message||'Cannot acknowledge duplicate alert.');}
+    finally{setDuplicateBusy('');}
+  }
   async function remove(trackingNoToRemove){
     if(!window.confirm('Remove '+trackingNoToRemove+' from the private Speed Post dashboard?'))return;
     setBusy(trackingNoToRemove);
@@ -163,11 +193,25 @@ export default function SpeedPostDashboard({currentUser}){
     finally{setBusy('');}
   }
   const anythingBusy=Boolean(busy||ocrBusy);
+  const activeRows=rows.filter(r=>!isDelivered(r));
+  const deliveredRows=rows.filter(isDelivered);
+  const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
+  const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
   const cashRows=rows.map(r=>({row:r,billedKg:billedWeightKg(r.weight),cash:cashCost(r)}));
   const validCashRows=cashRows.filter(item=>item.cash!==null);
   const cashGrandTotal=validCashRows.reduce((sum,item)=>sum+item.cash,0);
   const totalBilledKg=validCashRows.reduce((sum,item)=>sum+item.billedKg,0);
   return <main style={{padding:'18px min(4vw,36px) 35px',background:'#f4f7fc',minHeight:'70vh'}}>
+    <style>{`
+      @keyframes speedPostDuplicateBlink{
+        0%,100%{background-color:#fff0ed;box-shadow:inset 0 0 0 1px #fecaca}
+        50%{background-color:#ffaaaa;box-shadow:inset 0 0 0 2px #b91c1c}
+      }
+      .sp-duplicate-alert,.sp-duplicate-row{animation:speedPostDuplicateBlink 1.3s linear infinite}
+      @media (prefers-reduced-motion:reduce){
+        .sp-duplicate-alert,.sp-duplicate-row{animation:none;background-color:#fee2e2;outline:2px solid #b91c1c}
+      }
+    `}</style>
     <section style={{...card,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:15}}>
       <div style={{fontSize:11,letterSpacing:1.4,fontWeight:800,opacity:.82}}>MAYAVI • PRIVATE</div>
       <h1 style={{margin:'6px 0 9px',fontSize:24}}>India Speed Post Tracking</h1>
@@ -178,13 +222,29 @@ export default function SpeedPostDashboard({currentUser}){
         style={{...btn,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         EMS TRACKING
       </button>
+      <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>setSpeedPostTab('DELIVERED')}
+        style={{...btn,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        DELIVERED ({deliveredRows.length})
+      </button>
       <button type="button" role="tab" aria-selected={speedPostTab==='CASH_COST'} onClick={()=>setSpeedPostTab('CASH_COST')}
         style={{...btn,background:speedPostTab==='CASH_COST'?'#2258ce':'#fff',color:speedPostTab==='CASH_COST'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         CASH COST (₹150/KG)
       </button>
     </div>
-    {speedPostTab==='TRACKING'&&<>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:14,marginBottom:15}}>
+    {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
+      <strong style={{color:'#991b1b',fontSize:15}}>DUPLICATE ED ALERT — {duplicateRows.length} packet{duplicateRows.length===1?'':'s'}</strong>
+      <div style={{fontSize:12,color:'#7f1d1d',marginTop:5,marginBottom:7}}>Same ED number entered again. Existing entries are highlighted in their Active / Delivered rows; no duplicate shipment was created.</div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+        {duplicateRows.map(r=><div key={r.trackingNo} style={{display:'flex',gap:5,alignItems:'center',padding:7,borderRadius:8,background:'#fff'}}>
+          <button type="button" style={{...btn,padding:'6px 8px',background:'#b91c1c',fontSize:12}}
+            onClick={()=>setSpeedPostTab(isDelivered(r)?'DELIVERED':'TRACKING')}>{r.trackingNo} • VIEW ROW</button>
+          <button type="button" style={{...btn,padding:'6px 8px',fontSize:11,background:'#fff',color:'#991b1b',border:'1px solid #fecaca'}}
+            disabled={Boolean(duplicateBusy)} onClick={()=>acknowledgeDuplicate(r.trackingNo)}>{duplicateBusy===r.trackingNo?'WAIT…':'ACKNOWLEDGE'}</button>
+        </div>)}
+      </div>
+    </div>}
+    {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED')&&<>
+    {speedPostTab==='TRACKING'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:14,marginBottom:15}}>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>1. Upload receipt / photo</div>
         <input ref={fileRef} type="file" accept="image/*" onChange={uploadImage} disabled={anythingBusy} style={input}/>
@@ -201,19 +261,20 @@ export default function SpeedPostDashboard({currentUser}){
         </form>
         <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. Existing MySpeedPost tariff and booking fields are retained where available. Both are third-party services.</div>
       </section>
-    </div>
+    </div>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:13}}>
-        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>Saved Speed Post Consignments</h2><span style={{color:'#64748b',fontSize:12}}>{rows.length} tracking numbers • {currentUser?.displayName||'Private access'}</span></div>
+        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'}</h2><span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} packets • {currentUser?.displayName||'Private access'}</span></div>
         <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:1350}}>
-          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
-          <tbody>{rows.length?rows.map((r,i)=><tr key={r.trackingNo}>
+          <thead><tr>{['S.No.','Tracking No.','Entry Date','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
-            <td style={td}><strong>{r.trackingNo}</strong></td>
+            <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
+            <td style={td}>{formatEntryDate(r.createdAt)}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{destinationWithCountry(r)||'—'}</td>
             <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
@@ -227,11 +288,12 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
-              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo)} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
+              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
+              {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={15} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={16} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Cash Cost appears beside Weight: rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
@@ -262,16 +324,17 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:740}}>
-          <thead><tr>{['S.No.','ED Tracking Number','Actual Weight','Weight in kg','Rounded Weight (kg)','Cash Rate','Total Cash Cost'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','ED Tracking Number','Entry Date','Actual Weight','Weight in kg','Rounded Weight (kg)','Cash Rate','Total Cash Cost'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{cashRows.length?cashRows.map(({row,billedKg,cash},i)=><tr key={row.trackingNo}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{row.trackingNo}</strong></td>
+            <td style={td}>{formatEntryDate(row.createdAt)}</td>
             <td style={td}>{field(row,'weight')}</td>
             <td style={td}>{weightInKg(row.weight)===null?'—':weightInKg(row.weight).toLocaleString('en-IN',{maximumFractionDigits:4})+' kg'}</td>
             <td style={td}><strong>{billedKg===null?'—':billedKg+' kg'}</strong></td>
             <td style={td}>₹150 / kg</td>
             <td style={td}>{cash===null?<button type="button" style={{...btn,background:'#e7eefb',color:'#1d4ed8',fontSize:11,padding:'7px 10px'}} onClick={()=>{setTrackingNo(row.trackingNo);setSpeedPostTab('TRACKING');}}>WEIGHT MISSING — TRACK</button>:<strong style={{color:'#166534'}}>{rupeePerKg.format(cash)}</strong>}</td>
-          </tr>):<tr><td colSpan={7} style={{...td,textAlign:'center',padding:25,color:'#64748b'}}>No Speed Post packets have been saved yet.</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={8} style={{...td,textAlign:'center',padding:25,color:'#64748b'}}>No Speed Post packets have been saved yet.</td></tr>}</tbody>
         </table>
       </div>
       <p style={{margin:'14px 0 0',fontSize:12,color:'#475569'}}>Formula: <strong>Cash Cost = ceil(weight in kg) × ₹150.</strong> Examples: 4750 g → 5 kg → ₹750; 9710 g → 10 kg → ₹1,500. Exact whole kilograms are not rounded further. Missing or invalid weight has no calculated cost.</p>
