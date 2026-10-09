@@ -388,9 +388,16 @@ export default function SpeedPostDashboard({currentUser}){
     {speedPostTab==='TRACKING'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:14,marginBottom:15}}>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>1. Upload receipt / photo</div>
-        <input ref={fileRef} type="file" accept="image/*" onChange={uploadImage} disabled={anythingBusy} style={input}/>
+        <input ref={fileRef} type="file" accept="image/*" multiple onChange={uploadImage} disabled={anythingBusy} style={input}/>
+        <div style={{fontSize:12,color:'#1e40af',fontWeight:700,marginTop:7}}>Select up to 20 photos together • up to 8 MB each. One photo also works.</div>
         <div style={{color:'#64748b',fontSize:12,marginTop:9}}>One photo reads <strong>EMS ED barcode + TO consignee name and address</strong>. Sideways labels are supported. If the ED is unclear, confirm the number before saving.</div>
         {imageName&&<div style={{fontSize:11,marginTop:7,color:'#475569'}}>Selected: {imageName}</div>}
+        {batchItems.length>0&&<div role="status" style={{fontSize:12,color:'#1e40af',marginTop:8}}>
+          Batch: {batchItems.filter(x=>['saved','duplicate','review','error'].includes(x.status)).length}/{batchItems.length} processed •
+          {batchItems.filter(x=>x.status==='saved').length} saved •
+          {batchItems.filter(x=>x.status==='review').length} review •
+          {batchItems.filter(x=>x.status==='error').length} errors
+        </div>
         {ocrBusy&&<div role="status" style={{color:'#1d4ed8',fontSize:12,marginTop:8}}>{ocrProgress||'Reading the EMS slip…'}</div>}
         {ocrCandidates.length>0&&<div style={{border:'1px solid #bfd3ef',borderRadius:9,padding:10,marginTop:12,background:'#f4f8ff'}}><strong style={{fontSize:12}}>Check the ED number printed near EMS:</strong>{ocrCandidates.map(c=><label key={c.number} style={{display:'flex',alignItems:'center',gap:7,fontSize:13,marginTop:8}}><input type="radio" name="speedpost-ocr-choice" checked={trackingNo===c.number} onChange={()=>setTrackingNo(c.number)}/>{c.number}<small style={{color:c.checkDigitValid?'#15803d':'#a16207'}}>{c.checkDigitValid?'check digit valid':'verify digits'}</small></label>)}<button type="button" style={{...btn,marginTop:10,padding:'8px 12px',fontSize:12}} disabled={anythingBusy} onClick={async()=>{const n=normalizeED(trackingNo);if(n){setOcrCandidates([]);await trackOne(n,'photo-add',photoRecipient)}}}>CONFIRM ED & SAVE PHOTO</button></div>}
       </section>
@@ -416,6 +423,43 @@ export default function SpeedPostDashboard({currentUser}){
         <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Photo upload automatically saves these with its matching ED. If ED OCR fails, enter the barcode number yourself and use the save button above. FROM / sender is not extracted or filled. Unreadable details remain blank.</div>
       </section>
     </div>}
+    {batchItems.length>0&&<section style={{...card,marginBottom:14}}>
+      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10,marginBottom:12}}>
+        <h2 style={{fontSize:17,margin:0}}>Multiple EMS photos ({batchItems.length})</h2>
+        <strong style={{fontSize:12,color:batchRunning?'#1d4ed8':'#166534'}}>
+          {batchRunning?'OCR PROCESSING — KEEP PAGE OPEN':'BATCH FINISHED'}
+        </strong>
+      </div>
+      <div style={{maxHeight:470,overflowY:'auto',display:'grid',gap:8}}>
+        {batchItems.map((item,i)=><div key={item.index} style={{background:'#f8faff',border:'1px solid #d9e3f3',borderRadius:8,padding:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+            <strong style={{fontSize:12,overflowWrap:'anywhere'}}>{i+1}. {item.name}</strong>
+            <strong style={{fontSize:11,color:item.status==='error'?'#b91c1c':item.status==='saved'?'#15803d':'#1d4ed8'}}>
+              {item.status==='queued'?'WAITING':item.status==='reading'?'READING ED + TO':item.status==='saving'?'SAVING':item.status==='saved'?'SAVED':item.status==='duplicate'?'DUPLICATE ED':item.status==='review'?'ED REVIEW':'ERROR'}
+            </strong>
+          </div>
+          {item.ed&&<div style={{fontSize:12,marginTop:5}}>ED: <strong>{item.ed}</strong></div>}
+          {item.consigneeName&&<div style={{fontSize:12}}>Consignee: {item.consigneeName}</div>}
+          {item.consigneeAddress&&<div style={{fontSize:11,color:'#475569',whiteSpace:'normal',overflowWrap:'anywhere'}}>Address: {item.consigneeAddress}</div>}
+          {item.error&&<div style={{fontSize:11,color:item.status==='error'?'#b91c1c':'#92400e',marginTop:6}}>{item.error}</div>}
+          {item.status==='review'&&<div style={{marginTop:8}}>
+            <label style={{fontSize:11,display:'block',marginBottom:5}}>Verify ED number on photo #{i+1}</label>
+            <input style={{...input,marginBottom:7}} maxLength={18}
+              value={item.ed||''} onChange={e=>updateBatchItem(i,{ed:e.target.value.toUpperCase()})}
+              placeholder="ED + 9 digits + IN"/>
+            {item.candidates.length>1&&<div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:7}}>
+              {item.candidates.map(c=><button type="button" key={c.number}
+                onClick={()=>updateBatchItem(i,{ed:c.number})}
+                style={{...btn,padding:'5px 7px',fontSize:11,background:'#e4edfa',color:'#1e40af'}}>{c.number}</button>)}
+            </div>}
+            <button type="button" style={{...btn,fontSize:11,padding:'7px 10px'}}
+              disabled={batchRunning||reviewBusy||!normalizeED(item.ed)}
+              onClick={()=>saveReviewedBatch(i,item)}>CONFIRM ED & SAVE PHOTO</button>
+          </div>}
+        </div>)}
+      </div>
+      <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Up to 20 photos are processed separately, two at a time. Each ED is saved only against its own photo. Unclear numbers wait for confirmation; live tracking can be refreshed afterward.</div>
+    </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:13}}>
