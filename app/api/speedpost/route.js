@@ -28,7 +28,7 @@ async function authorized(request,sql){
 function validStoredField(field,value){
   const v=String(value||'').trim();
   if(!v)return false;
-  if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N\\/A|NO DATA|—|-)$/i.test(v))return false;
+  if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v))return false;
   return true;
 }
 function rowToResult(row){
