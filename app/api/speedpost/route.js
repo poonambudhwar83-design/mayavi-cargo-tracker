@@ -140,6 +140,11 @@ export async function POST(request){
       if(previous.weightUnitInferred===true)data.weightUnitInferred=true;
     }
     if(data.weight&&data.weightSource?.includes('bare digits interpreted as grams'))data.weightUnitInferred=true;
+    // Sender metadata comes from the photo's FROM section after human review.
+    // Third-party tracking cannot replace it and routine refresh must retain it.
+    if(previous.senderName)data.senderName=previous.senderName;
+    if(previous.senderNameSource)data.senderNameSource=previous.senderNameSource;
+    if(previous.senderNameConfirmedAt)data.senderNameConfirmedAt=previous.senderNameConfirmedAt;
     const rows=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
       VALUES (${trackingNo},${JSON.stringify(data)}::jsonb,NOW(),NOW())
       ON CONFLICT (tracking_no) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()
@@ -154,8 +159,26 @@ export async function PATCH(request){
     if(!auth.ok)return json({ok:false,error:auth.error},auth.status);
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
-    if(!trackingNo||body?.action!=='acknowledge-duplicate')
-      return json({ok:false,error:'Valid ED number and acknowledge action required.'},400);
+    if(!trackingNo)return json({ok:false,error:'Please confirm a valid ED tracking number.'},400);
+    if(body?.action==='save-sender'){
+      const senderName=String(body?.senderName||'').normalize('NFKC')
+        .replace(/[\\x00-\\x1f]/g,' ').replace(/\\s+/g,' ').trim();
+      if(senderName.length<3||senderName.length>100||!/\\p{L}{2}/u.test(senderName))
+        return json({ok:false,error:'Review and enter the sender name from the FROM block.'},400);
+      const info=JSON.stringify({
+        senderName,
+        senderNameSource:'User-confirmed OCR of FROM section of EMS parcel photo',
+        senderNameConfirmedAt:new Date().toISOString()
+      });
+      const stored=await sql`UPDATE mayavi_speedpost
+        SET data=data || ${info}::jsonb, updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(!stored.length)return json({ok:false,error:'Save the ED packet first, then confirm its sender name.'},404);
+      return json({ok:true,row:rowToResult(stored[0]),senderSaved:true});
+    }
+    if(body?.action!=='acknowledge-duplicate')
+      return json({ok:false,error:'Unsupported Speed Post action.'},400);
     const updated=await sql`UPDATE mayavi_speedpost
       SET data=jsonb_set(data,'{duplicateAlert}','false'::jsonb,true),updated_at=NOW()
       WHERE tracking_no=${trackingNo}
