@@ -2,6 +2,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../../lib/mayaviAuth.js';
 import { edOcrCandidates } from '../../../../lib/speedpostOcr.js';
+import { readSenderNameFromFROM } from '../../../../lib/speedpostSenderOcr.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -40,17 +41,22 @@ export async function POST(request){
     }).greyscale().normalise().sharpen().png().toBuffer();
     const size=await sharp(base).metadata();
     let output=[];
+    let senderName='';
+    let senderOcrOrientation='';
     const start=Date.now();
     worker=await createWorker('eng',1,{cachePath:'/tmp/speedpost-ocr',cacheMethod:'none'});
     await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});
-    async function recognize(buffer,isEmsCrop=false){
+    async function recognize(buffer,isEmsCrop=false,timeoutMs=16000,orientation='original'){
       const race=await Promise.race([
         worker.recognize(buffer,{}, {text:true,tsv:true}).then(result=>({result})).catch(error=>({error})),
-        new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),16000))
+        new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),timeoutMs))
       ]);
       if(race.timeout)throw Error('OCR_TIMED_OUT');
       if(race.error)throw race.error;
       const data=race.result?.data||{};
+      // Sender is extracted separately from the FROM section, not the TO block.
+      const sender=readSenderNameFromFROM(data.text||'',data.tsv||'');
+      if(sender.senderName&&!senderName){senderName=sender.senderName;senderOcrOrientation=orientation;}
       const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop});
       for(const item of candidates){
         const existing=output.find(x=>x.number===item.number);
@@ -89,13 +95,29 @@ export async function POST(request){
       const enhanced=await sharp(base).linear(1.25,-18).threshold(175).png().toBuffer();
       await recognize(enhanced,false);
     }
+    // A sideways parcel photo may be unreadable in the original orientation.
+    // The dedicated FROM reader gets one or two rotated attempts, respecting
+    // the 60-second request budget; the original ED reader remains independent.
+    if(!senderName&&Date.now()-start<34000){
+      try{
+        const sideways=await sharp(base).rotate(90).png().toBuffer();
+        await recognize(sideways,false,9500,'90 degrees');
+      }catch{/* The ED OCR result is still usable without the sender. */}
+    }
+    if(!senderName&&Date.now()-start<45000){
+      try{
+        const sideways=await sharp(base).rotate(270).png().toBuffer();
+        await recognize(sideways,false,8000,'270 degrees');
+      }catch{/* Do not fail ED OCR if sender rotation is unclear. */}
+    }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
       Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
     // The user must approve uncertain OCR candidates; no silent fabricated ED number.
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||Number(b.emsNearby)-Number(a.emsNearby));
     return respond({ok:true,candidates:output.slice(0,10),
+      senderName, senderNameNeedsReview:true, senderOcrOrientation,
       autoSelect:output.length===1&&output[0].checkDigitValid&&output[0].emsNearby,
-      message:output.length?'Confirm the ED number next to the printed EMS label.':'ED number by the EMS label was not readable. Crop closer around the EMS slip or type the number.'});
+      message:output.length?'Review the EMS ED number and the FROM sender name separately before saving.':'ED number by the EMS label was not readable. Crop closer or type the number; sender may still be available.'});
   }catch(e){
     return respond({ok:false,error:'Receipt OCR unavailable: '+String(e?.message||e).slice(0,160)},502);
   }finally{try{await worker?.terminate()}catch{}}
