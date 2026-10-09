@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 const locked = Object.freeze({
   'lib/ethiopian.js':'2a0a98c04d3923b0f79cff63a8ecbf306f7e4ab1',
   'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
-  'lib/cathay-browser-fallback.js':'abfa9bdc5a37084e0410325f1aeb395b9c3622ca',
+  'lib/cathay-browser-fallback.js':'c0ce52c2a5b40883202566c06cd9fc7190bba8e7',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
   'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
