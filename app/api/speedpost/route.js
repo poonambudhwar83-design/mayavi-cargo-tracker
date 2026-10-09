@@ -41,7 +41,7 @@ function canonicalOrigin(value=''){
 // Validate photo OCR before touching customer recipient fields.
 function validConsigneeName(v){
   return v.length>=3&&v.length<=100&&/[A-Za-z]{2}/.test(v)
-    &&/^[\p{L}.'’\-\s]+$/u.test(v)
+    &&/^[\p{L}][\p{L}.'’\-\s]*[\p{L}]$/u.test(v)
     &&!/^(?:TO|CONSIGNEE|RECIPIENT|FROM|SENDER|ADDRESS|UNKNOWN|CN22)$/i.test(v)
     &&!/sender.?s signature|customs|declaration|postage/i.test(v);
 }
