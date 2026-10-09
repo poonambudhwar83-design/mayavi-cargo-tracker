@@ -31,6 +31,13 @@ function validStoredField(field,value){
   if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v))return false;
   return true;
 }
+function canonicalOrigin(value=''){
+  const raw=String(value||'').trim();
+  // Canonicalise the actual returned booking office; never fill New Delhi
+  // unless a current, AWB-matched tracking response explicitly says Delhi.
+  if(/^new\s+delhi(?:\b|,|\s+-)/i.test(raw)||/^delhi\s+foreign\s+post(?:\b|,|\s+-)/i.test(raw))return 'New Delhi';
+  return raw;
+}
 function rowToResult(row){
   return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
 }
@@ -60,9 +67,10 @@ export async function POST(request){
     for(const key of ['origin','destination','address']){
       if(!validStoredField(key,data[key]))data[key]='';
     }
+    data.origin=canonicalOrigin(data.origin);
     // Keep previously verified fields if absent from the newest third-party response;
     // the client marks these retained values as such, never claiming fresh verification.
-    for(const field of ['origin','destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
+    for(const field of ['destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
       if(!data[field]&&validStoredField(field,previous[field])){
         data[field]=previous[field];
         data.retainedFields.push(field);
