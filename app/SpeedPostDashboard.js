@@ -112,24 +112,48 @@ export default function SpeedPostDashboard({currentUser}){
     const id=normalizeED(no);
     if(!id){setMessage('Enter a valid tracking number such as ED977951280IN.');return;}
     setBusy(id);
-    setMessage('Checking '+id+' individually on TrackParcel and MySpeedPost…');
+    setMessage(action==='add'?'Saving '+id+' first…':'Checking tracking for '+id+'…');
     try{
-      const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trackingNo:id,action})});
+      const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo:id,action})});
       const result=await response.json();
-      if(!response.ok||!result.ok)throw new Error(result.error||'Tracking unavailable');
-      setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
+      if(!response.ok||!result.ok)throw new Error(result.error||'Could not save ED record');
+      if(result.row)setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
-        setMessage(id+' — DUPLICATE ED NUMBER! This packet is already saved; no additional row was added.');
+        setMessage(id+' — DUPLICATE ED NUMBER! Existing packet highlighted; no extra row added.');
+        return;
+      }
+      if(result.created===true){
+        // ED number is safely persisted before the slow external lookup starts.
+        setSpeedPostTab('TRACKING');
+        setMessage(id+' saved in Mayavi. Fetching its tracking details…');
+        try{
+          const detailResponse=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+            body:JSON.stringify({trackingNo:id,action:'refresh'})});
+          const details=await detailResponse.json();
+          if(detailResponse.ok&&details.ok){
+            if(details.row)setRows(old=>[details.row,...old.filter(r=>r.trackingNo!==id)]);
+            if(isDelivered(details.row))setSpeedPostTab('DELIVERED');
+            setMessage(details.trackingPending
+              ?id+' saved. Tracking site did not return details yet; try REFRESH later.'
+              :id+' saved with the latest available tracking details.');
+          }else{
+            setMessage(id+' saved successfully; tracking update pending: '+(details.error||'site unavailable'));
+          }
+        }catch(e){
+          setMessage(id+' saved successfully; tracking update pending: '+(e.message||'site unavailable'));
+        }
+      }else if(result.trackingPending){
+        setMessage(id+' is saved. Tracking data unavailable: '+(result.error||'please try again later'));
       }else{
         if(isDelivered(result.row))setSpeedPostTab('DELIVERED');
-        setMessage(id+' — tracking checked and saved. Missing fields are not invented.');
+        setMessage(id+' — tracking refreshed. Existing data preserved.');
       }
-    }catch(e){setMessage(id+' — '+(e.message||'Tracking unavailable')+'. Existing saved data remains unchanged.');}
+    }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
   },[]);
-
   async function uploadImage(event){
     const file=event.target.files?.[0];
     if(!file)return;
@@ -197,10 +221,6 @@ export default function SpeedPostDashboard({currentUser}){
   const deliveredRows=rows.filter(isDelivered);
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
-  const cashRows=rows.map(r=>({row:r,billedKg:billedWeightKg(r.weight),cash:cashCost(r)}));
-  const validCashRows=cashRows.filter(item=>item.cash!==null);
-  const cashGrandTotal=validCashRows.reduce((sum,item)=>sum+item.cash,0);
-  const totalBilledKg=validCashRows.reduce((sum,item)=>sum+item.billedKg,0);
   return <main style={{padding:'18px min(4vw,36px) 35px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -225,10 +245,6 @@ export default function SpeedPostDashboard({currentUser}){
       <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>setSpeedPostTab('DELIVERED')}
         style={{...btn,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         DELIVERED ({deliveredRows.length})
-      </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='CASH_COST'} onClick={()=>setSpeedPostTab('CASH_COST')}
-        style={{...btn,background:speedPostTab==='CASH_COST'?'#2258ce':'#fff',color:speedPostTab==='CASH_COST'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        CASH COST (₹150/KG)
       </button>
     </div>
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
@@ -299,45 +315,5 @@ export default function SpeedPostDashboard({currentUser}){
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Cash Cost appears beside Weight: rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
-    {speedPostTab==='CASH_COST'&&<section style={card}>
-      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:14}}>
-        <div>
-          <h2 style={{margin:'0 0 4px',fontSize:19}}>Speed Post Cash Cost</h2>
-          <div style={{fontSize:12,color:'#64748b'}}>Every started kilogram is charged at ₹150. Calculated from each packet's saved weight.</div>
-        </div>
-        <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
-      </div>
-      {loadError&&<p role="alert" style={{color:'#b91c1c',fontSize:13}}>{loadError}</p>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,marginBottom:18}}>
-        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
-          <div style={{fontSize:12,color:'#64748b'}}>Total cash cost</div>
-          <strong style={{fontSize:24,color:'#163c80'}}>{rupeePerKg.format(cashGrandTotal)}</strong>
-        </div>
-        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
-          <div style={{fontSize:12,color:'#64748b'}}>Rounded billable weight</div>
-          <strong style={{fontSize:24,color:'#163c80'}}>{totalBilledKg.toLocaleString('en-IN')} kg</strong>
-        </div>
-        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
-          <div style={{fontSize:12,color:'#64748b'}}>Packets with weight / missing weight</div>
-          <strong style={{fontSize:24,color:'#163c80'}}>{validCashRows.length} / {cashRows.length-validCashRows.length}</strong>
-        </div>
-      </div>
-      <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'collapse',width:'100%',minWidth:740}}>
-          <thead><tr>{['S.No.','ED Tracking Number','Entry Date','Actual Weight','Weight in kg','Rounded Weight (kg)','Cash Rate','Total Cash Cost'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
-          <tbody>{cashRows.length?cashRows.map(({row,billedKg,cash},i)=><tr key={row.trackingNo}>
-            <td style={td}>{i+1}</td>
-            <td style={td}><strong>{row.trackingNo}</strong></td>
-            <td style={td}>{formatEntryDate(row.createdAt)}</td>
-            <td style={td}>{field(row,'weight')}</td>
-            <td style={td}>{weightInKg(row.weight)===null?'—':weightInKg(row.weight).toLocaleString('en-IN',{maximumFractionDigits:4})+' kg'}</td>
-            <td style={td}><strong>{billedKg===null?'—':billedKg+' kg'}</strong></td>
-            <td style={td}>₹150 / kg</td>
-            <td style={td}>{cash===null?<button type="button" style={{...btn,background:'#e7eefb',color:'#1d4ed8',fontSize:11,padding:'7px 10px'}} onClick={()=>{setTrackingNo(row.trackingNo);setSpeedPostTab('TRACKING');}}>WEIGHT MISSING — TRACK</button>:<strong style={{color:'#166534'}}>{rupeePerKg.format(cash)}</strong>}</td>
-          </tr>):<tr><td colSpan={8} style={{...td,textAlign:'center',padding:25,color:'#64748b'}}>No Speed Post packets have been saved yet.</td></tr>}</tbody>
-        </table>
-      </div>
-      <p style={{margin:'14px 0 0',fontSize:12,color:'#475569'}}>Formula: <strong>Cash Cost = ceil(weight in kg) × ₹150.</strong> Examples: 4750 g → 5 kg → ₹750; 9710 g → 10 kg → ₹1,500. Exact whole kilograms are not rounded further. Missing or invalid weight has no calculated cost.</p>
-    </section>}
   </main>;
 }
