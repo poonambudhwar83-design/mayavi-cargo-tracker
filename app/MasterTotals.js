@@ -31,7 +31,9 @@ export default function MasterTotals(){
         const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>tr.querySelectorAll('td').length>2&&tr.style.display!=='none');
         const total=weightIndex<0?0:rows.reduce((sum,tr)=>{
           const cells=tr.querySelectorAll('td');
-          return sum+weightValue(text(cells[weightIndex]));
+          const source=tr.getAttribute('data-counted-weight-kg');
+          const kg=source!==null?Number(source):weightValue(text(cells[weightIndex]));
+          return sum+(Number.isFinite(kg)&&kg>0?kg:0);
         },0);
 
         const activeType=[...document.querySelectorAll('.typeTabs button')].find(b=>b.classList.contains('active'));
