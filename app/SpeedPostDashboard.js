@@ -121,6 +121,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [imageName,setImageName]=useState('');
   const [ocrCandidates,setOcrCandidates]=useState([]);
   const [photoRecipient,setPhotoRecipient]=useState({consigneeName:'',consigneeAddress:''});
+  const [photoEdNeedsEntry,setPhotoEdNeedsEntry]=useState(false);
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -187,6 +188,7 @@ export default function SpeedPostDashboard({currentUser}){
     setMessage('');
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
+    setPhotoEdNeedsEntry(false);
     if(file.size>8*1024*1024){setMessage('Please upload a photo below 8 MB.');return;}
     setOcrBusy(true);
     setOcrProgress('Locating the ED number next to the EMS slip…');
@@ -201,10 +203,13 @@ export default function SpeedPostDashboard({currentUser}){
       setPhotoRecipient(recipient);
       const candidates=Array.isArray(data.candidates)?data.candidates.filter(x=>normalizeED(x.number)):[];
       if(!candidates.length){
-        setMessage(data.message||'ED number was not readable. Please upload a closer photo of the EMS slip.');
+        setPhotoEdNeedsEntry(true);
+        setTrackingNo('');
+        setMessage('Consignee OCR result has been extracted, but the ED sticker could not be read. Type the exact printed ED number to save these details with the correct packet.');
         return;
       }
       setOcrCandidates(candidates);
+      setPhotoEdNeedsEntry(false);
       setTrackingNo(candidates[0].number);
       if(data.autoSelect===true&&candidates.length===1){
         setOcrProgress('ED number found by the EMS label: '+candidates[0].number);
@@ -316,7 +321,12 @@ export default function SpeedPostDashboard({currentUser}){
         <div style={{fontSize:13,fontWeight:700,marginBottom:8,overflowWrap:'anywhere'}}>{photoRecipient.consigneeName||'— not readable yet'}</div>
         <div style={{fontSize:12,color:'#64748b'}}>Consignee Address (from uploaded photo)</div>
         <div style={{fontSize:12,overflowWrap:'anywhere',whiteSpace:'normal'}}>{photoRecipient.consigneeAddress||'— not readable yet'}</div>
-        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Photo upload automatically saves these with its matching ED. FROM / sender is not extracted or filled. Unreadable details remain blank.</div>
+        {photoEdNeedsEntry&&<button type="button" style={{...btn,marginTop:10,fontSize:12,width:'100%'}}
+          disabled={anythingBusy||!normalizeED(trackingNo)}
+          onClick={async()=>{const id=normalizeED(trackingNo);if(!id)return;setPhotoEdNeedsEntry(false);await trackOne(id,'photo-add',photoRecipient);}}>
+          SAVE PHOTO DETAILS TO ENTERED ED
+        </button>}
+        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Photo upload automatically saves these with its matching ED. If ED OCR fails, enter the barcode number yourself and use the save button above. FROM / sender is not extracted or filled. Unreadable details remain blank.</div>
       </section>
     </div>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
