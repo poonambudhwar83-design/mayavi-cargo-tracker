@@ -481,7 +481,7 @@ async function handle(mawb,fallback={}){
   // This guard does not change flight-status logic or any other airline adapter.
   if(cathayFastPath&&directResult?.ok){
     const cx=directResult.shipment||{};
-    const matches=String(cx.mawb||'').replace(/\\D/g,'')===mawb.replace(/\\D/g,'');
+    const matches=String(cx.mawb||'').replace(/\D/g,'')===mawb.replace(/\D/g,'');
     const verified=Boolean(
       cx.flightNo||cx.bookingDate||cx.departureDate||cx.arrivalDate||
       cx.weight||cx.pieces||cx.bags||(cx.origin&&cx.destination)
