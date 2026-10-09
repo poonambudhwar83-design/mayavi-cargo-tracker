@@ -142,12 +142,12 @@ export default function UnifiedDashboard(){
   if(session)return <>
     <div style={topAccountBar}>
       <SaudiaAssist/>
-      {speedPostAllowed&&<><button style={{...topAccountButton,background:selectedDashboard==='AIR_CARGO'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>AIR CARGO</button><button style={{...topAccountButton,background:selectedDashboard==='SPEED_POST'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('SPEED_POST')}>SPEED POST (PRIVATE)</button></>}
+      {speedPostAllowed&&selectedDashboard==='SPEED_POST'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
       {speedPostAllowed&&selectedDashboard==='SPEED_POST'&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
-    {speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>}
+    {speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null}/>}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
