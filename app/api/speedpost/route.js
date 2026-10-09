@@ -38,6 +38,18 @@ function canonicalOrigin(value=''){
   if(/^new\s+delhi(?:\b|,|\s+-)/i.test(raw)||/^delhi\s+foreign\s+post(?:\b|,|\s+-)/i.test(raw))return 'New Delhi';
   return raw;
 }
+// Validate photo OCR before touching customer recipient fields.
+function validConsigneeName(v){
+  return v.length>=3&&v.length<=100&&/[A-Za-z]{2}/.test(v)
+    &&/^[\p{L}.'’\-\s]+$/u.test(v)
+    &&!/^(?:TO|CONSIGNEE|RECIPIENT|FROM|SENDER|ADDRESS|UNKNOWN|CN22)$/i.test(v)
+    &&!/sender.?s signature|customs|declaration|postage/i.test(v);
+}
+function validConsigneeAddress(v){
+  return v.length>=12&&v.length<=700&&/\d/.test(v)
+    &&/[A-Za-z]{3}/.test(v)&&!/[|=<>]/.test(v)
+    &&!/sender.?s signature|size\s*\d|white or green|customs declaration|tariff|postage|CN22|CN23/i.test(v);
+}
 function rowToResult(row){
   return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
 }
@@ -66,10 +78,8 @@ export async function POST(request){
       const consigneeName=clean(body?.consigneeName,100);
       const consigneeAddress=clean(body?.consigneeAddress,700);
       // Do not store generic labels or an unverified string as a consignee.
-      const validName=consigneeName.length>=3&&/[A-Za-z]{2}/.test(consigneeName)
-        &&!/^(TO|CONSIGNEE|RECIPIENT|FROM|SENDER|ADDRESS|UNKNOWN)$/i.test(consigneeName);
-      const validAddress=consigneeAddress.length>=8
-        &&!/^(ADDRESS|TO|FROM|UNKNOWN|NOT AVAILABLE)$/i.test(consigneeAddress);
+      const validName=validConsigneeName(consigneeName);
+      const validAddress=validConsigneeAddress(consigneeAddress);
       const now=new Date().toISOString();
       const ocrData={};
       if(validName)ocrData.consigneeName=consigneeName;
@@ -88,19 +98,39 @@ export async function POST(request){
         RETURNING tracking_no,data,created_at,updated_at`;
       if(inserted.length)return json({ok:true,created:true,pendingTracking:true,photoSaved:true,
         row:rowToResult(inserted[0])});
-      // Existing ED: preserve tracking/Delivered details; highlight duplicate
-      // once, and update recipient only when the photo OCR found new values.
-      const info=JSON.stringify(ocrData);
+      // Duplicate ED: retain the existing parcel, fill ONLY blank recipient
+      // fields. Replace old malformed OCR address with a newly valid address.
+      const nameInfo=JSON.stringify(validName?{consigneeName}:{});
+      const addressInfo=JSON.stringify(validAddress?{consigneeAddress}:{});
+      const metadata=JSON.stringify(validName||validAddress?{
+        consigneeSource:'OCR of TO block on uploaded EMS photo (unverified)',
+        consigneeOcrAt:now
+      }:{});
       const duplicate=await sql`UPDATE mayavi_speedpost
         SET data=jsonb_set(jsonb_set(
-          data || ${info}::jsonb,
+          data
+          || CASE WHEN COALESCE(BTRIM(data->>'consigneeName'),'')=''
+            THEN ${nameInfo}::jsonb ELSE '{}'::jsonb END
+          || CASE WHEN COALESCE(BTRIM(data->>'consigneeAddress'),'')=''
+             OR ((data->>'consigneeSource') LIKE 'OCR%'
+               AND (data->>'consigneeAddress') ~* '(sender.?s signature|size [0-9]|[|=]|white or green|customs declaration)')
+            THEN ${addressInfo}::jsonb ELSE '{}'::jsonb END
+          || CASE WHEN
+              (COALESCE(BTRIM(data->>'consigneeName'),'')='' AND ${validName})
+              OR (COALESCE(BTRIM(data->>'consigneeAddress'),'')='' AND ${validAddress})
+              OR ((data->>'consigneeSource') LIKE 'OCR%'
+                AND (data->>'consigneeAddress') ~* '(sender.?s signature|size [0-9]|[|=]|white or green|customs declaration)' AND ${validAddress})
+            THEN ${metadata}::jsonb ELSE '{}'::jsonb END,
           '{duplicateAlert}','true'::jsonb,true),
           '{duplicateCount}',to_jsonb(COALESCE((data->>'duplicateCount')::int,0)+1),true),
           updated_at=NOW()
         WHERE tracking_no=${trackingNo}
         RETURNING tracking_no,data,created_at,updated_at`;
       if(duplicate.length)return json({ok:true,duplicate:true,photoSaved:true,
-        row:rowToResult(duplicate[0])});
+        consigneeDataRead:validName||validAddress,row:rowToResult(duplicate[0]),
+        message:validName||validAddress?
+          'Existing ED retained; missing consignee fields filled where readable.':
+          'Existing ED retained. OCR recipient text unclear; review the photo.'});
       return json({ok:false,error:'Could not save the ED photo record.'},503);
     }
     // Same ED entered again is a duplicate ADD, not a second shipment.
