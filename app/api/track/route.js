@@ -475,6 +475,26 @@ async function handle(mawb,fallback={}){
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
   const directResult=directSettled.status==='fulfilled'?directSettled.value:{ok:false,reason:directSettled.reason?.message||'DIRECT ADAPTER FAILED'};
   const browserResult=browserSettled.status==='fulfilled'?browserSettled.value:{ok:false,reason:browserSettled.reason?.message||'BROWSER FAILED'};
+  // CX only: Cathay's portal can return its empty browser shell if tracking API
+  // access fails. Do not report that shell as a successfully tracked shipment or
+  // write blank flight, bags, weight and arrival values over an existing row.
+  // This guard does not change flight-status logic or any other airline adapter.
+  if(cathayFastPath&&directResult?.ok){
+    const cx=directResult.shipment||{};
+    const matches=String(cx.mawb||'').replace(/\\D/g,'')===mawb.replace(/\\D/g,'');
+    const verified=Boolean(
+      cx.flightNo||cx.bookingDate||cx.departureDate||cx.arrivalDate||
+      cx.weight||cx.pieces||cx.bags||(cx.origin&&cx.destination)
+    );
+    if(!matches||!verified){
+      console.warn('cathay_empty_response_rejected',mawb);
+      return Response.json({
+        ok:false,mawb,trackingError:'CATHAY_NO_VERIFIED_AWB_DETAILS',
+        manualHint:'Cathay official data not available; previous shipment values remain unchanged.',
+        officialTracker:directResult?.airline?.url||airline.url||''
+      },{status:503});
+    }
+  }
   if(malaysiaFastPath)console.log('malaysia_tracking_debug',mawb,'api',apiResult?.ok?'OK':(apiResult?.reason||'NO'),'direct',directResult?.ok?'OK':(directResult?.reason||'NO'),'directStage',directResult?.debug?.stage||'');
 
   const cathayResult=null;
