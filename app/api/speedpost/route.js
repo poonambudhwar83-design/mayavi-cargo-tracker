@@ -76,6 +76,14 @@ export async function POST(request){
         data.retainedFields.push(field);
       }
     }
+    // If weight could not be refetched, retain its truthful last source metadata
+    // along with the retained number. Never relabel a screenshot as live.
+    if(data.retainedFields.includes('weight')){
+      if(previous.weightSource)data.weightSource=previous.weightSource;
+      if(previous.weightRaw)data.weightRaw=previous.weightRaw;
+      if(previous.weightUnitInferred===true)data.weightUnitInferred=true;
+    }
+    if(data.weight&&data.weightSource?.includes('bare digits interpreted as grams'))data.weightUnitInferred=true;
     const rows=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
       VALUES (${trackingNo},${JSON.stringify(data)}::jsonb,NOW(),NOW())
       ON CONFLICT (tracking_no) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()
