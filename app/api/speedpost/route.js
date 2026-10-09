@@ -162,8 +162,8 @@ export async function PATCH(request){
     if(!trackingNo)return json({ok:false,error:'Please confirm a valid ED tracking number.'},400);
     if(body?.action==='save-sender'){
       const senderName=String(body?.senderName||'').normalize('NFKC')
-        .replace(/[\\x00-\\x1f]/g,' ').replace(/\\s+/g,' ').trim();
-      if(senderName.length<3||senderName.length>100||!/\\p{L}{2}/u.test(senderName))
+        .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim();
+      if(senderName.length<3||senderName.length>100||!/[A-Za-z]{2}/.test(senderName))
         return json({ok:false,error:'Review and enter the sender name from the FROM block.'},400);
       const info=JSON.stringify({
         senderName,
