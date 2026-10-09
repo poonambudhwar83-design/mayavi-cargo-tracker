@@ -63,10 +63,15 @@ export async function POST(request){
     if(action==='add'){
       // First persist the ED number. Remote tracking must never prevent saving.
       // Unique tracking_no enforces one row per packet even for simultaneous adds.
+      const initialData=JSON.stringify({
+        trackingNo,status:'Pending Tracking',enteredBy:auth.username,
+        savedAt:new Date().toISOString()
+      });
+      // jsonb_build_object() is variadic/polymorphic, so an untyped text
+      // placeholder triggers PostgreSQL "could not determine data type of $2".
+      // Sending one explicit ::jsonb payload avoids ambiguous parameter types.
       const inserted=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
-        VALUES (${trackingNo},jsonb_build_object(
-          'trackingNo',${trackingNo},'status','Pending Tracking',
-          'enteredBy',${auth.username},'savedAt',NOW()::text),NOW(),NOW())
+        VALUES (${trackingNo},${initialData}::jsonb,NOW(),NOW())
         ON CONFLICT (tracking_no) DO NOTHING
         RETURNING tracking_no,data,created_at,updated_at`;
       if(inserted.length)return json({ok:true,created:true,pendingTracking:true,row:rowToResult(inserted[0]),
