@@ -475,26 +475,49 @@ async function handle(mawb,fallback={}){
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
   const directResult=directSettled.status==='fulfilled'?directSettled.value:{ok:false,reason:directSettled.reason?.message||'DIRECT ADAPTER FAILED'};
   const browserResult=browserSettled.status==='fulfilled'?browserSettled.value:{ok:false,reason:browserSettled.reason?.message||'BROWSER FAILED'};
-  // CX only: if Cathay blocks the official cargo request (e.g. HTTP 403),
-  // show an existing AWB-matched and evidenced operator snapshot instead of
-  // returning a blank row. This is NOT a successful live tracking response.
-  // No other airline's tracking, status, persistence or refresh is touched.
-  if(cathayFastPath&&!directResult?.ok){
+  // CX only: Cathay can return an empty site shell or a terminal record
+  // with no dated flight movement. Never overwrite a user's AWB-verified
+  // snapshot with that incomplete response or imply that it is live.
+  const cathayIncomplete=Boolean(cathayFastPath&&directResult?.ok&&
+    Array.isArray(directResult?.debug?.terminalFlights)&&
+    directResult.debug.terminalFlights.length===0&&
+    !/Booking\\s+Status|Current\\s+status|Shipment\\s+History/i.test(
+      String(directResult?.debug?.browser?.pageSample||'')));
+  if(cathayFastPath&&(!directResult?.ok||cathayIncomplete)){
     const saved=await loadStoredTrackingFallback(mawb);
-    const digits=value=>String(value||'').replace(/\D/g,'');
+    const digits=value=>String(value||'').replace(/\\D/g,'');
     const exact=digits(saved?.mawb)===digits(mawb);
-    const verified=exact&&String(saved?.carrierCode||'').toUpperCase()==='CX'&&
-      /^CX\d{1,4}[A-Z]?$/i.test(String(saved?.flightNo||'').trim())&&
-      /^[A-Z]{3}$/.test(String(saved?.origin||''))&&
-      /^[A-Z]{3}$/.test(String(saved?.destination||''))&&
-      (Boolean(saved?.pieces)||Boolean(saved?.bags)||Boolean(saved?.weight));
+    const snapshot=saved?.operatorVerifiedCxSnapshot||null;
+    const snapExact=Boolean(snapshot&&digits(snapshot.mawb)===digits(mawb));
+    const source=snapExact?{
+      ...saved,mawb,carrierCode:'CX',airlineName:'Cathay Cargo',
+      flightNo:snapshot.flightNo,flightDate:snapshot.departureDate,
+      origin:snapshot.origin,destination:snapshot.destination,
+      bags:snapshot.pieces,pieces:snapshot.pieces,weight:snapshot.weight,
+      departureDate:snapshot.departureDate,departureTime:snapshot.departureTime,
+      departureTimeZone:'IST',departureIsActual:false,
+      arrivalDate:snapshot.arrivalDate,arrivalTime:snapshot.arrivalTime,
+      arrivalTimeZone:'IST',arrivalIsActual:false,arrivalEstimate:true,
+      arrivalVerifiedAbsent:false,status:snapshot.status||'BOOKED',
+      source:snapshot.source,
+      arrivalTimeSource:'User-provided Cathay booking screenshot: estimated, not actual',
+      scheduledArrivalDate:snapshot.arrivalDate,
+      scheduledArrivalTime:snapshot.scheduledArrivalTime||saved?.scheduledArrivalTime||'',
+      scheduledArrivalTimeZone:'IST'
+    }:saved;
+    const verified=exact&&String(source?.carrierCode||'').toUpperCase()==='CX'&&
+      /^CX\\d{1,4}[A-Z]?$/i.test(String(source?.flightNo||'').trim())&&
+      /^[A-Z]{3}$/.test(String(source?.origin||''))&&
+      /^[A-Z]{3}$/.test(String(source?.destination||''))&&
+      (Boolean(source?.pieces)||Boolean(source?.bags)||Boolean(source?.weight));
     if(verified){
-      const trackingError=directResult?.reason||'CATHAY_LIVE_UNAVAILABLE';
-      const manualHint='Cathay live data is currently unavailable. Showing the last saved, AWB-verified details; arrival time remains estimated, not a live update.';
-      console.warn('cathay_saved_snapshot_fallback',mawb,trackingError);
+      const trackingError='CATHAY_LIVE_UNVERIFIED';
+      const manualHint='Cathay live cargo details could not be verified. Showing saved AWB-matched information; ETA is estimated, not an actual arrival.';
+      console.warn('cathay_saved_snapshot_fallback',mawb,
+        cathayIncomplete?'INCOMPLETE_TERMINAL':directResult?.reason||'UPSTREAM_UNAVAILABLE');
       return Response.json({ok:true,version:VERSION,provider:'Cathay Cargo',
-        shipment:{...saved,mawb,trackingError,manualHint,liveTracking:false,
-          savedSnapshot:true,source:saved.source||'Previously verified Cathay shipment'},
+        shipment:{...source,mawb,trackingError,manualHint,
+          liveTracking:false,savedSnapshot:true},
         serverSaved:false,screenshotCaptured:false,screenshotVerified:false,
         screenshotOcrUsed:false,liveTracking:false,savedSnapshot:true,
         trackingError,manualHint,
