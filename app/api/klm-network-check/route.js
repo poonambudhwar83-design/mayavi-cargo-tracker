@@ -4,7 +4,7 @@ export const dynamic='force-dynamic';
 // This endpoint does not proxy or transmit any private tracking details.
 export async function GET(){
   const urls=[
-    'https://www.afklcargo.com/GB/en/homepage/homepage',
+    'https://www.afklcargo.com/WW/en/homepage/homepage',
     'https://www.afklcargo.com/mycargo/api/tnt-api/shipments/not-a-real-shipment'
   ];
   const tests=await Promise.all(urls.map(async(u)=>{
