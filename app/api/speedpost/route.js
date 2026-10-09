@@ -25,6 +25,12 @@ async function authorized(request,sql){
     return{ok:false,status:403,error:'Speed Post access is not active.'};
   return{ok:true,username:name};
 }
+function validStoredField(field,value){
+  const v=String(value||'').trim();
+  if(!v)return false;
+  if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N\\/A|NO DATA|—|-)$/i.test(v))return false;
+  return true;
+}
 function rowToResult(row){
   return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
 }
@@ -50,10 +56,14 @@ export async function POST(request){
     const previous=old?.[0]?.data||{};
     const data={...result.shipment,enteredBy:previous.enteredBy||auth.username,
       retainedFields:[],lastChecked:new Date().toISOString()};
+    // Headers such as COUNTRY and BOOKING OFFICE are never shipment locations.
+    for(const key of ['origin','destination','address']){
+      if(!validStoredField(key,data[key]))data[key]='';
+    }
     // Keep previously verified fields if absent from the newest third-party response;
     // the client marks these retained values as such, never claiming fresh verification.
-    for(const field of ['origin','destination','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
-      if(!data[field]&&previous[field]){
+    for(const field of ['origin','destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
+      if(!data[field]&&validStoredField(field,previous[field])){
         data[field]=previous[field];
         data.retainedFields.push(field);
       }
