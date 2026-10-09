@@ -57,6 +57,22 @@ export async function POST(request){
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Use an ED + 9 digits + IN tracking number.'},400);
+    const action=body?.action==='refresh'?'refresh':'add';
+    // Same ED entered again is a duplicate ADD, not a second shipment.
+    // Return the existing row without expensive tracking or replacing its fields.
+    if(action==='add'){
+      const duplicate=await sql`UPDATE mayavi_speedpost
+        SET data=jsonb_set(
+          jsonb_set(
+            jsonb_set(data,'{duplicateAlert}','true'::jsonb,true),
+            '{duplicateCount}',to_jsonb(COALESCE((data->>'duplicateCount')::integer,0)+1),true),
+          '{lastDuplicateAt}',to_jsonb(NOW()::text),true),
+          updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(duplicate.length)return json({ok:true,duplicate:true,row:rowToResult(duplicate[0]),
+        message:'Duplicate ED number: the shipment already exists. No second row was created.'});
+    }
     const result=await trackSpeedPost(trackingNo);
     if(!result.ok)return json({ok:false,error:result.error,trackingUrl:result.trackingUrl},502);
     const old=await sql`SELECT data FROM mayavi_speedpost WHERE tracking_no=${trackingNo} LIMIT 1`;
@@ -68,6 +84,20 @@ export async function POST(request){
       if(!validStoredField(key,data[key]))data[key]='';
     }
     data.origin=canonicalOrigin(data.origin);
+    // A delivered parcel must not regress into Active on a partial refresh.
+    if(previous.delivered===true||/^delivered$/i.test(String(previous.status||''))){
+      data.delivered=true;
+      data.status='Delivered';
+      if(previous.deliveredAt&&!data.deliveredAt)data.deliveredAt=previous.deliveredAt;
+    }else if(data.delivered===true||/^delivered$/i.test(String(data.status||''))){
+      data.delivered=true;
+      data.status='Delivered';
+      data.deliveredAt=data.deliveredAt||new Date().toISOString();
+    }
+    // Preserve duplicate warning across ordinary shipment refreshes.
+    data.duplicateAlert=previous.duplicateAlert===true;
+    data.duplicateCount=Number(previous.duplicateCount)||0;
+    if(previous.lastDuplicateAt)data.lastDuplicateAt=previous.lastDuplicateAt;
     // Keep previously verified fields if absent from the newest third-party response;
     // the client marks these retained values as such, never claiming fresh verification.
     for(const field of ['destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
@@ -91,6 +121,24 @@ export async function POST(request){
     return json({ok:true,row:rowToResult(rows[0])});
   }catch(e){return json({ok:false,error:e?.message||'Speed Post tracking failed.'},503)}
 }
+// Admin and Sonu can acknowledge duplicate alerts without deleting the parcel.
+export async function PATCH(request){
+  try{
+    const sql=database(),auth=await authorized(request,sql);
+    if(!auth.ok)return json({ok:false,error:auth.error},auth.status);
+    const body=await request.json().catch(()=>({}));
+    const trackingNo=speedPostNumber(body?.trackingNo||'');
+    if(!trackingNo||body?.action!=='acknowledge-duplicate')
+      return json({ok:false,error:'Valid ED number and acknowledge action required.'},400);
+    const updated=await sql`UPDATE mayavi_speedpost
+      SET data=jsonb_set(data,'{duplicateAlert}','false'::jsonb,true),updated_at=NOW()
+      WHERE tracking_no=${trackingNo}
+      RETURNING tracking_no,data,created_at,updated_at`;
+    if(!updated.length)return json({ok:false,error:'ED tracking record not found.'},404);
+    return json({ok:true,row:rowToResult(updated[0])});
+  }catch(e){return json({ok:false,error:e?.message||'Duplicate alert acknowledgement failed.'},503)}
+}
+
 export async function DELETE(request){
   try{
     const sql=database(),auth=await authorized(request,sql);
