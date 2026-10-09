@@ -48,6 +48,17 @@ function weightInKg(raw){
   const unit=m[2].toLowerCase();
   return unit.startsWith('k')?amount:amount/1000;
 }
+// Cash cost uses billed whole kilograms: any fraction rounds UP.
+const CASH_RATE_PER_KG=150;
+function billedWeightKg(weight){
+  const kg=weightInKg(weight);
+  if(kg===null)return null;
+  return Math.max(1,Math.ceil(kg-1e-9));
+}
+function cashCost(row){
+  const billedKg=billedWeightKg(row?.weight);
+  return billedKg===null?null:billedKg*CASH_RATE_PER_KG;
+}
 function costPerKg(row){
   const kg=weightInKg(row?.weight);
   const total=Number(String(row?.tariff??'').replace(/[,₹\s]/g,''));
@@ -65,6 +76,7 @@ function field(row,key){
 
 export default function SpeedPostDashboard({currentUser}){
   const [rows,setRows]=useState([]);
+  const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [trackingNo,setTrackingNo]=useState('');
   const [busy,setBusy]=useState('');
   const [ocrBusy,setOcrBusy]=useState(false);
@@ -151,12 +163,27 @@ export default function SpeedPostDashboard({currentUser}){
     finally{setBusy('');}
   }
   const anythingBusy=Boolean(busy||ocrBusy);
+  const cashRows=rows.map(r=>({row:r,billedKg:billedWeightKg(r.weight),cash:cashCost(r)}));
+  const validCashRows=cashRows.filter(item=>item.cash!==null);
+  const cashGrandTotal=validCashRows.reduce((sum,item)=>sum+item.cash,0);
+  const totalBilledKg=validCashRows.reduce((sum,item)=>sum+item.billedKg,0);
   return <main style={{padding:'18px min(4vw,36px) 35px',background:'#f4f7fc',minHeight:'70vh'}}>
     <section style={{...card,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:15}}>
       <div style={{fontSize:11,letterSpacing:1.4,fontWeight:800,opacity:.82}}>MAYAVI • PRIVATE</div>
       <h1 style={{margin:'6px 0 9px',fontSize:24}}>India Speed Post Tracking</h1>
       <p style={{margin:0,fontSize:13}}>Visible to Admin and Sonu only • Photos processed privately and not stored • Separate from Air Cargo MAWBs</p>
     </section>
+    <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:9,marginBottom:15}}>
+      <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>setSpeedPostTab('TRACKING')}
+        style={{...btn,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        EMS TRACKING
+      </button>
+      <button type="button" role="tab" aria-selected={speedPostTab==='CASH_COST'} onClick={()=>setSpeedPostTab('CASH_COST')}
+        style={{...btn,background:speedPostTab==='CASH_COST'?'#2258ce':'#fff',color:speedPostTab==='CASH_COST'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        CASH COST (₹150/KG)
+      </button>
+    </div>
+    {speedPostTab==='TRACKING'&&<>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:14,marginBottom:15}}>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>1. Upload receipt / photo</div>
@@ -207,5 +234,45 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
+    </>}
+    {speedPostTab==='CASH_COST'&&<section style={card}>
+      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:14}}>
+        <div>
+          <h2 style={{margin:'0 0 4px',fontSize:19}}>Speed Post Cash Cost</h2>
+          <div style={{fontSize:12,color:'#64748b'}}>Every started kilogram is charged at ₹150. Calculated from each packet's saved weight.</div>
+        </div>
+        <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
+      </div>
+      {loadError&&<p role="alert" style={{color:'#b91c1c',fontSize:13}}>{loadError}</p>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,marginBottom:18}}>
+        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
+          <div style={{fontSize:12,color:'#64748b'}}>Total cash cost</div>
+          <strong style={{fontSize:24,color:'#163c80'}}>{rupeePerKg.format(cashGrandTotal)}</strong>
+        </div>
+        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
+          <div style={{fontSize:12,color:'#64748b'}}>Rounded billable weight</div>
+          <strong style={{fontSize:24,color:'#163c80'}}>{totalBilledKg.toLocaleString('en-IN')} kg</strong>
+        </div>
+        <div style={{padding:14,background:'#f1f5fd',borderRadius:10}}>
+          <div style={{fontSize:12,color:'#64748b'}}>Packets with weight / missing weight</div>
+          <strong style={{fontSize:24,color:'#163c80'}}>{validCashRows.length} / {cashRows.length-validCashRows.length}</strong>
+        </div>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:740}}>
+          <thead><tr>{['S.No.','ED Tracking Number','Actual Weight','Weight in kg','Rounded Weight (kg)','Cash Rate','Total Cash Cost'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{cashRows.length?cashRows.map(({row,billedKg,cash},i)=><tr key={row.trackingNo}>
+            <td style={td}>{i+1}</td>
+            <td style={td}><strong>{row.trackingNo}</strong></td>
+            <td style={td}>{field(row,'weight')}</td>
+            <td style={td}>{weightInKg(row.weight)===null?'—':weightInKg(row.weight).toLocaleString('en-IN',{maximumFractionDigits:4})+' kg'}</td>
+            <td style={td}><strong>{billedKg===null?'—':billedKg+' kg'}</strong></td>
+            <td style={td}>₹150 / kg</td>
+            <td style={td}>{cash===null?<button type="button" style={{...btn,background:'#e7eefb',color:'#1d4ed8',fontSize:11,padding:'7px 10px'}} onClick={()=>{setTrackingNo(row.trackingNo);setSpeedPostTab('TRACKING');}}>WEIGHT MISSING — TRACK</button>:<strong style={{color:'#166534'}}>{rupeePerKg.format(cash)}</strong>}</td>
+          </tr>):<tr><td colSpan={7} style={{...td,textAlign:'center',padding:25,color:'#64748b'}}>No Speed Post packets have been saved yet.</td></tr>}</tbody>
+        </table>
+      </div>
+      <p style={{margin:'14px 0 0',fontSize:12,color:'#475569'}}>Formula: <strong>Cash Cost = ceil(weight in kg) × ₹150.</strong> Examples: 4750 g → 5 kg → ₹750; 9710 g → 10 kg → ₹1,500. Exact whole kilograms are not rounded further. Missing or invalid weight has no calculated cost.</p>
+    </section>}
   </main>;
 }
