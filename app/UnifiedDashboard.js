@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
+import SpeedPostDashboard from './SpeedPostDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 
 const FALLBACK_USERS=[
@@ -10,7 +11,8 @@ const FALLBACK_USERS=[
   {username:'sumit',displayName:'Sumit',role:'employee',passwordSet:false},
   {username:'mandeep',displayName:'Mandeep',role:'employee',passwordSet:false},
   {username:'parvesh',displayName:'Parvesh',role:'employee',passwordSet:false},
-  {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false}
+  {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false},
+  {username:'sonu',displayName:'Sonu',role:'employee',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
 
@@ -24,6 +26,7 @@ function clearStaleShipmentBackup(){try{localStorage.removeItem(LOCAL_SHIPMENT_K
 
 export default function UnifiedDashboard(){
   const [session,setSession]=useState(null);
+  const [selectedDashboard,setSelectedDashboard]=useState('AIR_CARGO');
   const [users,setUsers]=useState(FALLBACK_USERS);
   const [username,setUsername]=useState('');
   const [password,setPassword]=useState('');
@@ -86,7 +89,7 @@ export default function UnifiedDashboard(){
 
   async function logout(){
     try{await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'logout'})})}catch{}
-    setSession(null);setUsername('');setPassword('');setShowPassword(false);setNote('Logged out.');
+    setSession(null);setSelectedDashboard('AIR_CARGO');setUsername('');setPassword('');setShowPassword(false);setNote('Logged out.');
     closeChange();closeManage();
   }
 
@@ -133,15 +136,17 @@ export default function UnifiedDashboard(){
     }catch(e){setManageNote(e.message||'Password update failed.')}finally{setManageBusy(false)}
   }
 
+  const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
     <div style={topAccountBar}>
       <SaudiaAssist/>
+      {speedPostAllowed&&<><button style={{...topAccountButton,background:selectedDashboard==='AIR_CARGO'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>AIR CARGO</button><button style={{...topAccountButton,background:selectedDashboard==='SPEED_POST'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('SPEED_POST')}>SPEED POST (PRIVATE)</button></>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
     </div>
-    <DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>
+    {speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
