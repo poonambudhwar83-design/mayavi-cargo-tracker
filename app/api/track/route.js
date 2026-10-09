@@ -475,6 +475,35 @@ async function handle(mawb,fallback={}){
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
   const directResult=directSettled.status==='fulfilled'?directSettled.value:{ok:false,reason:directSettled.reason?.message||'DIRECT ADAPTER FAILED'};
   const browserResult=browserSettled.status==='fulfilled'?browserSettled.value:{ok:false,reason:browserSettled.reason?.message||'BROWSER FAILED'};
+  // CX only: if Cathay blocks the official cargo request (e.g. HTTP 403),
+  // show an existing AWB-matched and evidenced operator snapshot instead of
+  // returning a blank row. This is NOT a successful live tracking response.
+  // No other airline's tracking, status, persistence or refresh is touched.
+  if(cathayFastPath&&!directResult?.ok){
+    const saved=await loadStoredTrackingFallback(mawb);
+    const digits=value=>String(value||'').replace(/\D/g,'');
+    const exact=digits(saved?.mawb)===digits(mawb);
+    const verified=exact&&String(saved?.carrierCode||'').toUpperCase()==='CX'&&
+      /^CX\d{1,4}[A-Z]?$/i.test(String(saved?.flightNo||'').trim())&&
+      /^[A-Z]{3}$/.test(String(saved?.origin||''))&&
+      /^[A-Z]{3}$/.test(String(saved?.destination||''))&&
+      (Boolean(saved?.pieces)||Boolean(saved?.bags)||Boolean(saved?.weight));
+    if(verified){
+      const trackingError=directResult?.reason||'CATHAY_LIVE_UNAVAILABLE';
+      const manualHint='Cathay live data is currently unavailable. Showing the last saved, AWB-verified details; arrival time remains estimated, not a live update.';
+      console.warn('cathay_saved_snapshot_fallback',mawb,trackingError);
+      return Response.json({ok:true,version:VERSION,provider:'Cathay Cargo',
+        shipment:{...saved,mawb,trackingError,manualHint,liveTracking:false,
+          savedSnapshot:true,source:saved.source||'Previously verified Cathay shipment'},
+        serverSaved:false,screenshotCaptured:false,screenshotVerified:false,
+        screenshotOcrUsed:false,liveTracking:false,savedSnapshot:true,
+        trackingError,manualHint,
+        verification:{officialPage:airline.url||'',liveVerified:false,
+          savedAwbVerified:true},
+        debug:{direct:directResult?.debug||null,source:'cathay-awb-matched-saved-fallback'}
+      });
+    }
+  }
   // CX only: Cathay's portal can return its empty browser shell if tracking API
   // access fails. Do not report that shell as a successfully tracked shipment or
   // write blank flight, bags, weight and arrival values over an existing row.
