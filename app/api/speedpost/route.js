@@ -57,7 +57,52 @@ export async function POST(request){
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Use an ED + 9 digits + IN tracking number.'},400);
-    const action=body?.action==='refresh'?'refresh':'add';
+    const action=body?.action==='refresh'?'refresh':body?.action==='photo-add'?'photo-add':'add';
+    // Saving an uploaded parcel photo first associates OCR fields with its own
+    // ED number. No external tracking request is required to persist it.
+    if(action==='photo-add'){
+      const clean=(v,max)=>String(v||'').normalize('NFKC')
+        .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
+      const consigneeName=clean(body?.consigneeName,100);
+      const consigneeAddress=clean(body?.consigneeAddress,700);
+      // Do not store generic labels or an unverified string as a consignee.
+      const validName=consigneeName.length>=3&&/[A-Za-z]{2}/.test(consigneeName)
+        &&!/^(TO|CONSIGNEE|RECIPIENT|FROM|SENDER|ADDRESS|UNKNOWN)$/i.test(consigneeName);
+      const validAddress=consigneeAddress.length>=8
+        &&!/^(ADDRESS|TO|FROM|UNKNOWN|NOT AVAILABLE)$/i.test(consigneeAddress);
+      const now=new Date().toISOString();
+      const ocrData={};
+      if(validName)ocrData.consigneeName=consigneeName;
+      if(validAddress)ocrData.consigneeAddress=consigneeAddress;
+      if(validName||validAddress){
+        ocrData.consigneeSource='OCR of TO block on user-uploaded EMS photo (unverified)';
+        ocrData.consigneeOcrAt=now;
+      }
+      const initialData=JSON.stringify({
+        trackingNo,status:'Pending Tracking',enteredBy:auth.username,
+        savedAt:now,...ocrData
+      });
+      const inserted=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
+        VALUES (${trackingNo},${initialData}::jsonb,NOW(),NOW())
+        ON CONFLICT (tracking_no) DO NOTHING
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(inserted.length)return json({ok:true,created:true,pendingTracking:true,photoSaved:true,
+        row:rowToResult(inserted[0])});
+      // Existing ED: preserve tracking/Delivered details; highlight duplicate
+      // once, and update recipient only when the photo OCR found new values.
+      const info=JSON.stringify(ocrData);
+      const duplicate=await sql`UPDATE mayavi_speedpost
+        SET data=jsonb_set(jsonb_set(
+          data || ${info}::jsonb,
+          '{duplicateAlert}','true'::jsonb,true),
+          '{duplicateCount}',to_jsonb(COALESCE((data->>'duplicateCount')::int,0)+1),true),
+          updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(duplicate.length)return json({ok:true,duplicate:true,photoSaved:true,
+        row:rowToResult(duplicate[0])});
+      return json({ok:false,error:'Could not save the ED photo record.'},503);
+    }
     // Same ED entered again is a duplicate ADD, not a second shipment.
     // Return the existing row without expensive tracking or replacing its fields.
     if(action==='add'){
@@ -145,6 +190,10 @@ export async function POST(request){
     if(previous.senderName)data.senderName=previous.senderName;
     if(previous.senderNameSource)data.senderNameSource=previous.senderNameSource;
     if(previous.senderNameConfirmedAt)data.senderNameConfirmedAt=previous.senderNameConfirmedAt;
+    // Consignee is read from the photo, not tracking-site location fields.
+    for(const key of ['consigneeName','consigneeAddress','consigneeSource','consigneeOcrAt']){
+      if(previous[key]&&!data[key])data[key]=previous[key];
+    }
     const rows=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
       VALUES (${trackingNo},${JSON.stringify(data)}::jsonb,NOW(),NOW())
       ON CONFLICT (tracking_no) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()
