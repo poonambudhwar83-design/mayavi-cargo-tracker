@@ -214,6 +214,25 @@ function hasIndependentCustomsParts(row={}){
   // individually; a repeat/full-load flight does not qualify.
   return expandPartRows([row]).some(part=>Boolean(part._partKey));
 }
+// Customs Cleared Import is a live, IST-calendar-month view.
+function importArrivalMonth(value=''){
+  const raw=String(value||'').trim();
+  let m=raw.match(/^(20\d{2})[-/](\d{1,2})[-/](\d{1,2})(?:\D|$)/);
+  let year,month,day;
+  if(m){year=Number(m[1]);month=Number(m[2]);day=Number(m[3]);}
+  else{
+    m=raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](20\d{2})(?:\D|$)/);
+    if(!m)return'';
+    day=Number(m[1]);month=Number(m[2]);year=Number(m[3]);
+  }
+  const d=new Date(Date.UTC(year,month-1,day));
+  if(d.getUTCFullYear()!==year||d.getUTCMonth()+1!==month||d.getUTCDate()!==day)return'';
+  return year+'-'+pad(month);
+}
+function currentImportIstMonth(){
+  const items=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit'}).formatToParts(new Date());
+  return items.find(x=>x.type==='year')?.value+'-'+items.find(x=>x.type==='month')?.value;
+}
 function isCustomsArchived(row={}){return shipmentTypeOf(row.shipmentType)==='IMPORT'&&row.customsCleared===true}
 function isExportArchived(row={}){return isExportLikeType(row.shipmentType)&&row.handoverDone===true&&row.masterCopyReceived===true}
 function isPartArrived(row={}){return String(row.status||'').toUpperCase().includes('PART ARRIVED')}
@@ -346,6 +365,8 @@ function companyChoice(row={}){const t=String(row.companyType||'').toUpperCase()
 export default function DashboardClient({isAdmin=false,currentUser=null,onLogout=null}){
   const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT');
   const [adminView,setAdminView]=useState('ACTIVE'),[clientFilter,setClientFilter]=useState(''),[originFilter,setOriginFilter]=useState(''),[destinationFilter,setDestinationFilter]=useState(''),[prefixFilter,setPrefixFilter]=useState('');
+  const [currentImportMonth,setCurrentImportMonth]=useState(currentImportIstMonth);
+  useEffect(()=>{const timer=setInterval(()=>setCurrentImportMonth(currentImportIstMonth()),60000);return()=>clearInterval(timer)},[]);
   const employeeName=String(currentUser?.displayName||'').trim(),employeeUsername=String(currentUser?.username||'').trim();
   const canWeightMinus=isAdmin;
   const privateTab=activeTab==='OTHER_COUNTRIES';
@@ -406,17 +427,22 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r));
     return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r));
   },[tabRows,activeTab,isAdmin,adminView]);
-  const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>{
-    if(hasIndependentCustomsParts(row))return sum+expandPartRows([row]).filter(p=>p._partKey&&p.customsCleared===true).length;
-    return sum+(isCustomsArchived(row)?1:0);
-  },0),[tabRows]);
+  const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>
+    sum+expandPartRows([row]).filter(p=>p.customsCleared===true&&
+      importArrivalMonth(p.arrivalDate)===currentImportMonth).length
+  ,0),[tabRows,currentImportMonth]);
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&activeTab==='IMPORT';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
   const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clearedFilterMode||((!clientFilter||r.clientName===clientFilter)&&(!customsFilterMode||((!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter))))));const expanded=expandPartRows(filtered).filter(r=>{
+    if(clearedFilterMode&&activeTab==='IMPORT'){
+      // Filter AFTER physical part expansion: Sep part goes to Sep archive,
+      // Oct part stays visible here even when both share one MAWB.
+      return r.customsCleared===true&&importArrivalMonth(r.arrivalDate)===currentImportMonth;
+    }
     if(!r._partKey)return true;
     return clearedFilterMode?r.customsCleared===true:r.customsCleared!==true;
-  });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,originFilter,destinationFilter,prefixFilter,activeTab]);
+  });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth]);
   const totalWeight=useMemo(()=>{
     const groups=new Map();
     for(const r of visibleRows){
