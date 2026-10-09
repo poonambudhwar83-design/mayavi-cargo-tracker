@@ -28,8 +28,8 @@ function companyValue(tr,i){
 function weightFromCell(value=''){
   const s=String(value||'').replace(/,/g,'').trim();
   if(!s||s==='—')return 0;
-  const nums=s.match(/-?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite)||[];
-  return nums.length?nums.at(-1):0;
+  const part=s.split('/')[0].replace(/\s*(?:kg|kgs)\s*$/i,'').trim();
+  return /^\d+(?:\.\d+)?$/.test(part)?Number(part):0;
 }
 function mailSortValue(value=''){
   const m=String(value||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
