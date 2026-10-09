@@ -39,6 +39,22 @@ function destinationWithCountry(row={}){
   if(!short||place.toUpperCase().endsWith('('+short+')'))return place;
   return place+' ('+short+')';
 }
+function weightInKg(raw){
+  const text=String(raw??'').trim().replace(/,/g,'');
+  const m=text.match(/^(\d+(?:\.\d+)?)\s*(kg|kgs|kgm|kilograms?|g|gm|gms|grams?)$/i);
+  if(!m)return null;
+  const amount=Number(m[1]);
+  if(!Number.isFinite(amount)||amount<=0)return null;
+  const unit=m[2].toLowerCase();
+  return unit.startsWith('k')?amount:amount/1000;
+}
+function costPerKg(row){
+  const kg=weightInKg(row?.weight);
+  const total=Number(String(row?.tariff??'').replace(/[,₹\s]/g,''));
+  if(!kg||!Number.isFinite(total)||total<0)return null;
+  return total/kg;
+}
+const rupeePerKg=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 function formatValue(value){return value?String(value):'—'}
 function field(row,key){
   const val=row?.[key];
@@ -167,7 +183,7 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:1100}}>
-          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{rows.length?rows.map((r,i)=><tr key={r.trackingNo}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong></td>
@@ -178,14 +194,15 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{field(r,'bookingDate')}</td>
             <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong></td>
-            <td style={td}>{field(r,'weight')}</td>
+            <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
+            <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo)} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={12} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={13} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
         </table>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
