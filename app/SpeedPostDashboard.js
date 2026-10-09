@@ -120,6 +120,9 @@ export default function SpeedPostDashboard({currentUser}){
   const [loadError,setLoadError]=useState('');
   const [imageName,setImageName]=useState('');
   const [ocrCandidates,setOcrCandidates]=useState([]);
+  const [senderName,setSenderName]=useState('');
+  const [senderOcrStatus,setSenderOcrStatus]=useState('');
+  const [senderSaving,setSenderSaving]=useState(false);
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -179,12 +182,30 @@ export default function SpeedPostDashboard({currentUser}){
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
   },[]);
+  async function saveSenderName(){
+    const id=normalizeED(trackingNo),name=String(senderName||'').replace(/\s+/g,' ').trim();
+    if(!id){setMessage('Confirm the ED tracking number before saving Sender Name.');return;}
+    if(name.length<3){setMessage('Read or enter the sender name from FROM (not TO).');return;}
+    setSenderSaving(true);
+    try{
+      const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo:id,action:'save-sender',senderName:name})});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||!result.ok)throw new Error(result.error||'Sender could not be saved');
+      setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
+      setMessage('Sender Name '+name+' confirmed and saved on '+id+'.');
+      setSenderOcrStatus('Sender confirmed and saved');
+    }catch(e){setMessage(id+' — '+(e.message||'Sender save failed'));}
+    finally{setSenderSaving(false);}
+  }
   async function uploadImage(event){
     const file=event.target.files?.[0];
     if(!file)return;
     setImageName(file.name);
     setMessage('');
     setOcrCandidates([]);
+    setSenderName('');
+    setSenderOcrStatus('');
     if(file.size>8*1024*1024){setMessage('Please upload a photo below 8 MB.');return;}
     setOcrBusy(true);
     setOcrProgress('Locating the ED number next to the EMS slip…');
@@ -194,6 +215,12 @@ export default function SpeedPostDashboard({currentUser}){
       const response=await fetch('/api/speedpost/ocr',{method:'POST',body:form});
       const data=await response.json().catch(()=>({}));
       if(!response.ok||!data.ok)throw new Error(data.error||'OCR reading is temporarily unavailable.');
+      // Separate OCR #2: FROM sender name. Never auto-save unreviewed names.
+      const candidateName=String(data.senderName||'').trim().slice(0,100);
+      setSenderName(candidateName);
+      setSenderOcrStatus(candidateName
+        ?'FROM sender name found — review spelling and click Confirm & Save Sender'
+        :'FROM sender was not clear; enter it manually from the parcel photo');
       const candidates=Array.isArray(data.candidates)?data.candidates.filter(x=>normalizeED(x.number)):[];
       if(!candidates.length){
         setMessage(data.message||'ED number was not readable. Please upload a closer photo of the EMS slip.');
@@ -305,6 +332,16 @@ export default function SpeedPostDashboard({currentUser}){
         </form>
         <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. Existing MySpeedPost tariff and booking fields are retained where available. Both are third-party services.</div>
       </section>
+      <section style={card}>
+        <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>3. Sender Name OCR — FROM section</div>
+        <label htmlFor="speedpostSender" style={{fontSize:12,color:'#334155',display:'block',marginBottom:7}}>Sender Name (review the photo and correct spelling)</label>
+        <input id="speedpostSender" type="text" value={senderName} onChange={e=>setSenderName(e.target.value)}
+          style={{...input,marginBottom:9}} maxLength={100} placeholder="e.g. AJAY KUMAR"/>
+        {senderOcrStatus&&<div role="status" style={{fontSize:12,color:'#475569',marginBottom:9}}>{senderOcrStatus}</div>}
+        <button type="button" onClick={saveSenderName} style={{...btn,width:'100%',opacity:anythingBusy||senderSaving?.6:1}}
+          disabled={anythingBusy||senderSaving}>{senderSaving?'SAVING…':'CONFIRM & SAVE SENDER'}</button>
+        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>OCR #1 reads the ED barcode sticker; OCR #2 reads Sender Name from FROM only. Save the ED number before confirming its sender. TO / consignee details are not used for Sender Name.</div>
+      </section>
     </div>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
@@ -313,15 +350,18 @@ export default function SpeedPostDashboard({currentUser}){
         <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1530}}>
-          <thead><tr>{['S.No.','Tracking No.','Entry Date','Entry-Date Total (₹)','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1690}}>
+          <thead><tr>{['S.No.','Tracking No.','Sender Name','Entry Date','Entry-Date Total (₹)','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
+            <td style={{...td,maxWidth:190,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'senderName')}</td>
             <td style={td}>{formatEntryDate(r.createdAt)}</td>
             <td style={{...td,minWidth:180,whiteSpace:'normal'}}>
               {(()=>{
                 const summary=dateCostGroups.get(formatEntryDate(r.createdAt));
+                // A daily total belongs to only the FIRST visible row of its date.
+                if(displayedRows.findIndex(item=>formatEntryDate(item.createdAt)===formatEntryDate(r.createdAt))!==i)return '—';
                 if(!summary)return '—';
                 return <div>
                   <strong style={{color:'#163c80'}}>{summary.completePackets?rupeePerKg.format(summary.postal+summary.cash):'—'}</strong>
@@ -352,7 +392,7 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={18} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Entry-Date Total combines the postal and cash costs of ALL packets entered that day, across Active and Delivered. Only packets with both costs known count towards the amount; PARTIAL means some costs are still missing. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
