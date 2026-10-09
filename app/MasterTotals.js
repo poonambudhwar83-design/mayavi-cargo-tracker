@@ -5,8 +5,8 @@ function text(el){return String(el?.textContent||'').trim()}
 function weightValue(value=''){
   const s=String(value||'').replace(/,/g,'').trim();
   if(!s||s==='—')return 0;
-  const parts=s.split('/').map(v=>Number(String(v).replace(/[^0-9.\-]/g,''))).filter(Number.isFinite);
-  return parts.length?(parts.length>1?parts.at(-1):parts[0]):0;
+  const part=s.split('/')[0].replace(/\s*(?:kg|kgs)\s*$/i,'').trim();
+  return /^\d+(?:\.\d+)?$/.test(part)?Number(part):0;
 }
 
 export default function MasterTotals(){
