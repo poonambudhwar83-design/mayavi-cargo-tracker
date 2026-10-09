@@ -209,8 +209,8 @@ export default function SpeedPostDashboard({currentUser}){
         <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1100}}>
-          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:1350}}>
+          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{rows.length?rows.map((r,i)=><tr key={r.trackingNo}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong></td>
@@ -222,6 +222,8 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong></td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
+            <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
+            <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
@@ -229,10 +231,10 @@ export default function SpeedPostDashboard({currentUser}){
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={13} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={15} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Cash Cost appears beside Weight: rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
     {speedPostTab==='CASH_COST'&&<section style={card}>
