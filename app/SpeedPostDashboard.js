@@ -23,6 +23,12 @@ function readED(text=''){
   }
   return'';
 }
+function shortOrigin(value=''){
+  const origin=String(value||'').trim();
+  if(!origin)return '';
+  if(/^NEW DELHI(?:\b|,| -)/i.test(origin)||/^DELHI FOREIGN POST(?:\b|,| -)/i.test(origin))return 'New Delhi';
+  return origin;
+}
 function destinationWithCountry(row={}){
   const place=String(row.destination||'').trim();
   if(!place)return '';
@@ -165,7 +171,7 @@ export default function SpeedPostDashboard({currentUser}){
           <tbody>{rows.length?rows.map((r,i)=><tr key={r.trackingNo}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong></td>
-            <td style={td}>{field(r,'origin')}</td>
+            <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{destinationWithCountry(r)||'—'}</td>
             <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
