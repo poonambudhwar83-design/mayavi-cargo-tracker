@@ -206,8 +206,10 @@ export default function SpeedPostDashboard({currentUser}){
     updateBatchItem(index,{status:'saving',error:''});
     try{
       const data=await saveBatchED(ed,item.consigneeName,item.consigneeAddress);
-      updateBatchItem(index,{status:data.duplicate?'duplicate':'saved',ed,
-        error:data.duplicate?'Existing ED highlighted; no second row created.':''});
+      const missing=!(data.row?.consigneeName&&data.row?.consigneeAddress);
+      updateBatchItem(index,{status:missing?'review':data.duplicate?'duplicate':'saved',ed,
+        error:missing?'ED saved, but some consignee fields are missing. Correct the OCR text below and save again.':
+          data.duplicate?'Same ED found: existing packet retained and missing consignee details updated.':''});
     }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
     finally{setReviewBusy(false);}
   }
@@ -247,8 +249,10 @@ export default function SpeedPostDashboard({currentUser}){
             error:certain?'':'Check this photo’s ED number before saving.'});
           if(!certain)continue;
           const result=await saveBatchED(ed,consigneeName,consigneeAddress);
-          updateBatchItem(i,{status:result.duplicate?'duplicate':'saved',
-            error:result.duplicate?'Existing ED highlighted; no second row created.':''});
+          const incomplete=!(result.row?.consigneeName&&result.row?.consigneeAddress);
+          updateBatchItem(i,{status:incomplete?'review':result.duplicate?'duplicate':'saved',
+            error:incomplete?'ED saved, but some consignee fields are unclear. Review the text below to fill missing details.':
+              result.duplicate?'Same ED: packet retained, missing details updated where readable.':''});
           // Deliberately avoid a third-party tracking fetch inside this batch:
           // the ED + TO fields are saved first and tracking can be refreshed.
         }catch(e){
@@ -457,6 +461,15 @@ export default function SpeedPostDashboard({currentUser}){
             <input style={{...input,marginBottom:7}} maxLength={18}
               value={item.ed||''} onChange={e=>updateBatchItem(i,{ed:e.target.value.toUpperCase()})}
               placeholder="ED + 9 digits + IN"/>
+            <label style={{fontSize:11,display:'block',marginBottom:5}}>Consignee Name (TO section)</label>
+            <input style={{...input,marginBottom:7}} maxLength={100} value={item.consigneeName||''}
+              onChange={e=>updateBatchItem(i,{consigneeName:e.target.value})}
+              placeholder="Correct or enter consignee name"/>
+            <label style={{fontSize:11,display:'block',marginBottom:5}}>Consignee Address (TO section)</label>
+            <textarea style={{...input,minHeight:65,resize:'vertical',marginBottom:7}} maxLength={700}
+              value={item.consigneeAddress||''}
+              onChange={e=>updateBatchItem(i,{consigneeAddress:e.target.value})}
+              placeholder="Correct or enter full consignee address"/>
             {item.candidates.length>1&&<div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:7}}>
               {item.candidates.map(c=><button type="button" key={c.number}
                 onClick={()=>updateBatchItem(i,{ed:c.number})}
@@ -464,7 +477,7 @@ export default function SpeedPostDashboard({currentUser}){
             </div>}
             <button type="button" style={{...btn,fontSize:11,padding:'7px 10px'}}
               disabled={batchRunning||reviewBusy||!normalizeED(item.ed)}
-              onClick={()=>saveReviewedBatch(i,item)}>CONFIRM ED & SAVE PHOTO</button>
+              onClick={()=>saveReviewedBatch(i,item)}>SAVE ED & FILL MISSING DETAILS</button>
           </div>}
         </div>)}
       </div>
