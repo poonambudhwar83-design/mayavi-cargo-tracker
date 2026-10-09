@@ -4,7 +4,8 @@ export const dynamic='force-dynamic';
 // existing airline's function region, lock or route.
 export const preferredRegion='fra1';
 const hosts=[
-  {name:'AFKLM homepage',url:'https://www.afklcargo.com/GB/en/homepage/homepage'},
+  {name:'AFKLM WW homepage',url:'https://afklcargo.com/WW/en/homepage/homepage'},
+  {name:'AFKLM WWW WW homepage',url:'https://www.afklcargo.com/WW/en/homepage/homepage'},
   {name:'AFKLM API edge',url:'https://api.airfranceklm.com/cargo/tracking/awbs/000-00000000'}
 ];
 export async function GET(){
