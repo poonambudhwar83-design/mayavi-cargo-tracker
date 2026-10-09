@@ -125,6 +125,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [photoRecipient,setPhotoRecipient]=useState({consigneeName:'',consigneeAddress:''});
   const [photoEdNeedsEntry,setPhotoEdNeedsEntry]=useState(false);
   const [photoHasBeenRead,setPhotoHasBeenRead]=useState(false);
+  const [photoRecipientConfidence,setPhotoRecipientConfidence]=useState('unreadable');
   const [batchItems,setBatchItems]=useState([]);
   const [batchRunning,setBatchRunning]=useState(false);
   const [reviewBusy,setReviewBusy]=useState(false);
@@ -220,6 +221,7 @@ export default function SpeedPostDashboard({currentUser}){
     setBatchRunning(true);
     setPhotoEdNeedsEntry(false);
     setPhotoHasBeenRead(false);
+    setPhotoRecipientConfidence('unreadable');
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
     setMessage('Processing '+files.length+' photos separately, 2 at a time. Keep this page open.');
@@ -243,10 +245,13 @@ export default function SpeedPostDashboard({currentUser}){
           const consigneeName=String(data.consigneeName||'').trim().slice(0,100);
           const consigneeAddress=String(data.consigneeAddress||'').trim().slice(0,700);
           const certain=data.autoSelect===true&&candidates.length===1
-            &&candidates[0].checkDigitValid===true&&candidates[0].emsNearby===true;
+            &&candidates[0].checkDigitValid===true&&candidates[0].emsNearby===true
+            &&['high','medium'].includes(data.consigneeConfidence);
           updateBatchItem(i,{ed,candidates,consigneeName,consigneeAddress,
             status:certain?'saving':'review',
-            error:certain?'':'Check this photo’s ED number before saving.'});
+            error:certain?'':data.consigneeConfidence==='low'
+              ?'Printed TO address was read but may contain incorrect characters. Review and correct before saving.'
+              :'Check the ED number and consignee text before saving this photo.'});
           if(!certain)continue;
           const result=await saveBatchED(ed,consigneeName,consigneeAddress);
           const incomplete=!(result.row?.consigneeName&&result.row?.consigneeAddress);
@@ -283,6 +288,7 @@ export default function SpeedPostDashboard({currentUser}){
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
     setPhotoEdNeedsEntry(false);
     setPhotoHasBeenRead(false);
+    setPhotoRecipientConfidence('unreadable');
     if(file.size>8*1024*1024){setMessage('Please upload a photo below 8 MB.');return;}
     setOcrBusy(true);
     setOcrProgress('Locating the ED number next to the EMS slip…');
@@ -296,6 +302,7 @@ export default function SpeedPostDashboard({currentUser}){
         consigneeAddress:String(data.consigneeAddress||'').trim().slice(0,700)};
       setPhotoRecipient(recipient);
       setPhotoHasBeenRead(true);
+      setPhotoRecipientConfidence(data.consigneeConfidence||'unreadable');
       const candidates=Array.isArray(data.candidates)?data.candidates.filter(x=>normalizeED(x.number)):[];
       if(!candidates.length){
         setPhotoEdNeedsEntry(true);
@@ -306,12 +313,15 @@ export default function SpeedPostDashboard({currentUser}){
       setOcrCandidates(candidates);
       setPhotoEdNeedsEntry(false);
       setTrackingNo(candidates[0].number);
-      if(data.autoSelect===true&&candidates.length===1){
-        setOcrProgress('ED number found by the EMS label: '+candidates[0].number);
+      if(data.autoSelect===true&&candidates.length===1
+        &&['high','medium'].includes(data.consigneeConfidence)){
+        setOcrProgress('ED and clear recipient address found: '+candidates[0].number);
         await trackOne(candidates[0].number,'photo-add',recipient);
         setOcrCandidates([]);
       }else{
-        setMessage('Please select the correct ED candidate; the consignee found in this photo will be saved to that same ED.');
+        setMessage(data.consigneeConfidence==='low'
+          ?'ED found, but address OCR has uncertain characters. Correct the name/address in TO Consignee OCR, then save this ED.'
+          :'Check the ED and recipient address before saving. Unclear text is never automatically assigned to a customer.');
       }
     }catch(e){
       setMessage('EMS receipt OCR: '+(e.message||'Could not read the photo.')+' You may enter the ED number manually.');
@@ -419,6 +429,12 @@ export default function SpeedPostDashboard({currentUser}){
       </section>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>3. TO Consignee OCR</div>
+        {photoHasBeenRead&&<div role="status" style={{fontSize:11,fontWeight:700,marginBottom:9,
+          color:['high','medium'].includes(photoRecipientConfidence)?'#166534':'#9a3412'}}>
+          {['high','medium'].includes(photoRecipientConfidence)
+            ?'Printed TO block recognized'
+            :'Recipient text unclear: check and correct before saving'}
+        </div>}
         <label htmlFor="speedPostConsigneeName" style={{fontSize:12,color:'#64748b',display:'block',marginBottom:5}}>Consignee Name (from TO photo)</label>
         <input id="speedPostConsigneeName" style={{...input,marginBottom:9}} maxLength={100}
           value={photoRecipient.consigneeName}
