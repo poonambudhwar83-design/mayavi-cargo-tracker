@@ -124,6 +124,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [ocrCandidates,setOcrCandidates]=useState([]);
   const [photoRecipient,setPhotoRecipient]=useState({consigneeName:'',consigneeAddress:''});
   const [photoEdNeedsEntry,setPhotoEdNeedsEntry]=useState(false);
+  const [photoHasBeenRead,setPhotoHasBeenRead]=useState(false);
   const [batchItems,setBatchItems]=useState([]);
   const [batchRunning,setBatchRunning]=useState(false);
   const [reviewBusy,setReviewBusy]=useState(false);
@@ -154,7 +155,7 @@ export default function SpeedPostDashboard({currentUser}){
       setTrackingNo(id);
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
-        setMessage(id+' — DUPLICATE ED NUMBER! Existing packet highlighted; no extra row added.');
+        setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
         return;
       }
       if(result.created===true){
@@ -216,6 +217,7 @@ export default function SpeedPostDashboard({currentUser}){
     setBatchItems(queue);
     setBatchRunning(true);
     setPhotoEdNeedsEntry(false);
+    setPhotoHasBeenRead(false);
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
     setMessage('Processing '+files.length+' photos separately, 2 at a time. Keep this page open.');
@@ -276,6 +278,7 @@ export default function SpeedPostDashboard({currentUser}){
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
     setPhotoEdNeedsEntry(false);
+    setPhotoHasBeenRead(false);
     if(file.size>8*1024*1024){setMessage('Please upload a photo below 8 MB.');return;}
     setOcrBusy(true);
     setOcrProgress('Locating the ED number next to the EMS slip…');
@@ -288,6 +291,7 @@ export default function SpeedPostDashboard({currentUser}){
       const recipient={consigneeName:String(data.consigneeName||'').trim().slice(0,100),
         consigneeAddress:String(data.consigneeAddress||'').trim().slice(0,700)};
       setPhotoRecipient(recipient);
+      setPhotoHasBeenRead(true);
       const candidates=Array.isArray(data.candidates)?data.candidates.filter(x=>normalizeED(x.number)):[];
       if(!candidates.length){
         setPhotoEdNeedsEntry(true);
@@ -411,16 +415,22 @@ export default function SpeedPostDashboard({currentUser}){
       </section>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>3. TO Consignee OCR</div>
-        <div style={{fontSize:12,color:'#64748b'}}>Consignee Name (from uploaded photo)</div>
-        <div style={{fontSize:13,fontWeight:700,marginBottom:8,overflowWrap:'anywhere'}}>{photoRecipient.consigneeName||'— not readable yet'}</div>
-        <div style={{fontSize:12,color:'#64748b'}}>Consignee Address (from uploaded photo)</div>
-        <div style={{fontSize:12,overflowWrap:'anywhere',whiteSpace:'normal'}}>{photoRecipient.consigneeAddress||'— not readable yet'}</div>
-        {photoEdNeedsEntry&&<button type="button" style={{...btn,marginTop:10,fontSize:12,width:'100%'}}
-          disabled={anythingBusy||!normalizeED(trackingNo)}
+        <label htmlFor="speedPostConsigneeName" style={{fontSize:12,color:'#64748b',display:'block',marginBottom:5}}>Consignee Name (from TO photo)</label>
+        <input id="speedPostConsigneeName" style={{...input,marginBottom:9}} maxLength={100}
+          value={photoRecipient.consigneeName}
+          onChange={e=>setPhotoRecipient(old=>({...old,consigneeName:e.target.value}))}
+          placeholder="Name not readable — enter from photo"/>
+        <label htmlFor="speedPostConsigneeAddress" style={{fontSize:12,color:'#64748b',display:'block',marginBottom:5}}>Consignee Address (from TO photo)</label>
+        <textarea id="speedPostConsigneeAddress" style={{...input,resize:'vertical',minHeight:75,marginBottom:8}} maxLength={700}
+          value={photoRecipient.consigneeAddress}
+          onChange={e=>setPhotoRecipient(old=>({...old,consigneeAddress:e.target.value}))}
+          placeholder="Address not readable — enter from photo"/>
+        {photoHasBeenRead&&<button type="button" style={{...btn,marginTop:8,fontSize:12,width:'100%'}}
+          disabled={anythingBusy||!normalizeED(trackingNo)||(!photoRecipient.consigneeName.trim()&&!photoRecipient.consigneeAddress.trim())}
           onClick={async()=>{const id=normalizeED(trackingNo);if(!id)return;setPhotoEdNeedsEntry(false);await trackOne(id,'photo-add',photoRecipient);}}>
-          SAVE PHOTO DETAILS TO ENTERED ED
+          FILL MISSING CONSIGNEE DETAILS FOR THIS ED
         </button>}
-        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Photo upload automatically saves these with its matching ED. If ED OCR fails, enter the barcode number yourself and use the save button above. FROM / sender is not extracted or filled. Unreadable details remain blank.</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>OCR reads from the TO block. Existing ED numbers get their missing fields filled; valid existing data stays. Check unclear OCR before saving. If ED was unreadable, enter the barcode number above. Sender is not filled.</div>
       </section>
     </div>}
     {batchItems.length>0&&<section style={{...card,marginBottom:14}}>
