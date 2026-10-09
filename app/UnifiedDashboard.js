@@ -145,6 +145,7 @@ export default function UnifiedDashboard(){
       {speedPostAllowed&&<><button style={{...topAccountButton,background:selectedDashboard==='AIR_CARGO'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>AIR CARGO</button><button style={{...topAccountButton,background:selectedDashboard==='SPEED_POST'?'#dbeafe':'#fff',color:'#17419b'}} onClick={()=>setSelectedDashboard('SPEED_POST')}>SPEED POST (PRIVATE)</button></>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
+      {speedPostAllowed&&selectedDashboard==='SPEED_POST'&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
     {speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout}/>}
 
