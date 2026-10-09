@@ -45,10 +45,11 @@ export async function POST(request){
     let consigneeAddress='';
     let consigneeOcrOrientation='';
     let consigneeToHeadingCovered=false;
+    let consigneeConfidence='unreadable';
     const start=Date.now();
     worker=await createWorker('eng',1,{cachePath:'/tmp/speedpost-ocr',cacheMethod:'none'});
     await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});
-    async function recognize(buffer,isEmsCrop=false,timeoutMs=16000,orientation='original'){
+    async function recognize(buffer,isEmsCrop=false,timeoutMs=12000,orientation='original',recipientOnly=false){
       const race=await Promise.race([
         worker.recognize(buffer,{}, {text:true,tsv:true}).then(result=>({result})).catch(error=>({error})),
         new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),timeoutMs))
@@ -59,13 +60,17 @@ export async function POST(request){
       // Recipient OCR reader is independent of the EMS ED barcode reader.
       // Only the photo's TO block / labelled recipient-address area is used.
       const recipient=readConsigneeFromEmsTO(data.text||'',data.tsv||'');
-      if(recipient.consigneeName&&recipient.consigneeAddress
-         &&(!consigneeName||!consigneeAddress||(!consigneeToHeadingCovered&&recipient.toSectionFound))){
+      const score={unreadable:0,low:1,medium:2,high:3};
+      if(recipient.consigneeName&&recipient.consigneeAddress&&
+          (score[recipient.recipientConfidence||'unreadable']>score[consigneeConfidence]
+            || !consigneeName||!consigneeAddress)){
         consigneeName=recipient.consigneeName;
         consigneeAddress=recipient.consigneeAddress;
         consigneeOcrOrientation=orientation;
         consigneeToHeadingCovered=recipient.toHeadingCovered===true;
+        consigneeConfidence=recipient.recipientConfidence||'low';
       }
+      if(recipientOnly)return data;
       const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop});
       for(const item of candidates){
         const existing=output.find(x=>x.number===item.number);
@@ -73,6 +78,23 @@ export async function POST(request){
         else{existing.emsNearby ||=item.emsNearby;existing.occurrences+=item.occurrences}
       }
       return data;
+    }
+    // Read the LARGE printed consignee lines separately from the tiny CN22
+    // customs table. The sample parcel's recipient is in the upper-right
+    // region; isolating it stops customs text being mistaken for an address.
+    async function readPrintedRecipientArea(oriented,orientation){
+      if(consigneeConfidence==='high'||Date.now()-start>=45500)return;
+      const md=await sharp(oriented).metadata();
+      const left=Math.round(md.width*0.39), top=Math.round(md.height*0.14);
+      const width=Math.round(md.width*0.52);
+      const height=Math.round(md.height*0.51);
+      if(width<250||height<150)return;
+      const crop=await sharp(oriented).extract({left,top,width,height})
+        .resize({width:Math.min(1900,Math.max(1150,width*2))})
+        .greyscale().normalise().sharpen().png().toBuffer();
+      await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_BLOCK});
+      try{await recognize(crop,false,8500,orientation+' TO crop',true);}
+      finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
     }
     // Locate the literal EMS / SPEED POST printing first and zoom around it.
     // The ED number on a physical EMS label is usually next to that heading,
@@ -100,23 +122,26 @@ export async function POST(request){
       const region=await sharp(base).extract({left,top,width:cropWidth,height:cropHeight}).resize({width:Math.min(3200,cropWidth*2)}).sharpen().png().toBuffer();
       await recognize(region,true);
     }
-    if(!output.some(x=>x.checkDigitValid&&x.emsNearby)&&Date.now()-start<33000){
-      const enhanced=await sharp(base).linear(1.25,-18).threshold(175).png().toBuffer();
-      await recognize(enhanced,false);
-    }
-    // Sideways EMS box photographs require orientation-specific OCR.
-    // These rotations also allow barcode OCR to succeed if the photo is sideways.
-    if((!consigneeName||!consigneeAddress||!output.some(x=>x.checkDigitValid))&&Date.now()-start<33000){
+    // First rotate sideways parcel labels, then use isolated PSM6 OCR on
+    // printed TO lines. Give each attempt a bounded budget under 60 seconds.
+    if(Date.now()-start<36000
+      &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
       try{
-        const sideways=await sharp(base).rotate(90).png().toBuffer();
-        await recognize(sideways,false,10000,'90 degrees');
-      }catch{/* Keep other OCR results if rotation fails. */}
+        const upright=await sharp(base).rotate(90).png().toBuffer();
+        await recognize(upright,false,10500,'90 degrees');
+        await readPrintedRecipientArea(upright,'90 degrees');
+      }catch{/* Keep partial OCR results from other orientations. */}
     }
-    if((!consigneeName||!consigneeAddress||!output.some(x=>x.checkDigitValid))&&Date.now()-start<44000){
+    if(Date.now()-start<45000
+      &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
       try{
-        const sideways=await sharp(base).rotate(270).png().toBuffer();
-        await recognize(sideways,false,8000,'270 degrees');
-      }catch{/* Keep other OCR results if second rotation fails. */}
+        const other=await sharp(base).rotate(270).png().toBuffer();
+        await recognize(other,false,7500,'270 degrees');
+        await readPrintedRecipientArea(other,'270 degrees');
+      }catch{/* Keep partial OCR results from other orientations. */}
+    }
+    if(consigneeConfidence==='unreadable'&&Date.now()-start<45000){
+      try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
       Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
@@ -124,6 +149,7 @@ export async function POST(request){
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||Number(b.emsNearby)-Number(a.emsNearby));
     return respond({ok:true,candidates:output.slice(0,10),
       consigneeName,consigneeAddress,consigneeOcrOrientation,consigneeToHeadingCovered,
+      consigneeConfidence,consigneeNeedsReview:consigneeConfidence!=='high',
       autoSelect:output.length===1&&output[0].checkDigitValid&&output[0].emsNearby,
       message:output.length?'EMS ED number and consignee extracted independently from your photo.':'ED number by the EMS label was not readable. Upload a clearer barcode photo or enter the ED manually.'});
   }catch(e){
