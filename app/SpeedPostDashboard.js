@@ -58,14 +58,14 @@ export default function SpeedPostDashboard({currentUser}){
     const id=normalizeED(no);
     if(!id){setMessage('Enter a valid tracking number such as ED977951280IN.');return;}
     setBusy(id);
-    setMessage('Checking '+id+' on MySpeedPost; please wait for current details…');
+    setMessage('Checking '+id+' individually on TrackParcel and MySpeedPost…');
     try{
       const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trackingNo:id})});
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Tracking unavailable');
       setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
-      setMessage(id+' — latest available third-party tracking details saved. Blank fields were not invented.');
+      setMessage(id+' — latest available ED-matched tracking details saved. Fields not shown by the websites remain blank.');
     }catch(e){setMessage(id+' — '+(e.message||'Tracking unavailable')+'. Existing saved data remains unchanged.');}
     finally{setBusy('');}
   },[]);
@@ -140,7 +140,7 @@ export default function SpeedPostDashboard({currentUser}){
           <input style={{...input,textTransform:'uppercase',marginBottom:9}} maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())} placeholder="ED977951280IN"/>
           <button style={{...btn,opacity:anythingBusy?.6:1,width:'100%'}} disabled={anythingBusy} type="submit">{anythingBusy?'WORKING…':'TRACK & SAVE →'}</button>
         </form>
-        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Tracking site: <a href="https://myspeedpost.com/track" target="_blank" rel="noreferrer">MySpeedPost ↗</a> (independent, not official India Post)</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. Existing MySpeedPost tariff and booking fields are retained where available. Both are third-party services.</div>
       </section>
     </div>
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
@@ -151,12 +151,13 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:1100}}>
-          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','Tracking No.','Origin','Destination','Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{rows.length?rows.map((r,i)=><tr key={r.trackingNo}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong></td>
             <td style={td}>{field(r,'origin')}</td>
             <td style={td}>{field(r,'destination')}</td>
+            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
             <td style={td}>{field(r,'bookingDate')}</td>
             <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
@@ -165,13 +166,13 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo)} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
-              <a href={'https://myspeedpost.com/track-ems-speedpost?n='+encodeURIComponent(r.trackingNo)+'&sync=true'} target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>SITE ↗</a>
+              <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={11} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={12} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>Upload a receipt or enter an ED tracking number to add your first Speed Post consignment.</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only fields returned by the tracking site are filled. “Previous check” means that field was retained from an earlier successful check. No unverified rate, origin, destination or weight is invented.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
   </main>;
 }
