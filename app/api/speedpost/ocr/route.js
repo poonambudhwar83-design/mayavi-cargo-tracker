@@ -2,7 +2,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../../lib/mayaviAuth.js';
 import { edOcrCandidates } from '../../../../lib/speedpostOcr.js';
-import { readSenderNameFromFROM } from '../../../../lib/speedpostSenderOcr.js';
+import { readConsigneeFromEmsTO } from '../../../../lib/speedpostToOcr.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -41,8 +41,10 @@ export async function POST(request){
     }).greyscale().normalise().sharpen().png().toBuffer();
     const size=await sharp(base).metadata();
     let output=[];
-    let senderName='';
-    let senderOcrOrientation='';
+    let consigneeName='';
+    let consigneeAddress='';
+    let consigneeOcrOrientation='';
+    let consigneeToHeadingCovered=false;
     const start=Date.now();
     worker=await createWorker('eng',1,{cachePath:'/tmp/speedpost-ocr',cacheMethod:'none'});
     await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});
@@ -54,9 +56,16 @@ export async function POST(request){
       if(race.timeout)throw Error('OCR_TIMED_OUT');
       if(race.error)throw race.error;
       const data=race.result?.data||{};
-      // Sender is extracted separately from the FROM section, not the TO block.
-      const sender=readSenderNameFromFROM(data.text||'',data.tsv||'');
-      if(sender.senderName&&!senderName){senderName=sender.senderName;senderOcrOrientation=orientation;}
+      // Recipient OCR reader is independent of the EMS ED barcode reader.
+      // Only the photo's TO block / labelled recipient-address area is used.
+      const recipient=readConsigneeFromEmsTO(data.text||'',data.tsv||'');
+      if(recipient.consigneeName&&recipient.consigneeAddress
+         &&(!consigneeName||!consigneeAddress||(!consigneeToHeadingCovered&&recipient.toSectionFound))){
+        consigneeName=recipient.consigneeName;
+        consigneeAddress=recipient.consigneeAddress;
+        consigneeOcrOrientation=orientation;
+        consigneeToHeadingCovered=recipient.toHeadingCovered===true;
+      }
       const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop});
       for(const item of candidates){
         const existing=output.find(x=>x.number===item.number);
@@ -95,29 +104,28 @@ export async function POST(request){
       const enhanced=await sharp(base).linear(1.25,-18).threshold(175).png().toBuffer();
       await recognize(enhanced,false);
     }
-    // A sideways parcel photo may be unreadable in the original orientation.
-    // The dedicated FROM reader gets one or two rotated attempts, respecting
-    // the 60-second request budget; the original ED reader remains independent.
-    if(!senderName&&Date.now()-start<34000){
+    // Sideways EMS box photographs require orientation-specific OCR.
+    // These rotations also allow barcode OCR to succeed if the photo is sideways.
+    if((!consigneeName||!consigneeAddress||!output.some(x=>x.checkDigitValid))&&Date.now()-start<33000){
       try{
         const sideways=await sharp(base).rotate(90).png().toBuffer();
-        await recognize(sideways,false,9500,'90 degrees');
-      }catch{/* The ED OCR result is still usable without the sender. */}
+        await recognize(sideways,false,10000,'90 degrees');
+      }catch{/* Keep other OCR results if rotation fails. */}
     }
-    if(!senderName&&Date.now()-start<45000){
+    if((!consigneeName||!consigneeAddress||!output.some(x=>x.checkDigitValid))&&Date.now()-start<44000){
       try{
         const sideways=await sharp(base).rotate(270).png().toBuffer();
         await recognize(sideways,false,8000,'270 degrees');
-      }catch{/* Do not fail ED OCR if sender rotation is unclear. */}
+      }catch{/* Keep other OCR results if second rotation fails. */}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
       Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
     // The user must approve uncertain OCR candidates; no silent fabricated ED number.
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||Number(b.emsNearby)-Number(a.emsNearby));
     return respond({ok:true,candidates:output.slice(0,10),
-      senderName, senderNameNeedsReview:true, senderOcrOrientation,
+      consigneeName,consigneeAddress,consigneeOcrOrientation,consigneeToHeadingCovered,
       autoSelect:output.length===1&&output[0].checkDigitValid&&output[0].emsNearby,
-      message:output.length?'Review the EMS ED number and the FROM sender name separately before saving.':'ED number by the EMS label was not readable. Crop closer or type the number; sender may still be available.'});
+      message:output.length?'EMS ED number and consignee extracted independently from your photo.':'ED number by the EMS label was not readable. Upload a clearer barcode photo or enter the ED manually.'});
   }catch(e){
     return respond({ok:false,error:'Receipt OCR unavailable: '+String(e?.message||e).slice(0,160)},502);
   }finally{try{await worker?.terminate()}catch{}}
