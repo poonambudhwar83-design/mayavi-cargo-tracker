@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { airlineForMawb, CONFIGURED_PREFIXES } from '../lib/airlines.js';
 import { normalizeExportTimesToIst } from '../lib/exportIst.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.js';
+import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 
 const KEY='mayavi_v3_shipments';
 const TAB_KEY='mayavi_dashboard_active_tab';
@@ -13,7 +14,7 @@ function pad(v){return String(v).padStart(2,'0')}
 function cleanWeight(v=''){return String(v||'').replace(/\s*(kg|kgs|kilograms?)\s*$/i,'').trim()}
 function shipmentTypeOf(value=''){const t=String(value||'').trim().toUpperCase();return t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT'}
 function isExportLikeType(value=''){const t=shipmentTypeOf(value);return t==='EXPORT'||t==='OTHER_COUNTRIES'}
-function weightForTotal(row={}){const direct=Number(row.totalWeight);if(Number.isFinite(direct)&&direct>0)return direct;const s=cleanWeight(row.weight).replace(/,/g,'').trim();if(!s)return 0;const parts=s.split('/').map(x=>Number(String(x).replace(/[^0-9.\-]/g,''))).filter(Number.isFinite);return parts.length?(parts.length>1?parts.at(-1):parts[0]):0}
+function weightForTotal(row={}){return masterKg(row)||0}
 function weightMinusForTotal(row={}){const n=Number(String(row.weightMinus??'').replace(/,/g,'').trim());return Number.isFinite(n)&&n>=0?n:0}
 function normalizeFlightNo(mawb='',value=''){const n=normalize(mawb),f=String(value||'').trim().replace(/\s+/g,'').toUpperCase();if(n.startsWith('065-')&&/^\d{1,4}$/.test(f))return`SV${f}`;return f}
 function formatEntryDate(value=''){if(!value)return'';const d=new Date(value);if(!Number.isFinite(d.getTime()))return'';return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`}
@@ -297,7 +298,17 @@ function expandPartRows(list=[]){
     // least two distinct physical parts. Otherwise always show one master row.
     // A single remaining Saudia physical part after DIS/DUS still owns its Mail flag.
     // Show that one part with its own YES/NO rather than switching to master Mail.
-    if(parts.length<2&&!(prefix==='065'&&parts.length===1&&(row.partLoad===true||row.isPartLoad===true)))
+    const only=parts.length===1?parts[0]:null;
+    const onlyWeight=only?partKg(only.weight):null;
+    const fullWeight=masterKg(row);
+    const onlyPieces=only?Number(only.pieces||0):0;
+    const fullPieces=Number(String(only?.totalPieces||row.masterPieces||row.totalPieces||row.bags||row.pieces||'').split('/').at(-1));
+    const singlePhysicalPart=Boolean(only&&(
+      (onlyWeight!==null&&fullWeight!==null&&onlyWeight<fullWeight)||
+      (onlyPieces>0&&Number.isFinite(fullPieces)&&fullPieces>onlyPieces)
+    ));
+    if(parts.length<2&&!singlePhysicalPart&&
+      !(prefix==='065'&&parts.length===1&&(row.partLoad===true||row.isPartLoad===true)))
       return[{...row,partLoad:false,isPartLoad:false}];
 
     // IndiGo safeguard: if the master total is known and every movement carries
@@ -316,6 +327,7 @@ function expandPartRows(list=[]){
       _partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,
       _saudiaPendingVirtual:p._saudiaPendingVirtual===true,
       _partIndex:idx,
+      _partArrivalConfirmed:confirmedPartArrival(p),
       bags:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.bags),
       pieces:p.totalPieces?`${p.pieces}/${p.totalPieces}`:(p.pieces||row.pieces),
       weight:p.totalWeight?`${p.weight}/${p.totalWeight}`:(p.weight||row.weight),
@@ -448,31 +460,36 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     return clearedFilterMode?r.customsCleared===true:r.customsCleared!==true;
   });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth]);
   const totalWeight=useMemo(()=>{
+    // A master is counted once. For split Import cargo only the physically
+    // arrived part weights are included; pending/offloaded parts contribute 0.
     const groups=new Map();
-    for(const r of visibleRows){
-      const key=digits(r.mawb);
+    for(const row of visibleRows){
+      const key=digits(row.mawb);
       if(!key)continue;
       if(!groups.has(key))groups.set(key,[]);
-      groups.get(key).push(r);
+      groups.get(key).push(row);
     }
     let total=0;
     for(const group of groups.values()){
-      // A part row's weight is the first value in "part/master kg".
-      // NEVER total the master denominator for only one cleared physical part,
-      // or count the same master twice when it has multiple parts.
-      const parts=group.filter(r=>r._partKey);
-      if(parts.length){
-        total+=parts.reduce((sum,part)=>{
-          const raw=cleanWeight(part.weight).split('/')[0].replace(/,/g,'').trim();
-          const kg=Number(raw);
-          return sum+(raw&&Number.isFinite(kg)&&kg>0?kg:0);
-        },0);
+      const physicalParts=group.filter(row=>Boolean(row._partKey));
+      if(physicalParts.length){
+        total+=physicalParts.reduce((sum,p)=>
+          sum+(activeTab==='IMPORT'&&!p._partArrivalConfirmed?0:(partKg(p.weight)||0)),0);
         continue;
       }
-      total+=Math.max(0,...group.map(weightForTotal));
+      const row=group[0];
+      const fractionalImport=activeTab==='IMPORT'&&String(row.weight||'').includes('/')&&
+        (row.partLoad===true||row.isPartLoad===true||
+          /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(row.status||'')));
+      if(fractionalImport){
+        // Older one-row part loads still use only the arrived numerator.
+        total+=confirmedPartArrival(row)?(partKg(row.weight)||0):0;
+      }else{
+        total+=Math.max(0,...group.map(weightForTotal));
+      }
     }
     return total;
-  },[visibleRows]);
+  },[visibleRows,activeTab]);
   const totalWeightMinus=useMemo(()=>{const seen=new Set();return visibleRows.reduce((sum,r)=>{const key=digits(r.mawb);if(!key||seen.has(key))return sum;seen.add(key);return sum+weightMinusForTotal(r)},0)},[visibleRows]);
   const stats=useMemo(()=>({total:visibleRows.length,booked:visibleRows.filter(x=>x.status==='BOOKED'||x.status==='PRE-MANIFESTED').length,transit:visibleRows.filter(x=>x.status==='IN TRANSIT'||x.status==='PART ARRIVED').length,arrived:visibleRows.filter(x=>x.status==='ARRIVED'||x.status==='DELIVERED').length,attention:visibleRows.filter(x=>x.status==='DELAYED'||x.status==='EARLY ARRIVAL').length}),[visibleRows]);
   async function track(one,currentShipment={}){const n=normalize(one);if(!n)throw new Error('Enter valid 11-digit MAWB.');const fallback=normalize(n).startsWith('235-')?{flightNo:currentShipment.flightNo||'',flightDate:currentShipment.flightDate||'',departureDate:currentShipment.departureDate||'',departureTime:currentShipment.departureTime||'',origin:currentShipment.origin||'',destination:currentShipment.destination||'',departureFlightNo:currentShipment.departureFlightNo||'',departureOrigin:currentShipment.departureOrigin||'',departureDestination:currentShipment.departureDestination||'',scheduledDeparture:currentShipment.scheduledDeparture||''}:{};const res=await fetch('/api/track',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb:n,currentShipment:fallback})});const data=await res.json();if(!data.ok){const err=new Error(data.trackingError||data.apiError||data.error||'Tracking failed');err.payload=data;throw err}return {...data.shipment,provider:data.provider||data.shipment?.source||''}}
