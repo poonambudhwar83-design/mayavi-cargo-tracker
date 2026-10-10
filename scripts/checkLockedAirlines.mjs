@@ -66,5 +66,40 @@ for(const [label,fragment] of ethiopianRouteContract){
     changed=true;
   }
 }
+// Saudia SV760 working FOW -> DEP pending-part ETA was verified on 2026-10-10.
+// Freeze precisely that source block, not the entire shared multi-airline route,
+// so maintenance to KLM, Speed Post, or another airline stays independent.
+// The Saudia adapter files above were already Git-blob SHA-locked.
+const saudiaRouteStart="  // Saudia-only: an FOW-to-DEP transition confirms flight departure, not cargo";
+const saudiaRouteEnd="  // A verified Malaysia response";
+const saudiaRouteStartAt=sharedRoute.indexOf(saudiaRouteStart);
+const saudiaRouteEndAt=sharedRoute.indexOf(saudiaRouteEnd,saudiaRouteStartAt);
+const saudiaEtaSha256='5351c72981e3a378ef48028cd938309c8060f722b687a710b31c9716a2866172';
+if(saudiaRouteStartAt<0||saudiaRouteEndAt<=saudiaRouteStartAt
+  ||sharedRoute.indexOf(saudiaRouteStart,saudiaRouteStartAt+saudiaRouteStart.length)!==-1){
+  console.error('LOCKED SAUDIA ETA BLOCK MISSING OR DUPLICATED: Explicit unlock approval required.');
+  changed=true;
+}else{
+  const protectedCode=sharedRoute.slice(saudiaRouteStartAt,saudiaRouteEndAt);
+  const actual=createHash('sha256').update(protectedCode,'utf8').digest('hex');
+  if(actual!==saudiaEtaSha256){
+    console.error('LOCKED SAUDIA FOW/DEP FLIGHT ETA MODIFIED: Explicit unlock approval required.');
+    changed=true;
+  }
+}
+const saudiaRouteContract=[
+  ['Official Saudia adapter import',"import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';"],
+  ['Saudia official browser routing',"return mawb.startsWith('065-')?trackSaudiaDirect(mawb):trackWithBrowser(mawb);"],
+  ['Saudia prefix fast path',"const saudiaFastPath=mawb.startsWith('065-');"],
+  ['Saudia official-only API routing', '||cathayFastPath||saudiaFastPath||thaiFastPath||'],
+  ['Saudia ETA flight-reader imports', 'trackFlightArrivalEstimate, trackFlightScheduleFast'],
+  ['Saudia preferred-arrival placement', 'shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);']
+];
+for(const [label,fragment] of saudiaRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED SAUDIA INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Saudia (065), Emirates (176), Cathay Pacific (160), and Ethiopian (071).');
+console.log('Airline lock check passed: Saudia (065) adapters + FOW/DEP SV flight ETA, Emirates (176), Cathay Pacific (160), and Ethiopian (071).');
