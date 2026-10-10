@@ -154,6 +154,14 @@ export async function POST(request){
         await readPrintedRecipientArea(other,'270 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
+    // Upside-down photographs also occur; orientation metadata alone cannot
+    // correct a physically inverted parcel label.
+    if(Date.now()-start<47000 && (consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
+      try{
+        const inverted=await sharp(base).rotate(180).png().toBuffer();
+        await recognize(inverted,false,6500,'180 degrees');
+      }catch{/* Preserve any successful earlier reads. */}
+    }
     if(consigneeConfidence!=='high'&&Date.now()-start<45000){
       try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
     }
