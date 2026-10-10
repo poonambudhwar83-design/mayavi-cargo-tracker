@@ -85,9 +85,9 @@ export async function POST(request){
     async function readPrintedRecipientArea(oriented,orientation){
       if(consigneeConfidence==='high'||Date.now()-start>=45500)return;
       const md=await sharp(oriented).metadata();
-      const left=Math.round(md.width*0.39), top=Math.round(md.height*0.14);
-      const width=Math.round(md.width*0.52);
-      const height=Math.round(md.height*0.51);
+      const left=0, top=0;
+      const width=md.width;
+      const height=md.height;
       if(width<250||height<150)return;
       const crop=await sharp(oriented).extract({left,top,width,height})
         .resize({width:Math.min(1900,Math.max(1150,width*2))})
@@ -140,7 +140,7 @@ export async function POST(request){
         await readPrintedRecipientArea(other,'270 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
-    if(consigneeConfidence==='unreadable'&&Date.now()-start<45000){
+    if(consigneeConfidence!=='high'&&Date.now()-start<45000){
       try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
