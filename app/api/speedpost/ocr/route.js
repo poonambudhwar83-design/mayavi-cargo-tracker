@@ -122,6 +122,20 @@ export async function POST(request){
       const region=await sharp(base).extract({left,top,width:cropWidth,height:cropHeight}).resize({width:Math.min(3200,cropWidth*2)}).sharpen().png().toBuffer();
       await recognize(region,true);
     }
+    // Barcode slips can be small within a wide camera photo. Read the upper
+    // and lower halves at higher resolution even when the EMS heading was missed.
+    if(!output.some(x=>x.checkDigitValid)&&Date.now()-start<34000){
+      for(const fraction of [0,0.5]){
+        if(Date.now()-start>=42000||output.some(x=>x.checkDigitValid))break;
+        try{
+          const h=Math.round(size.height*0.58);
+          const top=Math.min(size.height-h,Math.round(size.height*fraction));
+          const zoom=await sharp(base).extract({left:0,top,width:size.width,height:h})
+            .resize({width:Math.min(3200,size.width*2)}).sharpen().png().toBuffer();
+          await recognize(zoom,true,6500,'barcode zoom');
+        }catch{/* Keep other OCR attempts available. */}
+      }
+    }
     // First rotate sideways parcel labels, then use isolated PSM6 OCR on
     // printed TO lines. Give each attempt a bounded budget under 60 seconds.
     if(Date.now()-start<36000
