@@ -588,6 +588,66 @@ async function handle(mawb,fallback={}){
   }
 
   shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);
+  // Saudia-only: an FOW-to-DEP transition confirms flight departure, not cargo
+  // arrival. A newly departed pending part needs the *dated flight's* Delhi
+  // ETA/arrival time; do not borrow an older arrived part's clock.
+  // All locked airline adapters (including Saudia's) remain untouched.
+  if(saudiaFastPath&&direct&&String(shipment.destination||'').toUpperCase()==='DEL'
+      &&Array.isArray(shipment.partShipments)){
+    const pending=shipment.partShipments.filter(p=>p&&p.arrivalIsActual!==true
+      &&/^(DEPARTED|IN TRANSIT)$/.test(String(p.status||'').toUpperCase())
+      &&!String(p.arrivalTime||'').trim()
+      &&/^SV\\d{2,4}$/i.test(String(p.flightNo||'').trim())
+      &&/^20\\d{2}-\\d{2}-\\d{2}$/.test(String(p.flightDate||'').trim())
+      &&String(p.flightDate||'')===String(p.arrivalDate||''));
+    const datedFlightEtas=new Map();
+    for(const p of pending.slice(0,3)){
+      const flightNo=String(p.flightNo).toUpperCase(),flightDate=String(p.flightDate);
+      const key=`${flightNo}|${flightDate}`;
+      if(datedFlightEtas.has(key))continue;
+      datedFlightEtas.set(key,null);
+      try{
+        let eta=await trackFlightScheduleFast({flightNo,date:flightDate,origin:'RUH',destination:'DEL'});
+        if(!eta?.arrivalTime&&!eta?.scheduledArrivalTime)
+          eta=await trackFlightArrivalEstimate({flightNo,date:flightDate,destination:'DEL'});
+        const rawTime=eta?.arrivalTime||eta?.scheduledArrivalTime||'';
+        if(!eta?.ok||!rawTime)continue;
+        const ist=normalizeShipmentTimesToIst({
+          destination:'DEL',
+          arrivalDate:eta.arrivalDate||eta.scheduledArrivalDate||flightDate,
+          arrivalTime:rawTime,
+          arrivalTimeZone:eta.arrivalTimeZone||eta.scheduledArrivalTimeZone||'LOCAL',
+          arrivalTimeSource:eta.arrivalTimeSource||eta.source||'Dated flight-status ETA'
+        });
+        if(ist.arrivalDate===flightDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(ist.arrivalTime||''))
+          datedFlightEtas.set(key,{date:ist.arrivalDate,time:ist.arrivalTime,
+            source:ist.arrivalTimeSource||'Dated flight-status ETA',
+            flightActuallyLanded:eta.arrivalIsActual===true});
+      }catch(e){console.warn('saudia_part_flight_eta_unavailable',key,e?.message||String(e));}
+    }
+    const previousParts=Array.isArray(fallback?.partShipments)?fallback.partShipments:[];
+    shipment.partShipments=shipment.partShipments.map(p=>{
+      if(!pending.includes(p))return p;
+      const key=`${String(p.flightNo).toUpperCase()}|${p.flightDate}`;
+      const fresh=datedFlightEtas.get(key);
+      const saved=previousParts.find(old=>old&&old.arrivalIsActual!==true
+        &&old.flightNo===p.flightNo&&old.flightDate===p.flightDate
+        &&Number(old.pieces||0)===Number(p.pieces||0)
+        &&Number(old.weight||0)===Number(p.weight||0)
+        &&old.arrivalDate===p.arrivalDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(old.arrivalTime||''));
+      // Retain a previously verified live estimate if today's schedule reader
+      // only has the original published timetable, not a newer flight ETA.
+      const keepLiveEstimate=Boolean(saved&&/Plane Finder live estimated arrival/i.test(saved.arrivalTimeSource||'')
+        &&!fresh?.flightActuallyLanded);
+      const chosen=keepLiveEstimate?{date:saved.arrivalDate,time:saved.arrivalTime,
+        source:saved.arrivalTimeSource}:fresh||(saved?{date:saved.arrivalDate,
+        time:saved.arrivalTime,source:saved.arrivalTimeSource}:null);
+      if(!chosen)return p;
+      return {...p,arrivalDate:chosen.date,arrivalTime:chosen.time,
+        arrivalTimeZone:'IST',arrivalTimeSource:chosen.source,
+        arrivalEstimate:true,arrivalIsActual:false};
+    });
+  }
   // A verified Malaysia response with no final-destination arrival must clear
   // stale UI/database arrival values instead of preserving an old date.
   if(malaysiaFastPath&&direct?.arrivalVerifiedAbsent===true){
