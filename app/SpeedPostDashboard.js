@@ -507,30 +507,14 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:2040}}>
-          <thead><tr>{['S.No.','Tracking No.','Consignee Name','Consignee Address','Entry Date','Entry-Date Total (₹)','Origin','Destination','Tracking Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','Tracking No.','Consignee Name','Consignee Address','Entry Date','Total Cost (₹)','Origin','Destination','Tracking Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
             <td style={{...td,minWidth:160,maxWidth:210,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'consigneeName')}</td>
             <td style={{...td,minWidth:200,maxWidth:300,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'consigneeAddress')}</td>
             <td style={td}>{formatEntryDate(r.createdAt)}</td>
-            <td style={{...td,minWidth:180,whiteSpace:'normal'}}>
-              {(()=>{
-                const summary=dateCostGroups.get(formatEntryDate(r.createdAt));
-                // A daily total belongs to only the FIRST visible row of its date.
-                if(displayedRows.findIndex(item=>formatEntryDate(item.createdAt)===formatEntryDate(r.createdAt))!==i)return '—';
-                if(!summary)return '—';
-                return <div>
-                  <strong style={{color:'#163c80'}}>{summary.completePackets?rupeePerKg.format(summary.postal+summary.cash):'—'}</strong>
-                  <small style={{display:'block',color:summary.completePackets===summary.totalPackets?'#166534':'#a16207'}}>
-                    {summary.completePackets}/{summary.totalPackets} packets costed{summary.completePackets===summary.totalPackets?'':' • PARTIAL'}
-                  </small>
-                  {summary.completePackets>0&&<small style={{display:'block',color:'#64748b'}}>
-                    Postal {rupeePerKg.format(summary.postal)} + Cash {rupeePerKg.format(summary.cash)}
-                  </small>}
-                </div>;
-              })()}
-            </td>
+            <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{destinationWithCountry(r)||'—'}</td>
             <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
@@ -552,7 +536,7 @@ export default function SpeedPostDashboard({currentUser}){
           </tr>):<tr><td colSpan={19} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Entry-Date Total combines the postal and cash costs of ALL packets entered that day, across Active and Delivered. Only packets with both costs known count towards the amount; PARTIAL means some costs are still missing. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
