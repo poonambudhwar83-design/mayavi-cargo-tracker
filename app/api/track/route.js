@@ -597,8 +597,8 @@ async function handle(mawb,fallback={}){
     const pending=shipment.partShipments.filter(p=>p&&p.arrivalIsActual!==true
       &&/^(DEPARTED|IN TRANSIT)$/.test(String(p.status||'').toUpperCase())
       &&!String(p.arrivalTime||'').trim()
-      &&/^SV\\d{2,4}$/i.test(String(p.flightNo||'').trim())
-      &&/^20\\d{2}-\\d{2}-\\d{2}$/.test(String(p.flightDate||'').trim())
+      &&/^SV\d{2,4}$/i.test(String(p.flightNo||'').trim())
+      &&/^20\d{2}-\d{2}-\d{2}$/.test(String(p.flightDate||'').trim())
       &&String(p.flightDate||'')===String(p.arrivalDate||''));
     const datedFlightEtas=new Map();
     for(const p of pending.slice(0,3)){
@@ -619,7 +619,7 @@ async function handle(mawb,fallback={}){
           arrivalTimeZone:eta.arrivalTimeZone||eta.scheduledArrivalTimeZone||'LOCAL',
           arrivalTimeSource:eta.arrivalTimeSource||eta.source||'Dated flight-status ETA'
         });
-        if(ist.arrivalDate===flightDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(ist.arrivalTime||''))
+        if(ist.arrivalDate===flightDate&&/^([01]\d|2[0-3]):[0-5]\d$/.test(ist.arrivalTime||''))
           datedFlightEtas.set(key,{date:ist.arrivalDate,time:ist.arrivalTime,
             source:ist.arrivalTimeSource||'Dated flight-status ETA',
             flightActuallyLanded:eta.arrivalIsActual===true});
@@ -634,7 +634,7 @@ async function handle(mawb,fallback={}){
         &&old.flightNo===p.flightNo&&old.flightDate===p.flightDate
         &&Number(old.pieces||0)===Number(p.pieces||0)
         &&Number(old.weight||0)===Number(p.weight||0)
-        &&old.arrivalDate===p.arrivalDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(old.arrivalTime||''));
+        &&old.arrivalDate===p.arrivalDate&&/^([01]\d|2[0-3]):[0-5]\d$/.test(old.arrivalTime||''));
       // Retain a previously verified live estimate if today's schedule reader
       // only has the original published timetable, not a newer flight ETA.
       const keepLiveEstimate=Boolean(saved&&/Plane Finder live estimated arrival/i.test(saved.arrivalTimeSource||'')
