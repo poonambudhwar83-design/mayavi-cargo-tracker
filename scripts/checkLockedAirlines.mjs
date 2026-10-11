@@ -7,6 +7,13 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const locked = Object.freeze({
+  // IndiGo is now working on the live V2 deployment; freeze its official adapter,
+  // part-load form extraction, sync API and sync component as of 2026-10-11.
+  'lib/indigo.js':'3fd24c35b596a54f2be2ece9f461fef0c716b222',
+  'lib/indigoBrowser.js':'e6aa5c993e1c7c823adaf1675fd18ff797eddbc4',
+  'app/api/indigo-india/route.js':'32c417b51012f84fa3531208373c19f07b3c8615',
+  'app/api/indigo-sync/route.js':'5940d5e0ae11424cfc13efff3869c0195c8296a6',
+  'app/IndigoAutoSync.js':'d6e45887bcb6139324e98bf7ae6c052ecd282afd',
   'lib/ethiopian.js':'2a0a98c04d3923b0f79cff63a8ecbf306f7e4ab1',
   'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
   'lib/cathay-browser-fallback.js':'0c3509955951162a35976211fde33646d9505cee',
@@ -44,6 +51,23 @@ const cathayRouteContract=[
 for(const [label,fragment] of cathayRouteContract){
   if(!sharedRoute.includes(fragment)){
     console.error('LOCKED CATHAY INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
+// Keep the existing IndiGo 312 routing and part-load reconciliation wired up.
+// Other airline logic in the shared track route is intentionally not locked.
+const indigoRouteContract=[
+  ['IndiGo official adapter import',"import { trackIndigo } from '../../../lib/indigo.js';"],
+  ['IndiGo dedicated 312 tracking',"if(mawb.startsWith('312-')) return trackIndigo(mawb);"],
+  ['IndiGo fast path',"const indigoFastPath=mawb.startsWith('312-');"],
+  ['IndiGo part-load logic',"if(indigoFastPath&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length){"],
+  ['IndiGo final part status',"shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);"],
+  ['IndiGo persisted tracking',"||indigoFastPath||klmFastPath||ethiopianFastPath"],
+  ['IndiGo dedicated browser handling',"if(mawb.startsWith('312-')) return {ok:false,skipped:true,reason:'INDIGO USES DEDICATED SMARTKARGO FORM ADAPTER'};"],
+];
+for(const [label,fragment] of indigoRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED INDIGO INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
 }
@@ -102,4 +126,4 @@ for(const [label,fragment] of saudiaRouteContract){
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Saudia (065) adapters + FOW/DEP SV flight ETA, Emirates (176), Cathay Pacific (160), and Ethiopian (071).');
+console.log('Airline lock check passed: IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), and Emirates (176).');
