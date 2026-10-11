@@ -441,8 +441,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const tabRows=useMemo(()=>dedupeRowsByMawb(rows).filter(r=>shipmentTypeOf(r.shipmentType)===activeTab),[rows,activeTab]);
   const dashboardRows=useMemo(()=>{
     if(exportLikeTab){
-      if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>isExportArchived(r)&&
-        (activeTab!=='EXPORT'||importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth));
+      if(isAdmin&&adminView==='CLEARED')return tabRows.filter(isExportArchived);
       return tabRows.filter(r=>!isExportArchived(r));
     }
     // Emirates split loads must be included in both candidate views. After
@@ -454,9 +453,8 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     sum+expandPartRows([row]).filter(p=>p.customsCleared===true&&
       importArrivalMonth(p.arrivalDate)===currentImportMonth).length
   ,0),[tabRows,currentImportMonth]);
-  const customsClearedExportCount=useMemo(()=>tabRows.filter(r=>
-    isExportArchived(r)&&importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth).length,
-    [tabRows,currentImportMonth]);
+  const customsClearedExportCount=useMemo(()=>tabRows.filter(isExportArchived).length,
+    [tabRows]);
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&activeTab==='IMPORT';
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
