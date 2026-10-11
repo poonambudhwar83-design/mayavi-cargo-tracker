@@ -136,6 +136,17 @@ export async function POST(request){
         }catch{/* Keep other OCR attempts available. */}
       }
     }
+    // Main branch compatibility fallback: the original client-side OCR used
+    // Tesseract's default automatic page segmentation (PSM.AUTO).
+    // Run that mode only when the dedicated label reader still has missing data.
+    // The same recipient validation and ED check-digit safeguards apply.
+    if((consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))&&Date.now()-start<35000){
+      try{
+        await worker.setParameters({tessedit_pageseg_mode:PSM.AUTO});
+        await recognize(base,false,6500,'main OCR AUTO fallback');
+      }catch{/* Preserve all successful dedicated OCR readings. */}
+      finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
+    }
     // First rotate sideways parcel labels, then use isolated PSM6 OCR on
     // printed TO lines. Give each attempt a bounded budget under 60 seconds.
     if(Date.now()-start<36000
@@ -164,17 +175,6 @@ export async function POST(request){
     }
     if(consigneeConfidence!=='high'&&Date.now()-start<45000){
       try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
-    }
-    // Main branch compatibility fallback: the original client-side OCR used
-    // Tesseract's default automatic page segmentation (PSM.AUTO).
-    // Run that mode only when the dedicated label reader still has missing data.
-    // The same recipient validation and ED check-digit safeguards apply.
-    if((consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))&&Date.now()-start<40000){
-      try{
-        await worker.setParameters({tessedit_pageseg_mode:PSM.AUTO});
-        await recognize(base,false,6500,'main OCR AUTO fallback');
-      }catch{/* Preserve all successful dedicated OCR readings. */}
-      finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
       Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
