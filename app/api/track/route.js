@@ -18,6 +18,7 @@ import { trackVirgin } from '../../../lib/virgin.js';
 import { trackIndigo } from '../../../lib/indigo.js';
 import { trackKlm } from '../../../lib/klm.js';
 import { trackEthiopian } from '../../../lib/ethiopian.js';
+import { markEthiopianReschedulePending } from '../../../lib/ethiopianReschedule.js';
 import { trackThai } from '../../../lib/thai.js';
 import { trackMalaysia } from '../../../lib/malaysia.js';
 import { trackMalaysiaTrackingOne } from '../../../lib/malaysiaTrackingOne.js';
@@ -34,7 +35,7 @@ import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../..
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.39';
+const VERSION='3.9.40';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 const INDIGO_VERIFIED_FLIGHT_ARRIVALS={
@@ -132,7 +133,9 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     patch.arrivalTime='';
     patch.arrivalIsActual=false;
     patch.arrivalTimeZone='IST';
-    patch.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
+    patch.arrivalTimeSource=mawb.startsWith('071-')&&shipment.status==='RESCHEDULED'
+      ?'Previous ETA expired; waiting for confirmed revised Ethiopian final-flight ETA'
+      :'Official refresh returned no current arrival; stale value cleared';
   }
   const rows=await sql`
     UPDATE mayavi_shipments
@@ -1272,6 +1275,8 @@ async function handle(mawb,fallback={}){
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
   shipment=normalizeShipmentTimesToIst(shipment);
   shipment=guardFinalDestinationArrival(shipment);
+  // ET only: a passed final ETA plus no verified final-leg departure needs rescheduling.
+  if(ethiopianFastPath&&direct)shipment=markEthiopianReschedulePending(shipment);
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
   const directScreenshot=Boolean(directResult?.screenshotCaptured);
