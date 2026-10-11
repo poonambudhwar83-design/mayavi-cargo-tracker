@@ -46,13 +46,11 @@ function validConsigneeName(v){
     &&!/sender.?s signature|customs|declaration|postage/i.test(v);
 }
 function validConsigneeAddress(v){
-  if(v.length<15||v.length>700||!/[A-Za-z]{3}/.test(v)||/[|=<>]/.test(v))return false;
-  if(/sender.?s signature|size\s*\d|white or green|customs declaration|tariff|postage|CN22|CN23|important/i.test(v))return false;
-  // Require physical address evidence; printed CN22 tables often contain a
-  // number and letters but are not street addresses.
-  const street=/\b\d{1,6}[A-Z]?\s+[A-Za-z0-9' -]{2,45}\s+(?:RD|ROAD|ST|STREET|AVE|AVENUE|LANE|LN|DR|DRIVE|HILL|WAY|CLOSE|COURT|CT|BLVD|PLACE|PL)\b/i;
-  const postcode=/\b(?:[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}|[A-Z]\d[A-Z][ -]?\d[A-Z]\d|\d{5}(?:-\d{4})?)\b/i;
-  return street.test(v)&&postcode.test(v)&&v.split(',').length>=2;
+  // Accept readable partial recipient addresses even when OCR misses a
+  // postcode or a street suffix; never invent the missing components.
+  if(v.length<5||v.length>700||!/[\\p{L}]{2}/u.test(v)||/[|=<>]/.test(v))return false;
+  if(/sender.?s signature|size\\s*\\d|white or green|customs declaration|tariff|postage|CN22|CN23|important/i.test(v))return false;
+  return !/^(?:TO|FROM|SENDER|RECIPIENT|CONSIGNEE|ADDRESS|COUNTRY|UNKNOWN|N\\/A)$/i.test(v.trim());
 }
 function rowToResult(row){
   return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
