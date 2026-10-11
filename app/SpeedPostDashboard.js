@@ -244,14 +244,12 @@ export default function SpeedPostDashboard({currentUser}){
           const ed=candidates[0]?.number||'';
           const consigneeName=String(data.consigneeName||'').trim().slice(0,100);
           const consigneeAddress=String(data.consigneeAddress||'').trim().slice(0,700);
-          const certain=data.autoSelect===true&&candidates.length===1
-            &&candidates[0].checkDigitValid===true&&candidates[0].emsNearby===true
-            &&['high','medium'].includes(data.consigneeConfidence);
+          // Save any reliably identified ED immediately, irrespective of
+          // recipient OCR confidence. Uncertain recipient text stays editable.
+          const certain=candidates.length===1&&candidates[0].checkDigitValid===true;
           updateBatchItem(i,{ed,candidates,consigneeName,consigneeAddress,
             status:certain?'saving':'review',
-            error:certain?'':data.consigneeConfidence==='low'
-              ?'Printed TO address was read but may contain incorrect characters. Review and correct before saving.'
-              :'Check the ED number and consignee text before saving this photo.'});
+            error:certain?'':'ED number is missing or ambiguous. Review before saving.'});
           if(!certain)continue;
           const result=await saveBatchED(ed,consigneeName,consigneeAddress);
           const incomplete=!(result.row?.consigneeName&&result.row?.consigneeAddress);
@@ -313,15 +311,15 @@ export default function SpeedPostDashboard({currentUser}){
       setOcrCandidates(candidates);
       setPhotoEdNeedsEntry(false);
       setTrackingNo(candidates[0].number);
-      if(data.autoSelect===true&&candidates.length===1
-        &&['high','medium'].includes(data.consigneeConfidence)){
-        setOcrProgress('ED and clear recipient address found: '+candidates[0].number);
+      if(candidates.length===1&&candidates[0].checkDigitValid===true){
+        setOcrProgress('ED found; saving available OCR recipient fields: '+candidates[0].number);
         await trackOne(candidates[0].number,'photo-add',recipient);
         setOcrCandidates([]);
+        if(!recipient.consigneeName||!recipient.consigneeAddress){
+          setMessage(candidates[0].number+' saved with any readable recipient fields. Missing consignee details need review.');
+        }
       }else{
-        setMessage(data.consigneeConfidence==='low'
-          ?'ED found, but address OCR has uncertain characters. Correct the name/address in TO Consignee OCR, then save this ED.'
-          :'Check the ED and recipient address before saving. Unclear text is never automatically assigned to a customer.');
+        setMessage('ED number is ambiguous or its check digit could not be verified. Review the suggested ED and save the readable consignee details.');
       }
     }catch(e){
       setMessage('EMS receipt OCR: '+(e.message||'Could not read the photo.')+' You may enter the ED number manually.');
