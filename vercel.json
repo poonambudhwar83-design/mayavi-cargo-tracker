@@ -6,7 +6,9 @@
     },
     "app/api/klm-live/route.js": {
       "maxDuration": 180,
-      "regions": ["fra1"]
+      "regions": [
+        "fra1"
+      ]
     },
     "app/api/etihad-test/route.js": {
       "maxDuration": 300,
@@ -25,6 +27,9 @@
     },
     "app/api/cron/monthly-archive/route.js": {
       "maxDuration": 300
+    },
+    "app/api/cron/ethiopian/route.js": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -35,6 +40,10 @@
     {
       "path": "/api/cron/monthly-archive",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/ethiopian",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
