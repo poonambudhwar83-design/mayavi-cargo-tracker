@@ -23,7 +23,7 @@ export async function GET(){
   if(!prefix||!awb)return Response.json({ok:false,...meta,reason:'Prefix/AWB fields absent',pageSample:clean(html).slice(0,500)});
   const fields=new URLSearchParams();
   for(const f of inputs)if(f.name&&f.type==='hidden')fields.set(f.name,f.value||'');
-  fields.set(prefix.name,'807-');
+  fields.set(prefix.name,'807');
   fields.set(awb.name,'12990261');
   if(click)fields.set(click.name,click.value||'Track');
   const cookie=get.headers.get('set-cookie')?.split(';')[0]||'';
