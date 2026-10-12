@@ -114,7 +114,10 @@ export async function POST(request){
       });
       return words.find(w=>/^(EMS|SPEED)$/.test(w.label)&&Number.isFinite(w.x)&&Number.isFinite(w.y))||null;
     }
-    const data=await recognize(base,false);
+    // First full-label pass may require more than 12s for a high-resolution
+    // parcel photograph on a cold serverless worker. Do not discard the entire
+    // upload before the primary ED + TO reader has had time to finish.
+    const data=await recognize(base,false,20000,'original');
     const anchor=emsCoordinates(data.tsv||'');
     if(anchor&&size.width&&size.height){
       const cx=anchor.x+anchor.w/2,cy=anchor.y+anchor.h/2;
