@@ -48,8 +48,8 @@ function validConsigneeName(v){
 function validConsigneeAddress(v){
   // Accept readable partial recipient addresses even when OCR misses a
   // postcode or a street suffix; never invent the missing components.
-  if(v.length<5||v.length>700||!/[\\p{L}]{2}/u.test(v)||/[|=<>]/.test(v))return false;
-  if(/sender.?s signature|size\\s*\\d|white or green|customs declaration|tariff|postage|CN22|CN23|important/i.test(v))return false;
+  if(v.length<5||v.length>700||!/\p{L}{2}/u.test(v)||/[|=<>]/.test(v))return false;
+  if(/sender.?s signature|size\s*\d|white or green|customs declaration|tariff|postage|CN22|CN23|important/i.test(v))return false;
   return !/^(?:TO|FROM|SENDER|RECIPIENT|CONSIGNEE|ADDRESS|COUNTRY|UNKNOWN|N\/A)$/i.test(v.trim());
 }
 function rowToResult(row){
