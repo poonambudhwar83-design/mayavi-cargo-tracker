@@ -50,6 +50,16 @@ function explicitViaForStatus(row={}){
 }
 function viaForRow(row={}){
   const origin=airportCode(row.origin),destination=airportCode(row.destination),n=normalize(row.mawb||row.awb||'');
+  // AirAsia 807: show every AWB-verified transit airport in journey order.
+  // Generic airportCode() only returns one IATA code and would hide SIN.
+  // Do not let the older fallback display the origin DEL as a transit stop.
+  if(n.startsWith('807-')){
+    const legs=Array.isArray(row.flightSchedule)?row.flightSchedule:[];
+    const stops=legs.map(leg=>airportCode(leg.destination)).filter(code=>code&&code!==origin&&code!==destination);
+    const saved=String(row.via||'').toUpperCase().match(/\b[A-Z]{3}\b/g)||[];
+    const via=[...new Set((stops.length?stops:saved).filter(code=>code!==origin&&code!==destination))];
+    if(via.length)return via.join(' / ');
+  }
   const explicit=[row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub].map(airportCode).find(Boolean);
   if(explicit)return explicit;
   const departureDestination=airportCode(row.departureDestination);
