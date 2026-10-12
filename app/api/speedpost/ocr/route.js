@@ -85,12 +85,15 @@ export async function POST(request){
     async function readPrintedRecipientArea(oriented,orientation){
       if(consigneeConfidence==='high'||Date.now()-start>=45500)return;
       const md=await sharp(oriented).metadata();
-      const left=0, top=0;
-      const width=md.width;
-      const height=md.height;
-      if(width<250||height<150)return;
+      if(md.width<250||md.height<150)return;
+      // Full-image SINGLE_BLOCK OCR previously reread customs, sender and
+      // barcode text together. For the prominent printed TO section, use a
+      // focused upper-right region after EXIF/physical orientation correction.
+      // The complete-image sparse reader still runs separately for all layouts.
+      const left=Math.round(md.width*0.35),top=0;
+      const width=md.width-left,height=Math.max(150,Math.min(md.height,Math.round(md.height*0.77)));
       const crop=await sharp(oriented).extract({left,top,width,height})
-        .resize({width:Math.min(1900,Math.max(1150,width*2))})
+        .resize({width:Math.min(2050,Math.max(1200,width*2))})
         .greyscale().normalise().sharpen().png().toBuffer();
       await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_BLOCK});
       try{await recognize(crop,false,8500,orientation+' TO crop',true);}
