@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { speedPostNumber, trackSpeedPost } from '../../../lib/speedpost.js';
+import { checkEdChecksum } from '../../../lib/speedpostOcr.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -75,6 +76,9 @@ export async function POST(request){
     // Saving an uploaded parcel photo first associates OCR fields with its own
     // ED number. No external tracking request is required to persist it.
     if(action==='photo-add'){
+      // A plausible 13-character OCR token is not enough; require a valid
+      // S10 check digit before associating any personal recipient details.
+      if(!checkEdChecksum(trackingNo))return json({ok:false,error:'OCR ED check digit is invalid. Check the printed barcode number before saving consignee details.'},422);
       const clean=(v,max)=>String(v||'').normalize('NFKC')
         .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
       const consigneeName=clean(body?.consigneeName,100);
