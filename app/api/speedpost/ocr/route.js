@@ -124,6 +124,41 @@ export async function POST(request){
     // parcel photograph on a cold serverless worker. Do not discard the entire
     // upload before the primary ED + TO reader has had time to finish.
     const data=await recognize(base,false,20000,'original');
+    // Small printed ED text is immediately BELOW the long 1-D barcode.
+    // Sparse full-page OCR is trained to skip these tiny characters, so read
+    // the narrow text strip at 3x resolution before scanning the recipient.
+    // Check-digit validation remains mandatory for selecting an ED number.
+    async function readBarcodeTextStrip(image,location='original'){
+      if(output.some(x=>x.checkDigitValid)||Date.now()-start>32000)return;
+      const md=await sharp(image).metadata();
+      if(!md.width||!md.height||md.height<=md.width*1.15)return;
+      const zones=[
+        // Central/right upper EMS sticker: text just below the barcode.
+        {left:0.53,right:0.94,top:0.254,bottom:0.275},
+        // A barcode sticker may be slightly higher or lower on other parcels.
+        {left:0.48,right:0.95,top:0.285,bottom:0.312},
+        {left:0.48,right:0.95,top:0.335,bottom:0.363}
+      ];
+      for(const [index,z] of zones.entries()){
+        if(output.some(x=>x.checkDigitValid)||Date.now()-start>=40000)break;
+        const left=Math.floor(md.width*z.left);
+        const top=Math.floor(md.height*z.top);
+        const width=Math.min(md.width-left,Math.ceil(md.width*(z.right-z.left)));
+        const height=Math.min(md.height-top,Math.ceil(md.height*(z.bottom-z.top)));
+        if(width<50||height<12)continue;
+        try{
+          const crop=await sharp(image).extract({left,top,width,height})
+            .resize({width:Math.min(2100,Math.max(900,Math.round(width*3)))})
+            .normalise().sharpen().png().toBuffer();
+          await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_LINE});
+          await recognize(crop,true,4500,location+' ED barcode text strip '+(index+1));
+        }catch{/* Still try the ordinary EMS reader if this sticker moved. */}
+        finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
+      }
+    }
+    if(!output.some(x=>x.checkDigitValid)&&Date.now()-start<28000){
+      try{await readBarcodeTextStrip(base);}catch{/* The usual ED OCR remains available. */}
+    }
     // Try the large printed address underneath the CN22/EMS sticker early,
     // BEFORE costly sideways passes consume the recipient OCR time budget.
     if(consigneeConfidence!=='high'&&Date.now()-start<29500){
