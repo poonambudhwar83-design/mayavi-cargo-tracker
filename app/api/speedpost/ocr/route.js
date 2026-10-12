@@ -133,13 +133,25 @@ export async function POST(request){
       if(output.some(x=>x.checkDigitValid)||Date.now()-start>32000)return;
       const md=await sharp(image).metadata();
       if(!md.width||!md.height||md.height<=md.width*1.15)return;
-      const zones=[
-        // Central/right upper EMS sticker: text just below the barcode.
-        {left:0.53,right:0.94,top:0.254,bottom:0.275},
-        // A barcode sticker may be slightly higher or lower on other parcels.
-        {left:0.48,right:0.95,top:0.285,bottom:0.312},
-        {left:0.48,right:0.95,top:0.335,bottom:0.363}
-      ];
+      // The ED text can be directly under the EMS barcode anywhere on the
+      // parcel (not necessarily its upper third). First anchor the search to
+      // the actual "EMS" logo found in this photograph's OCR geometry.
+      const anchor=location==='original'?emsCoordinates(data.tsv||''):null;
+      const zones=[];
+      if(anchor){
+        const y=anchor.y/md.height;
+        const x=anchor.x/md.width;
+        zones.push({
+          left:Math.max(0,x-0.08),right:Math.min(1,x+0.42),
+          top:Math.min(0.96,y+0.033),bottom:Math.min(0.99,y+0.084)
+        });
+      }
+      // Fallback: many portrait parcel labels attach the EMS/CN22 sticker in
+      // the middle/lower half, with tiny S10 print below the 1-D bars.
+      zones.push(
+        {left:0.30,right:0.73,top:0.624,bottom:0.668},
+        {left:0.40,right:0.93,top:0.28,bottom:0.334}
+      );
       for(const [index,z] of zones.entries()){
         if(output.some(x=>x.checkDigitValid)||Date.now()-start>=40000)break;
         const left=Math.floor(md.width*z.left);
