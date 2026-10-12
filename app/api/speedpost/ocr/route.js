@@ -143,13 +143,13 @@ export async function POST(request){
         const x=anchor.x/md.width;
         zones.push({
           left:Math.max(0,x-0.08),right:Math.min(1,x+0.42),
-          top:Math.min(0.96,y+0.033),bottom:Math.min(0.99,y+0.084)
+          top:Math.min(0.96,y+0.039),bottom:Math.min(0.99,y+0.073)
         });
       }
       // Fallback: many portrait parcel labels attach the EMS/CN22 sticker in
       // the middle/lower half, with tiny S10 print below the 1-D bars.
       zones.push(
-        {left:0.30,right:0.73,top:0.624,bottom:0.668},
+        {left:0.32,right:0.70,top:0.637,bottom:0.672},
         {left:0.40,right:0.93,top:0.28,bottom:0.334}
       );
       for(const [index,z] of zones.entries()){
@@ -164,7 +164,7 @@ export async function POST(request){
             .resize({width:Math.min(2100,Math.max(900,Math.round(width*3)))})
             .normalise().sharpen().png().toBuffer();
           await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_LINE});
-          await recognize(crop,true,4500,location+' ED barcode text strip '+(index+1));
+          await recognize(crop,true,2800,location+' ED barcode text strip '+(index+1));
         }catch{/* Still try the ordinary EMS reader if this sticker moved. */}
         finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
       }
