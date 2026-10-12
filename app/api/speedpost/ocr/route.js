@@ -36,7 +36,9 @@ export async function POST(request){
     const metadata=await sharp(input,{limitInputPixels:40e6}).metadata();
     if(!metadata.width||!metadata.height)return respond({ok:false,error:'Photo could not be opened.'},422);
     const base=await sharp(input,{limitInputPixels:40e6}).rotate().resize({
-      width:Math.max(1300,Math.min(2600,metadata.width*2)),
+      // Cap full-photo pixels: giant sparse-text passes were delaying responses.
+      // The small ED print is separately magnified in dedicated barcode crops.
+      width:Math.max(1200,Math.min(1850,Math.round(metadata.width*1.5))),
       withoutEnlargement:false,fit:'inside'
     }).greyscale().normalise().sharpen().png().toBuffer();
     const size=await sharp(base).metadata();
@@ -84,7 +86,7 @@ export async function POST(request){
     // customs table. The sample parcel's recipient is in the upper-right
     // region; isolating it stops customs text being mistaken for an address.
     async function readPrintedRecipientArea(oriented,orientation){
-      if(consigneeConfidence==='high'||Date.now()-start>=45500)return;
+      if(consigneeConfidence==='high'||Date.now()-start>=39500)return;
       const md=await sharp(oriented).metadata();
       if(md.width<250||md.height<150)return;
       // On a portrait EMS parcel, a CN22 customs/barcode sticker often sits
@@ -124,7 +126,8 @@ export async function POST(request){
     // First full-label pass may require more than 12s for a high-resolution
     // parcel photograph on a cold serverless worker. Do not discard the entire
     // upload before the primary ED + TO reader has had time to finish.
-    const data=await recognize(base,false,20000,'original');
+    console.info('speedpost_ocr_started',{width:size.width,height:size.height});
+    const data=await recognize(base,false,18500,'original');
     // Small printed ED text is immediately BELOW the long 1-D barcode.
     // Sparse full-page OCR is trained to skip these tiny characters, so read
     // the narrow text strip at 3x resolution before scanning the recipient.
@@ -179,26 +182,26 @@ export async function POST(request){
       catch{/* Continue ED/barcode and other OCR paths if this crop is unclear. */}
     }
     const anchor=emsCoordinates(data.tsv||'');
-    if(anchor&&size.width&&size.height){
+    if(anchor&&size.width&&size.height&&!output.some(x=>x.checkDigitValid)&&Date.now()-start<34000){
       const cx=anchor.x+anchor.w/2,cy=anchor.y+anchor.h/2;
       const cropWidth=Math.min(size.width,Math.max(600,Math.round(size.width*0.88)));
       const cropHeight=Math.min(size.height,Math.max(450,Math.round(size.height*0.46)));
       const left=Math.max(0,Math.min(size.width-cropWidth,Math.round(cx-cropWidth/2)));
       const top=Math.max(0,Math.min(size.height-cropHeight,Math.round(cy-cropHeight/2)));
       const region=await sharp(base).extract({left,top,width:cropWidth,height:cropHeight}).resize({width:Math.min(3200,cropWidth*2)}).sharpen().png().toBuffer();
-      await recognize(region,true);
+      try{await recognize(region,true,5200,'EMS logo zoom');}catch{/* Continue with safe partial results. */}
     }
     // Barcode slips can be small within a wide camera photo. Read the upper
     // and lower halves at higher resolution even when the EMS heading was missed.
-    if(!output.some(x=>x.checkDigitValid)&&Date.now()-start<34000){
+    if(!output.some(x=>x.checkDigitValid)&&Date.now()-start<30000){
       for(const fraction of [0,0.5]){
-        if(Date.now()-start>=42000||output.some(x=>x.checkDigitValid))break;
+        if(Date.now()-start>=36500||output.some(x=>x.checkDigitValid))break;
         try{
           const h=Math.round(size.height*0.58);
           const top=Math.min(size.height-h,Math.round(size.height*fraction));
           const zoom=await sharp(base).extract({left:0,top,width:size.width,height:h})
             .resize({width:Math.min(3200,size.width*2)}).sharpen().png().toBuffer();
-          await recognize(zoom,true,6500,'barcode zoom');
+          await recognize(zoom,true,4500,'barcode zoom');
         }catch{/* Keep other OCR attempts available. */}
       }
     }
@@ -206,7 +209,7 @@ export async function POST(request){
     // Tesseract's default automatic page segmentation (PSM.AUTO).
     // Run that mode only when the dedicated label reader still has missing data.
     // The same recipient validation and ED check-digit safeguards apply.
-    if((consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))&&Date.now()-start<35000){
+    if((consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))&&Date.now()-start<34000){
       try{
         await worker.setParameters({tessedit_pageseg_mode:PSM.AUTO});
         await recognize(base,false,6500,'main OCR AUTO fallback');
@@ -215,37 +218,38 @@ export async function POST(request){
     }
     // First rotate sideways parcel labels, then use isolated PSM6 OCR on
     // printed TO lines. Give each attempt a bounded budget under 60 seconds.
-    if(Date.now()-start<36000
+    if(Date.now()-start<35000
       &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
       try{
         const upright=await sharp(base).rotate(90).png().toBuffer();
-        await recognize(upright,false,10500,'90 degrees');
+        await recognize(upright,false,6200,'90 degrees');
         await readPrintedRecipientArea(upright,'90 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
-    if(Date.now()-start<45000
+    if(Date.now()-start<39000
       &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
       try{
         const other=await sharp(base).rotate(270).png().toBuffer();
-        await recognize(other,false,7500,'270 degrees');
+        await recognize(other,false,5700,'270 degrees');
         await readPrintedRecipientArea(other,'270 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
     // Upside-down photographs also occur; orientation metadata alone cannot
     // correct a physically inverted parcel label.
-    if(Date.now()-start<47000 && (consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
+    if(Date.now()-start<41000 && (consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
       try{
         const inverted=await sharp(base).rotate(180).png().toBuffer();
-        await recognize(inverted,false,6500,'180 degrees');
+        await recognize(inverted,false,4400,'180 degrees');
       }catch{/* Preserve any successful earlier reads. */}
     }
-    if(consigneeConfidence!=='high'&&Date.now()-start<45000){
+    if(consigneeConfidence!=='high'&&Date.now()-start<41000){
       try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
       Number(b.emsNearby)-Number(a.emsNearby)||b.occurrences-a.occurrences);
     // The user must approve uncertain OCR candidates; no silent fabricated ED number.
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||Number(b.emsNearby)-Number(a.emsNearby));
+    console.info('speedpost_ocr_completed',{ms:Date.now()-start,validED:output.some(c=>c.checkDigitValid),nameRead:Boolean(consigneeName),addressRead:Boolean(consigneeAddress)});
     return respond({ok:true,candidates:output.slice(0,10),
       consigneeName,consigneeAddress,consigneeOcrOrientation,consigneeToHeadingCovered,
       consigneeConfidence,consigneeNeedsReview:consigneeConfidence!=='high',
