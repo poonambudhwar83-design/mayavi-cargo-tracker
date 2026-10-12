@@ -63,7 +63,8 @@ const indigoRouteContract=[
   ['IndiGo dedicated 312 tracking',"if(mawb.startsWith('312-')) return trackIndigo(mawb);"],
   ['IndiGo fast path',"const indigoFastPath=mawb.startsWith('312-');"],
   ['IndiGo part-load logic',"if(indigoFastPath&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length){"],
-  ['IndiGo final part status',"shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);"],
+  ['IndiGo master quantity prevents false split','shipment.partLoad=masterPiecesCount>0'],
+  ['IndiGo full offload status survives','(lastIdentifiedMovement?.status||refreshedParts[0]?.status||shipment.status);'],
   ['IndiGo persisted tracking',"||indigoFastPath||klmFastPath||ethiopianFastPath"],
   ['IndiGo dedicated browser handling',"if(mawb.startsWith('312-')) return {ok:false,skipped:true,reason:'INDIGO USES DEDICATED SMARTKARGO FORM ADAPTER'};"],
 ];

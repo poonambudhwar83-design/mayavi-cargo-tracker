@@ -1076,7 +1076,14 @@ async function handle(mawb,fallback={}){
     }
 
     shipment.partShipments=refreshedParts;
-    shipment.partLoad=refreshedParts.length>1||shipment.partLoad===true;
+    // Count only physical portions of the master, not duplicate OFFLOADED
+    // history entries. 32/32 OFFLOADED is ONE full shipment, not PART LOAD.
+    const masterPiecesCount=Number(shipment.masterPieces||shipment.pieces||shipment.bags||0);
+    const identifiedParts=refreshedParts.filter(p=>Number(p.pieces||0)>0);
+    shipment.partLoad=masterPiecesCount>0
+      ? identifiedParts.some(p=>Number(p.pieces)>0&&Number(p.pieces)<masterPiecesCount)
+      : identifiedParts.length>1;
+    shipment.isPartLoad=shipment.partLoad;
     const arrivedParts=refreshedParts.filter(p=>String(p.status||'').toUpperCase()==='ARRIVED'&&p.arrivalDate);
     if(arrivedParts.length){
       const latest=[...arrivedParts].sort((a,b)=>`${a.arrivalDate||''} ${a.arrivalTime||''}`.localeCompare(`${b.arrivalDate||''} ${b.arrivalTime||''}`)).at(-1);
@@ -1106,7 +1113,13 @@ async function handle(mawb,fallback={}){
         shipment.arrivalTimeSource=only.arrivalTimeSource||'IndiGo matching flight ETA';
       }
     }
-    shipment.status=shipment.partLoad?'PART LOAD':(refreshedParts[0]?.status||shipment.status);
+    // Prefer an identified full-load movement over a generic blank offload
+    // event, so the current full-load OFFLOADED / DEPARTED status survives.
+    const lastIdentifiedMovement=[...identifiedParts].sort((a,b)=>
+      String(a.offloadDate||a.flightDate||a.departureDate||'').localeCompare(
+      String(b.offloadDate||b.flightDate||b.departureDate||''))).at(-1);
+    shipment.status=shipment.partLoad?'PART LOAD':
+      (lastIdentifiedMovement?.status||refreshedParts[0]?.status||shipment.status);
   }
 
   // KLM 074: use the official shipment detail's confirmed FINAL LEG and
