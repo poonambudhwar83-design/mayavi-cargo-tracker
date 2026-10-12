@@ -199,7 +199,11 @@ function decorateTiming(existing={},incoming={}){
     : (merged.remarks||'');
 
   const hasIncomingFlight=Object.prototype.hasOwnProperty.call(incoming,'flightNo')||Object.prototype.hasOwnProperty.call(incoming,'flight');
-  const flightNo=normalizeFlightNo(rowMawb,hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||''));
+  const airAsiaLegs=rowMawb.startsWith('807-')&&Array.isArray(merged.flightSchedule)?merged.flightSchedule:[];
+  const airAsiaOriginLeg=airAsiaLegs.find(leg=>leg.origin===merged.origin)||airAsiaLegs[0]||null;
+  const airAsiaFinalLeg=airAsiaLegs.filter(leg=>leg.destination===merged.destination).at(-1)||airAsiaLegs.at(-1)||null;
+  const airAsiaSelectedFlight=rowMawb.startsWith('807-')?(exportLike?(airAsiaOriginLeg?.flightNo||merged.departureFlightNo||merged.firstFlightNo):(airAsiaFinalLeg?.flightNo||merged.finalFlightNo)):'';
+  const flightNo=normalizeFlightNo(rowMawb,airAsiaSelectedFlight||(hasIncomingFlight?(incoming.flightNo||incoming.flight||''):(existing.flightNo||existing.flight||'')));
   const bookingDate=incoming.bookingDate||existing.bookingDate||'';
   const bookingTime=incoming.bookingTime||existing.bookingTime||'';
   const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
@@ -207,7 +211,7 @@ function decorateTiming(existing={},incoming={}){
   const mailSent=shipmentType==='IMPORT'?merged.mailSent===true:undefined;
   const customsCleared=shipmentType==='IMPORT'?merged.customsCleared===true:undefined;
   const masterCopyReceived=exportLike?merged.masterCopyReceived===true:undefined;
-  const departureDate=exportLike?(merged.departureDate||merged.flightDate||''):merged.departureDate;
+  const departureDate=exportLike?(rowMawb.startsWith('807-')&&merged.departureIsActual!==true?(airAsiaOriginLeg?.date||merged.scheduledDepartureDate||merged.departureDate||''):(merged.departureDate||merged.flightDate||'')):merged.departureDate;
   const departureTime=exportLike?(merged.departureTime||merged.etd||merged.estimatedDepartureTime||merged.scheduledDepartureTime||''):merged.departureTime;
   const handoverTime=exportLike?handoverTimeFrom(departureDate,departureTime):'';
   const handoverDone=exportLike?merged.handoverDone===true:undefined;
