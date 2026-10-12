@@ -71,7 +71,7 @@ export async function POST(request){
         consigneeConfidence=recipient.recipientConfidence||'low';
       }
       if(recipientOnly)return data;
-      const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop});
+      const candidates=edOcrCandidates(data.text||'',{emsRegion:isEmsCrop,tsv:data.tsv||''});
       for(const item of candidates){
         const existing=output.find(x=>x.number===item.number);
         if(!existing)output.push(item);
