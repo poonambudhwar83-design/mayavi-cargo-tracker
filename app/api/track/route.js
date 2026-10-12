@@ -458,7 +458,83 @@ async function handle(mawb,fallback={}){
       return Response.json({ok:false,mawb,trackingError,
         officialTracker:airline.url||'',debug:official?.debug||null},{status:503});
     }
-    const shipment=normalizeShipmentTimesToIst(official.shipment);
+    // AirAsia's freight route may contain multiple carrier flights.
+    // EXPORT and OTHER_COUNTRIES handover belongs to the origin's FIRST leg;
+    // IMPORT flight/ETA belongs to the FINAL destination leg.
+    const saved=await loadStoredTrackingFallback(mawb);
+    const shipmentType=String(saved.shipmentType||fallback.shipmentType||'').toUpperCase();
+    const exportLike=shipmentType==='EXPORT'||shipmentType==='OTHER_COUNTRIES';
+    let shipment=normalizeShipmentTimesToIst(official.shipment);
+    const legs=Array.isArray(shipment.flightSchedule)?shipment.flightSchedule:[];
+    const first=legs.find(leg=>leg.origin===shipment.origin)||legs[0]||null;
+    const last=legs.filter(leg=>leg.destination===shipment.destination).at(-1)||legs.at(-1)||null;
+    const activeLeg=exportLike?first:last;
+    if(activeLeg?.flightNo){
+      shipment.flightNo=activeLeg.flightNo;
+      shipment.flightDate=activeLeg.date||'';
+    }
+    if(first?.flightNo){
+      shipment.departureFlightNo=first.flightNo;
+      shipment.departureOrigin=first.origin||shipment.origin;
+      shipment.departureDestination=first.destination||'';
+      if(exportLike)shipment.departureDate=shipment.departureIsActual===true&&shipment.departureDate
+        ?shipment.departureDate:(first.date||'');
+    }
+    if(last?.flightNo){
+      shipment.finalFlightNo=last.flightNo;
+      shipment.finalFlightDate=last.date||'';
+    }
+    if(activeLeg?.flightNo&&activeLeg?.date&&activeLeg?.origin&&activeLeg?.destination){
+      const schedule=await trackFlightScheduleFast({
+        flightNo:activeLeg.flightNo,date:activeLeg.date,
+        origin:activeLeg.origin,destination:activeLeg.destination
+      }).catch(()=>null);
+      // A date/route mismatch could be a reused flight number on a different
+      // sector: never persist a time from an unverified mismatched movement.
+      const matching=Boolean(schedule?.ok&&
+        (!schedule.departureDate||schedule.departureDate===activeLeg.date)&&
+        (!schedule.departureOrigin||schedule.departureOrigin===activeLeg.origin)&&
+        (!schedule.departureDestination||schedule.departureDestination===activeLeg.destination));
+      if(matching&&exportLike&&schedule.departureTime&&shipment.departureIsActual!==true){
+        const converted=normalizeShipmentTimesToIst({
+          departureDate:activeLeg.date,departureTime:schedule.departureTime,
+          departureOrigin:activeLeg.origin,
+          departureTimeZone:schedule.departureTimeZone||'LOCAL',
+          departureTimeSource:schedule.source||'Dated matching origin flight schedule'
+        });
+        if(converted.departureTime){
+          shipment.departureDate=converted.departureDate;
+          shipment.departureTime=converted.departureTime;
+          shipment.departureTimeZone='IST';
+          shipment.departureEstimate=true;
+          shipment.departureTimeSource='First leg '+activeLeg.flightNo+' DEL/route verified flight schedule (not cargo DEP); IST';
+        }
+      }
+      if(matching&&!exportLike&&shipment.arrivalIsActual!==true){
+        const etaTime=schedule.arrivalTime||schedule.scheduledArrivalTime||'';
+        const etaDate=schedule.arrivalDate||schedule.scheduledArrivalDate||'';
+        if(etaDate&&etaTime){
+          const converted=normalizeShipmentTimesToIst({
+            destination:activeLeg.destination,arrivalDate:etaDate,arrivalTime:etaTime,
+            arrivalTimeZone:schedule.arrivalTimeZone||schedule.scheduledArrivalTimeZone||'LOCAL',
+            arrivalTimeSource:schedule.arrivalTimeSource||schedule.source||'Dated matching final-leg flight schedule'
+          });
+          if(converted.arrivalTime){
+            shipment.arrivalDate=converted.arrivalDate;
+            shipment.arrivalTime=converted.arrivalTime;
+            shipment.scheduledArrivalDate=converted.arrivalDate;
+            shipment.scheduledArrivalTime=converted.arrivalTime;
+            shipment.arrivalTimeZone='IST';
+            shipment.scheduledArrivalTimeZone='IST';
+            shipment.arrivalIsActual=false;
+            shipment.arrivalEstimate=true;
+            shipment.arrivalTimeSource='Final leg '+activeLeg.flightNo+' flight ETA/schedule (cargo arrival unconfirmed); IST';
+          }
+        }
+      }
+    }
+    if(exportLike&&shipment.departureDate&&shipment.departureTime)
+      shipment.handoverTime=persistedHandoverTime(shipment.departureDate,shipment.departureTime);
     let serverSaved=false;
     try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
     catch(e){console.warn('airasia_db_save_failed',mawb,String(e?.message||e));}
