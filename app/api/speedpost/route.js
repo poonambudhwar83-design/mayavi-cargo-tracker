@@ -106,6 +106,11 @@ export async function POST(request){
         row:rowToResult(inserted[0])});
       // Duplicate ED: retain the existing parcel, fill ONLY blank recipient
       // fields. Replace old malformed OCR address with a newly valid address.
+      // A later clearer photo may recover the missing postcode / locality.
+      // Replace ONLY an old partial address sourced from unverified OCR, never
+      // a manually confirmed address or one already containing a postcode.
+      const completePostalAddress=validAddress &&
+        /\\b(?:[A-Z]{1,2}\\d[A-Z\\d]?\\s*\\d[A-Z]{2}|[A-Z]\\d[A-Z]\\s*\\d[A-Z]\\d|\\d{5}(?:-\\d{4})?)\\b/i.test(consigneeAddress);
       const nameInfo=JSON.stringify(validName?{consigneeName}:{});
       const addressInfo=JSON.stringify(validAddress?{consigneeAddress}:{});
       const metadata=JSON.stringify(validName||validAddress?{
@@ -120,12 +125,18 @@ export async function POST(request){
           || CASE WHEN COALESCE(BTRIM(data->>'consigneeAddress'),'')=''
              OR ((data->>'consigneeSource') LIKE 'OCR%'
                AND (data->>'consigneeAddress') ~* '(sender.?s signature|size [0-9]|[|=]|white or green|customs declaration)')
+             OR ((data->>'consigneeSource') LIKE 'OCR%' AND ${completePostalAddress}
+               AND char_length(${consigneeAddress})>char_length(COALESCE(data->>'consigneeAddress',''))+10
+               AND COALESCE(data->>'consigneeAddress','') !~* '[A-Z]{1,2}[0-9][A-Z0-9]?[ ]*[0-9][A-Z]{2}|[0-9]{5}(-[0-9]{4})?')
             THEN ${addressInfo}::jsonb ELSE '{}'::jsonb END
           || CASE WHEN
               (COALESCE(BTRIM(data->>'consigneeName'),'')='' AND ${validName})
               OR (COALESCE(BTRIM(data->>'consigneeAddress'),'')='' AND ${validAddress})
               OR ((data->>'consigneeSource') LIKE 'OCR%'
                 AND (data->>'consigneeAddress') ~* '(sender.?s signature|size [0-9]|[|=]|white or green|customs declaration)' AND ${validAddress})
+              OR ((data->>'consigneeSource') LIKE 'OCR%' AND ${completePostalAddress}
+                AND char_length(${consigneeAddress})>char_length(COALESCE(data->>'consigneeAddress',''))+10
+                AND COALESCE(data->>'consigneeAddress','') !~* '[A-Z]{1,2}[0-9][A-Z0-9]?[ ]*[0-9][A-Z]{2}|[0-9]{5}(-[0-9]{4})?')
             THEN ${metadata}::jsonb ELSE '{}'::jsonb END,
           '{duplicateAlert}','true'::jsonb,true),
           '{duplicateCount}',to_jsonb(COALESCE((data->>'duplicateCount')::int,0)+1),true),
