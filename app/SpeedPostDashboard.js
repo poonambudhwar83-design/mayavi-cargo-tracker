@@ -241,7 +241,9 @@ export default function SpeedPostDashboard({currentUser}){
           const data=await resp.json().catch(()=>({}));
           if(!resp.ok||!data.ok)throw Error(data.error||'OCR unavailable');
           const candidates=Array.isArray(data.candidates)?data.candidates.filter(c=>normalizeED(c.number)):[];
-          const ed=candidates[0]?.number||'';
+          // Never prefill an ED that fails its UPU checksum. Keep uncertain
+          // OCR candidates visible for review, but not as a tracking number.
+          const ed=candidates.find(candidate=>candidate.checkDigitValid===true)?.number||'';
           const consigneeName=String(data.consigneeName||'').trim().slice(0,100);
           const consigneeAddress=String(data.consigneeAddress||'').trim().slice(0,700);
           // Save any reliably identified ED immediately, irrespective of
@@ -309,9 +311,12 @@ export default function SpeedPostDashboard({currentUser}){
         return;
       }
       setOcrCandidates(candidates);
-      setPhotoEdNeedsEntry(false);
-      setTrackingNo(candidates[0].number);
-      if(candidates.length===1&&candidates[0].checkDigitValid===true){
+      const verifiedCandidates=candidates.filter(candidate=>candidate.checkDigitValid===true);
+      setPhotoEdNeedsEntry(verifiedCandidates.length===0);
+      // OCR 2 and 5 look alike; an invalid ED is NEVER inserted into the
+      // tracking input or silently saved. User can read the printed barcode.
+      setTrackingNo(verifiedCandidates[0]?.number||'');
+      if(candidates.length===1&&verifiedCandidates.length===1){
         setOcrProgress('ED found; saving available OCR recipient fields: '+candidates[0].number);
         await trackOne(candidates[0].number,'photo-add',recipient);
         setOcrCandidates([]);
@@ -319,7 +324,7 @@ export default function SpeedPostDashboard({currentUser}){
           setMessage(candidates[0].number+' saved with any readable recipient fields. Missing consignee details need review.');
         }
       }else{
-        setMessage('ED number is ambiguous or its check digit could not be verified. Review the suggested ED and save the readable consignee details.');
+        setMessage(verifiedCandidates.length?'Multiple ED readings found. Confirm the correct barcode number before saving.':'OCR found no checksum-valid ED. The suggested number may be wrong (for example 2 read as 5). Read and enter the printed ED number before saving.');
       }
     }catch(e){
       setMessage('EMS receipt OCR: '+(e.message||'Could not read the photo.')+' You may enter the ED number manually.');
