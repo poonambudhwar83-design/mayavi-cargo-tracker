@@ -59,7 +59,8 @@ export async function POST(request){
       const data=race.result?.data||{};
       // Recipient OCR reader is independent of the EMS ED barcode reader.
       // Only the photo's TO block / labelled recipient-address area is used.
-      const recipient=readConsigneeFromEmsTO(data.text||'',data.tsv||'');
+      const recipient=readConsigneeFromEmsTO(data.text||'',data.tsv||'',
+        {focusedRecipientArea:recipientOnly===true});
       const score={unreadable:0,low:1,medium:2,high:3};
       if(recipient.consigneeName&&recipient.consigneeAddress&&
           (score[recipient.recipientConfidence||'unreadable']>score[consigneeConfidence]
