@@ -33,6 +33,7 @@ export async function GET(){
   const headersFound=[...body.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].map(m=>clean(m[1])).slice(0,45);
   // Emit tracking columns and event labels only, never names/addresses.
   const eventLines=txt.match(/.{0,90}(?:BOOKED|ACCEPTED|DEPARTED|ARRIVED|OFFLOADED|LOAD|STATUS HISTORY|AWB DETAILS|NO DATA|NOT FOUND).{0,120}/gi)||[];
-  return Response.json({ok:true,...meta,postHttp:response.status,postUrl:response.url,postLength:body.length,responseTitle:(body.match(/<title[^>]*>([^<]+)/i)||[])[1]||'',hasExactMawb:txt.includes('12990261'),has807:txt.includes('807'),headersFound,events:eventLines.slice(0,12).map(x=>x.slice(0,200)),postSample:txt.slice(0,350)});
+  const bookingRows=[...body.matchAll(/<tr\\b[^>]*>([\\s\\S]*?)<\\/tr>/gi)].map(m=>[...m[1].matchAll(/<td\\b[^>]*>([\\s\\S]*?)<\\/td>/gi)].map(x=>clean(x[1]).slice(0,55))).filter(cells=>cells.some(c=>/^(Booked|Accepted|Departed|Arrived|Offloaded|Received from flight)$/i.test(c))||cells.some(c=>/^(?:AK|NZ|D7|FD)\\s*\\d{2,4}$/i.test(c))).slice(0,12);
+  return Response.json({ok:true,bookingRows,...meta,postHttp:response.status,postUrl:response.url,postLength:body.length,responseTitle:(body.match(/<title[^>]*>([^<]+)/i)||[])[1]||'',hasExactMawb:txt.includes('12990261'),has807:txt.includes('807'),headersFound,events:eventLines.slice(0,12).map(x=>x.slice(0,200)),postSample:txt.slice(0,350)});
  }catch(e){return Response.json({ok:false,reason:String(e?.message||e)});}
 }
