@@ -86,17 +86,23 @@ export async function POST(request){
       if(consigneeConfidence==='high'||Date.now()-start>=45500)return;
       const md=await sharp(oriented).metadata();
       if(md.width<250||md.height<150)return;
-      // Full-image SINGLE_BLOCK OCR previously reread customs, sender and
-      // barcode text together. For the prominent printed TO section, use a
-      // focused upper-right region after EXIF/physical orientation correction.
-      // The complete-image sparse reader still runs separately for all layouts.
-      const left=Math.round(md.width*0.35),top=0;
-      const width=md.width-left,height=Math.max(150,Math.min(md.height,Math.round(md.height*0.77)));
+      // On a portrait EMS parcel, a CN22 customs/barcode sticker often sits
+      // ABOVE the large consignee block and covers its "TO" heading. Isolate
+      // the central address label (including its leftmost recipient name);
+      // older upper-right crops cut off "GULSHAN" on real UK parcels.
+      // Other shapes still have the main full-image sparse OCR fallback.
+      const portrait=md.height>md.width*1.15;
+      const left=portrait?Math.round(md.width*0.10):Math.round(md.width*0.06);
+      const top=portrait?Math.round(md.height*0.40):Math.round(md.height*0.08);
+      const width=md.width-left-(portrait?Math.round(md.width*0.07):Math.round(md.width*0.05));
+      const height=portrait?Math.min(md.height-top,Math.round(md.height*0.33)):
+        Math.min(md.height-top,Math.round(md.height*0.82));
+      if(width<200||height<150)return;
       const crop=await sharp(oriented).extract({left,top,width,height})
-        .resize({width:Math.min(2050,Math.max(1200,width*2))})
+        .resize({width:Math.min(2200,Math.max(1400,width*2))})
         .greyscale().normalise().sharpen().png().toBuffer();
-      await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_BLOCK});
-      try{await recognize(crop,false,8500,orientation+' TO crop',true);}
+      await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT});
+      try{await recognize(crop,false,9000,orientation+' printed consignee area',true);}
       finally{await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT}).catch(()=>{});}
     }
     // Locate the literal EMS / SPEED POST printing first and zoom around it.
@@ -118,6 +124,12 @@ export async function POST(request){
     // parcel photograph on a cold serverless worker. Do not discard the entire
     // upload before the primary ED + TO reader has had time to finish.
     const data=await recognize(base,false,20000,'original');
+    // Try the large printed address underneath the CN22/EMS sticker early,
+    // BEFORE costly sideways passes consume the recipient OCR time budget.
+    if(consigneeConfidence!=='high'&&Date.now()-start<29500){
+      try{await readPrintedRecipientArea(base,'original');}
+      catch{/* Continue ED/barcode and other OCR paths if this crop is unclear. */}
+    }
     const anchor=emsCoordinates(data.tsv||'');
     if(anchor&&size.width&&size.height){
       const cx=anchor.x+anchor.w/2,cy=anchor.y+anchor.h/2;
