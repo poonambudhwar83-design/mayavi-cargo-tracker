@@ -40,4 +40,32 @@ for(const focus of [true,false]){
 }
 const senderOnly=readConsigneeFromEmsTO('HAPPY\nS/O RAJ KUMAR\nBACHGAON DABKHERI\nDIST. KURUKSHETRA\n136119 HARYANA','',{focusedRecipientArea:true});
 assert.equal(senderOnly.consigneeName,'','Sender-only text must not be labelled recipient');
-console.log('Speed Post OCR regression passed: photo ED/check digit, consignee, full UK address, sender exclusion');
+
+// Second real-world case: a rotated TO panel beneath an EMS sticker.
+// The previous OCR confused digit 2 with 5 on ED977952529IN, and incorrectly
+// trusted an incomplete recipient address. Check the exact user-verified
+// text tokens, not a hard-coded response tied to this particular parcel.
+const validEd='ED977952529IN';
+const wrongEd='ED977955529IN';
+assert.equal(checkEdChecksum(validEd),true,'Printed Mandeep EMS ED has valid check digit');
+assert.equal(checkEdChecksum(wrongEd),false,'OCR-confused 2->5 ED must be rejected');
+assert.equal(edOcrCandidates('ED 977952529 IN',{emsRegion:true})[0]?.number,validEd);
+assert.equal(edOcrCandidates(wrongEd,{emsRegion:true})[0]?.checkDigitValid,false);
+const rotatedRecipient=[
+  'MANDEEP',
+  '68 WESTWOOD RD',
+  'ILFORD',
+  'IG3 8RZ, UK',
+  '+44 7471283083',
+  'FROM',
+  'AJAY',
+  'S/O JARNAIL',
+  'RAMGARH PANDWAN',
+  'DIST. KAITHAL'
+].join('\n');
+const readRotated=readConsigneeFromEmsTO(rotatedRecipient,'',{focusedRecipientArea:true});
+assert.equal(readRotated.consigneeName,'MANDEEP','TO name must be MANDEEP');
+for(const token of ['68 WESTWOOD RD','ILFORD','IG3 8RZ','UK'])
+  assert.ok(readRotated.consigneeAddress.includes(token),'Complete TO address contains '+token);
+assert.ok(!/AJAY|JARNAIL|KAITHAL/.test(readRotated.consigneeAddress),'FROM sender must be excluded');
+console.log('Speed Post OCR regression passed: ED checksum false-read, Mandeep rotated TO, Gulshan TO and sender exclusion');
