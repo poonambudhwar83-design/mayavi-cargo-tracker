@@ -237,7 +237,11 @@ export default function SpeedPostDashboard({currentUser}){
         updateBatchItem(i,{status:'reading'});
         try{
           const form=new FormData();form.append('photo',file);
-          const resp=await fetch('/api/speedpost/ocr',{method:'POST',body:form});
+          const controller=new AbortController();
+          const timer=setTimeout(()=>controller.abort(),68000);
+          let resp;
+          try{resp=await fetch('/api/speedpost/ocr',{method:'POST',body:form,signal:controller.signal});}
+          finally{clearTimeout(timer);}
           const data=await resp.json().catch(()=>({}));
           if(!resp.ok||!data.ok)throw Error(data.error||'OCR unavailable');
           const candidates=Array.isArray(data.candidates)?data.candidates.filter(c=>normalizeED(c.number)):[];
@@ -295,7 +299,11 @@ export default function SpeedPostDashboard({currentUser}){
     try{
       const form=new FormData();
       form.append('photo',file);
-      const response=await fetch('/api/speedpost/ocr',{method:'POST',body:form});
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),68000);
+      let response;
+      try{response=await fetch('/api/speedpost/ocr',{method:'POST',body:form,signal:controller.signal});}
+      finally{clearTimeout(timer);}
       const data=await response.json().catch(()=>({}));
       if(!response.ok||!data.ok)throw new Error(data.error||'OCR reading is temporarily unavailable.');
       const recipient={consigneeName:String(data.consigneeName||'').trim().slice(0,100),
@@ -327,7 +335,9 @@ export default function SpeedPostDashboard({currentUser}){
         setMessage(verifiedCandidates.length?'Multiple ED readings found. Confirm the correct barcode number before saving.':'OCR found no checksum-valid ED. The suggested number may be wrong (for example 2 read as 5). Read and enter the printed ED number before saving.');
       }
     }catch(e){
-      setMessage('EMS receipt OCR: '+(e.message||'Could not read the photo.')+' You may enter the ED number manually.');
+      setMessage(e?.name==='AbortError'
+        ?'Photo reading took too long. The scan has stopped; you can retry without refreshing the entire Mayavi dashboard.'
+        :'EMS receipt OCR: '+(e.message||'Could not read the photo.')+' You may enter the ED number manually.');
     }finally{
       setOcrBusy(false);setOcrProgress('');
       if(fileRef.current)fileRef.current.value='';
