@@ -14,7 +14,7 @@ const locked = Object.freeze({
   'app/api/indigo-india/route.js':'32c417b51012f84fa3531208373c19f07b3c8615',
   'app/api/indigo-sync/route.js':'4fa1764ffbc77e9f3442750dac3fe7608ca3ca4f',
   'app/IndigoAutoSync.js':'ee7f71f3fc5c99e8623cba734b1c259e4e6c0131',
-  'lib/ethiopian.js':'2a0a98c04d3923b0f79cff63a8ecbf306f7e4ab1',
+  'lib/ethiopian.js':'f318ae1c025fd80c0822764927605572c9cc2c24',
   'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
   'lib/cathay-browser-fallback.js':'0c3509955951162a35976211fde33646d9505cee',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
