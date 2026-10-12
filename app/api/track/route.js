@@ -16,6 +16,7 @@ import { trackOman } from '../../../lib/oman.js';
 import { trackKuwait } from '../../../lib/kuwait.js';
 import { trackVirgin } from '../../../lib/virgin.js';
 import { trackIndigo } from '../../../lib/indigo.js';
+import { trackAirAsia } from '../../../lib/airAsia.js';
 import { trackKlm } from '../../../lib/klm.js';
 import { trackEthiopian } from '../../../lib/ethiopian.js';
 import { markEthiopianReschedulePending } from '../../../lib/ethiopianReschedule.js';
@@ -100,7 +101,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -445,6 +446,28 @@ async function browserOfficial(mawb){
 async function handle(mawb,fallback={}){
   const airline=airlineForMawb(mawb);
   if(!airline)return Response.json({ok:false,error:`Airline prefix ${mawb.slice(0,3)} is not mapped yet.`},{status:422});
+
+  if(mawb.startsWith('807-')){
+    // AirAsia is isolated from the multi-carrier extraction/merge chain.
+    // Never convert the mere existence of an AWB input form into verified
+    // tracking, nor persist guessed booking, flight or arrival values.
+    const official=await trackAirAsia(mawb);
+    if(!official?.ok||!official.shipment||official.shipment.mawb!==mawb){
+      const trackingError=official?.reason||'AIRASIA OFFICIAL AWB NOT VERIFIED';
+      console.warn('airasia_track_unverified',mawb,trackingError);
+      return Response.json({ok:false,mawb,trackingError,
+        officialTracker:airline.url||'',debug:official?.debug||null},{status:503});
+    }
+    const shipment=normalizeShipmentTimesToIst(official.shipment);
+    let serverSaved=false;
+    try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
+    catch(e){console.warn('airasia_db_save_failed',mawb,String(e?.message||e));}
+    console.log('airasia_tracking_result',mawb,shipment.status||'TRACKING',
+      shipment.flightNo||'',shipment.arrivalDate||'',shipment.arrivalTime||'','saved',serverSaved);
+    return Response.json({ok:true,version:VERSION,provider:'AirAsia Cargo / Teleport official SmartKargo',
+      shipment,serverSaved,verification:{officialPage:airline.url||'',liveVerified:true},
+      screenshotCaptured:false,screenshotVerified:false,screenshotOcrUsed:false});
+  }
 
   const airArabiaOfficialOnly=mawb.startsWith('514-');
   const airIndiaFastPath=mawb.startsWith('098-');
