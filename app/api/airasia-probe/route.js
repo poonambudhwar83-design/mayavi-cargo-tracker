@@ -13,6 +13,7 @@ export async function GET(){
   const get=await fetch(URL,{headers,cache:'no-store',signal:AbortSignal.timeout(20000)});
   const html=(await get.text()).slice(0,600000);
   const inputs=[...html.matchAll(/<input\b[^>]*>/gi)].map(m=>({name:attr(m[0],'name'),id:attr(m[0],'id'),type:attr(m[0],'type')||'text',value:attr(m[0],'value'),placeholder:attr(m[0],'placeholder')}));
+  for(const m of html.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)){const tag='<textarea '+m[1]+'>';inputs.push({name:attr(tag,'name'),id:attr(tag,'id'),type:'textarea',value:clean(m[2]),placeholder:attr(tag,'placeholder')});}
   const buttons=[...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/gi)].map(m=>({name:attr(m[0],'name'),id:attr(m[0],'id'),type:attr(m[0],'type'),text:clean(m[0]).slice(0,80)})).slice(0,12);
   const form=(html.match(/<form\b[^>]*>/i)||[])[0]||'';
   const prefix=inputs.find(v=>v.name&&v.type!=='hidden'&&/prefix/i.test(v.id+' '+v.name+' '+v.placeholder));
