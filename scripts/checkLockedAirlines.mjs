@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 const locked = Object.freeze({
   // IndiGo is now working on the live V2 deployment; freeze its official adapter,
   // part-load form extraction, sync API and sync component as of 2026-10-11.
-  'lib/indigo.js':'3fd24c35b596a54f2be2ece9f461fef0c716b222',
+  'lib/indigo.js':'3b56a630f809db8dddf2428739bba25c1c6beffc',
   'lib/indigoBrowser.js':'e6aa5c993e1c7c823adaf1675fd18ff797eddbc4',
   'app/api/indigo-india/route.js':'32c417b51012f84fa3531208373c19f07b3c8615',
   'app/api/indigo-sync/route.js':'4fa1764ffbc77e9f3442750dac3fe7608ca3ca4f',
