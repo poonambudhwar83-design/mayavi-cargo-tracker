@@ -110,7 +110,7 @@ export async function POST(request){
       // Replace ONLY an old partial address sourced from unverified OCR, never
       // a manually confirmed address or one already containing a postcode.
       const completePostalAddress=validAddress &&
-        /\\b(?:[A-Z]{1,2}\\d[A-Z\\d]?\\s*\\d[A-Z]{2}|[A-Z]\\d[A-Z]\\s*\\d[A-Z]\\d|\\d{5}(?:-\\d{4})?)\\b/i.test(consigneeAddress);
+        /\b(?:[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}|[A-Z]\d[A-Z]\s*\d[A-Z]\d|\d{5}(?:-\d{4})?)\b/i.test(consigneeAddress);
       const nameInfo=JSON.stringify(validName?{consigneeName}:{});
       const addressInfo=JSON.stringify(validAddress?{consigneeAddress}:{});
       const metadata=JSON.stringify(validName||validAddress?{
