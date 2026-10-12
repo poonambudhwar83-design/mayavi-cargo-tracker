@@ -15,6 +15,8 @@ const locked = Object.freeze({
   'app/api/indigo-sync/route.js':'4fa1764ffbc77e9f3442750dac3fe7608ca3ca4f',
   'app/IndigoAutoSync.js':'ee7f71f3fc5c99e8623cba734b1c259e4e6c0131',
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
+  'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
+  'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
   'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
   'lib/cathay-browser-fallback.js':'0c3509955951162a35976211fde33646d9505cee',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
@@ -89,6 +91,27 @@ for(const [label,fragment] of ethiopianRouteContract){
     console.error('LOCKED ETHIOPIAN INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
+}
+// Protect only Ethiopian's live-data preference on the shared dashboard.
+// The rest of the dashboard can evolve, including Remarks column styling.
+const dashboard=readFileSync('app/DashboardClient.js','utf8');
+const ethiopianDashboardContract=[
+  ['Ethiopian database priority at startup',"const serverAuthoritative=key.startsWith('071')||"],
+  ['Ethiopian database priority while polling',"out.push(key.startsWith('071')||"]
+];
+for(const [label,fragment] of ethiopianDashboardContract){
+  if(!dashboard.includes(fragment)){
+    console.error('LOCKED ETHIOPIAN DASHBOARD FLOW CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
+// The live ET cron must continue independently of other airlines; only the
+// ET-specific cadence is guarded (other schedules may be changed normally).
+const config=JSON.parse(readFileSync('vercel.json','utf8'));
+if(!Array.isArray(config.crons)||!config.crons.some(item=>
+  item.path==='/api/cron/ethiopian'&&item.schedule==='*/30 * * * *')){
+  console.error('LOCKED ETHIOPIAN AUTO REFRESH CHANGED: Explicit unlock approval required.');
+  changed=true;
 }
 // Saudia SV760 working FOW -> DEP pending-part ETA was verified on 2026-10-10.
 // Freeze precisely that source block, not the entire shared multi-airline route,
