@@ -225,11 +225,14 @@ function officialUrl(row={}){
   if(n.startsWith('157-'))return `https://www.qrcargo.com/s/track-your-shipment?documentNumber=${encodeURIComponent(serial)}&documentPrefix=157&documentType=MAWB`;
   if(n.startsWith('232-'))return `https://www.maskargo.com/en/shipment-tracking.html?prefixNumber=232&awbNumber=${encodeURIComponent(serial)}`;
   if(n.startsWith('607-'))return `https://www.etihadcargo.com/en/e-services/track-shipment?awb=${encodeURIComponent(allDigits)}`;
-  if(n.startsWith('235-'))return 'https://www.turkishcargo.com/en/cargo-tracking';
+  // Open only carrier-supported tracking deep links. The other airline links stay unchanged.
+  if(n.startsWith('235-'))return `https://www.turkishcargo.com/en/online-services/shipment-tracking?awbInput=${encodeURIComponent(n)}&quick=True`;
+  if(n.startsWith('312-'))return `https://6ecargo.goindigo.in/FrmAWBTracking.aspx?AWBNo=${encodeURIComponent(serial)}&AWBPrefix=312`;
+  if(n.startsWith('807-'))return `https://airasia.smartkargo.com/FrmAWBTracking.aspx?AWBNo=${encodeURIComponent(serial)}&AWBPrefix=807`;
   if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
 }
-function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return n.startsWith('074-')||n.startsWith('157-')||n.startsWith('232-')||n.startsWith('607-')}
+function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return ['074-','157-','232-','235-','312-','607-','807-'].some(prefix=>n.startsWith(prefix))}
 function openOfficial(row={}){
   const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;
   try{navigator.clipboard?.writeText(digits(n)).catch(()=>{})}catch{}
