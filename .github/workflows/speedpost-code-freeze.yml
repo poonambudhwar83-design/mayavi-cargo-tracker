@@ -1,0 +1,54 @@
+name: Speed Post code freeze
+# Safety check only: does not modify the live app or any airline adapter.
+# To enforce this check before merging, require the "Speed Post code freeze / verify-frozen-files"
+# status check in GitHub branch protection for v2-clean-scratch.
+on:
+  push:
+    branches: [v2-clean-scratch]
+  pull_request:
+    branches: [v2-clean-scratch]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-frozen-files:
+    name: verify-frozen-files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify frozen Speed Post files
+        shell: bash
+        run: |
+          set -euo pipefail
+          violations=0
+          while read -r file expected; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error file=$file::Frozen Speed Post file is missing."
+              violations=$((violations + 1))
+              continue
+            fi
+            actual="$(git hash-object -- "$file")"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error file=$file::Speed Post code changed from the confirmed working version. Explicit unlock/review is required."
+              violations=$((violations + 1))
+            else
+              echo "Protected (unchanged): $file"
+            fi
+          done <<'FROZEN_FILES'
+          app/SpeedPostDashboard.js 96d98e01c6df6d228c46b9ab63f95f717597c6be
+          app/api/speedpost/route.js 8f162c4b252d80a02e42e7c3ccaadacdb26cabb2
+          app/api/speedpost/ocr/route.js f7dfe0c89862140c6b2c5165af26d7afe3b23b6f
+          lib/speedpost.js 3d71bbb68f91e820356c1e748965cc4eb43c4e0b
+          lib/speedpostOcr.js 6ecc6a5e80c413d1ac42349dd6147b9783394c14
+          lib/speedpostSenderOcr.js 85c5d22bb5ae95d692143d1f83aac3d4035b6aa1
+          lib/speedpostToOcr.js ba0feebca5d24cb5f0b0fb72959a87cb62239a1b
+          lib/trackparcel.js dd299df7c4754b0efa277b962ac5bb6a378af9d6
+          FROZEN_FILES
+          if [[ "$violations" -ne 0 ]]; then
+            echo "$violations frozen Speed Post file(s) differ from the saved 2026-10-13 working version."
+            exit 1
+          fi
+          echo "Speed Post code matches the saved working snapshot."
