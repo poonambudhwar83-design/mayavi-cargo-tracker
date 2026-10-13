@@ -45,7 +45,7 @@ jobs:
           lib/speedpostOcr.js 6ecc6a5e80c413d1ac42349dd6147b9783394c14
           lib/speedpostSenderOcr.js 85c5d22bb5ae95d692143d1f83aac3d4035b6aa1
           lib/speedpostToOcr.js ba0feebca5d24cb5f0b0fb72959a87cb62239a1b
-          lib/trackparcel.js 182a1c31a9bea2b0e4cfbadbc71d7ea1d6d41e19
+          lib/trackparcel.js 12eccf1959cac24de1477a834f75de708cd901c4
           FROZEN_FILES
           if [[ "$violations" -ne 0 ]]; then
             echo "$violations frozen Speed Post file(s) differ from the approved 2026-10-13 EMS-primary working version."

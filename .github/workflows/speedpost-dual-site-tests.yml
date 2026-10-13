@@ -1,7 +1,7 @@
 name: Speed Post dual-site regression
 on:
   push:
-    branches: [feature/speedpost-complete-fields-20261013, v2-clean-scratch]
+    branches: [feature/speedpost-trackparcel-source-diagnostics-20261013, v2-clean-scratch]
     paths:
       - 'lib/speedpost.js'
       - 'lib/trackparcel.js'
@@ -39,6 +39,14 @@ jobs:
           assert.equal(parseTrackParcelDetails(booked,'ED977951276IN')?.status,'Booked');
           const generic=['Enter tracking number ED977951276IN','India Post','Track your parcel'].join('\n');
           assert.equal(parseTrackParcelDetails(generic,'ED977951276IN'),null);
+          const spreadResult=[
+            'Tracking Number: ED977951347IN',
+            ...Array.from({length:15},(_,i)=>'Shipment field '+i),
+            'India Post','Live result','Current Status','Delivered',
+            'Destination','United Kingdom','Weight','9710'
+          ].join('\n');
+          assert.equal(parseTrackParcelDetails(spreadResult,'ED977951347IN')?.weight,'9710 g');
+          assert.equal(parseTrackParcelDetails(spreadResult,'ED977951276IN'),null);
           const speedpost=readFileSync('lib/speedpost.js','utf8');
           assert.match(speedpost,/const parcelLookup=trackParcelDetails\(parcelPage,number\)/);
           assert.match(speedpost,/fromHtml\(detailsUrl,no\)/);
