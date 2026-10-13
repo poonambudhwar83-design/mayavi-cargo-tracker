@@ -5,7 +5,7 @@ export const maxDuration=300;
 
 function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function normalize(v=''){const d=digits(v);return d.length===11?`${d.slice(0,3)}-${d.slice(3)}`:''}
-function shipmentTypeOf(value=''){const t=String(value||'').trim().toUpperCase();return t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT'}
+function shipmentTypeOf(value=''){const t=String(value||'').trim().toUpperCase();return t==='OTHER_COUNTRIES_IMPORT'?'OTHER_COUNTRIES_IMPORT':t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT'}
 function pad(v){return String(v).padStart(2,'0')}
 function dateTimeValue(date='',time=''){
   const dm=String(date).match(/^(\d{4})-(\d{2})-(\d{2})$/),tm=String(time).match(/^(\d{1,2}):(\d{2})/);
@@ -88,7 +88,7 @@ function decorateTiming(existing={},incoming={}){
   const combined={...existing,...incoming,mawb,shipmentType,arrivalDate,arrivalTime,arrivalIsActual};
   let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb,combined);
   if(!isAirIndia(mawb)&&isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
-  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:shipmentType==='IMPORT'?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:shipmentType==='IMPORT'?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
+  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -184,7 +184,7 @@ export async function GET(request){
   };
   const importRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='IMPORT');
   const exportRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='EXPORT');
-  const privateRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='OTHER_COUNTRIES');
+  const privateRows=rows.filter(r=>['OTHER_COUNTRIES','OTHER_COUNTRIES_IMPORT'].includes(shipmentTypeOf(r.shipmentType)));
   const importResults=await Promise.allSettled(importRows.map(refreshExisting));
   const exportResults=await Promise.allSettled(exportRows.map(refreshExisting));
   const privateResults=await Promise.allSettled(privateRows.map(refreshExisting));

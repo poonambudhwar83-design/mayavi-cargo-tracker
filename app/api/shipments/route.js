@@ -96,10 +96,10 @@ function canViewOtherCountries(session=null,internal=false){
 }
 function shipmentType(value=''){
   const t=String(value||'').trim().toUpperCase();
-  return t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT';
+  return t==='OTHER_COUNTRIES_IMPORT'?'OTHER_COUNTRIES_IMPORT':t==='OTHER_COUNTRIES'?'OTHER_COUNTRIES':t==='EXPORT'?'EXPORT':'IMPORT';
 }
 function isOtherCountries(data={}){
-  return shipmentType(data?.shipmentType)==='OTHER_COUNTRIES';
+  return ['OTHER_COUNTRIES','OTHER_COUNTRIES_IMPORT'].includes(shipmentType(data?.shipmentType));
 }
 function dataForViewer(data={},session=null,internal=false){
   const out={...data};
@@ -114,7 +114,7 @@ function safeData(row={},session=null,markEntry=false,internal=false){
   const awb=normalize(row.mawb||row.awb);
   if(!awb)throw new Error('Invalid MAWB.');
   const type=shipmentType(row.shipmentType);
-  if(type==='OTHER_COUNTRIES'&&!canViewOtherCountries(session,internal))throw new Error('Admin authorization required for Other Countries.');
+  if(isOtherCountries({shipmentType:type})&&!canViewOtherCountries(session,internal))throw new Error('Admin authorization required for Other Countries.');
   let data={...row,mawb:`${awb.slice(0,3)}-${awb.slice(3)}`,shipmentType:type};
   data=sanitizeShipment(data,awb);
   delete data._dbUpdatedAt;
@@ -132,7 +132,7 @@ export async function GET(request){
     const sql=db();
     const rawRows=canViewOtherCountries(auth.session,auth.internal)
       ? await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`
-      : await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments WHERE COALESCE(data->>'shipmentType','IMPORT') <> 'OTHER_COUNTRIES' ORDER BY updated_at DESC`;
+      : await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments WHERE COALESCE(data->>'shipmentType','IMPORT') NOT IN ('OTHER_COUNTRIES','OTHER_COUNTRIES_IMPORT') ORDER BY updated_at DESC`;
     const newestByAwb=new Map();
     for(const row of rawRows){
       const key=normalize(row.awb);
@@ -164,7 +164,7 @@ export async function POST(request){
       if(!incomingAwb)throw new Error('Invalid MAWB.');
       let rowForSave={...row};
       const [existingRow]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${incomingAwb} LIMIT 1`;
-      if((shipmentType(rowForSave.shipmentType)==='OTHER_COUNTRIES'||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
+      if((isOtherCountries(rowForSave)||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
       // Import part-load decisions belong to each physical movement; tracking
@@ -285,7 +285,7 @@ export async function PATCH(request){
     for(let attempt=0;attempt<5;attempt++){
       const [previous]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
       if(!previous)return Response.json({ok:false,error:'Shipment not found. Refresh the dashboard.'},{status:404});
-      if(shipmentType(previous.data?.shipmentType)!=='IMPORT'){
+      if(!['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType(previous.data?.shipmentType))){
         return Response.json({ok:false,error:'Mail is only available for Import.'},{status:400});
       }
       if(isOtherCountries(previous.data)&&!canViewOtherCountries(auth.session,auth.internal)){
