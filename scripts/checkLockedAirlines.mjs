@@ -1,12 +1,15 @@
 // Working-carrier freeze requested 2026-10-08.
 // Change these hashes ONLY after the owner explicitly approves unlocking
-// Saudia (065), Emirates (176), Cathay Pacific (160), or Ethiopian (071).
+// Saudia (065), Emirates (176), Cathay Pacific (160), Ethiopian (071), or Kuwait (229).
 // Cathay's reusable, AWB-matched dated flight ETA extraction is protected here.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const locked = Object.freeze({
+  // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
+  // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
+  'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',
   // IndiGo is now working on the live V2 deployment; freeze its official adapter,
   // part-load form extraction, sync API and sync component as of 2026-10-11.
   'lib/indigo.js':'3b56a630f809db8dddf2428739bba25c1c6beffc',
@@ -53,6 +56,26 @@ const cathayRouteContract=[
 for(const [label,fragment] of cathayRouteContract){
   if(!sharedRoute.includes(fragment)){
     console.error('LOCKED CATHAY INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
+// Kuwait (229) uses a dedicated official reader with dated arrival fallback.
+ // Protect the working shared-route wiring and save-to-existing-row contract
+ // without freezing the rest of the shared multi-airline tracking route.
+const kuwaitRouteContract=[
+  ["Kuwait official adapter import","import { trackKuwait } from '../../../lib/kuwait.js';"],
+  ["Kuwait 229 official adapter routing","if(mawb.startsWith('229-')) return trackKuwait(mawb);"],
+  ["Kuwait generic browser adapter bypass","if(mawb.startsWith('229-')) return {ok:false,skipped:true,reason:'KUWAIT AIRWAYS USES DEDICATED DETAILS TABLE ADAPTER'};"],
+  ["Kuwait 229 fast path","const kuwaitFastPath=mawb.startsWith('229-');"],
+  ["Kuwait prefers dedicated tracker over generic API","||thaiFastPath||kuwaitFastPath||malaysiaFastPath"],
+  ["Kuwait dedicated adapter source preference","kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY'"],
+  ["Kuwait bypasses generic OCR","||mawb.startsWith('229-')||"],
+  ["Kuwait prefix eligible for DB persistence","||mawb.startsWith('807-')||mawb.startsWith('229-')"],
+  ["Kuwait live update persists in existing MAWB row","||kuwaitFastPath||mawb.startsWith('607-')"]
+];
+for(const [label,fragment] of kuwaitRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED KUWAIT INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
 }
@@ -150,4 +173,4 @@ for(const [label,fragment] of saudiaRouteContract){
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), and Emirates (176).');
+console.log('Airline lock check passed: IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
