@@ -1,7 +1,7 @@
 name: Speed Post dual-site regression
 on:
   push:
-    branches: [feature/speedpost-dual-source-20261013, v2-clean-scratch]
+    branches: [feature/speedpost-complete-fields-20261013, v2-clean-scratch]
     paths:
       - 'lib/speedpost.js'
       - 'lib/trackparcel.js'
@@ -41,8 +41,9 @@ jobs:
           assert.equal(parseTrackParcelDetails(generic,'ED977951276IN'),null);
           const speedpost=readFileSync('lib/speedpost.js','utf8');
           assert.match(speedpost,/const parcelLookup=trackParcelDetails\(parcelPage,number\)/);
-          assert.match(speedpost,/Promise\.all\(\[fromHtml\(url,no\),fromBrowser\(url,no\)\]\)/);
-          assert.match(speedpost,/bookingDate:browser\.bookingDate\|\|html\?\.bookingDate/);
+          assert.match(speedpost,/fromHtml\(detailsUrl,no\)/);
+          assert.match(speedpost,/fromHtml\(url,no\)/);
+          assert.match(speedpost,/bookingDate:pickField\('bookingDate'\)/);
           // Real EMS result layout: each label sits above its value, with an
           // icon before "Item Delivered". No refresh time is a delivery time.
           const vm=await import('node:vm');
@@ -65,7 +66,31 @@ jobs:
             assert.equal(result?.tariff,tariff);
             assert.equal(result?.deliveredAtText,delivery);
           }
+          // EMS expanded destination and delivery summary examples (correct ED only).
+          const destinationCard=[
+            'Consignment Details','Consignment #','ED977951347IN',
+            'Current Status','✅ Item Delivered','Booked On','3 Oct 2026, 2:46 PM',
+            'Last Updated','10 Oct 2026, 2:03 PM','Tariff','4230.25 INR',
+            'Delivery Summary','Delivered At','10 Oct 2026, 2:03 PM',
+            'Delivery Location','United Kingdom',
+            'Origin','Booking Office','New Delhi',
+            'Destination','Destination Office','WEST BROMWICH','Country','United Kingdom',
+            'Timeline'
+          ].join('\n');
+          assert.equal(ctx.parseEmsFixture(destinationCard,'ED977951347IN')?.destination,'WEST BROMWICH');
+          assert.equal(ctx.parseEmsFixture(destinationCard,'ED977951347IN')?.deliveredAtText,'10 Oct 2026, 2:03 PM');
+          assert.equal(ctx.parseEmsFixture(destinationCard,'ED977951276IN'),null);
+          const summaryOnly=[
+            'Consignment Details','Consignment #','ED977951347IN',
+            'Current Status','✅ Item Delivered','Last Updated','10 Oct 2026, 2:03 PM',
+            'Tariff','4230.25 INR','Delivery Summary',
+            'Delivered At','10 Oct 2026, 2:03 PM',
+            'Delivery Location','United Kingdom',
+            'Timeline'
+          ].join('\n');
+          assert.equal(ctx.parseEmsFixture(summaryOnly,'ED977951347IN')?.destination,'United Kingdom');
           assert.match(speedpost,/const CONSIGNMENT_PATH='\/track-ems-speedpost'/);
+          assert.match(speedpost,/const DETAIL_PATH='\/speed-post-tracking'/);
           assert.match(speedpost,/if\(!joined\[field\]&&extra\[field\]\)joined\[field\]=extra\[field\]/);
           console.log('EMS primary data, original delivery time, and TrackParcel secondary checks passed.');
 
