@@ -2,15 +2,15 @@ import './globals.css';
 import './colorful.css';
 
 export const metadata={
-  metadataBase:new URL('https://mayavicargo.com'),
-  title:'Mayavi Cargo — MAWB Import & Export Tracker',
-  description:'Mayavi Cargo live MAWB tracker for import and export shipments with airline tracking, arrival and departure updates.',
+  metadataBase:new URL('https://tracker.mayavicargo.com'),
+  title:'Mayavi Cargo — Live MAWB & Speed Post Tracker',
+  description:'Live MAWB import and export tracking, airline arrival and departure updates, and private India Speed Post tracking on Mayavi Cargo.',
   alternates:{canonical:'/'},
   robots:{index:true,follow:true,googleBot:{index:true,follow:true}},
   openGraph:{
-    title:'Mayavi Cargo — MAWB Import & Export Tracker',
-    description:'Live MAWB import and export shipment tracking by Mayavi Cargo.',
-    url:'https://mayavicargo.com',
+    title:'Mayavi Cargo — Live MAWB & Speed Post Tracker',
+    description:'Track MAWB cargo arrivals, departures and India Speed Post shipments with Mayavi Cargo.',
+    url:'https://tracker.mayavicargo.com',
     siteName:'Mayavi Cargo',
     type:'website'
   }
