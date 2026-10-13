@@ -1,0 +1,72 @@
+name: Speed Post dual-site regression
+on:
+  push:
+    branches: [feature/speedpost-dual-source-20261013, v2-clean-scratch]
+    paths:
+      - 'lib/speedpost.js'
+      - 'lib/trackparcel.js'
+      - '.github/workflows/speedpost-dual-site-tests.yml'
+  pull_request:
+    branches: [v2-clean-scratch]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check adapter syntax
+        run: |
+          node --check lib/speedpost.js
+          node --check lib/trackparcel.js
+      - name: Verify exact ED status extraction and independent dual lookups
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          const source=readFileSync('lib/trackparcel.js','utf8');
+          const {parseTrackParcelDetails}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+          const delivered=['Tracking Number: ED977951347IN','India Post','Live result','Current Status','Delivered','Weight','9710','Origin','New Delhi'].join('\n');
+          const item=parseTrackParcelDetails(delivered,'ED977951347IN');
+          assert.equal(item?.status,'Delivered');
+          assert.equal(item?.weight,'9710 g');
+          assert.equal(parseTrackParcelDetails(delivered,'ED977951276IN'),null);
+          const booked=['Tracking Number: ED977951276IN','India Post','Live result','Current Status','Booked','Weight','1320'].join('\n');
+          assert.equal(parseTrackParcelDetails(booked,'ED977951276IN')?.status,'Booked');
+          const generic=['Enter tracking number ED977951276IN','India Post','Track your parcel'].join('\n');
+          assert.equal(parseTrackParcelDetails(generic,'ED977951276IN'),null);
+          const speedpost=readFileSync('lib/speedpost.js','utf8');
+          assert.match(speedpost,/const parcelLookup=trackParcelDetails\(parcelPage,number\)/);
+          assert.match(speedpost,/Promise\.all\(\[fromHtml\(url,no\),fromBrowser\(url,no\)\]\)/);
+          assert.match(speedpost,/bookingDate:browser\.bookingDate\|\|html\?\.bookingDate/);
+          // Real EMS result layout: each label sits above its value, with an
+          // icon before "Item Delivered". No refresh time is a delivery time.
+          const vm=await import('node:vm');
+          const parserScript=speedpost.replace(/^import .+;\r?\n/gm,'').replace(/^export /gm,'');
+          const ctx={};vm.runInNewContext(parserScript+'\nthis.parseEmsFixture=parseSpeedPostText;',ctx);
+          for(const [ed,tariff,delivery] of [
+            ['ED977951276IN','6354.22','10 Oct 2026, 12:59 PM'],
+            ['ED977951347IN','4230.25','10 Oct 2026, 2:03 PM']
+          ]){
+            const page=[
+              'Enter your tracking number',ed,'Consignment Details','CONSIGNMENT #',ed,
+              'CURRENT STATUS','✅ Item Delivered',
+              'BOOKED ON','3 Oct 2026, 2:46 PM',
+              'LAST UPDATED',delivery,'ARTICLE TYPE','Foreign Speed Post Merchandise',
+              'TARIFF',tariff+' INR','Timeline','Item Delivered'
+            ].join('\n');
+            const result=ctx.parseEmsFixture(page,ed);
+            assert.equal(result?.status,'Delivered');
+            assert.equal(result?.bookingDate,'3 Oct 2026, 2:46 PM');
+            assert.equal(result?.tariff,tariff);
+            assert.equal(result?.deliveredAtText,delivery);
+          }
+          assert.match(speedpost,/const CONSIGNMENT_PATH='\/track-ems-speedpost'/);
+          assert.match(speedpost,/if\(!joined\[field\]&&extra\[field\]\)joined\[field\]=extra\[field\]/);
+          console.log('EMS primary data, original delivery time, and TrackParcel secondary checks passed.');
+
+          NODE

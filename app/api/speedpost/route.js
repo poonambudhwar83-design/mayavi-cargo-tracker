@@ -206,11 +206,13 @@ export async function POST(request){
     if(previous.delivered===true||/^delivered$/i.test(String(previous.status||''))){
       data.delivered=true;
       data.status='Delivered';
-      if(previous.deliveredAt&&!data.deliveredAt)data.deliveredAt=previous.deliveredAt;
+      if(previous.deliveredAtText&&!data.deliveredAtText)data.deliveredAtText=previous.deliveredAtText;
+      if(previous.deliveryTimeSource&&!data.deliveryTimeSource)data.deliveryTimeSource=previous.deliveryTimeSource;
     }else if(data.delivered===true||/^delivered$/i.test(String(data.status||''))){
       data.delivered=true;
       data.status='Delivered';
-      data.deliveredAt=data.deliveredAt||new Date().toISOString();
+      // NEVER use refresh time as the parcel delivery time. The EMS event's
+      // local-clock value is stored separately in deliveredAtText.
     }
     // Preserve duplicate warning across ordinary shipment refreshes.
     data.duplicateAlert=previous.duplicateAlert===true;
