@@ -30,6 +30,9 @@
     },
     "app/api/cron/ethiopian/route.js": {
       "maxDuration": 120
+    },
+    "app/api/cron/speedpost/route.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -44,6 +47,10 @@
     {
       "path": "/api/cron/ethiopian",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/speedpost",
+      "schedule": "15 */3 * * *"
     }
   ]
 }

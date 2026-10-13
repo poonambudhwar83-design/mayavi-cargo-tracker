@@ -115,6 +115,9 @@ export default function SpeedPostDashboard({currentUser}){
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
+  const [manualName,setManualName]=useState('');
+  const [manualDestination,setManualDestination]=useState('');
+
   const [busy,setBusy]=useState('');
   const [ocrBusy,setOcrBusy]=useState(false);
   const [ocrProgress,setOcrProgress]=useState('');
@@ -140,7 +143,7 @@ export default function SpeedPostDashboard({currentUser}){
       setLoadError('');
     }catch(e){setLoadError(e.message||'Unable to load saved Speed Post records.')}
   },[]);
-  useEffect(()=>{load();},[load]);
+  useEffect(()=>{load();const poll=setInterval(load,60*1000);return()=>clearInterval(poll);},[load]);
 
   const trackOne=useCallback(async(no,action='add',photoFields=null)=>{
     const id=normalizeED(no);
@@ -149,7 +152,7 @@ export default function SpeedPostDashboard({currentUser}){
     setMessage(action==='photo-add'?'Saving ED and consignee from photo…':action==='add'?'Saving '+id+' first…':'Checking tracking for '+id+'…');
     try{
       const response=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({trackingNo:id,action,...(action==='photo-add'?photoFields||{}:{})})});
+        body:JSON.stringify({trackingNo:id,action,...(['photo-add','manual-save'].includes(action)?photoFields||{}:{})})});
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not save ED record');
       if(result.row)setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
@@ -159,10 +162,10 @@ export default function SpeedPostDashboard({currentUser}){
         setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
         return;
       }
-      if(result.created===true){
+      if(result.created===true||result.manualSaved===true){
         // ED number is safely persisted before the slow external lookup starts.
-        setSpeedPostTab('TRACKING');
-        setMessage(id+' saved in Mayavi. Fetching its tracking details…');
+        setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
+        setMessage(id+' saved in Mayavi. Checking EMS and TrackParcel…');
         try{
           const detailResponse=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
             body:JSON.stringify({trackingNo:id,action:'refresh'})});
@@ -434,11 +437,16 @@ export default function SpeedPostDashboard({currentUser}){
       </section>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>2. Track & save consignment</div>
-        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo);}}>
-          <input style={{...input,textTransform:'uppercase',marginBottom:9}} maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())} placeholder="ED977951280IN"/>
-          <button style={{...btn,opacity:anythingBusy?.6:1,width:'100%'}} disabled={anythingBusy} type="submit">{anythingBusy?'WORKING…':'TRACK & SAVE →'}</button>
+        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo,'manual-save',{consigneeName:manualName,destination:manualDestination});}}>
+          <label htmlFor="speedPostManualED" style={{fontSize:12,display:'block',marginBottom:4}}>ED tracking number *</label>
+          <input id="speedPostManualED" style={{...input,textTransform:'uppercase',marginBottom:9}} maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())} placeholder="ED977951280IN"/>
+          <label htmlFor="speedPostManualName" style={{fontSize:12,display:'block',marginBottom:4}}>Consignee Name (manual)</label>
+          <input id="speedPostManualName" style={{...input,marginBottom:9}} maxLength={100} value={manualName} onChange={e=>setManualName(e.target.value)} placeholder="Enter recipient name"/>
+          <label htmlFor="speedPostManualDestination" style={{fontSize:12,display:'block',marginBottom:4}}>Destination (manual)</label>
+          <input id="speedPostManualDestination" style={{...input,marginBottom:9}} maxLength={120} value={manualDestination} onChange={e=>setManualDestination(e.target.value)} placeholder="e.g. Leicester, UK"/>
+          <button style={{...btn,opacity:anythingBusy?.6:1,width:'100%'}} disabled={anythingBusy} type="submit">{anythingBusy?'CHECKING BOTH SITES…':'SAVE & TRACK (BOTH SITES) →'}</button>
         </form>
-        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. Existing MySpeedPost tariff and booking fields are retained where available. Both are third-party services.</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. MySpeedPost EMS and TrackParcel are checked together. Manual name/destination are protected; tariff, booking date, weight and delivery details come from available verified tracking results. Both are third-party services.</div>
       </section>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>3. TO Consignee OCR</div>
@@ -541,7 +549,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
-              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
+              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button><button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#e4edfa',color:'#1d4ed8'}} disabled={anythingBusy} onClick={async()=>{const name=window.prompt('Consignee name for '+r.trackingNo,r.consigneeName||'');if(name===null)return;const dest=window.prompt('Destination for '+r.trackingNo,r.destination||'');if(dest===null)return;await trackOne(r.trackingNo,'manual-save',{consigneeName:name,destination:dest});}}>EDIT NAME / DEST.</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>

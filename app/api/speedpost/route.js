@@ -73,6 +73,32 @@ export async function POST(request){
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Use an ED + 9 digits + IN tracking number.'},400);
     const action=body?.action==='refresh'?'refresh':body?.action==='photo-add'?'photo-add':'add';
+    if(body?.action==='manual-save'){
+      // ED, consignee name and destination are user-owned; no website or OCR
+      // refresh can overwrite the values after an operator explicitly saves them.
+      const consigneeName=String(body?.consigneeName||'').normalize('NFKC')
+        .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim();
+      const destination=String(body?.destination||'').normalize('NFKC')
+        .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim();
+      if(consigneeName&&!validConsigneeName(consigneeName))
+        return json({ok:false,error:'Enter a valid consignee name (2–100 letters).'},400);
+      if(destination&&(destination.length<2||destination.length>120||!validStoredField('destination',destination)))
+        return json({ok:false,error:'Enter a valid destination (2–120 characters).'},400);
+      const manualFields={};
+      if(consigneeName){manualFields.consigneeName=consigneeName;manualFields.consigneeSource='Manually entered by operator';}
+      if(destination){manualFields.destination=destination;manualFields.destinationSource='Manually entered by operator';}
+      const old=await sql`SELECT tracking_no FROM mayavi_speedpost WHERE tracking_no=${trackingNo} LIMIT 1`;
+      const initialData=JSON.stringify({trackingNo,status:'Pending Tracking',enteredBy:auth.username,
+        savedAt:new Date().toISOString(),...manualFields});
+      const fields=JSON.stringify(manualFields);
+      const stored=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
+        VALUES (${trackingNo},${initialData}::jsonb,NOW(),NOW())
+        ON CONFLICT (tracking_no) DO UPDATE SET
+          data=mayavi_speedpost.data || ${fields}::jsonb, updated_at=NOW()
+        RETURNING tracking_no,data,created_at,updated_at`;
+      return json({ok:true,created:old.length===0,manualSaved:true,
+        row:rowToResult(stored[0]),message:'Manual ED, name and destination saved. Ready to check both websites.'});
+    }
     // Saving an uploaded parcel photo first associates OCR fields with its own
     // ED number. No external tracking request is required to persist it.
     if(action==='photo-add'){
@@ -202,6 +228,12 @@ export async function POST(request){
       if(!validStoredField(key,data[key]))data[key]='';
     }
     data.origin=canonicalOrigin(data.origin);
+    // The consignee and destination typed by the operator take precedence over
+    // both EMS and TrackParcel, including on every subsequent automatic refresh.
+    if(previous.destinationSource==='Manually entered by operator'&&validStoredField('destination',previous.destination)){
+      data.destination=previous.destination;
+      data.destinationSource=previous.destinationSource;
+    }
     // A delivered parcel must not regress into Active on a partial refresh.
     if(previous.delivered===true||/^delivered$/i.test(String(previous.status||''))){
       data.delivered=true;
@@ -243,6 +275,7 @@ export async function POST(request){
     for(const key of ['consigneeName','consigneeAddress','consigneeSource','consigneeOcrAt']){
       if(previous[key]&&!data[key])data[key]=previous[key];
     }
+    if(previous.deliveryTimeSource&&data.deliveredAtText===previous.deliveredAtText)data.deliveryTimeSource=previous.deliveryTimeSource;
     const rows=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
       VALUES (${trackingNo},${JSON.stringify(data)}::jsonb,NOW(),NOW())
       ON CONFLICT (tracking_no) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()
