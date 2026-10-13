@@ -43,7 +43,7 @@ jobs:
           assert.match(speedpost,/const parcelLookup=trackParcelDetails\(parcelPage,number\)/);
           assert.match(speedpost,/fromHtml\(detailsUrl,no\)/);
           assert.match(speedpost,/fromHtml\(url,no\)/);
-          assert.match(speedpost,/bookingDate:value\('bookingDate'\)/);
+          assert.match(speedpost,/bookingDate:pickField\('bookingDate'\)/);
           // Real EMS result layout: each label sits above its value, with an
           // icon before "Item Delivered". No refresh time is a delivery time.
           const vm=await import('node:vm');
