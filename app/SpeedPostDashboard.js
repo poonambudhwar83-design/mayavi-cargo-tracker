@@ -157,6 +157,7 @@ export default function SpeedPostDashboard({currentUser}){
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not save ED record');
       if(result.row)setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
+      if(result.manualSaved===true){setManualName('');setManualDestination('');}
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
         setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
@@ -528,7 +529,7 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:2040}}>
-          <thead><tr>{['S.No.','Tracking No.','Consignee Name','Consignee Address','Entry Date','Total Cost (₹)','Origin','Destination','Tracking Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','Tracking No.','Consignee Name','Consignee Address','Entry Date','Total Cost (₹)','Origin','Destination','Tracking Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Delivery Date / Time','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map(label=><th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
@@ -543,6 +544,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{field(r,'bookingDate')}</td>
             <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Delivered: {r.deliveredAtText||'Exact delivery time not verified'}</small>}</td>
+            <td style={td}>{r.deliveredAtText||'—'}</td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
@@ -554,7 +556,7 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={19} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={20} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
