@@ -41,11 +41,11 @@ jobs:
           app/SpeedPostDashboard.js 96d98e01c6df6d228c46b9ab63f95f717597c6be
           app/api/speedpost/route.js 8f162c4b252d80a02e42e7c3ccaadacdb26cabb2
           app/api/speedpost/ocr/route.js f7dfe0c89862140c6b2c5165af26d7afe3b23b6f
-          lib/speedpost.js 3d71bbb68f91e820356c1e748965cc4eb43c4e0b
+          lib/speedpost.js b0349845bbf057cfd57715602eb510b412e70724
           lib/speedpostOcr.js 6ecc6a5e80c413d1ac42349dd6147b9783394c14
           lib/speedpostSenderOcr.js 85c5d22bb5ae95d692143d1f83aac3d4035b6aa1
           lib/speedpostToOcr.js ba0feebca5d24cb5f0b0fb72959a87cb62239a1b
-          lib/trackparcel.js dd299df7c4754b0efa277b962ac5bb6a378af9d6
+          lib/trackparcel.js 182a1c31a9bea2b0e4cfbadbc71d7ea1d6d41e19
           FROZEN_FILES
           if [[ "$violations" -ne 0 ]]; then
             echo "$violations frozen Speed Post file(s) differ from the saved 2026-10-13 working version."
