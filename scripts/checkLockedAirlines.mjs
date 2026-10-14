@@ -21,7 +21,7 @@ const locked = Object.freeze({
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
   'lib/cathay.js':'32a508680cc15cafd858ccabe3f23cce378af816',
-  'lib/cathay-browser-fallback.js':'c082f7c9e38a812cde08c25555941a05f3635d63',
+  'lib/cathay-browser-fallback.js':'3c48d68f8920be82567c096ca0ca5e5236faeed3',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
   'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
