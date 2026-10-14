@@ -92,4 +92,22 @@ const noDateResult=parseTrackParcelDetails([
 assert.equal(noDateResult?.deliveredAtText,'','Never invent delivery date');
 assert.equal(parseTrackParcelDetails(resultCard,'ED111111111IN'),null,
   'Never accept event from different ED');
+// A fresh ED appearing in the search input does not make generic tracking
+// FAQ, a cited indiapost.gov.in URL, or an old Delivered mention current data.
+const misleadingPage=[
+  'India Post','Live result','ED977952475IN',
+  'Origin','indiapost.gov.in, checked 2026-10-06. TrackParcel is not India Post.',
+  'Tracking History','Delivered','Why is parcel delivered?'
+].join('\n');
+assert.equal(parseTrackParcelDetails(misleadingPage,'ED977952475IN'),null,
+  'A website disclaimer and generic Delivered text must not create shipment data');
+const incompleteWithWeight=[
+  'India Post','Live result','ED977952339IN',
+  'Origin','indiapost.gov.in, checked 2026-10-06. TrackParcel is not India Post.',
+  'Weight','9710','Tracking History','Delivered'
+].join('\n');
+const partial=parseTrackParcelDetails(incompleteWithWeight,'ED977952339IN');
+assert.equal(partial?.weight,'9710 g','Keep confirmed parcel weight');
+assert.equal(partial?.origin,'','Reject website disclaimer as origin');
+assert.equal(partial?.status,'','Never infer Delivered from history or FAQ');
 console.log('TrackParcel date, weight and TO-address regression passed');

@@ -29,7 +29,7 @@ async function authorized(request,sql){
 function validStoredField(field,value){
   const v=String(value||'').trim();
   if(!v)return false;
-  if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v))return false;
+  if(['origin','destination','address'].includes(field)&&(/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v)||/indiapost\.gov\.in|TrackParcel is not India Post|checked 20\d{2}[-/]\d{2}[-/]\d{2}|\.gov\.in/i.test(v)))return false;
   return true;
 }
 function canonicalOrigin(value=''){
@@ -54,7 +54,19 @@ function validConsigneeAddress(v){
   return !/^(?:TO|FROM|SENDER|RECIPIENT|CONSIGNEE|ADDRESS|COUNTRY|UNKNOWN|N\/A)$/i.test(v.trim());
 }
 function rowToResult(row){
-  return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
+  const data={...(row.data||{})};
+  // Quarantine false tracking details without silently deleting customer data
+  // or modifying the database. Only the display is changed until the
+  // operator explicitly corrects or a verified scan replaces them.
+  const fakeOrigin=/indiapost\.gov\.in|TrackParcel is not India Post|checked 20\d{2}[-/]\d{2}[-/]\d{2}/i.test(String(data.origin||''));
+  if(fakeOrigin)data.origin='';
+  if(fakeOrigin&&!data.deliveredAtText&&!data.statusVerifiedSource&&
+     (data.delivered===true||/^delivered$/i.test(String(data.status||'')))){
+    data.delivered=false;
+    data.status='Pending Verification';
+    data.statusNeedsReview=true;
+  }
+  return {...data,trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
 }
 
 export async function GET(request){
@@ -234,17 +246,35 @@ export async function POST(request){
       data.destination=previous.destination;
       data.destinationSource=previous.destinationSource;
     }
-    // A delivered parcel must not regress into Active on a partial refresh.
-    if(previous.delivered===true||/^delivered$/i.test(String(previous.status||''))){
+    // A wrongly inferred Delivered status is not terminal forever. A new,
+    // ED-verified current non-delivered status can correct it. When the latest
+    // response lacks an explicit current status, preserve the previous state.
+    // Operator corrections remain pending until a dated, verified delivery.
+    const previousDelivered=previous.delivered===true||/^delivered$/i.test(String(previous.status||''));
+    const freshVerified=Boolean(data.statusVerifiedSource);
+    const freshDelivered=freshVerified&&/^delivered$/i.test(String(data.status||''));
+    const freshNotDelivered=freshVerified&&!!data.status&&!freshDelivered;
+    if(previous.manualStatusResetAt){
+      data.manualStatusResetAt=previous.manualStatusResetAt;
+      data.manualStatusResetBy=previous.manualStatusResetBy;
+    }
+    const manuallyDisputed=Boolean(previous.manualStatusResetAt);
+    if(freshDelivered&&(!manuallyDisputed||Boolean(data.deliveredAtText))){
+      data.delivered=true;
+      data.status='Delivered';
+    }else if(freshNotDelivered){
+      data.delivered=false;
+      data.deliveredAtText='';
+      data.trackParcelDeliveredAtText='';
+      data.deliveryTimeSource='';
+    }else if(previousDelivered&&!manuallyDisputed){
       data.delivered=true;
       data.status='Delivered';
       if(previous.deliveredAtText&&!data.deliveredAtText)data.deliveredAtText=previous.deliveredAtText;
       if(previous.deliveryTimeSource&&!data.deliveryTimeSource)data.deliveryTimeSource=previous.deliveryTimeSource;
-    }else if(data.delivered===true||/^delivered$/i.test(String(data.status||''))){
-      data.delivered=true;
-      data.status='Delivered';
-      // NEVER use refresh time as the parcel delivery time. The EMS event's
-      // local-clock value is stored separately in deliveredAtText.
+    }else{
+      data.delivered=false;
+      data.status=manuallyDisputed?'Pending Verification':(data.status||previous.status||'Pending Verification');
     }
     // Preserve duplicate warning across ordinary shipment refreshes.
     data.duplicateAlert=previous.duplicateAlert===true;
@@ -292,6 +322,23 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Please confirm a valid ED tracking number.'},400);
+    if(body?.action==='correct-delivery-status'){
+      // Explicit operator correction of a false Delivered state; only the
+      // status/time fields are reset. Weight, tariff, address and ED remain.
+      const patch=JSON.stringify({
+        status:'Pending Verification',delivered:false,outForDelivery:false,
+        deliveredAtText:'',trackParcelDeliveredAtText:'',
+        deliveryTimeSource:'',statusVerifiedSource:'',
+        manualStatusResetAt:new Date().toISOString(),
+        manualStatusResetBy:auth.username
+      });
+      const saved=await sql`UPDATE mayavi_speedpost SET
+        data=data || ${patch}::jsonb,updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(!saved.length)return json({ok:false,error:'ED entry not found.'},404);
+      return json({ok:true,corrected:true,row:rowToResult(saved[0])});
+    }
     if(body?.action==='save-consignee-name'){
       // The address column is hidden from the sheet. Name edits must never
       // clear an address that was previously stored for this ED.
