@@ -27,6 +27,7 @@ export async function POST(request){
     if(!(await permitted(request)))return respond({ok:false,error:'Admin or Sonu login required.'},403);
     const form=await request.formData();
     const file=form.get('photo');
+    const edOnly=form.get('edOnly')==='1';
     if(!file||typeof file.arrayBuffer!=='function')return respond({ok:false,error:'Please select a receipt photo.'},400);
     if(!safeFormat(file.type))return respond({ok:false,error:'Upload JPG, PNG, WebP or another supported photo format.'},400);
     if(file.size>8*1024*1024||file.size<20)return respond({ok:false,error:'Photo must be under 8 MB.'},413);
@@ -61,8 +62,9 @@ export async function POST(request){
       const data=race.result?.data||{};
       // Recipient OCR reader is independent of the EMS ED barcode reader.
       // Only the photo's TO block / labelled recipient-address area is used.
-      const recipient=readConsigneeFromEmsTO(data.text||'',data.tsv||'',
-        {focusedRecipientArea:recipientOnly===true});
+      const recipient=edOnly?{consigneeName:'',consigneeAddress:''}:
+        readConsigneeFromEmsTO(data.text||'',data.tsv||'',
+          {focusedRecipientArea:recipientOnly===true});
       const score={unreadable:0,low:1,medium:2,high:3};
       if(recipient.consigneeName&&recipient.consigneeAddress&&
           (score[recipient.recipientConfidence||'unreadable']>score[consigneeConfidence]
@@ -177,7 +179,7 @@ export async function POST(request){
     }
     // Try the large printed address underneath the CN22/EMS sticker early,
     // BEFORE costly sideways passes consume the recipient OCR time budget.
-    if(consigneeConfidence!=='high'&&Date.now()-start<29500){
+    if(!edOnly&&consigneeConfidence!=='high'&&Date.now()-start<29500){
       try{await readPrintedRecipientArea(base,'original');}
       catch{/* Continue ED/barcode and other OCR paths if this crop is unclear. */}
     }
@@ -209,7 +211,7 @@ export async function POST(request){
     // Tesseract's default automatic page segmentation (PSM.AUTO).
     // Run that mode only when the dedicated label reader still has missing data.
     // The same recipient validation and ED check-digit safeguards apply.
-    if((consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))&&Date.now()-start<34000){
+    if((!output.some(x=>x.checkDigitValid)||(!edOnly&&consigneeConfidence!=='high'))&&Date.now()-start<34000){
       try{
         await worker.setParameters({tessedit_pageseg_mode:PSM.AUTO});
         await recognize(base,false,6500,'main OCR AUTO fallback');
@@ -219,30 +221,30 @@ export async function POST(request){
     // First rotate sideways parcel labels, then use isolated PSM6 OCR on
     // printed TO lines. Give each attempt a bounded budget under 60 seconds.
     if(Date.now()-start<35000
-      &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
+      &&(!output.some(x=>x.checkDigitValid)||(!edOnly&&consigneeConfidence!=='high'))){
       try{
         const upright=await sharp(base).rotate(90).png().toBuffer();
         await recognize(upright,false,6200,'90 degrees');
-        await readPrintedRecipientArea(upright,'90 degrees');
+        if(!edOnly)await readPrintedRecipientArea(upright,'90 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
     if(Date.now()-start<39000
-      &&(consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
+      &&(!output.some(x=>x.checkDigitValid)||(!edOnly&&consigneeConfidence!=='high'))){
       try{
         const other=await sharp(base).rotate(270).png().toBuffer();
         await recognize(other,false,5700,'270 degrees');
-        await readPrintedRecipientArea(other,'270 degrees');
+        if(!edOnly)await readPrintedRecipientArea(other,'270 degrees');
       }catch{/* Keep partial OCR results from other orientations. */}
     }
     // Upside-down photographs also occur; orientation metadata alone cannot
     // correct a physically inverted parcel label.
-    if(Date.now()-start<41000 && (consigneeConfidence!=='high'||!output.some(x=>x.checkDigitValid))){
+    if(Date.now()-start<41000 && (!output.some(x=>x.checkDigitValid)||(!edOnly&&consigneeConfidence!=='high'))){
       try{
         const inverted=await sharp(base).rotate(180).png().toBuffer();
         await recognize(inverted,false,4400,'180 degrees');
       }catch{/* Preserve any successful earlier reads. */}
     }
-    if(consigneeConfidence!=='high'&&Date.now()-start<41000){
+    if(!edOnly&&consigneeConfidence!=='high'&&Date.now()-start<41000){
       try{await readPrintedRecipientArea(base,'original');}catch{/* Nothing to save if unclear. */}
     }
     output.sort((a,b)=>Number(b.checkDigitValid)-Number(a.checkDigitValid)||
@@ -254,7 +256,7 @@ export async function POST(request){
       consigneeName,consigneeAddress,consigneeOcrOrientation,consigneeToHeadingCovered,
       consigneeConfidence,consigneeNeedsReview:consigneeConfidence!=='high',
       autoSelect:output.length===1&&output[0].checkDigitValid&&output[0].emsNearby,
-      message:output.length?'EMS ED number and consignee extracted independently from your photo.':'ED number by the EMS label was not readable. Upload a clearer barcode photo or enter the ED manually.'});
+      message:output.length?(edOnly?'ED digits read from photo.':'ED and recipient text read from photo.'):'ED unreadable. Upload a clearer barcode photo or enter ED manually.'});
   }catch(e){
     return respond({ok:false,error:'Receipt OCR unavailable: '+String(e?.message||e).slice(0,160)},502);
   }finally{try{await worker?.terminate()}catch{}}

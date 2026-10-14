@@ -116,7 +116,6 @@ export default function SpeedPostDashboard({currentUser}){
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
-  const [manualDestination,setManualDestination]=useState('');
 
   const [busy,setBusy]=useState('');
   const [ocrBusy,setOcrBusy]=useState(false);
@@ -159,7 +158,7 @@ export default function SpeedPostDashboard({currentUser}){
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not save ED record');
       if(result.row)setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
-      if(result.manualSaved===true){setManualDestination('');}
+      
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
         setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
@@ -238,9 +237,9 @@ export default function SpeedPostDashboard({currentUser}){
   function updateBatchItem(index,changes){
     setBatchItems(old=>old.map((x,i)=>index===i?{...x,...changes}:x));
   }
-  async function saveBatchED(ed,consigneeName,consigneeAddress){
+  async function saveBatchED(ed){
     const resp=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({action:'photo-add',trackingNo:ed,consigneeName,consigneeAddress})});
+      body:JSON.stringify({action:'manual-save',trackingNo:ed})});
     const data=await resp.json().catch(()=>({}));
     if(!resp.ok||!data.ok)throw Error(data.error||'Could not save parcel');
     if(data.row)setRows(old=>[data.row,...old.filter(x=>x.trackingNo!==ed)]);
@@ -253,11 +252,10 @@ export default function SpeedPostDashboard({currentUser}){
     setReviewBusy(true);
     updateBatchItem(index,{status:'saving',error:''});
     try{
-      const data=await saveBatchED(ed,item.consigneeName,item.consigneeAddress);
-      const missing=!(data.row?.consigneeName&&data.row?.consigneeAddress);
-      updateBatchItem(index,{status:missing?'review':data.duplicate?'duplicate':'saved',ed,
-        error:missing?'ED saved, but some consignee fields are missing. Correct the OCR text below and save again.':
-          data.duplicate?'Same ED found: existing packet retained and missing consignee details updated.':''});
+      const data=await saveBatchED(ed);
+      if(data.row)setRows(old=>[data.row,...old.filter(r=>r.trackingNo!==ed)]);
+      updateBatchItem(index,{status:'saved',ed,
+        error:'ED saved. Enter name/address in the table row below.'});
     }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
     finally{setReviewBusy(false);}
   }
@@ -271,7 +269,7 @@ export default function SpeedPostDashboard({currentUser}){
     setPhotoRecipientConfidence('unreadable');
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
-    setMessage('Processing '+files.length+' photos separately, 2 at a time. Keep this page open.');
+    setMessage('Reading ED numbers in '+files.length+' photos. Name and address will be entered manually.');
     let next=0;
     const work=async()=>{
       while(next<files.length){
@@ -294,7 +292,7 @@ export default function SpeedPostDashboard({currentUser}){
               error:'Barcode read and saved. Enter consignee name/address in its table row.'});
             continue;
           }
-          const form=new FormData();form.append('photo',file);
+          const form=new FormData();form.append('photo',file);form.append('edOnly','1');
           const controller=new AbortController();
           const timer=setTimeout(()=>controller.abort(),68000);
           let resp;
@@ -306,20 +304,15 @@ export default function SpeedPostDashboard({currentUser}){
           // Never prefill an ED that fails its UPU checksum. Keep uncertain
           // OCR candidates visible for review, but not as a tracking number.
           const ed=candidates.find(candidate=>candidate.checkDigitValid===true)?.number||'';
-          const consigneeName=String(data.consigneeName||'').trim().slice(0,100);
-          const consigneeAddress=String(data.consigneeAddress||'').trim().slice(0,700);
-          // Save any reliably identified ED immediately, irrespective of
-          // recipient OCR confidence. Uncertain recipient text stays editable.
           const certain=candidates.length===1&&candidates[0].checkDigitValid===true;
-          updateBatchItem(i,{ed,candidates,consigneeName,consigneeAddress,
+          updateBatchItem(i,{ed,candidates,consigneeName:'',consigneeAddress:'',
             status:certain?'saving':'review',
-            error:certain?'':'ED number is missing or ambiguous. Review before saving.'});
+            error:certain?'':'ED number missing or ambiguous. Review before saving.'});
           if(!certain)continue;
-          const result=await saveBatchED(ed,consigneeName,consigneeAddress);
-          const incomplete=!(result.row?.consigneeName&&result.row?.consigneeAddress);
-          updateBatchItem(i,{status:incomplete?'review':result.duplicate?'duplicate':'saved',
-            error:incomplete?'ED saved, but some consignee fields are unclear. Review the text below to fill missing details.':
-              result.duplicate?'Same ED: packet retained, missing details updated where readable.':''});
+          const saved=await saveBatchED(ed);
+          if(saved.row)setRows(old=>[saved.row,...old.filter(r=>r.trackingNo!==ed)]);
+          updateBatchItem(i,{status:'saved',
+            error:'ED saved. Enter name/address manually in the table row.'});
           // Deliberately avoid a third-party tracking fetch inside this batch:
           // the ED + TO fields are saved first and tracking can be refreshed.
         }catch(e){
@@ -365,6 +358,7 @@ export default function SpeedPostDashboard({currentUser}){
       }
       const form=new FormData();
       form.append('photo',file);
+      form.append('edOnly','1');
       const controller=new AbortController();
       const timer=setTimeout(()=>controller.abort(),68000);
       let response;
@@ -372,16 +366,11 @@ export default function SpeedPostDashboard({currentUser}){
       finally{clearTimeout(timer);}
       const data=await response.json().catch(()=>({}));
       if(!response.ok||!data.ok)throw new Error(data.error||'OCR reading is temporarily unavailable.');
-      const recipient={consigneeName:String(data.consigneeName||'').trim().slice(0,100),
-        consigneeAddress:String(data.consigneeAddress||'').trim().slice(0,700)};
-      setPhotoRecipient(recipient);
-      setPhotoHasBeenRead(true);
-      setPhotoRecipientConfidence(data.consigneeConfidence||'unreadable');
       const candidates=Array.isArray(data.candidates)?data.candidates.filter(x=>normalizeED(x.number)):[];
       if(!candidates.length){
         setPhotoEdNeedsEntry(true);
         setTrackingNo('');
-        setMessage('Consignee OCR result has been extracted, but the ED sticker could not be read. Type the exact printed ED number to save these details with the correct packet.');
+        setMessage('ED number could not be read. Please enter the printed ED number manually.');
         return;
       }
       setOcrCandidates(candidates);
@@ -391,12 +380,10 @@ export default function SpeedPostDashboard({currentUser}){
       // tracking input or silently saved. User can read the printed barcode.
       setTrackingNo(verifiedCandidates[0]?.number||'');
       if(candidates.length===1&&verifiedCandidates.length===1){
-        setOcrProgress('ED found; saving available OCR recipient fields: '+candidates[0].number);
-        await trackOne(candidates[0].number,'photo-add',recipient);
+        setOcrProgress('ED found: '+candidates[0].number);
+        await trackOne(candidates[0].number,'manual-save',{});
         setOcrCandidates([]);
-        if(!recipient.consigneeName||!recipient.consigneeAddress){
-          setMessage(candidates[0].number+' saved with any readable recipient fields. Missing consignee details need review.');
-        }
+        setMessage(candidates[0].number+' saved. Enter consignee name/address in its row.');
       }else{
         setMessage(verifiedCandidates.length?'Multiple ED readings found. Confirm the correct barcode number before saving.':'OCR found no checksum-valid ED. The suggested number may be wrong (for example 2 read as 5). Read and enter the printed ED number before saving.');
       }
@@ -454,7 +441,7 @@ export default function SpeedPostDashboard({currentUser}){
         .sp-duplicate-alert,.sp-duplicate-row{animation:none;background-color:#fee2e2;outline:2px solid #b91c1c}
       }
     `}</style>
-    <section style={{...card,padding:'8px 12px',borderRadius:8,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:8}}>
+    <section style={{...card,padding:'6px 10px',borderRadius:8,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:8}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
         <h1 style={{margin:0,fontSize:17}}>Speed Post • EMS Tracking</h1>
         <span style={{fontSize:11}}>PRIVATE • Admin / Sonu</span>
@@ -462,11 +449,11 @@ export default function SpeedPostDashboard({currentUser}){
     </section>
     <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
       <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>setSpeedPostTab('TRACKING')}
-        style={{...btn,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         EMS TRACKING
       </button>
       <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>setSpeedPostTab('DELIVERED')}
-        style={{...btn,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         DELIVERED ({deliveredRows.length})
       </button>
     </div>
@@ -483,59 +470,40 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
     </div>}
     {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED')&&<>
-    {speedPostTab==='TRACKING'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))',gap:8,marginBottom:8}}>
-      <section style={card}>
-        <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>1. Upload receipt / photo</div>
-        <input ref={fileRef} type="file" accept="image/*" multiple onChange={uploadImage} disabled={anythingBusy} style={input}/>
-        <div style={{fontSize:12,color:'#1e40af',fontWeight:700,marginTop:7}}>Select up to 20 photos together • up to 8 MB each. One photo also works.</div>
-        <div style={{color:'#64748b',fontSize:11,marginTop:5}}>Barcode reader first, OCR fallback. Up to 20 photos. Confirm unclear ED numbers.</div>
-        {imageName&&<div style={{fontSize:11,marginTop:7,color:'#475569'}}>Selected: {imageName}</div>}
-        {batchItems.length>0&&<div role="status" style={{fontSize:12,color:'#1e40af',marginTop:8}}>
-          Batch: {batchItems.filter(x=>['saved','duplicate','review','error'].includes(x.status)).length}/{batchItems.length} processed •
-          {batchItems.filter(x=>x.status==='saved').length} saved •
-          {batchItems.filter(x=>x.status==='review').length} review •
-          {batchItems.filter(x=>x.status==='error').length} errors
-        </div>}
-        {ocrBusy&&<div role="status" style={{color:'#1d4ed8',fontSize:12,marginTop:8}}>{ocrProgress||'Reading the EMS slip…'}</div>}
-        {ocrCandidates.length>0&&<div style={{border:'1px solid #bfd3ef',borderRadius:9,padding:10,marginTop:12,background:'#f4f8ff'}}><strong style={{fontSize:12}}>Check the ED number printed near EMS:</strong>{ocrCandidates.map(c=><label key={c.number} style={{display:'flex',alignItems:'center',gap:7,fontSize:13,marginTop:8}}><input type="radio" name="speedpost-ocr-choice" checked={trackingNo===c.number} onChange={()=>setTrackingNo(c.number)}/>{c.number}<small style={{color:c.checkDigitValid?'#15803d':'#a16207'}}>{c.checkDigitValid?'check digit valid':'verify digits'}</small></label>)}<button type="button" style={{...btn,marginTop:10,padding:'8px 12px',fontSize:12}} disabled={anythingBusy} onClick={async()=>{const n=normalizeED(trackingNo);if(n){setOcrCandidates([]);await trackOne(n,'photo-add',photoRecipient)}}}>CONFIRM ED & SAVE PHOTO</button></div>}
-      </section>
-      <section style={card}>
-        <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>2. Track & save consignment</div>
-        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo,'manual-save',{destination:manualDestination});}}>
-          <label htmlFor="speedPostManualED" style={{fontSize:12,display:'block',marginBottom:4}}>ED tracking number *</label>
-          <input id="speedPostManualED" style={{...input,textTransform:'uppercase',marginBottom:9}} maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())} placeholder="ED977951280IN"/>
-                    <label htmlFor="speedPostManualDestination" style={{fontSize:12,display:'block',marginBottom:4}}>Destination (manual)</label>
-          <input id="speedPostManualDestination" style={{...input,marginBottom:9}} maxLength={120} value={manualDestination} onChange={e=>setManualDestination(e.target.value)} placeholder="e.g. Leicester, UK"/>
-          <button style={{...btn,opacity:anythingBusy?.6:1,width:'100%'}} disabled={anythingBusy} type="submit">{anythingBusy?'CHECKING BOTH SITES…':'SAVE & TRACK (BOTH SITES) →'}</button>
+    {speedPostTab==='TRACKING'&&<section aria-label="Add Speed Post ED" style={{...card,padding:'8px 10px',borderRadius:9,marginBottom:8}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <label htmlFor="spPhotoInput" style={{fontSize:12,fontWeight:800,color:'#163c80',whiteSpace:'nowrap'}}>Scan photo</label>
+        <input id="spPhotoInput" ref={fileRef} type="file" accept="image/*" multiple onChange={uploadImage}
+          disabled={anythingBusy} title="Upload one or up to 20 ED barcode photos"
+          style={{fontSize:11,flex:'1 1 210px',minWidth:155,maxWidth:360}}/>
+        <span style={{fontSize:11,color:'#64748b',whiteSpace:'nowrap'}}>or</span>
+        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo,'manual-save',{});}}
+          style={{display:'flex',alignItems:'center',gap:6,flex:'2 1 300px',minWidth:210}}>
+          <label htmlFor="speedPostManualED" style={{fontSize:12,fontWeight:800,color:'#163c80',whiteSpace:'nowrap'}}>ED No.</label>
+          <input id="speedPostManualED" style={{...input,height:34,minWidth:95,flex:1,textTransform:'uppercase',padding:'5px 8px',fontSize:12}}
+            maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())}
+            placeholder="ED977952461IN"/>
+          <button type="submit" style={{...btn,padding:'8px 10px',fontSize:11,whiteSpace:'nowrap',opacity:anythingBusy?.6:1}}
+            disabled={anythingBusy}>{anythingBusy?'WORKING…':'SAVE & TRACK'}</button>
         </form>
-        <div style={{fontSize:11,color:'#64748b',marginTop:5}}>Enter consignee name/address in the table below. EMS + TrackParcel are checked for other tracking details.</div>
-      </section>
-      {photoHasBeenRead&&<details style={{...card,gridColumn:'1 / -1',padding:9}}>
-        <summary style={{fontSize:12,color:'#163c80',fontWeight:800,cursor:'pointer'}}>Optional: review name/address detected in photo</summary>
-        {photoHasBeenRead&&<div role="status" style={{fontSize:11,fontWeight:700,marginBottom:9,
-          color:['high','medium'].includes(photoRecipientConfidence)?'#166534':'#9a3412'}}>
-          {['high','medium'].includes(photoRecipientConfidence)
-            ?'Printed TO block recognized'
-            :'Recipient text unclear: check and correct before saving'}
-        </div>}
-        <label htmlFor="speedPostConsigneeName" style={{fontSize:12,color:'#64748b',display:'block',marginBottom:5}}>Consignee Name (from TO photo)</label>
-        <input id="speedPostConsigneeName" style={{...input,marginBottom:9}} maxLength={100}
-          value={photoRecipient.consigneeName}
-          onChange={e=>setPhotoRecipient(old=>({...old,consigneeName:e.target.value}))}
-          placeholder="Name not readable — enter from photo"/>
-        <label htmlFor="speedPostConsigneeAddress" style={{fontSize:12,color:'#64748b',display:'block',marginBottom:5}}>Consignee Address (from TO photo)</label>
-        <textarea id="speedPostConsigneeAddress" style={{...input,resize:'vertical',minHeight:75,marginBottom:8}} maxLength={700}
-          value={photoRecipient.consigneeAddress}
-          onChange={e=>setPhotoRecipient(old=>({...old,consigneeAddress:e.target.value}))}
-          placeholder="Address not readable — enter from photo"/>
-        {photoHasBeenRead&&<button type="button" style={{...btn,marginTop:8,fontSize:12,width:'100%'}}
-          disabled={anythingBusy||!normalizeED(trackingNo)||(!photoRecipient.consigneeName.trim()&&!photoRecipient.consigneeAddress.trim())}
-          onClick={async()=>{const id=normalizeED(trackingNo);if(!id)return;setPhotoEdNeedsEntry(false);await trackOne(id,'photo-add',photoRecipient);}}>
-          FILL MISSING CONSIGNEE DETAILS FOR THIS ED
-        </button>}
-        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>You can enter name/address directly in each shipment row below; sender is not filled.</div>
-      </details>}
-    </div>}
+      </div>
+      {(imageName||ocrBusy||batchItems.length>0)&&<div role="status" style={{fontSize:11,marginTop:5,color:'#305994'}}>
+        {ocrBusy?ocrProgress||'Scanning ED…':batchItems.length?('Photos: '+batchItems.filter(x=>['saved','review','error'].includes(x.status)).length+'/'+batchItems.length+' checked'):imageName?'Last photo: '+imageName:''}
+      </div>}
+      {ocrCandidates.length>0&&<div style={{border:'1px solid #bfd3ef',borderRadius:7,padding:7,marginTop:6,background:'#f4f8ff'}}>
+        <span style={{fontSize:11,fontWeight:700}}>Confirm the printed ED number:</span>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:4}}>
+          {ocrCandidates.map(c=><label key={c.number} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11}}>
+            <input type="radio" name="speedpost-ocr-choice" checked={trackingNo===c.number} onChange={()=>setTrackingNo(c.number)}/>
+            {c.number}{c.checkDigitValid?' ✓':' (verify)'}
+          </label>)}
+          <button type="button" style={{...btn,padding:'5px 8px',fontSize:11}} disabled={anythingBusy}
+            onClick={async()=>{const n=normalizeED(trackingNo);if(n){setOcrCandidates([]);await trackOne(n,'manual-save',{})}}}>
+            SAVE ED
+          </button>
+        </div>
+      </div>}
+    </section>}
     {batchItems.length>0&&<section style={{...card,marginBottom:14}}>
       <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10,marginBottom:12}}>
         <h2 style={{fontSize:17,margin:0}}>Multiple EMS photos ({batchItems.length})</h2>
@@ -548,7 +516,7 @@ export default function SpeedPostDashboard({currentUser}){
           <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
             <strong style={{fontSize:12,overflowWrap:'anywhere'}}>{i+1}. {item.name}</strong>
             <strong style={{fontSize:11,color:item.status==='error'?'#b91c1c':item.status==='saved'?'#15803d':'#1d4ed8'}}>
-              {item.status==='queued'?'WAITING':item.status==='reading'?'READING ED + TO':item.status==='saving'?'SAVING':item.status==='saved'?'SAVED':item.status==='duplicate'?'DUPLICATE ED':item.status==='review'?'ED REVIEW':'ERROR'}
+              {item.status==='queued'?'WAITING':item.status==='reading'?'READING ED':item.status==='saving'?'SAVING':item.status==='saved'?'SAVED':item.status==='duplicate'?'DUPLICATE ED':item.status==='review'?'ED REVIEW':'ERROR'}
             </strong>
           </div>
           {item.ed&&<div style={{fontSize:12,marginTop:5}}>ED: <strong>{item.ed}</strong></div>}
@@ -560,15 +528,6 @@ export default function SpeedPostDashboard({currentUser}){
             <input style={{...input,marginBottom:7}} maxLength={18}
               value={item.ed||''} onChange={e=>updateBatchItem(i,{ed:e.target.value.toUpperCase()})}
               placeholder="ED + 9 digits + IN"/>
-            <label style={{fontSize:11,display:'block',marginBottom:5}}>Consignee Name (TO section)</label>
-            <input style={{...input,marginBottom:7}} maxLength={100} value={item.consigneeName||''}
-              onChange={e=>updateBatchItem(i,{consigneeName:e.target.value})}
-              placeholder="Correct or enter consignee name"/>
-            <label style={{fontSize:11,display:'block',marginBottom:5}}>Consignee Address (TO section)</label>
-            <textarea style={{...input,minHeight:65,resize:'vertical',marginBottom:7}} maxLength={700}
-              value={item.consigneeAddress||''}
-              onChange={e=>updateBatchItem(i,{consigneeAddress:e.target.value})}
-              placeholder="Correct or enter full consignee address"/>
             {item.candidates.length>1&&<div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:7}}>
               {item.candidates.map(c=><button type="button" key={c.number}
                 onClick={()=>updateBatchItem(i,{ed:c.number})}
@@ -576,11 +535,11 @@ export default function SpeedPostDashboard({currentUser}){
             </div>}
             <button type="button" style={{...btn,fontSize:11,padding:'7px 10px'}}
               disabled={batchRunning||reviewBusy||!normalizeED(item.ed)}
-              onClick={()=>saveReviewedBatch(i,item)}>SAVE ED & FILL MISSING DETAILS</button>
+              onClick={()=>saveReviewedBatch(i,item)}>SAVE VERIFIED ED</button>
           </div>}
         </div>)}
       </div>
-      <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Up to 20 photos are processed separately, two at a time. Each ED is saved only against its own photo. Unclear numbers wait for confirmation; live tracking can be refreshed afterward.</div>
+      <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter consignee name and address manually in each row. Uncertain OCR numbers require confirmation.</div>
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
@@ -629,7 +588,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
-              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button><button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#e4edfa',color:'#1d4ed8'}} disabled={anythingBusy} onClick={async()=>{const dest=window.prompt('Destination for '+r.trackingNo,r.destination||'');if(dest===null)return;await trackOne(r.trackingNo,'manual-save',{destination:dest});}}>EDIT DEST.</button>
+              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
