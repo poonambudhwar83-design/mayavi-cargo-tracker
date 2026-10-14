@@ -223,6 +223,11 @@ export async function POST(request){
     const previous=old?.[0]?.data||{};
     const data={...result.shipment,enteredBy:previous.enteredBy||auth.username,
       retainedFields:[],lastChecked:new Date().toISOString()};
+    // Do not overwrite existing information with an empty third-party result.
+    const hasData=['tariff','bookingDate','origin','destination','weight','address','status']
+      .some(key=>Boolean(String(data[key]||'').trim()));
+    if(!hasData)return json({ok:true,trackingPending:true,
+      error:'EMS and TrackParcel did not return readable ED details.',row:rowToResult(existing[0])});
     // Headers such as COUNTRY and BOOKING OFFICE are never shipment locations.
     for(const key of ['origin','destination','address']){
       if(!validStoredField(key,data[key]))data[key]='';
@@ -274,7 +279,7 @@ export async function POST(request){
     if(previous.lastDuplicateAt)data.lastDuplicateAt=previous.lastDuplicateAt;
     // Keep previously verified fields if absent from the newest third-party response;
     // the client marks these retained values as such, never claiming fresh verification.
-    for(const field of ['destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
+    for(const field of ['origin','destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt','lastUpdated']){
       if(!data[field]&&validStoredField(field,previous[field])){
         data[field]=previous[field];
         data.retainedFields.push(field);
