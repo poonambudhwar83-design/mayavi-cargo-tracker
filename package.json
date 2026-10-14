@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs",
+    "prebuild": "node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs && node scripts/checkSpeedPostPendingPdf.mjs",
     "build": "next build",
     "start": "next start"
   },
