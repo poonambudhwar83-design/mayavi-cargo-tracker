@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkEdChecksum } from '../lib/speedpostOcr.js';
+import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
 
 const API='/api/speedpost';
 const MAX_BATCH_PHOTOS=20;
@@ -443,6 +444,41 @@ export default function SpeedPostDashboard({currentUser}){
   const deliveredRows=rows.filter(isDelivered);
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
+  const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
+  const downloadPendingBookingPdf=()=>{
+    if(!bookingPendingRows.length){
+      setMessage('All recorded Speed Post EDs have a Booking Date.');
+      return;
+    }
+    try{
+      // Generate offline in the logged-in user's browser, without uploading
+      // consignee names or stored tracking details to any new service.
+      const pdf=createBookingPendingPdf(bookingPendingRows.map(r=>({
+        trackingNo:r.trackingNo,
+        consigneeName:r.consigneeName||'Not entered',
+        entryDate:formatEntryDate(r.createdAt),
+        enteredBy:r.enteredBy||'Not available',
+        status:r.status||'Pending Tracking',
+        weight:r.weight||'Not available',
+        destination:destinationWithCountry(r)||'Not available'
+      })));
+      const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
+      const link=document.createElement('a');
+      link.href=url;
+      const istDate=new Intl.DateTimeFormat('en-CA',{
+        timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'
+      }).format(new Date()).replace(/\//g,'-');
+      link.download='Mayavi_SpeedPost_Booking_Not_Verified_'+istDate+'.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Delay revocation so mobile browsers can finish downloading the PDF.
+      setTimeout(()=>URL.revokeObjectURL(url),15000);
+      setMessage('PDF downloaded: '+bookingPendingRows.length+' ED entries without a verified Booking Date.');
+    }catch(error){
+      setMessage('PDF creation failed: '+(error?.message||'Unknown error'));
+    }
+  };
   // Daily totals are calculated from ALL unique ED records so moving a
   // Delivered packet does not change its original booking-date total.
   const dateCostGroups=entryDateCostGroups(rows);
@@ -577,7 +613,17 @@ export default function SpeedPostDashboard({currentUser}){
     <section style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:13}}>
         <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'}</h2><span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} packets • {currentUser?.displayName||'Private access'}</span></div>
-        <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <button type="button"
+            title="Download ED entries without a verified Booking Date as a PDF"
+            style={{...btn,padding:'8px 10px',background:'#fff7ed',color:'#9a3412',border:'1px solid #fbbf24',fontSize:11}}
+            disabled={!bookingPendingRows.length}
+            onClick={downloadPendingBookingPdf}>
+            DOWNLOAD BOOKING PENDING PDF ({bookingPendingRows.length})
+          </button>
+          <button style={{...btn,background:'#e7eefb',color:'#224f9b'}}
+            onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
+        </div>
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2470}}>
@@ -601,10 +647,12 @@ export default function SpeedPostDashboard({currentUser}){
                   style={{...input,height:30,minWidth:0,flex:1,padding:'4px 4px',fontSize:11}}
                   value={draftFor(r,'consigneeName')} placeholder="Consignee Name"
                   onChange={e=>changeRowDraft(r.trackingNo,'consigneeName',e.target.value)}/>
-                <button type="button" title="Save consignee name" style={{...btn,padding:'7px 5px',fontSize:10}}
-                  disabled={Boolean(rowSaving||anythingBusy)||
-                    draftFor(r,'consigneeName')===String(r.consigneeName||'')}
-                  onClick={()=>saveConsigneeRow(r)}>{rowSaving===r.trackingNo?'…':'SAVE'}</button>
+                {(!String(r.consigneeName||'').trim()||
+                  draftFor(r,'consigneeName')!==String(r.consigneeName||''))&&
+                  <button type="button" title="Save consignee name" style={{...btn,padding:'7px 5px',fontSize:10}}
+                    disabled={Boolean(rowSaving||anythingBusy)||
+                      draftFor(r,'consigneeName')===String(r.consigneeName||'')}
+                    onClick={()=>saveConsigneeRow(r)}>{rowSaving===r.trackingNo?'…':'SAVE'}</button>}
               </div>
             </td>
             <td className="sp-freeze-3" style={{...td,padding:'7px 4px'}}>
