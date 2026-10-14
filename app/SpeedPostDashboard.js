@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { checkEdChecksum } from '../lib/speedpostOcr.js';
 
 const API='/api/speedpost';
 const MAX_BATCH_PHOTOS=20;
@@ -115,7 +116,6 @@ export default function SpeedPostDashboard({currentUser}){
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
-  const [manualName,setManualName]=useState('');
   const [manualDestination,setManualDestination]=useState('');
 
   const [busy,setBusy]=useState('');
@@ -132,6 +132,8 @@ export default function SpeedPostDashboard({currentUser}){
   const [batchItems,setBatchItems]=useState([]);
   const [batchRunning,setBatchRunning]=useState(false);
   const [reviewBusy,setReviewBusy]=useState(false);
+  const [rowDrafts,setRowDrafts]=useState({});
+  const [rowSaving,setRowSaving]=useState('');
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -157,7 +159,7 @@ export default function SpeedPostDashboard({currentUser}){
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not save ED record');
       if(result.row)setRows(old=>[result.row,...old.filter(r=>r.trackingNo!==id)]);
       setTrackingNo(id);
-      if(result.manualSaved===true){setManualName('');setManualDestination('');}
+      if(result.manualSaved===true){setManualDestination('');}
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
         setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
@@ -192,6 +194,47 @@ export default function SpeedPostDashboard({currentUser}){
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
   },[]);
+  // Chrome/Android native Code-128 detection is faster for legible 1-D EMS barcodes.
+  // Other browsers and unreadable barcodes continue to the dedicated OCR route.
+  async function readEDBarcode(file){
+    if(typeof window==='undefined'||!window.BarcodeDetector||!window.createImageBitmap)return'';
+    let bitmap;
+    try{
+      const formats=await window.BarcodeDetector.getSupportedFormats?.()||[];
+      const allowed=['code_128','code_39','codabar'].filter(x=>formats.includes(x));
+      if(!allowed.length)return'';
+      bitmap=await window.createImageBitmap(file);
+      const reader=new window.BarcodeDetector({formats:allowed});
+      const results=await reader.detect(bitmap);
+      for(const result of results||[]){
+        const ed=normalizeED(String(result.rawValue||'').replace(/[^A-Z0-9]/gi,''));
+        if(ed&&checkEdChecksum(ed))return ed;
+      }
+      return'';
+    }catch{return'';}
+    finally{try{bitmap?.close?.()}catch{}}
+  }
+  function draftFor(row,field){
+    return rowDrafts[row.trackingNo]?.[field]??String(row[field]||'');
+  }
+  function changeRowDraft(id,field,value){
+    setRowDrafts(old=>({...old,[id]:{...(old[id]||{}),[field]:value}}));
+  }
+  async function saveConsigneeRow(row){
+    const trackingNo=row.trackingNo;
+    const data={consigneeName:draftFor(row,'consigneeName'),consigneeAddress:draftFor(row,'consigneeAddress')};
+    setRowSaving(trackingNo);setMessage('Saving consignee for '+trackingNo+'…');
+    try{
+      const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo,action:'save-consignee',...data})});
+      const result=await response.json();
+      if(!response.ok||!result.ok)throw Error(result.error||'Unable to save name/address');
+      if(result.row)setRows(old=>old.map(r=>r.trackingNo===trackingNo?result.row:r));
+      setRowDrafts(old=>{const next={...old};delete next[trackingNo];return next;});
+      setMessage(trackingNo+' — consignee name and address saved.');
+    }catch(e){setMessage(trackingNo+' — '+(e.message||'Save failed')); }
+    finally{setRowSaving('');}
+  }
   function updateBatchItem(index,changes){
     setBatchItems(old=>old.map((x,i)=>index===i?{...x,...changes}:x));
   }
@@ -240,6 +283,17 @@ export default function SpeedPostDashboard({currentUser}){
         }
         updateBatchItem(i,{status:'reading'});
         try{
+          const barcode=await readEDBarcode(file);
+          if(barcode){
+            const resp=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+              body:JSON.stringify({action:'manual-save',trackingNo:barcode})});
+            const saved=await resp.json();
+            if(!resp.ok||!saved.ok)throw Error(saved.error||'Could not save barcode ED');
+            if(saved.row)setRows(old=>[saved.row,...old.filter(x=>x.trackingNo!==barcode)]);
+            updateBatchItem(i,{ed:barcode,status:'saved',
+              error:'Barcode read and saved. Enter consignee name/address in its table row.'});
+            continue;
+          }
           const form=new FormData();form.append('photo',file);
           const controller=new AbortController();
           const timer=setTimeout(()=>controller.abort(),68000);
@@ -299,8 +353,16 @@ export default function SpeedPostDashboard({currentUser}){
     setPhotoRecipientConfidence('unreadable');
     if(file.size>8*1024*1024){setMessage('Please upload a photo below 8 MB.');return;}
     setOcrBusy(true);
-    setOcrProgress('Locating the ED number next to the EMS slip…');
+    setOcrProgress('Scanning ED barcode, then OCR if necessary…');
     try{
+      const barcode=await readEDBarcode(file);
+      if(barcode){
+        setTrackingNo(barcode);
+        setOcrProgress('Verified ED barcode: '+barcode);
+        await trackOne(barcode,'manual-save',{});
+        setMessage(barcode+' — ED barcode saved. Fill name/address in this ED row.');
+        return;
+      }
       const form=new FormData();
       form.append('photo',file);
       const controller=new AbortController();
@@ -381,7 +443,7 @@ export default function SpeedPostDashboard({currentUser}){
   // Daily totals are calculated from ALL unique ED records so moving a
   // Delivered packet does not change its original booking-date total.
   const dateCostGroups=entryDateCostGroups(rows);
-  return <main style={{padding:'18px min(4vw,36px) 35px',background:'#f4f7fc',minHeight:'70vh'}}>
+  return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
         0%,100%{background-color:#fff0ed;box-shadow:inset 0 0 0 1px #fecaca}
@@ -392,12 +454,13 @@ export default function SpeedPostDashboard({currentUser}){
         .sp-duplicate-alert,.sp-duplicate-row{animation:none;background-color:#fee2e2;outline:2px solid #b91c1c}
       }
     `}</style>
-    <section style={{...card,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:15}}>
-      <div style={{fontSize:11,letterSpacing:1.4,fontWeight:800,opacity:.82}}>MAYAVI • PRIVATE</div>
-      <h1 style={{margin:'6px 0 9px',fontSize:24}}>India Speed Post Tracking</h1>
-      <p style={{margin:0,fontSize:13}}>Visible to Admin and Sonu only • Photos processed privately and not stored • Separate from Air Cargo MAWBs</p>
+    <section style={{...card,padding:'8px 12px',borderRadius:8,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:8}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+        <h1 style={{margin:0,fontSize:17}}>Speed Post • EMS Tracking</h1>
+        <span style={{fontSize:11}}>PRIVATE • Admin / Sonu</span>
+      </div>
     </section>
-    <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:9,marginBottom:15}}>
+    <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
       <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>setSpeedPostTab('TRACKING')}
         style={{...btn,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         EMS TRACKING
@@ -420,12 +483,12 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
     </div>}
     {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED')&&<>
-    {speedPostTab==='TRACKING'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:14,marginBottom:15}}>
+    {speedPostTab==='TRACKING'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))',gap:8,marginBottom:8}}>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>1. Upload receipt / photo</div>
         <input ref={fileRef} type="file" accept="image/*" multiple onChange={uploadImage} disabled={anythingBusy} style={input}/>
         <div style={{fontSize:12,color:'#1e40af',fontWeight:700,marginTop:7}}>Select up to 20 photos together • up to 8 MB each. One photo also works.</div>
-        <div style={{color:'#64748b',fontSize:12,marginTop:9}}>One photo reads <strong>EMS ED barcode + TO consignee name and address</strong>. Sideways labels are supported. If the ED is unclear, confirm the number before saving.</div>
+        <div style={{color:'#64748b',fontSize:11,marginTop:5}}>Barcode reader first, OCR fallback. Up to 20 photos. Confirm unclear ED numbers.</div>
         {imageName&&<div style={{fontSize:11,marginTop:7,color:'#475569'}}>Selected: {imageName}</div>}
         {batchItems.length>0&&<div role="status" style={{fontSize:12,color:'#1e40af',marginTop:8}}>
           Batch: {batchItems.filter(x=>['saved','duplicate','review','error'].includes(x.status)).length}/{batchItems.length} processed •
@@ -438,19 +501,17 @@ export default function SpeedPostDashboard({currentUser}){
       </section>
       <section style={card}>
         <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>2. Track & save consignment</div>
-        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo,'manual-save',{consigneeName:manualName,destination:manualDestination});}}>
+        <form onSubmit={e=>{e.preventDefault();trackOne(trackingNo,'manual-save',{destination:manualDestination});}}>
           <label htmlFor="speedPostManualED" style={{fontSize:12,display:'block',marginBottom:4}}>ED tracking number *</label>
           <input id="speedPostManualED" style={{...input,textTransform:'uppercase',marginBottom:9}} maxLength={18} value={trackingNo} onChange={e=>setTrackingNo(e.target.value.toUpperCase())} placeholder="ED977951280IN"/>
-          <label htmlFor="speedPostManualName" style={{fontSize:12,display:'block',marginBottom:4}}>Consignee Name (manual)</label>
-          <input id="speedPostManualName" style={{...input,marginBottom:9}} maxLength={100} value={manualName} onChange={e=>setManualName(e.target.value)} placeholder="Enter recipient name"/>
-          <label htmlFor="speedPostManualDestination" style={{fontSize:12,display:'block',marginBottom:4}}>Destination (manual)</label>
+                    <label htmlFor="speedPostManualDestination" style={{fontSize:12,display:'block',marginBottom:4}}>Destination (manual)</label>
           <input id="speedPostManualDestination" style={{...input,marginBottom:9}} maxLength={120} value={manualDestination} onChange={e=>setManualDestination(e.target.value)} placeholder="e.g. Leicester, UK"/>
           <button style={{...btn,opacity:anythingBusy?.6:1,width:'100%'}} disabled={anythingBusy} type="submit">{anythingBusy?'CHECKING BOTH SITES…':'SAVE & TRACK (BOTH SITES) →'}</button>
         </form>
-        <div style={{fontSize:11,color:'#64748b',marginTop:9}}>Each ED number is checked individually on <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer">TrackParcel ↗</a>. MySpeedPost EMS and TrackParcel are checked together. Manual name/destination are protected; tariff, booking date, weight and delivery details come from available verified tracking results. Both are third-party services.</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:5}}>Enter consignee name/address in the table below. EMS + TrackParcel are checked for other tracking details.</div>
       </section>
-      <section style={card}>
-        <div style={{fontWeight:800,marginBottom:9,color:'#163c80'}}>3. TO Consignee OCR</div>
+      {photoHasBeenRead&&<details style={{...card,gridColumn:'1 / -1',padding:9}}>
+        <summary style={{fontSize:12,color:'#163c80',fontWeight:800,cursor:'pointer'}}>Optional: review name/address detected in photo</summary>
         {photoHasBeenRead&&<div role="status" style={{fontSize:11,fontWeight:700,marginBottom:9,
           color:['high','medium'].includes(photoRecipientConfidence)?'#166534':'#9a3412'}}>
           {['high','medium'].includes(photoRecipientConfidence)
@@ -472,8 +533,8 @@ export default function SpeedPostDashboard({currentUser}){
           onClick={async()=>{const id=normalizeED(trackingNo);if(!id)return;setPhotoEdNeedsEntry(false);await trackOne(id,'photo-add',photoRecipient);}}>
           FILL MISSING CONSIGNEE DETAILS FOR THIS ED
         </button>}
-        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>OCR reads from the TO block. Existing ED numbers get their missing fields filled; valid existing data stays. Check unclear OCR before saving. If ED was unreadable, enter the barcode number above. Sender is not filled.</div>
-      </section>
+        <div style={{fontSize:11,color:'#64748b',marginTop:10}}>You can enter name/address directly in each shipment row below; sender is not filled.</div>
+      </details>}
     </div>}
     {batchItems.length>0&&<section style={{...card,marginBottom:14}}>
       <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10,marginBottom:12}}>
@@ -533,8 +594,25 @@ export default function SpeedPostDashboard({currentUser}){
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
             <td style={td}>{i+1}</td>
             <td style={td}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
-            <td style={{...td,minWidth:160,maxWidth:210,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'consigneeName')}</td>
-            <td style={{...td,minWidth:200,maxWidth:300,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'consigneeAddress')}</td>
+            <td style={{...td,minWidth:170,maxWidth:220,whiteSpace:'normal'}}>
+              <input aria-label={'Name for '+r.trackingNo} maxLength={100}
+                style={{...input,height:34,minWidth:160,padding:'5px 7px',fontSize:12}}
+                value={draftFor(r,'consigneeName')} placeholder="Enter consignee name"
+                onChange={e=>changeRowDraft(r.trackingNo,'consigneeName',e.target.value)}/>
+            </td>
+            <td style={{...td,minWidth:220,maxWidth:310,whiteSpace:'normal'}}>
+              <textarea aria-label={'Address for '+r.trackingNo} maxLength={700}
+                style={{...input,height:54,minWidth:210,padding:'5px 7px',fontSize:12,resize:'vertical'}}
+                value={draftFor(r,'consigneeAddress')} placeholder="Enter consignee address"
+                onChange={e=>changeRowDraft(r.trackingNo,'consigneeAddress',e.target.value)}/>
+              <button type="button" style={{...btn,padding:'5px 9px',fontSize:11,marginTop:4}}
+                disabled={Boolean(rowSaving||anythingBusy)||(!rowDrafts[r.trackingNo]||
+                  (draftFor(r,'consigneeName')===String(r.consigneeName||'')&&
+                   draftFor(r,'consigneeAddress')===String(r.consigneeAddress||'')))}
+                onClick={()=>saveConsigneeRow(r)}>
+                {rowSaving===r.trackingNo?'SAVING…':'SAVE NAME / ADDRESS'}
+              </button>
+            </td>
             <td style={td}>{formatEntryDate(r.createdAt)}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
@@ -551,7 +629,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
-              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button><button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#e4edfa',color:'#1d4ed8'}} disabled={anythingBusy} onClick={async()=>{const name=window.prompt('Consignee name for '+r.trackingNo,r.consigneeName||'');if(name===null)return;const dest=window.prompt('Destination for '+r.trackingNo,r.destination||'');if(dest===null)return;await trackOne(r.trackingNo,'manual-save',{consigneeName:name,destination:dest});}}>EDIT NAME / DEST.</button>
+              <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button><button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#e4edfa',color:'#1d4ed8'}} disabled={anythingBusy} onClick={async()=>{const dest=window.prompt('Destination for '+r.trackingNo,r.destination||'');if(dest===null)return;await trackOne(r.trackingNo,'manual-save',{destination:dest});}}>EDIT DEST.</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
@@ -559,7 +637,7 @@ export default function SpeedPostDashboard({currentUser}){
           </tr>):<tr><td colSpan={20} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Name and Address can be typed and saved in the same row. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;

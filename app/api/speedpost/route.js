@@ -291,6 +291,27 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Please confirm a valid ED tracking number.'},400);
+    if(body?.action==='save-consignee'){
+      // Edits are independent of external tracking: keep tariff, weight,
+      // delivery scans, status and manual destination completely untouched.
+      const cleanManual=value=>String(value??'').normalize('NFKC')
+        .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim();
+      const consigneeName=cleanManual(body?.consigneeName);
+      const consigneeAddress=cleanManual(body?.consigneeAddress);
+      if(consigneeName&&!validConsigneeName(consigneeName))
+        return json({ok:false,error:'Enter a valid consignee name (up to 100 letters).'},400);
+      if(consigneeAddress&&!validConsigneeAddress(consigneeAddress))
+        return json({ok:false,error:'Enter a valid consignee address (5–700 characters).'},400);
+      const patch=JSON.stringify({consigneeName,consigneeAddress,
+        consigneeSource:'Manually confirmed by operator',
+        consigneeManualAt:new Date().toISOString()});
+      const saved=await sql`UPDATE mayavi_speedpost
+        SET data=data || ${patch}::jsonb,updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(!saved.length)return json({ok:false,error:'Save the ED number first.'},404);
+      return json({ok:true,consigneeSaved:true,row:rowToResult(saved[0])});
+    }
     if(body?.action==='save-sender'){
       const senderName=String(body?.senderName||'').normalize('NFKC')
         .replace(/[\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim();
