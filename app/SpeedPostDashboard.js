@@ -568,9 +568,9 @@ export default function SpeedPostDashboard({currentUser}){
         <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:3050}}>
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
-            'Tariff (INR)','Cash Cost (₹)','Total Cost (₹)','Cost per kg (₹)',
-            'Origin','Tracking Address','Booking Date','Out for Delivery','Status',
-            'Weight','Rounded Weight (kg)','Delivery Date / Time','Last Updated','Actions'
+            'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
+            'Total Cost (₹)','Cost per kg (₹)','Status','Delivery Date / Time',
+            'Last Updated','Origin','Weight','Rounded Weight (kg)','Actions'
           ].map((label,index)=><th key={label} className={index<5?'sp-freeze-'+index:undefined}
             style={{...th,...(index<5?{padding:'9px 6px'}:{})}}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
@@ -593,26 +593,26 @@ export default function SpeedPostDashboard({currentUser}){
             <td className="sp-freeze-3" style={{...td,padding:'9px 5px'}}>{formatEntryDate(r.createdAt)}</td>
             <td className="sp-freeze-4" style={{...td,padding:'9px 5px',overflow:'hidden',textOverflow:'ellipsis'}}
               title={destinationWithCountry(r)}>{destinationWithCountry(r)||'—'}</td>
+
+            <td style={td}>{field(r,'bookingDate')}</td>
+            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
-            <td style={td}>{shortOrigin(r.origin)||'—'}</td>
-            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
-            <td style={td}>{field(r,'bookingDate')}</td>
-            <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Delivered: {r.deliveredAtText||'Exact delivery time not verified'}</small>}</td>
+            <td style={td}>{r.deliveredAtText||'—'}</td>
+            <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small>}</td>
+            <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
-            <td style={td}>{r.deliveredAtText||'—'}</td>
-            <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={19} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={18} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
