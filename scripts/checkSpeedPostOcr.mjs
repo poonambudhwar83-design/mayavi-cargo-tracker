@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {checkEdChecksum,edOcrCandidates} from '../lib/speedpostOcr.js';
 import {readConsigneeFromEmsTO} from '../lib/speedpostToOcr.js';
 import {parseTrackParcelDetails} from '../lib/trackparcel.js';
+import {parseSpeedPostText} from '../lib/speedpost.js';
 
 // Regression based on the customer's parcel photographed in October 2026.
 // Tests only manually verified OCR tokens, never uses customer images/files,
@@ -122,4 +123,22 @@ const parsedWeight=parseTrackParcelDetails(realWeightWithDisclaimer,'ED977952339
 assert.equal(parsedWeight?.weight,'9710 g');
 assert.equal(parsedWeight?.origin,'');
 assert.equal(parsedWeight?.status,'');
+
+// A MySpeedPost ED-matched receipt must populate tariff and booking date.
+// Never infer tariff from weight or from an unrelated site's example.
+const receiptExample=[
+  'Consignment Details','Consignment #','ED977952515IN',
+  'Current Status','Item Dispatched',
+  'Booked On','14 Oct 2026, 8:12 AM',
+  'Last Updated','14 Oct 2026, 8:13 AM',
+  'Article Type','International EMS',
+  'Tariff','6460.42 INR'
+].join('\n');
+const receiptParsed=parseSpeedPostText(receiptExample,'ED977952515IN');
+assert.equal(receiptParsed?.tariff,'6460.42','Parse explicitly labeled MySpeedPost tariff');
+assert.equal(receiptParsed?.bookingDate,'14 Oct 2026, 8:12 AM',
+  'Keep actual ED-matched MySpeedPost booking date');
+assert.equal(parseSpeedPostText(receiptExample,'ED977952461IN'),null,
+  'Never accept another ED consignment receipt');
+
 console.log('TrackParcel date, weight and TO-address regression passed');
