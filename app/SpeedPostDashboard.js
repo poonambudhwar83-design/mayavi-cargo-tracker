@@ -45,16 +45,17 @@ function destinationWithCountry(row={}){
 }
 
 function shipmentCountry(row){
-  const explicit=String(row.destinationCountry||row.country||'').trim().toUpperCase();
+  // Country-wise summaries must come from the tracked DESTINATION, not origin.
   const destination=String(row.destination||'').trim().toUpperCase();
-  const combined=explicit+' '+destination;
-  if(/\\b(UK|UNITED KINGDOM|ENGLAND|SCOTLAND|WALES|GREAT BRITAIN|GB)\\b/.test(combined))return 'UK';
-  if(/\\b(USA|UNITED STATES(?: OF AMERICA)?|US)\\b/.test(combined))return 'USA';
-  if(/\\b(CANADA|CA)\\b/.test(combined))return 'Canada';
-  if(/\\b(AUSTRALIA|AU)\\b/.test(combined))return 'Australia';
-  if(/\\b(NEW ZEALAND|NZ)\\b/.test(combined))return 'New Zealand';
-  if(/\\b(UAE|UNITED ARAB EMIRATES|DUBAI|ABU DHABI)\\b/.test(combined))return 'UAE';
-  if(/\\b(LEICESTER|LEICESTERSHIRE)\\b/.test(combined))return 'UK';
+  const explicit=String(row.destinationCountry||row.country||'').trim().toUpperCase();
+  const countryText=destination+' '+explicit;
+  if(/\b(UK|UNITED KINGDOM|ENGLAND|SCOTLAND|WALES|GREAT BRITAIN|GB|LEICESTER|LEICESTERSHIRE)\b/.test(countryText))return 'UK';
+  if(/\b(USA|UNITED STATES(?: OF AMERICA)?|US)\b/.test(countryText))return 'USA';
+  if(/\bCANADA\b/.test(countryText))return 'Canada';
+  if(/\bAUSTRALIA\b/.test(countryText))return 'Australia';
+  if(/\bNEW ZEALAND\b/.test(countryText))return 'New Zealand';
+  if(/\b(UAE|UNITED ARAB EMIRATES|DUBAI|ABU DHABI)\b/.test(countryText))return 'UAE';
+  // Do not invent a country from an unrecognized destination city.
   return explicit||'Unknown';
 }
 function weightSummary(rows){
