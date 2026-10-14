@@ -251,6 +251,7 @@ export async function POST(request){
       data.delivered=true;
       data.status='Delivered';
     }else if(freshNotDelivered){
+      if(/^delivered$/i.test(String(data.status||'')))data.status='Pending Verification';
       data.delivered=false;
       data.deliveredAtText='';
       data.trackParcelDeliveredAtText='';

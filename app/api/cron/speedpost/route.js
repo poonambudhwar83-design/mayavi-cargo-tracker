@@ -37,7 +37,7 @@ async function updateOne(sql,row){
     Boolean(incoming.deliveredAtText);
   const statusPatch=verified?(delivered?
     {status:'Delivered',delivered:true,outForDelivery:false,statusVerifiedSource:incoming.statusVerifiedSource}:
-    {status:incoming.status||'Pending Verification',delivered:false,statusVerifiedSource:incoming.statusVerifiedSource}):{};
+    {status:/^delivered$/i.test(String(incoming.status||''))?'Pending Verification':(incoming.status||'Pending Verification'),delivered:false,statusVerifiedSource:incoming.statusVerifiedSource}):{};
   const statusJson=JSON.stringify(statusPatch);
   await sql`UPDATE mayavi_speedpost SET
     data=data
