@@ -449,7 +449,7 @@ export default function SpeedPostDashboard({currentUser}){
       .sp-freeze-1{left:39px;width:133px;min-width:133px;max-width:133px}
       .sp-freeze-2{left:172px;width:187px;min-width:187px;max-width:187px}
       .sp-freeze-3{left:359px;width:95px;min-width:95px;max-width:95px}
-      .sp-freeze-4{left:454px;width:150px;min-width:150px;max-width:150px;box-shadow:2px 0 5px rgba(30,50,80,.1)}
+      .sp-freeze-4{left:454px;width:150px;min-width:150px;max-width:150px;border-right:1px solid rgba(148,163,184,.18);box-shadow:1px 0 3px rgba(30,50,80,.035)}
       .sp-duplicate-row .sp-freeze-0,.sp-duplicate-row .sp-freeze-1,.sp-duplicate-row .sp-freeze-2,
       .sp-duplicate-row .sp-freeze-3,.sp-duplicate-row .sp-freeze-4{
         animation:speedPostDuplicateBlink 1.3s linear infinite
