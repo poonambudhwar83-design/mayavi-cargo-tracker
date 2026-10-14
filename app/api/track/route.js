@@ -565,7 +565,7 @@ async function handle(mawb,fallback={}){
   const omanFastPath=mawb.startsWith('910-');
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
-  const skipGenericApi=etihadFastPath||ethiopianFastPath||klmFastPath||airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath;
+  const skipGenericApi=ethiopianFastPath||klmFastPath||airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath||etihadFastPath;
   // KLM is live-only: neither a saved shipment nor caller fallback can be
   // used as the tracking answer. Preserve saved records in DB on API failure.
   const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
@@ -1413,7 +1413,7 @@ async function handle(mawb,fallback={}){
     if(mawb.startsWith('176-')){
       try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
       catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
-    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||etihadFastPath){
+    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
