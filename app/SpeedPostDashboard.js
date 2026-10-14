@@ -161,7 +161,7 @@ export default function SpeedPostDashboard({currentUser}){
       
       if(result.duplicate===true){
         setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
-        setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName||!result.row?.consigneeAddress?' Please fill the missing consignee fields from this photo.':''));
+        setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName?' Please enter the consignee name.':''));
         return;
       }
       if(result.created===true||result.manualSaved===true){
@@ -221,17 +221,18 @@ export default function SpeedPostDashboard({currentUser}){
   }
   async function saveConsigneeRow(row){
     const trackingNo=row.trackingNo;
-    const data={consigneeName:draftFor(row,'consigneeName'),consigneeAddress:draftFor(row,'consigneeAddress')};
-    setRowSaving(trackingNo);setMessage('Saving consignee for '+trackingNo+'…');
+    const consigneeName=draftFor(row,'consigneeName');
+    setRowSaving(trackingNo);setMessage('Saving consignee name for '+trackingNo+'…');
     try{
+      // Save ONLY the name. The address (if already stored) is untouched.
       const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
-        body:JSON.stringify({trackingNo,action:'save-consignee',...data})});
+        body:JSON.stringify({trackingNo,action:'save-consignee-name',consigneeName})});
       const result=await response.json();
-      if(!response.ok||!result.ok)throw Error(result.error||'Unable to save name/address');
+      if(!response.ok||!result.ok)throw Error(result.error||'Unable to save consignee name');
       if(result.row)setRows(old=>old.map(r=>r.trackingNo===trackingNo?result.row:r));
       setRowDrafts(old=>{const next={...old};delete next[trackingNo];return next;});
-      setMessage(trackingNo+' — consignee name and address saved.');
-    }catch(e){setMessage(trackingNo+' — '+(e.message||'Save failed')); }
+      setMessage(trackingNo+' — consignee name saved.');
+    }catch(e){setMessage(trackingNo+' — '+(e.message||'Save failed'));}
     finally{setRowSaving('');}
   }
   function updateBatchItem(index,changes){
@@ -255,7 +256,7 @@ export default function SpeedPostDashboard({currentUser}){
       const data=await saveBatchED(ed);
       if(data.row)setRows(old=>[data.row,...old.filter(r=>r.trackingNo!==ed)]);
       updateBatchItem(index,{status:'saved',ed,
-        error:'ED saved. Enter name/address in the table row below.'});
+        error:'ED saved. Enter consignee name in the table row below.'});
     }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
     finally{setReviewBusy(false);}
   }
@@ -269,7 +270,7 @@ export default function SpeedPostDashboard({currentUser}){
     setPhotoRecipientConfidence('unreadable');
     setOcrCandidates([]);
     setPhotoRecipient({consigneeName:'',consigneeAddress:''});
-    setMessage('Reading ED numbers in '+files.length+' photos. Name and address will be entered manually.');
+    setMessage('Reading ED numbers in '+files.length+' photos. Consignee name will be entered manually.');
     let next=0;
     const work=async()=>{
       while(next<files.length){
@@ -289,7 +290,7 @@ export default function SpeedPostDashboard({currentUser}){
             if(!resp.ok||!saved.ok)throw Error(saved.error||'Could not save barcode ED');
             if(saved.row)setRows(old=>[saved.row,...old.filter(x=>x.trackingNo!==barcode)]);
             updateBatchItem(i,{ed:barcode,status:'saved',
-              error:'Barcode read and saved. Enter consignee name/address in its table row.'});
+              error:'Barcode read and saved. Enter consignee name in its table row.'});
             continue;
           }
           const form=new FormData();form.append('photo',file);form.append('edOnly','1');
@@ -312,7 +313,7 @@ export default function SpeedPostDashboard({currentUser}){
           const saved=await saveBatchED(ed);
           if(saved.row)setRows(old=>[saved.row,...old.filter(r=>r.trackingNo!==ed)]);
           updateBatchItem(i,{status:'saved',
-            error:'ED saved. Enter name/address manually in the table row.'});
+            error:'ED saved. Enter consignee name manually in the table row.'});
           // Deliberately avoid a third-party tracking fetch inside this batch:
           // the ED + TO fields are saved first and tracking can be refreshed.
         }catch(e){
@@ -353,7 +354,7 @@ export default function SpeedPostDashboard({currentUser}){
         setTrackingNo(barcode);
         setOcrProgress('Verified ED barcode: '+barcode);
         await trackOne(barcode,'manual-save',{});
-        setMessage(barcode+' — ED barcode saved. Fill name/address in this ED row.');
+        setMessage(barcode+' — ED barcode saved. Fill consignee name in this ED row.');
         return;
       }
       const form=new FormData();
@@ -383,7 +384,7 @@ export default function SpeedPostDashboard({currentUser}){
         setOcrProgress('ED found: '+candidates[0].number);
         await trackOne(candidates[0].number,'manual-save',{});
         setOcrCandidates([]);
-        setMessage(candidates[0].number+' saved. Enter consignee name/address in its row.');
+        setMessage(candidates[0].number+' saved. Enter consignee name in its row.');
       }else{
         setMessage(verifiedCandidates.length?'Multiple ED readings found. Confirm the correct barcode number before saving.':'OCR found no checksum-valid ED. The suggested number may be wrong (for example 2 read as 5). Read and enter the printed ED number before saving.');
       }
@@ -437,13 +438,20 @@ export default function SpeedPostDashboard({currentUser}){
         50%{background-color:#ffaaaa;box-shadow:inset 0 0 0 2px #b91c1c}
       }
       .sp-duplicate-alert,.sp-duplicate-row{animation:speedPostDuplicateBlink 1.3s linear infinite}
-      .sp-freeze-0,.sp-freeze-1,.sp-freeze-2,.sp-freeze-3{position:sticky;box-sizing:border-box;background:#fff;z-index:3}
-      thead .sp-freeze-0,thead .sp-freeze-1,thead .sp-freeze-2,thead .sp-freeze-3{background:#f5f8fe;z-index:5}
-      .sp-freeze-0{left:0;width:45px;min-width:45px;max-width:45px}
-      .sp-freeze-1{left:45px;width:135px;min-width:135px;max-width:135px}
-      .sp-freeze-2{left:180px;width:160px;min-width:160px;max-width:160px}
-      .sp-freeze-3{left:340px;width:285px;min-width:285px;max-width:285px;box-shadow:3px 0 6px rgba(30,50,80,.11)}
-      .sp-duplicate-row .sp-freeze-0,.sp-duplicate-row .sp-freeze-1,.sp-duplicate-row .sp-freeze-2,.sp-duplicate-row .sp-freeze-3{
+      .sp-freeze-0,.sp-freeze-1,.sp-freeze-2,.sp-freeze-3,.sp-freeze-4{
+        position:sticky;box-sizing:border-box;background:#fff;z-index:3
+      }
+      thead .sp-freeze-0,thead .sp-freeze-1,thead .sp-freeze-2,thead .sp-freeze-3,thead .sp-freeze-4{
+        background:#f5f8fe;z-index:5
+      }
+      /* Exact sum of each fixed width equals the next column's left offset. */
+      .sp-freeze-0{left:0;width:43px;min-width:43px;max-width:43px}
+      .sp-freeze-1{left:43px;width:138px;min-width:138px;max-width:138px}
+      .sp-freeze-2{left:181px;width:194px;min-width:194px;max-width:194px}
+      .sp-freeze-3{left:375px;width:105px;min-width:105px;max-width:105px}
+      .sp-freeze-4{left:480px;width:163px;min-width:163px;max-width:163px;box-shadow:3px 0 6px rgba(30,50,80,.11)}
+      .sp-duplicate-row .sp-freeze-0,.sp-duplicate-row .sp-freeze-1,.sp-duplicate-row .sp-freeze-2,
+      .sp-duplicate-row .sp-freeze-3,.sp-duplicate-row .sp-freeze-4{
         animation:speedPostDuplicateBlink 1.3s linear infinite
       }
       @media (prefers-reduced-motion:reduce){
@@ -530,7 +538,7 @@ export default function SpeedPostDashboard({currentUser}){
           </div>
           {item.ed&&<div style={{fontSize:12,marginTop:5}}>ED: <strong>{item.ed}</strong></div>}
           {item.consigneeName&&<div style={{fontSize:12}}>Consignee: {item.consigneeName}</div>}
-          {item.consigneeAddress&&<div style={{fontSize:11,color:'#475569',whiteSpace:'normal',overflowWrap:'anywhere'}}>Address: {item.consigneeAddress}</div>}
+          
           {item.error&&<div style={{fontSize:11,color:item.status==='error'?'#b91c1c':'#92400e',marginTop:6}}>{item.error}</div>}
           {item.status==='review'&&<div style={{marginTop:8}}>
             <label style={{fontSize:11,display:'block',marginBottom:5}}>Verify ED number on photo #{i+1}</label>
@@ -548,7 +556,7 @@ export default function SpeedPostDashboard({currentUser}){
           </div>}
         </div>)}
       </div>
-      <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter consignee name and address manually in each row. Uncertain OCR numbers require confirmation.</div>
+      <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter only the consignee name manually in each row. Uncertain OCR numbers require confirmation.</div>
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
@@ -558,47 +566,45 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:3050}}>
-          <thead><tr>{['S.No.','Tracking No.','Consignee Name','Consignee Address','Entry Date','Total Cost (₹)','Origin','Destination','Tracking Address','Tariff (INR)','Booking Date','Out for Delivery','Status','Delivery Date / Time','Weight','Rounded Weight (kg)','Cash Cost (₹)','Cost per kg (₹)','Last Updated','Actions'].map((label,index)=><th key={label} className={index<4?'sp-freeze-'+index:undefined} style={{...th,...(index<4?{padding:'9px 6px'}:{})}}>{label}</th>)}</tr></thead>
+          <thead><tr>{[
+            'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
+            'Tariff (INR)','Cash Cost (₹)','Total Cost (₹)','Cost per kg (₹)',
+            'Origin','Tracking Address','Booking Date','Out for Delivery','Status',
+            'Weight','Rounded Weight (kg)','Delivery Date / Time','Last Updated','Actions'
+          ].map((label,index)=><th key={label} className={index<5?'sp-freeze-'+index:undefined}
+            style={{...th,...(index<5?{padding:'9px 6px'}:{})}}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
-            <td className="sp-freeze-0" style={{...td,padding:'8px 6px'}}>{i+1}</td>
-            <td className="sp-freeze-1" style={{...td,padding:'8px 6px'}}><strong>{r.trackingNo}</strong>{r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}</td>
-            <td className="sp-freeze-2" style={{...td,padding:'7px 5px',whiteSpace:'normal'}}>
-              <input aria-label={'Name for '+r.trackingNo} maxLength={100}
-                style={{...input,height:32,minWidth:0,padding:'4px 6px',fontSize:12}}
-                value={draftFor(r,'consigneeName')} placeholder="Enter consignee name"
-                onChange={e=>changeRowDraft(r.trackingNo,'consigneeName',e.target.value)}/>
+            <td className="sp-freeze-0" style={{...td,padding:'8px 5px'}}>{i+1}</td>
+            <td className="sp-freeze-1" style={{...td,padding:'8px 5px'}}><strong>{r.trackingNo}</strong>
+              {r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}
             </td>
-            <td className="sp-freeze-3" style={{...td,padding:'7px 5px',whiteSpace:'normal'}}>
-              <div style={{display:'flex',alignItems:'center',gap:5}}>
-                <input type="text" aria-label={'Address for '+r.trackingNo}
-                  title={draftFor(r,'consigneeAddress')||'Enter full consignee address'}
-                  maxLength={700} style={{...input,height:32,padding:'4px 6px',fontSize:12,minWidth:0,flex:1}}
-                  value={draftFor(r,'consigneeAddress')} placeholder="Enter consignee address"
-                  onChange={e=>changeRowDraft(r.trackingNo,'consigneeAddress',e.target.value)}/>
-                <button type="button" title="Save consignee name and address"
-                  style={{...btn,padding:'8px 9px',fontSize:11,whiteSpace:'nowrap'}}
-                  disabled={Boolean(rowSaving||anythingBusy)||(!rowDrafts[r.trackingNo]||
-                    (draftFor(r,'consigneeName')===String(r.consigneeName||'')&&
-                     draftFor(r,'consigneeAddress')===String(r.consigneeAddress||'')))}
-                  onClick={()=>saveConsigneeRow(r)}>
-                  {rowSaving===r.trackingNo?'…':'SAVE'}
-                </button>
+            <td className="sp-freeze-2" style={{...td,padding:'7px 5px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:4}}>
+                <input aria-label={'Consignee Name for '+r.trackingNo} maxLength={100}
+                  style={{...input,height:32,minWidth:0,flex:1,padding:'4px 5px',fontSize:11}}
+                  value={draftFor(r,'consigneeName')} placeholder="Consignee Name"
+                  onChange={e=>changeRowDraft(r.trackingNo,'consigneeName',e.target.value)}/>
+                <button type="button" title="Save consignee name" style={{...btn,padding:'8px 6px',fontSize:10}}
+                  disabled={Boolean(rowSaving||anythingBusy)||
+                    draftFor(r,'consigneeName')===String(r.consigneeName||'')}
+                  onClick={()=>saveConsigneeRow(r)}>{rowSaving===r.trackingNo?'…':'SAVE'}</button>
               </div>
             </td>
-            <td style={td}>{formatEntryDate(r.createdAt)}</td>
-            <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
-            <td style={td}>{shortOrigin(r.origin)||'—'}</td>
-            <td style={td}>{destinationWithCountry(r)||'—'}</td>
-            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
+            <td className="sp-freeze-3" style={{...td,padding:'9px 5px'}}>{formatEntryDate(r.createdAt)}</td>
+            <td className="sp-freeze-4" style={{...td,padding:'9px 5px',overflow:'hidden',textOverflow:'ellipsis'}}
+              title={destinationWithCountry(r)}>{destinationWithCountry(r)||'—'}</td>
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
+            <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
+            <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
+            <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
+            <td style={td}>{shortOrigin(r.origin)||'—'}</td>
+            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
             <td style={td}>{field(r,'bookingDate')}</td>
             <td style={td}>{r.outForDelivery?'YES'+(r.outForDeliveryAt?' • '+r.outForDeliveryAt:''):r.delivered?'COMPLETED':'—'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Delivered: {r.deliveredAtText||'Exact delivery time not verified'}</small>}</td>
-            <td style={td}>{r.deliveredAtText||'—'}</td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
-            <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
-            <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
+            <td style={td}>{r.deliveredAtText||'—'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
@@ -606,10 +612,10 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={20} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={19} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Name and Address can be typed and saved in the same row. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
