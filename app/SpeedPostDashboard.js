@@ -8,8 +8,8 @@ const PARALLEL_BATCH_OCR=2;
 const card={border:'1px solid #dce5f1',borderRadius:14,padding:17,background:'#fff',boxShadow:'0 2px 8px rgba(15,23,42,.04)'};
 const btn={border:0,borderRadius:8,padding:'10px 14px',background:'#2258ce',color:'#fff',fontWeight:800,cursor:'pointer'};
 const input={width:'100%',boxSizing:'border-box',height:42,border:'1px solid #c8d4e3',borderRadius:8,padding:'7px 11px',fontSize:14};
-const th={textAlign:'left',padding:'13px 11px',whiteSpace:'nowrap',color:'#334155',fontSize:12,borderBottom:'1px solid #dce4ef',background:'#f5f8fe'};
-const td={padding:'12px 10px',fontSize:12,borderBottom:'1px solid #edf1f6',whiteSpace:'nowrap',verticalAlign:'top'};
+const th={textAlign:'left',padding:'8px 5px',whiteSpace:'nowrap',color:'#334155',fontSize:11.5,borderBottom:'1px solid #dce4ef',background:'#f5f8fe'};
+const td={padding:'7px 5px',fontSize:11.5,borderBottom:'1px solid #edf1f6',whiteSpace:'nowrap',verticalAlign:'top'};
 
 function normalizeED(value=''){
   const s=String(value||'').toUpperCase().replace(/\s+|-/g,'');
@@ -445,11 +445,11 @@ export default function SpeedPostDashboard({currentUser}){
         background:#f5f8fe;z-index:5
       }
       /* Exact sum of each fixed width equals the next column's left offset. */
-      .sp-freeze-0{left:0;width:43px;min-width:43px;max-width:43px}
-      .sp-freeze-1{left:43px;width:138px;min-width:138px;max-width:138px}
-      .sp-freeze-2{left:181px;width:194px;min-width:194px;max-width:194px}
-      .sp-freeze-3{left:375px;width:105px;min-width:105px;max-width:105px}
-      .sp-freeze-4{left:480px;width:163px;min-width:163px;max-width:163px;box-shadow:3px 0 6px rgba(30,50,80,.11)}
+      .sp-freeze-0{left:0;width:39px;min-width:39px;max-width:39px}
+      .sp-freeze-1{left:39px;width:133px;min-width:133px;max-width:133px}
+      .sp-freeze-2{left:172px;width:187px;min-width:187px;max-width:187px}
+      .sp-freeze-3{left:359px;width:95px;min-width:95px;max-width:95px}
+      .sp-freeze-4{left:454px;width:150px;min-width:150px;max-width:150px;box-shadow:2px 0 5px rgba(30,50,80,.1)}
       .sp-duplicate-row .sp-freeze-0,.sp-duplicate-row .sp-freeze-1,.sp-duplicate-row .sp-freeze-2,
       .sp-duplicate-row .sp-freeze-3,.sp-duplicate-row .sp-freeze-4{
         animation:speedPostDuplicateBlink 1.3s linear infinite
@@ -565,37 +565,37 @@ export default function SpeedPostDashboard({currentUser}){
         <button style={{...btn,background:'#e7eefb',color:'#224f9b'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:3050}}>
+        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
             'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
             'Total Cost (₹)','Cost per kg (₹)','Status','Delivery Date / Time',
             'Last Updated','Origin','Weight','Rounded Weight (kg)','Actions'
           ].map((label,index)=><th key={label} className={index<5?'sp-freeze-'+index:undefined}
-            style={{...th,...(index<5?{padding:'9px 6px'}:{})}}>{label}</th>)}</tr></thead>
+            style={{...th,...(index<5?{padding:'8px 4px'}:{})}}>{label}</th>)}</tr></thead>
           <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
-            <td className="sp-freeze-0" style={{...td,padding:'8px 5px'}}>{i+1}</td>
-            <td className="sp-freeze-1" style={{...td,padding:'8px 5px'}}><strong>{r.trackingNo}</strong>
+            <td className="sp-freeze-0" style={{...td,padding:'7px 4px'}}>{i+1}</td>
+            <td className="sp-freeze-1" style={{...td,padding:'7px 4px'}}><strong>{r.trackingNo}</strong>
               {r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}
             </td>
-            <td className="sp-freeze-2" style={{...td,padding:'7px 5px'}}>
-              <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <td className="sp-freeze-2" style={{...td,padding:'6px 3px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:3}}>
                 <input aria-label={'Consignee Name for '+r.trackingNo} maxLength={100}
-                  style={{...input,height:32,minWidth:0,flex:1,padding:'4px 5px',fontSize:11}}
+                  style={{...input,height:30,minWidth:0,flex:1,padding:'4px 4px',fontSize:11}}
                   value={draftFor(r,'consigneeName')} placeholder="Consignee Name"
                   onChange={e=>changeRowDraft(r.trackingNo,'consigneeName',e.target.value)}/>
-                <button type="button" title="Save consignee name" style={{...btn,padding:'8px 6px',fontSize:10}}
+                <button type="button" title="Save consignee name" style={{...btn,padding:'7px 5px',fontSize:10}}
                   disabled={Boolean(rowSaving||anythingBusy)||
                     draftFor(r,'consigneeName')===String(r.consigneeName||'')}
                   onClick={()=>saveConsigneeRow(r)}>{rowSaving===r.trackingNo?'…':'SAVE'}</button>
               </div>
             </td>
-            <td className="sp-freeze-3" style={{...td,padding:'9px 5px'}}>{formatEntryDate(r.createdAt)}</td>
-            <td className="sp-freeze-4" style={{...td,padding:'9px 5px',overflow:'hidden',textOverflow:'ellipsis'}}
+            <td className="sp-freeze-3" style={{...td,padding:'7px 4px'}}>{formatEntryDate(r.createdAt)}</td>
+            <td className="sp-freeze-4" style={{...td,padding:'7px 4px',overflow:'hidden',textOverflow:'ellipsis'}}
               title={destinationWithCountry(r)}>{destinationWithCountry(r)||'—'}</td>
 
             <td style={td}>{field(r,'bookingDate')}</td>
-            <td style={{...td,maxWidth:260,minWidth:180,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
+            <td style={{...td,maxWidth:230,minWidth:155,whiteSpace:'normal',overflowWrap:'anywhere'}}>{field(r,'address')}</td>
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
