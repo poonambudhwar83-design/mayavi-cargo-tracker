@@ -517,7 +517,7 @@ export default function SpeedPostDashboard({currentUser}){
   // Daily totals are calculated from ALL unique ED records so moving a
   // Delivered packet does not change its original booking-date total.
   const dateCostGroups=entryDateCostGroups(rows);
-  const summary=weightSummary(rows);
+  const summary=weightSummary(displayedRows);
   return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -728,10 +728,10 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
 
       <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
-        <h3 style={{fontSize:15,margin:'0 0 8px'}}>Speed Post Weight Summary — All Active + Delivered (unique ED)</h3>
+        <h3 style={{fontSize:15,margin:'0 0 8px'}}>{speedPostTab==='DELIVERED'?'Delivered Sheet Weight Summary':'Current Sheet Weight Summary'}</h3>
         <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg verified weight • {summary.packets-summary.knownWeights} missing weight</div>
         <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
-          {[[ 'Country-wise totals',summary.countries ],[ 'Entry month-wise totals',summary.months ]].map(([heading,groups])=>
+          {[[ 'Country-wise totals',summary.countries ]].map(([heading,groups])=>
             <div key={heading} style={{flex:'1 1 280px',minWidth:0}}>
               <h4 style={{fontSize:13,margin:'0 0 6px'}}>{heading}</h4>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
@@ -740,7 +740,7 @@ export default function SpeedPostDashboard({currentUser}){
               </table>
             </div>)}
         </div>
-        <p style={{fontSize:11,color:'#64748b'}}>Weights are actual recorded weights converted to kg, not rounded billing weights. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Entry month is based on original Mayavi entry date in IST.</p>
+        <p style={{fontSize:11,color:'#64748b'}}>Weights are actual recorded weights converted to kg, not rounded billing weights. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Current and Delivered sheets are counted separately. Entry-date month-wise aggregation will be added to monthly archives later.</p>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
