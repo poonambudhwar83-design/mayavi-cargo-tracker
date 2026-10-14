@@ -223,6 +223,12 @@ export async function POST(request){
     const previous=old?.[0]?.data||{};
     const data={...result.shipment,enteredBy:previous.enteredBy||auth.username,
       retainedFields:[],lastChecked:new Date().toISOString()};
+    // A tracker's empty response cannot verify completion of this shipment.
+    // Avoid replacing the previously saved ED row with an empty source shell.
+    const observed=['tariff','bookingDate','origin','destination','weight','address','status']
+      .some(key=>Boolean(String(data[key]||'').trim()));
+    if(!observed)return json({ok:true,trackingPending:true,
+      error:'TrackParcel/EMS did not return any ED details yet.',row:rowToResult(existing[0])});
     // Headers such as COUNTRY and BOOKING OFFICE are never shipment locations.
     for(const key of ['origin','destination','address']){
       if(!validStoredField(key,data[key]))data[key]='';
@@ -234,17 +240,35 @@ export async function POST(request){
       data.destination=previous.destination;
       data.destinationSource=previous.destinationSource;
     }
-    // A delivered parcel must not regress into Active on a partial refresh.
-    if(previous.delivered===true||/^delivered$/i.test(String(previous.status||''))){
+    // A wrongly inferred Delivered status is not terminal forever. A new,
+    // ED-verified current non-delivered status can correct it. When the latest
+    // response lacks an explicit current status, preserve the previous state.
+    // Operator corrections remain pending until a dated, verified delivery.
+    const previousDelivered=previous.delivered===true||/^delivered$/i.test(String(previous.status||''));
+    const freshVerified=Boolean(data.statusVerifiedSource);
+    const freshDelivered=freshVerified&&/^delivered$/i.test(String(data.status||''));
+    const freshNotDelivered=freshVerified&&!!data.status&&!freshDelivered;
+    if(previous.manualStatusResetAt){
+      data.manualStatusResetAt=previous.manualStatusResetAt;
+      data.manualStatusResetBy=previous.manualStatusResetBy;
+    }
+    const manuallyDisputed=Boolean(previous.manualStatusResetAt);
+    if(freshDelivered&&(!manuallyDisputed||Boolean(data.deliveredAtText))){
+      data.delivered=true;
+      data.status='Delivered';
+    }else if(freshNotDelivered){
+      data.delivered=false;
+      data.deliveredAtText='';
+      data.trackParcelDeliveredAtText='';
+      data.deliveryTimeSource='';
+    }else if(previousDelivered&&!manuallyDisputed){
       data.delivered=true;
       data.status='Delivered';
       if(previous.deliveredAtText&&!data.deliveredAtText)data.deliveredAtText=previous.deliveredAtText;
       if(previous.deliveryTimeSource&&!data.deliveryTimeSource)data.deliveryTimeSource=previous.deliveryTimeSource;
-    }else if(data.delivered===true||/^delivered$/i.test(String(data.status||''))){
-      data.delivered=true;
-      data.status='Delivered';
-      // NEVER use refresh time as the parcel delivery time. The EMS event's
-      // local-clock value is stored separately in deliveredAtText.
+    }else{
+      data.delivered=false;
+      data.status=manuallyDisputed?'Pending Verification':(data.status||previous.status||'Pending Verification');
     }
     // Preserve duplicate warning across ordinary shipment refreshes.
     data.duplicateAlert=previous.duplicateAlert===true;
@@ -252,7 +276,7 @@ export async function POST(request){
     if(previous.lastDuplicateAt)data.lastDuplicateAt=previous.lastDuplicateAt;
     // Keep previously verified fields if absent from the newest third-party response;
     // the client marks these retained values as such, never claiming fresh verification.
-    for(const field of ['destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt']){
+    for(const field of ['origin','destination','address','tariff','bookingDate','weight','articleType','outForDeliveryAt','lastUpdated']){
       if(!data[field]&&validStoredField(field,previous[field])){
         data[field]=previous[field];
         data.retainedFields.push(field);
@@ -292,6 +316,23 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const trackingNo=speedPostNumber(body?.trackingNo||'');
     if(!trackingNo)return json({ok:false,error:'Please confirm a valid ED tracking number.'},400);
+    if(body?.action==='correct-delivery-status'){
+      // Explicit operator correction of a false Delivered state; only the
+      // status/time fields are reset. Weight, tariff, address and ED remain.
+      const patch=JSON.stringify({
+        status:'Pending Verification',delivered:false,outForDelivery:false,
+        deliveredAtText:'',trackParcelDeliveredAtText:'',
+        deliveryTimeSource:'',statusVerifiedSource:'',
+        manualStatusResetAt:new Date().toISOString(),
+        manualStatusResetBy:auth.username
+      });
+      const saved=await sql`UPDATE mayavi_speedpost SET
+        data=data || ${patch}::jsonb,updated_at=NOW()
+        WHERE tracking_no=${trackingNo}
+        RETURNING tracking_no,data,created_at,updated_at`;
+      if(!saved.length)return json({ok:false,error:'ED entry not found.'},404);
+      return json({ok:true,corrected:true,row:rowToResult(saved[0])});
+    }
     if(body?.action==='save-consignee-name'){
       // The address column is hidden from the sheet. Name edits must never
       // clear an address that was previously stored for this ED.

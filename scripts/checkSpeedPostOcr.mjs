@@ -92,4 +92,17 @@ const noDateResult=parseTrackParcelDetails([
 assert.equal(noDateResult?.deliveredAtText,'','Never invent delivery date');
 assert.equal(parseTrackParcelDetails(resultCard,'ED111111111IN'),null,
   'Never accept event from different ED');
+
+const historicalDeliveredOnly=parseTrackParcelDetails([
+  'India Post','Live result',edForDelivery,
+  'Weight','9710','Tracking History','Delivered',
+  'Item was delivered (historical event)'
+].join('\n'),edForDelivery);
+assert.equal(historicalDeliveredOnly?.weight,'9710 g',
+  'A false status report must not discard a real ED-matched weight');
+assert.equal(historicalDeliveredOnly?.status,'',
+  'Historical Delivered scan is not verified current status');
+assert.equal(historicalDeliveredOnly?.statusVerifiedSource,'',
+  'Unlabeled historical status must remain unverified');
+
 console.log('TrackParcel date, weight and TO-address regression passed');

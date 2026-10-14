@@ -193,6 +193,23 @@ export default function SpeedPostDashboard({currentUser}){
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
   },[]);
+  const correctFalseDelivered=useCallback(async row=>{
+    const id=normalizeED(row?.trackingNo);
+    if(!id||typeof window==='undefined')return;
+    if(!window.confirm('Mark '+id+' as Pending Verification? This corrects a false Delivered status without deleting the ED or shipment details.'))return;
+    setBusy(id);setMessage('Reviewing incorrect Delivered status for '+id+'…');
+    try{
+      const response=await fetch(API,{method:'PATCH',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo:id,action:'correct-delivery-status'})});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw Error(data.error||'Status could not be corrected.');
+      if(data.row)setRows(old=>old.map(r=>r.trackingNo===id?data.row:r));
+      setSpeedPostTab('TRACKING');
+      setMessage(id+' — Delivery status marked Pending Verification; weight and tariff retained.');
+    }catch(e){setMessage(id+' — '+(e.message||'Status correction failed.'));}
+    finally{setBusy('');}
+  },[]);
   // Chrome/Android native Code-128 detection is faster for legible 1-D EMS barcodes.
   // Other browsers and unreadable barcodes continue to the dedicated OCR route.
   async function readEDBarcode(file){
@@ -600,7 +617,10 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
-            <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Delivered: {r.deliveredAtText||'Exact delivery time not verified'}</small>}</td>
+            <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Delivered: {r.deliveredAtText||'Exact delivery time not verified'}</small>}{isDelivered(r)&&<button type="button"
+              title="Correct a false Delivered status without deleting ED, weight or tariff"
+              style={{...btn,padding:'4px 6px',fontSize:10,marginTop:5,background:'#fff7ed',color:'#92400e',border:'1px solid #fdba74'}}
+              disabled={anythingBusy} onClick={()=>correctFalseDelivered(r)}>WRONG DELIVERED?</button>}</td>
             <td style={td}>{r.deliveredAtText||'—'}</td>
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>

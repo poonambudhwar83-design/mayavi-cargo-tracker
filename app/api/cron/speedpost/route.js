@@ -26,20 +26,32 @@ async function updateOne(sql,row){
     'origin','address','tariff','bookingDate','articleType','weight',
     'weightSource','weightRaw','weightUnitInferred','outForDeliveryAt',
     'lastUpdated','source','trackingUrl','detailsSource','trackParcelUrl',
-    'trackParcelVerifiedAt','verifiedAt','deliveryTimeSource','deliveredAtText','trackParcelDeliveredAtText'
+    'trackParcelVerifiedAt','verifiedAt','deliveryTimeSource','deliveredAtText','trackParcelDeliveredAtText','statusVerifiedSource'
   ])if(good(incoming[field]))patch[field]=incoming[field];
   if(incoming.outForDelivery===true)patch.outForDelivery=true;
   const destinationPatch=good(incoming.destination)?{destination:incoming.destination}:{};
-  const statusPatch=(incoming.delivered===true||/^delivered$/i.test(String(incoming.status||'')))
+  // Never promote an unverified TrackParcel history keyword to Delivered.
+  // A source which did not return current status must not mutate saved status.
+  const verified=Boolean(incoming.statusVerifiedSource&&incoming.status);
+  const delivered=verified&&(incoming.delivered===true||/^delivered$/i.test(String(incoming.status||'')));
+  const statusPatch=!verified?{}:delivered
     ?{status:'Delivered',delivered:true,outForDelivery:false}
-    :good(incoming.status)?{status:incoming.status,delivered:false}:{};
+    :{status:incoming.status,delivered:false,deliveredAtText:'',
+      trackParcelDeliveredAtText:'',deliveryTimeSource:''};
   await sql`UPDATE mayavi_speedpost SET
     data=data
       || ${JSON.stringify(patch)}::jsonb
       || (CASE WHEN data->>'destinationSource'='Manually entered by operator'
           THEN '{}'::jsonb ELSE ${JSON.stringify(destinationPatch)}::jsonb END)
-      || (CASE WHEN data->>'delivered'='true'
-          THEN '{"status":"Delivered","delivered":true}'::jsonb
+      || (CASE
+          WHEN data->>'manualStatusResetAt' IS NOT NULL
+            AND ${JSON.stringify(statusPatch)}::jsonb->>'delivered'='true'
+            AND COALESCE(${JSON.stringify(patch)}::jsonb->>'deliveredAtText','')=''
+          THEN '{}'::jsonb
+          WHEN data->>'delivered'='true'
+            AND COALESCE(data->>'deliveredAtText','')!=''
+            AND ${JSON.stringify(statusPatch)}::jsonb->>'delivered'='false'
+          THEN '{}'::jsonb
           ELSE ${JSON.stringify(statusPatch)}::jsonb END),
     updated_at=NOW() WHERE tracking_no=${id}`;
   return{success:true,delivered:statusPatch.delivered===true};
