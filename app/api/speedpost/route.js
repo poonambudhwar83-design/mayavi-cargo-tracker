@@ -29,7 +29,10 @@ async function authorized(request,sql){
 function validStoredField(field,value){
   const v=String(value||'').trim();
   if(!v)return false;
-  if(['origin','destination','address'].includes(field)&&/^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v))return false;
+  if(['origin','destination','address'].includes(field)&&(
+    /^(COUNTRY|BOOKING OFFICE|ORIGIN|DESTINATION|ADDRESS|POST OFFICE|CITY|STATE|UNKNOWN|N.A|NO DATA|—|-)$/i.test(v)
+    || /indiapost\.gov\.in|TrackParcel is not India Post|checked 20\d{2}[-/]\d{2}[-/]\d{2}|\.gov\.in/i.test(v)
+  ))return false;
   return true;
 }
 function canonicalOrigin(value=''){
@@ -54,7 +57,19 @@ function validConsigneeAddress(v){
   return !/^(?:TO|FROM|SENDER|RECIPIENT|CONSIGNEE|ADDRESS|COUNTRY|UNKNOWN|N\/A)$/i.test(v.trim());
 }
 function rowToResult(row){
-  return {...(row.data||{}),trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
+  const data={...(row.data||{})};
+  // Don't display a website disclaimer as a shipment origin, or show a
+  // phantom Delivered claim from that misleading result without a delivery scan.
+  const invalidOrigin=/indiapost\.gov\.in|TrackParcel is not India Post|checked 20\d{2}[-/]\d{2}[-/]\d{2}/i
+    .test(String(data.origin||''));
+  if(invalidOrigin)data.origin='';
+  if(invalidOrigin&&!data.deliveredAtText&&!data.statusVerifiedSource&&
+      (data.delivered===true||/^delivered$/i.test(String(data.status||'')))){
+    data.delivered=false;
+    data.status='Pending Verification';
+    data.statusNeedsReview=true;
+  }
+  return {...data,trackingNo:row.tracking_no,createdAt:row.created_at,updatedAt:row.updated_at};
 }
 
 export async function GET(request){

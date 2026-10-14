@@ -623,7 +623,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
-              {isDelivered(r)&&<button type="button" title="Wrong Delivered? Restore to Active without losing shipment details"
+              {(isDelivered(r)||r.statusNeedsReview)&&<button type="button" title="Wrong Delivered? Restore to Active without losing shipment details"
                 style={{...btn,padding:'7px 9px',fontSize:11,background:'#fff7ed',color:'#9a3412',border:'1px solid #fdba74'}}
                 disabled={Boolean(statusFixing)||anythingBusy} onClick={()=>correctDeliveryStatus(r)}>
                 {statusFixing===r.trackingNo?'WAIT…':'NOT DELIVERED'}

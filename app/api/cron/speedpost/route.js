@@ -27,7 +27,7 @@ async function updateOne(sql,row){
     'weightSource','weightRaw','weightUnitInferred','outForDeliveryAt',
     'lastUpdated','source','trackingUrl','detailsSource','trackParcelUrl',
     'trackParcelVerifiedAt','verifiedAt','deliveryTimeSource','deliveredAtText','trackParcelDeliveredAtText'
-  ])if(good(incoming[field]))patch[field]=incoming[field];
+  ])if(good(incoming[field])&&(field!=='origin'||!/indiapost\.gov\.in|TrackParcel is not India Post|checked 20\d{2}[-/]\d{2}[-/]\d{2}/i.test(String(incoming[field]))))patch[field]=incoming[field];
   if(incoming.outForDelivery===true)patch.outForDelivery=true;
   const destinationPatch=good(incoming.destination)?{destination:incoming.destination}:{};
   // A Delivered label without an actual dated delivery event is not enough.

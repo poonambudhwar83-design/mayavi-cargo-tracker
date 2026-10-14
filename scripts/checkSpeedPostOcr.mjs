@@ -105,4 +105,21 @@ assert.equal(historicalDeliveredOnly?.status,'',
 assert.equal(historicalDeliveredOnly?.statusVerifiedSource,'',
   'Unlabeled historical status must remain unverified');
 
+// Do not confuse generic website source disclaimers / historical Delivered FAQ
+// with parcel origin or current status. Preserve an ED-matched Weight result.
+const irrelevantPage=[
+  'India Post','Live result','ED977952475IN',
+  'Origin','indiapost.gov.in, checked 2026-10-06. TrackParcel is not India Post.',
+  'Tracking History','Delivered'
+].join('\n');
+assert.equal(parseTrackParcelDetails(irrelevantPage,'ED977952475IN'),null);
+const realWeightWithDisclaimer=[
+  'India Post','Live result','ED977952339IN',
+  'Origin','indiapost.gov.in, checked 2026-10-06. TrackParcel is not India Post.',
+  'Weight','9710','Tracking History','Delivered'
+].join('\n');
+const parsedWeight=parseTrackParcelDetails(realWeightWithDisclaimer,'ED977952339IN');
+assert.equal(parsedWeight?.weight,'9710 g');
+assert.equal(parsedWeight?.origin,'');
+assert.equal(parsedWeight?.status,'');
 console.log('TrackParcel date, weight and TO-address regression passed');
