@@ -133,6 +133,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [reviewBusy,setReviewBusy]=useState(false);
   const [rowDrafts,setRowDrafts]=useState({});
   const [rowSaving,setRowSaving]=useState('');
+  const [statusFixing,setStatusFixing]=useState('');
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -218,6 +219,20 @@ export default function SpeedPostDashboard({currentUser}){
   }
   function changeRowDraft(id,field,value){
     setRowDrafts(old=>({...old,[id]:{...(old[id]||{}),[field]:value}}));
+  }
+  async function correctDeliveryStatus(row){
+    if(!window.confirm('This parcel is NOT delivered? Move '+row.trackingNo+' back to Active as Pending Verification?'))return;
+    setStatusFixing(row.trackingNo);
+    try{
+      const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
+        body:JSON.stringify({trackingNo:row.trackingNo,action:'correct-delivery-status'})});
+      const result=await response.json();
+      if(!response.ok||!result.ok)throw Error(result.error||'Status correction failed');
+      if(result.row)setRows(old=>old.map(r=>r.trackingNo===row.trackingNo?result.row:r));
+      setSpeedPostTab('TRACKING');
+      setMessage(row.trackingNo+' moved to Active as Pending Verification. Stored ED, weight and tariff preserved.');
+    }catch(e){setMessage(row.trackingNo+' — '+(e.message||'Status correction failed'));}
+    finally{setStatusFixing('');}
   }
   async function saveConsigneeRow(row){
     const trackingNo=row.trackingNo;
@@ -608,6 +623,11 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
+              {isDelivered(r)&&<button type="button" title="Wrong Delivered? Restore to Active without losing shipment details"
+                style={{...btn,padding:'7px 9px',fontSize:11,background:'#fff7ed',color:'#9a3412',border:'1px solid #fdba74'}}
+                disabled={Boolean(statusFixing)||anythingBusy} onClick={()=>correctDeliveryStatus(r)}>
+                {statusFixing===r.trackingNo?'WAIT…':'NOT DELIVERED'}
+              </button>}
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
