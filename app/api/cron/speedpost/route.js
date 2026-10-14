@@ -26,7 +26,7 @@ async function updateOne(sql,row){
     'origin','address','tariff','bookingDate','articleType','weight',
     'weightSource','weightRaw','weightUnitInferred','outForDeliveryAt',
     'lastUpdated','source','trackingUrl','detailsSource','trackParcelUrl',
-    'trackParcelVerifiedAt','verifiedAt','deliveryTimeSource','deliveredAtText'
+    'trackParcelVerifiedAt','verifiedAt','deliveryTimeSource','deliveredAtText','trackParcelDeliveredAtText'
   ])if(good(incoming[field]))patch[field]=incoming[field];
   if(incoming.outForDelivery===true)patch.outForDelivery=true;
   const destinationPatch=good(incoming.destination)?{destination:incoming.destination}:{};

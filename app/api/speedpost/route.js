@@ -275,6 +275,7 @@ export async function POST(request){
     for(const key of ['consigneeName','consigneeAddress','consigneeSource','consigneeOcrAt']){
       if(previous[key]&&!data[key])data[key]=previous[key];
     }
+    if(previous.trackParcelDeliveredAtText&&!data.trackParcelDeliveredAtText)data.trackParcelDeliveredAtText=previous.trackParcelDeliveredAtText;
     if(previous.deliveryTimeSource&&data.deliveredAtText===previous.deliveredAtText)data.deliveryTimeSource=previous.deliveryTimeSource;
     const rows=await sql`INSERT INTO mayavi_speedpost (tracking_no,data,created_at,updated_at)
       VALUES (${trackingNo},${JSON.stringify(data)}::jsonb,NOW(),NOW())

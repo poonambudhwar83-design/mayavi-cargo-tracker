@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {checkEdChecksum,edOcrCandidates} from '../lib/speedpostOcr.js';
 import {readConsigneeFromEmsTO} from '../lib/speedpostToOcr.js';
+import {parseTrackParcelDetails} from '../lib/trackparcel.js';
 
 // Regression based on the customer's parcel photographed in October 2026.
 // Tests only manually verified OCR tokens, never uses customer images/files,
@@ -69,3 +70,26 @@ for(const token of ['68 WESTWOOD RD','ILFORD','IG3 8RZ','UK'])
   assert.ok(readRotated.consigneeAddress.includes(token),'Complete TO address contains '+token);
 assert.ok(!/AJAY|JARNAIL|KAITHAL/.test(readRotated.consigneeAddress),'FROM sender must be excluded');
 console.log('Speed Post OCR regression passed: ED checksum false-read, Mandeep rotated TO, Gulshan TO and sender exclusion');
+
+const edForDelivery='ED977952461IN';
+const resultCard=[
+  'India Post','Live result',edForDelivery,
+  'Status','Delivered','To','14 King Street, Leicester UK',
+  'Weight','9710','Tracking History',
+  '10 Oct 2026','Delivered','Item handed over',
+  '09 Oct 2026','Out for Delivery'
+].join('\n');
+const readDelivery=parseTrackParcelDetails(resultCard,edForDelivery);
+assert.equal(readDelivery?.status,'Delivered');
+assert.equal(readDelivery?.weight,'9710 g');
+assert.equal(readDelivery?.address,'14 King Street, Leicester UK');
+assert.equal(readDelivery?.trackParcelDeliveredAtText,'10 Oct 2026',
+  'Use dated Delivered event, not latest lookup time');
+const noDateResult=parseTrackParcelDetails([
+ 'India Post','Live result',edForDelivery,'Status','Delivered',
+ 'Weight','9710','Tracking History','Delivered'
+].join('\n'),edForDelivery);
+assert.equal(noDateResult?.deliveredAtText,'','Never invent delivery date');
+assert.equal(parseTrackParcelDetails(resultCard,'ED111111111IN'),null,
+  'Never accept event from different ED');
+console.log('TrackParcel date, weight and TO-address regression passed');
