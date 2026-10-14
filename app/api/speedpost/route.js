@@ -240,7 +240,7 @@ export async function POST(request){
     // Operator corrections remain pending until a dated, verified delivery.
     const previousDelivered=previous.delivered===true||/^delivered$/i.test(String(previous.status||''));
     const freshVerified=Boolean(data.statusVerifiedSource);
-    const freshDelivered=freshVerified&&/^delivered$/i.test(String(data.status||''));
+    const freshDelivered=freshVerified&&/^delivered$/i.test(String(data.status||''))&&Boolean(data.deliveredAtText);
     const freshNotDelivered=freshVerified&&!!data.status&&!freshDelivered;
     if(previous.manualStatusResetAt){
       data.manualStatusResetAt=previous.manualStatusResetAt;
@@ -255,14 +255,17 @@ export async function POST(request){
       data.deliveredAtText='';
       data.trackParcelDeliveredAtText='';
       data.deliveryTimeSource='';
-    }else if(previousDelivered&&!manuallyDisputed){
+    }else if(previousDelivered&&!manuallyDisputed&&Boolean(previous.deliveredAtText)){
       data.delivered=true;
       data.status='Delivered';
       if(previous.deliveredAtText&&!data.deliveredAtText)data.deliveredAtText=previous.deliveredAtText;
       if(previous.deliveryTimeSource&&!data.deliveryTimeSource)data.deliveryTimeSource=previous.deliveryTimeSource;
     }else{
       data.delivered=false;
-      data.status=manuallyDisputed?'Pending Verification':(data.status||previous.status||'Pending Verification');
+      data.status=(manuallyDisputed||/^delivered$/i.test(String(data.status||'')))?'Pending Verification':(data.status||(/^delivered$/i.test(String(previous.status||''))?'Pending Verification':previous.status)||'Pending Verification');
+      data.deliveredAtText='';
+      data.trackParcelDeliveredAtText='';
+      data.deliveryTimeSource='';
     }
     // Preserve duplicate warning across ordinary shipment refreshes.
     data.duplicateAlert=previous.duplicateAlert===true;

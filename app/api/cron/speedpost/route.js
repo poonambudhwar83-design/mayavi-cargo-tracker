@@ -30,17 +30,24 @@ async function updateOne(sql,row){
   ])if(good(incoming[field]))patch[field]=incoming[field];
   if(incoming.outForDelivery===true)patch.outForDelivery=true;
   const destinationPatch=good(incoming.destination)?{destination:incoming.destination}:{};
-  const statusPatch=(incoming.delivered===true||/^delivered$/i.test(String(incoming.status||'')))
-    ?{status:'Delivered',delivered:true,outForDelivery:false}
-    :good(incoming.status)?{status:incoming.status,delivered:false}:{};
+  // A Delivered label without an actual dated delivery event is not enough.
+  // Explicit operator disputes remain Pending Verification until verified.
+  const verified=Boolean(incoming.statusVerifiedSource);
+  const delivered=verified&&/^delivered$/i.test(String(incoming.status||''))&&
+    Boolean(incoming.deliveredAtText);
+  const statusPatch=verified?(delivered?
+    {status:'Delivered',delivered:true,outForDelivery:false,statusVerifiedSource:incoming.statusVerifiedSource}:
+    {status:incoming.status||'Pending Verification',delivered:false,statusVerifiedSource:incoming.statusVerifiedSource}):{};
+  const statusJson=JSON.stringify(statusPatch);
   await sql`UPDATE mayavi_speedpost SET
     data=data
       || ${JSON.stringify(patch)}::jsonb
       || (CASE WHEN data->>'destinationSource'='Manually entered by operator'
           THEN '{}'::jsonb ELSE ${JSON.stringify(destinationPatch)}::jsonb END)
-      || (CASE WHEN data->>'delivered'='true'
-          THEN '{"status":"Delivered","delivered":true}'::jsonb
-          ELSE ${JSON.stringify(statusPatch)}::jsonb END),
+      || (CASE WHEN COALESCE(data->>'manualStatusResetAt','')<>''
+          THEN (CASE WHEN ${delivered} THEN ${statusJson}::jsonb
+            ELSE '{"status":"Pending Verification","delivered":false}'::jsonb END)
+          ELSE ${statusJson}::jsonb END),
     updated_at=NOW() WHERE tracking_no=${id}`;
   return{success:true,delivered:statusPatch.delivered===true};
 }
