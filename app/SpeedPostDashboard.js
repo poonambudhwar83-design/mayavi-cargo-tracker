@@ -43,6 +43,40 @@ function destinationWithCountry(row={}){
   if(!short||place.toUpperCase().endsWith('('+short+')'))return place;
   return place+' ('+short+')';
 }
+
+function shipmentCountry(row){
+  const explicit=String(row.destinationCountry||row.country||'').trim().toUpperCase();
+  const destination=String(row.destination||'').trim().toUpperCase();
+  const combined=explicit+' '+destination;
+  if(/\\b(UK|UNITED KINGDOM|ENGLAND|SCOTLAND|WALES|GREAT BRITAIN|GB)\\b/.test(combined))return 'UK';
+  if(/\\b(USA|UNITED STATES(?: OF AMERICA)?|US)\\b/.test(combined))return 'USA';
+  if(/\\b(CANADA|CA)\\b/.test(combined))return 'Canada';
+  if(/\\b(AUSTRALIA|AU)\\b/.test(combined))return 'Australia';
+  if(/\\b(NEW ZEALAND|NZ)\\b/.test(combined))return 'New Zealand';
+  if(/\\b(UAE|UNITED ARAB EMIRATES|DUBAI|ABU DHABI)\\b/.test(combined))return 'UAE';
+  if(/\\b(LEICESTER|LEICESTERSHIRE)\\b/.test(combined))return 'UK';
+  return explicit||'Unknown';
+}
+function weightSummary(rows){
+  const unique=new Map();
+  for(const row of rows){const ed=normalizeED(row.trackingNo);if(ed&&!unique.has(ed))unique.set(ed,row);}
+  const countries=new Map(),months=new Map();
+  let totalKg=0,knownWeights=0;
+  for(const row of unique.values()){
+    const kg=weightInKg(row.weight);
+    const country=shipmentCountry(row);
+    const date=row.createdAt?new Date(row.createdAt):null;
+    const month=date&&!Number.isNaN(date.getTime())?new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:'Asia/Kolkata'}).format(date):'Entry date unknown';
+    for(const [map,key] of [[countries,country],[months,month]]){
+      if(!map.has(key))map.set(key,{packets:0,knownWeights:0,kg:0});
+      const group=map.get(key);group.packets++;
+      if(kg!==null){group.kg+=kg;group.knownWeights++;}
+    }
+    if(kg!==null){totalKg+=kg;knownWeights++;}
+  }
+  return {packets:unique.size,knownWeights,totalKg,countries:[...countries].sort((a,b)=>a[0].localeCompare(b[0])),months:[...months].sort((a,b)=>a[0].localeCompare(b[0]))};
+}
+
 function weightInKg(raw){
   const text=String(raw??'').trim().replace(/,/g,'');
   const m=text.match(/^(\d+(?:\.\d+)?)\s*(kg|kgs|kgm|kilograms?|g|gm|gms|grams?)$/i);
@@ -482,6 +516,7 @@ export default function SpeedPostDashboard({currentUser}){
   // Daily totals are calculated from ALL unique ED records so moving a
   // Delivered packet does not change its original booking-date total.
   const dateCostGroups=entryDateCostGroups(rows);
+  const summary=weightSummary(rows);
   return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -689,6 +724,22 @@ export default function SpeedPostDashboard({currentUser}){
             </div></td>
           </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
+      </div>
+
+      <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
+        <h3 style={{fontSize:15,margin:'0 0 8px'}}>Speed Post Weight Summary — All Active + Delivered (unique ED)</h3>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg verified weight • {summary.packets-summary.knownWeights} missing weight</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
+          {[[ 'Country-wise totals',summary.countries ],[ 'Entry month-wise totals',summary.months ]].map(([heading,groups])=>
+            <div key={heading} style={{flex:'1 1 280px',minWidth:0}}>
+              <h4 style={{fontSize:13,margin:'0 0 6px'}}>{heading}</h4>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr><th style={th}>{heading.startsWith('Country')?'Country':'Entry month'}</th><th style={th}>Parcels</th><th style={th}>Weight (kg)</th><th style={th}>Missing weight</th></tr></thead>
+                <tbody>{groups.map(([name,g])=><tr key={name}><td style={td}>{name}</td><td style={td}>{g.packets}</td><td style={td}>{g.kg.toLocaleString('en-IN',{maximumFractionDigits:4})}</td><td style={td}>{g.packets-g.knownWeights}</td></tr>)}</tbody>
+              </table>
+            </div>)}
+        </div>
+        <p style={{fontSize:11,color:'#64748b'}}>Weights are actual recorded weights converted to kg, not rounded billing weights. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Entry month is based on original Mayavi entry date in IST.</p>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
