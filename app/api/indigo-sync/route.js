@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { trackIndigo } from '../../../lib/indigo.js';
 import { mergePartMail, mergePartCustoms } from '../../../lib/partMail.js';
+import { refreshScope } from '../../../lib/autoRefreshScope.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -30,13 +31,9 @@ function db(){
   return neon(url);
 }
 function needsRefresh(data={}){
-  if(data.customsCleared===true)return false;
-  const status=String(data.status||'').toUpperCase();
-  if(['ARRIVED','DELIVERED'].includes(status))return false;
-  const parts=Array.isArray(data.partShipments)?data.partShipments:[];
-  // Do not reprocess fully arrived physical parts; pending splits must refresh.
-  if(parts.length&&parts.every(part=>['ARRIVED','DELIVERED'].includes(String(part.status||'').toUpperCase())))return false;
-  return true;
+  // Follow the same visible-sheet scope as the cargo cron, including
+  // recently cleared (last 72h) shipments. Historical masters stay untouched.
+  return refreshScope(data)!=='SKIP';
 }
 function lastAttemptMs(row){
   const d=row.data||{};
