@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { trackEthiopian } from '../../../../lib/ethiopian.js';
 import { markEthiopianReschedulePending } from '../../../../lib/ethiopianReschedule.js';
 import { localAirportTimeToIst } from '../../../../lib/exportIst.js';
+import { refreshScope } from '../../../../lib/autoRefreshScope.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -100,13 +101,14 @@ export async function GET(request){
     const rows=await sql`SELECT awb,data FROM mayavi_shipments
       WHERE awb LIKE '071%' AND COALESCE(data->>'customsCleared','false')!='true'
       ORDER BY updated_at DESC LIMIT 20`;
+    const eligible=rows.filter(r=>refreshScope(r.data||{})!=='SKIP');
     const results=[];
-    for(let i=0;i<rows.length;i+=3){
-      const batch=await Promise.allSettled(rows.slice(i,i+3).map(r=>refreshOne(sql,r)));
+    for(let i=0;i<eligible.length;i+=3){
+      const batch=await Promise.allSettled(eligible.slice(i,i+3).map(r=>refreshOne(sql,r)));
       for(const x of batch)results.push(x.status==='fulfilled'?x.value:
         {ok:false,error:String(x.reason?.message||x.reason)});
     }
-    return Response.json({ok:true,carrier:'ET',checked:results.length,
+    return Response.json({ok:true,carrier:'ET',skippedOutsideActiveAnd72h:rows.length-eligible.length,checked:results.length,
       refreshed:results.filter(x=>x.ok).length,results});
   }catch(e){return Response.json({ok:false,error:String(e?.message||e)},{status:503});}
 }
