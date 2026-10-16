@@ -569,7 +569,7 @@ async function handle(mawb,fallback={}){
   const vietnamFastPath=mawb.startsWith('738-');
   const virginFastPath=mawb.startsWith('932-');
   const flydubaiFastPath=mawb.startsWith('141-');
-  const skipGenericApi=flydubaiFastPath||ethiopianFastPath||klmFastPath||airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath||etihadFastPath;
+  const skipGenericApi=ethiopianFastPath||klmFastPath||flydubaiFastPath||airArabiaOfficialOnly||airIndiaFastPath||britishFastPath||qatarFastPath||cathayFastPath||saudiaFastPath||thaiFastPath||kuwaitFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||omanFastPath||vietnamFastPath||virginFastPath||etihadFastPath;
   // KLM is live-only: neither a saved shipment nor caller fallback can be
   // used as the tracking answer. Preserve saved records in DB on API failure.
   const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
@@ -662,7 +662,7 @@ async function handle(mawb,fallback={}){
   const cathayResult=null;
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
-  const skipGenericOcr=mawb.startsWith('141-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('607-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-');
+  const skipGenericOcr=mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('141-')||mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('607-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-');
   const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||!browserShipment.bookingDate||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr)ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
 
@@ -1405,10 +1405,10 @@ async function handle(mawb,fallback={}){
   const screenshotVerified=Boolean(browserResult?.screenshotBase64)||Boolean(directResult?.screenshotVerified);
   const screenshotOcrUsed=Boolean(ocrResult?.ok)||directOcr;
   // Never return or persist a fabricated/cached KLM tracking success.
-  const hasUseful=flydubaiFastPath
-    ? Boolean(direct&&direct.flydubaiLiveVerifiedAt&&concrete(direct))
-    :ethiopianFastPath
+  const hasUseful=ethiopianFastPath
     ?Boolean(direct&&direct.ethiopianLiveVerifiedAt&&concrete(direct))
+    :flydubaiFastPath
+    ?Boolean(direct&&direct.flydubaiLiveVerifiedAt&&concrete(direct))
     :klmFastPath
     ? Boolean(direct&&direct.klmLiveVerifiedAt&&concrete(direct))
     : turkishFastPath
@@ -1419,7 +1419,7 @@ async function handle(mawb,fallback={}){
     if(mawb.startsWith('176-')){
       try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
       catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
-    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||flydubaiFastPath||mawb.startsWith('607-')){
+    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||flydubaiFastPath){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
