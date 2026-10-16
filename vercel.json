@@ -38,7 +38,7 @@
   "crons": [
     {
       "path": "/api/cron/refresh",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/monthly-archive",
@@ -50,7 +50,7 @@
     },
     {
       "path": "/api/cron/speedpost",
-      "schedule": "15 */3 * * *"
+      "schedule": "15 */2 * * *"
     }
   ]
 }
