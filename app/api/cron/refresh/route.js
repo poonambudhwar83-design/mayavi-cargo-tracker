@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { refreshScope } from '../../../../lib/autoRefreshScope.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
@@ -143,7 +144,15 @@ export async function GET(request){
   const shipments=shipmentsCall.data;
   if(!shipments?.ok)return Response.json({ok:false,error:shipments?.error||'Could not read shipments',retryExhausted:true},{status:503});
 
-  const rows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
+  const allRows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
+  const checkedAt=new Date();
+  const selected=allRows.map(row=>({row,scope:refreshScope(row,checkedAt)}));
+  const rows=selected.filter(item=>item.scope!=='SKIP').map(item=>item.row);
+  const scopeCounts={
+    active:selected.filter(item=>item.scope==='ACTIVE').length,
+    clearedLast72Hours:selected.filter(item=>item.scope==='CLEARED_RECENT').length,
+    skippedArchived:selected.filter(item=>item.scope==='SKIP').length
+  };
   const refreshExisting=async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
     let track=null,trackAttempts=0,trackError='';
@@ -195,6 +204,8 @@ export async function GET(request){
   return Response.json({
     ok:true,
     shipmentListAttempts:shipmentsCall.attempt,
+    scopeCounts,
+    selected:rows.length,
     refreshed:ok.length,
     failed:failed.length,
     results:ok,
