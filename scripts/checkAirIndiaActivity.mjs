@@ -1,4 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+// Regression: the live tab uses \s and \b once, not escaped literals.
+// Otherwise the crawler misses hydrated milestones and may read stale summary data.
+const adapterSource=readFileSync(new URL('../lib/airIndia.js',import.meta.url),'utf8');
+assert.ok(adapterSource.includes(String.raw`current.search(/AWB\s+Activity\s+Timeline/i)`),
+  'Activity View must detect the hydrated timeline heading');
+assert.ok(adapterSource.includes(String.raw`timeline.match(/\b(?:FREIGHT\s+ON\s+HAND|FOW|BOOKED\s+Booked|DEPARTURE\s+Departed|ARRIVAL\s+Arrived|MANIFESTED\s+Manifested)\b/gi)`),
+  'Activity View must detect new FOW and movement milestones');
+assert.ok(!adapterSource.includes(String.raw`current.search(/AWB\\s+Activity\\s+Timeline/i)`),
+  'Escaped literal \\s would break timeline hydration detection');
+
 import { extractActivityMaster } from '../lib/airIndia.js';
 
 const book='AWB Activity Timeline\nBOOKED Booked 19 pcs 1,002 kg at DEL for AI 187, 18 Oct 2026\nDEL • 17 Oct 2026, 18:30';
