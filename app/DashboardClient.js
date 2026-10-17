@@ -225,6 +225,9 @@ function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let
 function officialUrl(row={}){
   const n=normalize(row.mawb),airline=airlineForMawb(n),serial=n.slice(4),allDigits=digits(n);
   // Only add carrier-published MAWB detail routes. Do not change any shipment tracking logic.
+  // Flydubai (FZ/141): open airline's official Cargo landing page. Its
+  // Track Shipment button leads to Accelya; automated Doc No/Details is server-side.
+  if(n.startsWith('141-'))return 'https://www.flydubai.com/en/information/cargo/';
   if(n.startsWith('020-'))return `https://www.lufthansa-cargo.com/en/eservices/etracking/awb-details/-/awb/020/${encodeURIComponent(serial)}`;
   if(n.startsWith('075-')||n.startsWith('125-'))return `https://www.iagcargo.com/iagcargo/portlet/en/html/601/main/search?awb.cia=${n.slice(0,3)}&awb.cod=${encodeURIComponent(serial)}`;
   if(n.startsWith('074-'))return `https://afklcargo.com/mycargo/shipment/detail/${digits(n)}`;
