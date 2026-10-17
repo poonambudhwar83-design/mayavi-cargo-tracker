@@ -67,7 +67,12 @@ export default function UnifiedDashboard(){
       try{
         const data=await loadUsers();
         if(!active)return;
-        if(data.authenticated&&data.session){clearStaleShipmentBackup();setSession(data.session);}
+        if(data.authenticated&&data.session){
+          // Preserve the signed-in user's last saved snapshot on a normal reload.
+          // DashboardClient paints it immediately while the server list loads.
+          // An explicit new login still clears any previous user's local cache.
+          setSession(data.session);
+        }
         if(!data.ok&&data.error)setNote(data.error);
       }catch{if(active)setNote('Login service is temporarily unavailable.')}finally{if(active)setLoading(false)}
     })();
