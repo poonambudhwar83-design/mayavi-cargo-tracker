@@ -58,6 +58,9 @@ assert.equal(detailed?.weight,'566.5');
 assert.equal(detailed?.weightSource,'Flydubai official Show Details gross weight');
 assert.equal(detailed?.masterPieces,'78');
 assert.equal(detailed?.bookingDate,'2026-10-15');
+const showWeight=parseFlydubaiText([timeline,'Show Details','Total Bags: 78','Weight: 563.5 KG'].join('\n'),[],awb);
+assert.equal(showWeight?.weight,'563.5');
+assert.equal(showWeight?.masterPieces,'78');
 
 // Split RCF events can each publish a different piece count and kilogram value.
 // Deduplicate repeated events, sum only when they cover the whole master.
