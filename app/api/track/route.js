@@ -131,6 +131,14 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     const value=patch[key];
     if(value===''||value===null||value===undefined)delete patch[key];
   }
+  // Flydubai: do not retain an old, unverified gross weight after successful
+  // AWB-matched live tracking. Await Show Details or complete RCF master kg.
+  // This deliberately affects prefix 141 only; operator flags are untouched.
+  if(mawb.startsWith('141-')&&tracked.flydubaiLiveVerifiedAt&&!tracked.weightSource){
+    patch.weight='';
+    patch.masterWeight='';
+    patch.weightSource='';
+  }
   if(clearStaleArrival){
     patch.arrivalDate='';
     patch.arrivalTime='';
@@ -680,6 +688,15 @@ async function handle(mawb,fallback={}){
   if(direct)shipment=mergeNonEmpty(shipment,direct);
   if(browser)shipment=mergeNonEmpty(shipment,browser);
   if(ocr)shipment=mergeNonEmpty(shipment,ocr);
+  if(flydubaiFastPath&&direct){
+    // Only the verified Flydubai Show Details gross kg or a complete,
+    // deduplicated RCF master sum may populate this AWB's total weight.
+    // Never recycle the old operator-entered 100kg on a new live response.
+    shipment.weight=direct.weight||'';
+    shipment.masterWeight=direct.masterWeight||'';
+    shipment.weightSource=direct.weightSource||'';
+    if(direct.bookingDate)shipment.bookingDate=direct.bookingDate;
+  }
   if(klmFastPath&&direct){
     // Authoritative KLM weight is only the AWB-matched Shipment Details
     // card or matched live KLM JSON. Never keep old browser/manual values.
