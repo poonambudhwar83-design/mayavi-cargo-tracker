@@ -1,3 +1,4 @@
+// Air India (098) official Activity View integration locked 2026-10-17.
 // Working-carrier freeze requested 2026-10-08.
 // Change these hashes ONLY after the owner explicitly approves unlocking
 // Saudia (065), Emirates (176), Cathay Pacific (160), Ethiopian (071), or Kuwait (229).
@@ -7,6 +8,8 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const locked = Object.freeze({
+  // Air India (098) official Activity View parser, FOW and movement tracking.
+  'lib/airIndia.js':'8345dc7ebd4fcf0f178d2214b2e272703340a5bf',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
   // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
   'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',
@@ -41,6 +44,22 @@ for (const [filename,expected] of Object.entries(locked)){
       changed=true;
     }
   }catch(err){console.error(`LOCKED AIRLINE FILE UNREADABLE: ${filename}: ${err.message}`);changed=true;}
+}
+// Air India 098 is locked independently of other airlines. The dedicated
+// parser is SHA-protected above; guard only its shared-route integration here
+// so other airline fixes and global refresh cadence remain editable.
+const airIndiaRouteContract=[
+  ['Air India adapter import',"import { trackAirIndia } from '../../../lib/airIndia.js';"],
+  ['Air India dedicated 098 routing',"if(mawb.startsWith('098-')) return trackAirIndia(mawb);"],
+  ['Air India official adapter fast path',"const airIndiaFastPath=mawb.startsWith('098-');"],
+  ['Air India generic API bypass','skipGenericApi=ethiopianFastPath||klmFastPath||flydubaiFastPath||airArabiaOfficialOnly||airIndiaFastPath'],
+  ['Air India Activity View split-load data priority','if(airIndiaFastPath&&direct){']
+];
+for(const [label,fragment] of airIndiaRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED AIR INDIA INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
 }
 // Cathay relies on a shared track route which also contains other airlines.
  // Avoid freezing the whole shared route; guard only the Cathay integration
@@ -173,4 +192,4 @@ for(const [label,fragment] of saudiaRouteContract){
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
