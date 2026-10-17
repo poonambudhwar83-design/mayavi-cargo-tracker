@@ -50,4 +50,34 @@ assert.equal(parsed?.arrivalIsActual,false);
 assert.equal(parsed?.flydubaiEvidence?.timelineRead,true);
 assert.equal(parseFlydubaiText(timeline.replace('141-53630301','141-53630302'),[],awb),null);
 
+
+// Show Details is the gross-weight authority for the verified master AWB.
+const withDetails=[timeline,'Show Details','Total Pieces: 78','Gross Weight: 566.5 KG','Booking Date: 15 Oct 2026'].join('\n');
+const detailed=parseFlydubaiText(withDetails,[],awb);
+assert.equal(detailed?.weight,'566.5');
+assert.equal(detailed?.weightSource,'Flydubai official Show Details gross weight');
+assert.equal(detailed?.masterPieces,'78');
+assert.equal(detailed?.bookingDate,'2026-10-15');
+
+// Split RCF events can each publish a different piece count and kilogram value.
+// Deduplicate repeated events, sum only when they cover the whole master.
+const part1='RCF Received at DWC from Flight FZ-3036, 16 Oct 2026\n16 Pieces 101.5 KG';
+const part2='RCF Received at DWC from Flight FZ-3036, 16 Oct 2026\n62 Pieces 462 KG';
+const fullyReceived=parseFlydubaiText([timeline,part1,part2,part1].join('\n'),[],awb);
+assert.equal(fullyReceived?.rcfParts?.length,2);
+assert.equal(fullyReceived?.rcfReceivedPieces,'78');
+assert.equal(fullyReceived?.rcfReceivedWeight,'563.5');
+assert.equal(fullyReceived?.weight,'563.5');
+assert.equal(fullyReceived?.rcfMasterComplete,true);
+assert.equal(fullyReceived?.status,'IN TRANSIT','RCF at DWC cannot mark DEL arrived');
+
+const partlyReceived=parseFlydubaiText([timeline,part1].join('\n'),[],awb);
+assert.equal(partlyReceived?.rcfReceivedPieces,'16');
+assert.equal(partlyReceived?.rcfReceivedWeight,'101.5');
+assert.equal(partlyReceived?.weight,'','16-piece RCF kg cannot become the 78-piece master weight');
+assert.equal(partlyReceived?.rcfMasterComplete,false);
+
+// The test must never treat flight booking at DWC as the original AWB booking.
+assert.equal(parsed?.bookingDate,'');
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
