@@ -45,6 +45,10 @@ for (const [filename,expected] of Object.entries(locked)){
     }
   }catch(err){console.error(`LOCKED AIRLINE FILE UNREADABLE: ${filename}: ${err.message}`);changed=true;}
 }
+// Cathay relies on a shared track route which also contains other airlines.
+ // Avoid freezing the whole shared route; guard only the Cathay integration
+ // contract, so KLM/other fixes may still be deployed independently.
+const sharedRoute=readFileSync('app/api/track/route.js','utf8');
 // Air India 098 is locked independently of other airlines. The dedicated
 // parser is SHA-protected above; guard only its shared-route integration here
 // so other airline fixes and global refresh cadence remain editable.
@@ -61,10 +65,6 @@ for(const [label,fragment] of airIndiaRouteContract){
     changed=true;
   }
 }
-// Cathay relies on a shared track route which also contains other airlines.
- // Avoid freezing the whole shared route; guard only the Cathay integration
- // contract, so KLM/other fixes may still be deployed independently.
-const sharedRoute=readFileSync('app/api/track/route.js','utf8');
 const cathayRouteContract=[
   ["Cathay official adapter import","import { trackCathay } from '../../../lib/cathay.js';"],
   ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb);"],
