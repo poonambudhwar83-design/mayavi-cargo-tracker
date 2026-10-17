@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs && node scripts/checkSpeedPostPendingPdf.mjs && node scripts/checkAutoRefreshScope.mjs && node scripts/checkAirIndiaActivity.mjs",
+    "prebuild": "node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs && node scripts/checkSpeedPostPendingPdf.mjs && node scripts/checkAutoRefreshScope.mjs && node scripts/checkAirIndiaActivity.mjs && node scripts/checkFlydubaiAccelya.mjs",
     "build": "next build",
     "start": "next start"
   },

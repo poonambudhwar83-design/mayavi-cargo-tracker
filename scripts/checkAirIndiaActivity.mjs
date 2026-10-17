@@ -29,4 +29,23 @@ assert.equal(extractActivityMaster('Tracking View: 19 pcs 1002 kg',{pieces:'19'}
 
 const total='AWB Activity Timeline\nBOOKED Booked 33 pcs 990 kg at DEL for AI 187, 18 Oct 2026\nMANIFESTED Manifested 20 pcs 600 kg for AI187, 18 Oct 2026 at DEL';
 assert.equal(extractActivityMaster(total,{pieces:'33',weight:'960'})?.weight,'990');
+// A preliminary Tracking View can show 40 pcs / 800 kg while a verified FOW
+// event records 36 pcs / 764 kg. Always prefer Activity View FOW.
+const corrected=extractActivityMaster(
+  'AWB Activity Timeline\nBOOKED Booked 40 pcs 800 kg at DEL for AI190, 18 Oct 2026\nFREIGHT ON HAND Freight on hand 36 pcs 764 kg',
+  {pieces:'40',bags:'40',weight:'800'});
+assert.equal(corrected?.pieces,'36');
+assert.equal(corrected?.bags,'36');
+assert.equal(corrected?.weight,'764');
+assert.equal(corrected?.activityQuantitySource,'FOW');
+// Duplicate FOW milestones are not separate loads.
+assert.equal(extractActivityMaster(
+  'AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 36 pcs 764 kg\nFOW Freight on hand 36 pcs 764 kg',
+  {pieces:'40',weight:'800'})?.pieces,'36');
+// Multiple different partial FOW milestones are ambiguous; do not sum or
+// replace a master shipment without a verified total.
+assert.equal(extractActivityMaster(
+  'AWB Activity Timeline\nFOW Freight on hand 20 pcs 400 kg\nFOW Freight on hand 16 pcs 364 kg',
+  {pieces:'40',weight:'800'}),null);
+
 console.log('Air India Activity View quantity tests passed: master, FOW, split, part and hidden view.');

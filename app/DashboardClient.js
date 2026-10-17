@@ -225,9 +225,9 @@ function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let
 function officialUrl(row={}){
   const n=normalize(row.mawb),airline=airlineForMawb(n),serial=n.slice(4),allDigits=digits(n);
   // Only add carrier-published MAWB detail routes. Do not change any shipment tracking logic.
-  // Flydubai (FZ/141): open airline's official Cargo landing page. Its
-  // Track Shipment button leads to Accelya; automated Doc No/Details is server-side.
-  if(n.startsWith('141-'))return 'https://www.flydubai.com/en/information/cargo/';
+  // Flydubai (FZ/141): official Accelya Search & Track document route.
+  // Prefill this row's AWB when the operator clicks the carrier link.
+  if(n.startsWith('141-'))return `https://prdonofz.accelya.io/app/offerandorder/#/shipments/list?type=D&values=${encodeURIComponent(allDigits)}`;
   if(n.startsWith('020-'))return `https://www.lufthansa-cargo.com/en/eservices/etracking/awb-details/-/awb/020/${encodeURIComponent(serial)}`;
   if(n.startsWith('075-')||n.startsWith('125-'))return `https://www.iagcargo.com/iagcargo/portlet/en/html/601/main/search?awb.cia=${n.slice(0,3)}&awb.cod=${encodeURIComponent(serial)}`;
   if(n.startsWith('074-'))return `https://afklcargo.com/mycargo/shipment/detail/${digits(n)}`;
@@ -241,7 +241,7 @@ function officialUrl(row={}){
   if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
 }
-function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return ['020-','074-','075-','125-','157-','232-','235-','312-','607-','807-'].some(prefix=>n.startsWith(prefix))}
+function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return ['020-','074-','075-','125-','141-','157-','232-','235-','312-','607-','807-'].some(prefix=>n.startsWith(prefix))}
 function openOfficial(row={}){
   const n=normalize(row.mawb),url=officialUrl(row);if(!url)return;
   try{navigator.clipboard?.writeText(digits(n)).catch(()=>{})}catch{}
