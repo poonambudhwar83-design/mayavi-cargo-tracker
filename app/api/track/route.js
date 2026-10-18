@@ -1417,6 +1417,11 @@ async function handle(mawb,fallback={}){
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
   shipment=normalizeShipmentTimesToIst(shipment);
   shipment=guardFinalDestinationArrival(shipment);
+  if(cathayFastPath){
+    // Return previously verified fields to the dashboard as well as protect DB writes.
+    const previousCx=await loadStoredTrackingFallback(mawb);
+    shipment=preserveCathayFlight(previousCx,shipment,mawb);
+  }
   // ET only: a passed final ETA plus no verified final-leg departure needs rescheduling.
   if(ethiopianFastPath&&direct)shipment=markEthiopianReschedulePending(shipment);
 
