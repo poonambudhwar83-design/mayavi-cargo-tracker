@@ -80,7 +80,12 @@ function decorateTiming(existing={},incoming={}){
   const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';
   const scheduledArrivalTime=incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'';
   const arrivalDate=clearArrival?'':(incoming.arrivalDate||existing.arrivalDate||'');
-  const arrivalTime=clearArrival?'':(incoming.arrivalTime||existing.arrivalTime||'');
+  // Flydubai may confirm final RCF without an actual clock: never carry the
+  // previous ETA into the actual arrival-time cell.
+  const flydubaiActualWithoutClock=mawb.startsWith('141-')
+    &&incoming.flydubaiEvidence?.finalArrivalConfirmed===true
+    &&incoming.arrivalIsActual===true&&!incoming.arrivalTime;
+  const arrivalTime=(clearArrival||flydubaiActualWithoutClock)?'':(incoming.arrivalTime||existing.arrivalTime||'');
   const incomingActualKnown=Object.prototype.hasOwnProperty.call(incoming,'arrivalIsActual');
   const arrivalIsActual=clearArrival?false:(incomingActualKnown?incoming.arrivalIsActual===true:existing.arrivalIsActual===true);
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime),current=dateTimeValue(arrivalDate,arrivalTime);
