@@ -49,7 +49,7 @@ export default function AirIndiaOneClickPage(){
         <h2 style={{fontSize:28,margin:'8px 0 14px'}}>{mawb||'Invalid Air India MAWB'}</h2>
         <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
           <button disabled={!mawb||loading} onClick={()=>setReload(v=>v+1)} style={{...action,background:'#1d4ed8',color:'#fff',opacity:loading?0.7:1}}>{loading?'Reading Air India…':'Refresh live tracking'}</button>
-          <button disabled={!mawb} style={action} onClick={()=>{if(mawb)navigator.clipboard?.writeText(number).catch(()=>{});}}>Copy MAWB</button>
+          <button disabled={!mawb} style={action} onClick={()=>{if(mawb)navigator.clipboard?.writeText(number)?.catch(()=>{});}}>Copy MAWB</button>
           <a href={AIR_INDIA_URL} target="_blank" rel="noopener noreferrer" style={action}>Air India official website ↗</a>
         </div>
         {loading&&<p role="status">Retrieving current shipment details from the airline's live portal. This can take some time.</p>}
