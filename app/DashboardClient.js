@@ -512,13 +512,18 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
           .filter(r=>refreshScope(r)!=='SKIP')
           .filter(r=>{
             const checked=Date.parse(r.lastChecked||r._dbUpdatedAt||'');
-            return !Number.isFinite(checked)||now-checked>=MIN_REFRESH_GAP_MS;
+            const cxMissing=digits(r.mawb).startsWith('160')&&(!r.flightNo||!r.arrivalDate||!r.arrivalTime);
+            const gap=cxMissing?5*60*1000:MIN_REFRESH_GAP_MS;
+            return !Number.isFinite(checked)||now-checked>=gap;
           })
           .sort((a,b)=>{
             const aiPriority=isPhone?Number(digits(b.mawb).startsWith('098'))-Number(digits(a.mawb).startsWith('098')):0;
+            const cxA=digits(a.mawb).startsWith('160')&&(!a.flightNo||!a.arrivalDate||!a.arrivalTime);
+            const cxB=digits(b.mawb).startsWith('160')&&(!b.flightNo||!b.arrivalDate||!b.arrivalTime);
+            const cxPriority=Number(cxB)-Number(cxA);
             const importPriority=(a.shipmentType==='IMPORT'?0:1)-(b.shipmentType==='IMPORT'?0:1);
             const agePriority=(Date.parse(a.lastChecked||a._dbUpdatedAt||'')||0)-(Date.parse(b.lastChecked||b._dbUpdatedAt||'')||0);
-            return aiPriority||importPriority||agePriority;
+            return aiPriority||cxPriority||importPriority||agePriority;
           }).slice(0,BATCH_LIMIT);
         for(const row of list){
           if(stopped)break;
@@ -527,7 +532,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       }finally{running=false}
     };
     const firstRun=setTimeout(()=>void syncActive(),2500);
-    const id=setInterval(()=>void syncActive(),10*60*1000);
+    const id=setInterval(()=>void syncActive(),5*60*1000);
     return()=>{stopped=true;clearTimeout(firstRun);clearInterval(id)};
   },[loaded]);
   useEffect(()=>{setClientFilter('');setOriginFilter('');setDestinationFilter('');setPrefixFilter('');setGoodsFilter('');setCompanyFilter('');setEnteredByFilter('')},[activeTab,adminView]);
