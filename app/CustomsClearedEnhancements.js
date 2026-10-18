@@ -161,7 +161,11 @@ export default function CustomsClearedEnhancements(){
       const goods=goodsIndex>=0?uniq(rows.map(r=>goodsValue(r,goodsIndex))):[];
       const clientHeader=headersEls[clientIndex];
       const hasNativeClientFilter=Boolean(clientHeader?.querySelector('select:not([data-cleared-header-filter])'));
-      const signature=JSON.stringify({mode,clients,companies,goods,headers:headers.length,hasNativeClientFilter});
+      // React owns these filters in both Active and Customs Cleared views.
+      // Keep the older DOM filters only as a fallback for a missing native selector.
+      const hasNativeCompanyFilter=Boolean(headersEls[companyIndex]?.querySelector('select:not([data-cleared-header-filter])'));
+      const hasNativeGoodsFilter=goodsIndex>=0&&Boolean(headersEls[goodsIndex]?.querySelector('select:not([data-cleared-header-filter])'));
+      const signature=JSON.stringify({mode,clients,companies,goods,headers:headers.length,hasNativeClientFilter,hasNativeCompanyFilter,hasNativeGoodsFilter});
       const previous={
         client:table.querySelector('[data-cleared-header-filter="client"]')?.value||'',
         company:table.querySelector('[data-cleared-header-filter="company"]')?.value||'',
@@ -171,8 +175,8 @@ export default function CustomsClearedEnhancements(){
         table.querySelectorAll('[data-cleared-header-filter]').forEach(el=>el.remove());
         const configs=[
           ...(!hasNativeClientFilter?[{index:clientIndex,key:'client',label:'Clients',values:clients}]:[]),
-          {index:companyIndex,key:'company',label:'Companies',values:companies},
-          ...(goodsIndex>=0?[{index:goodsIndex,key:'goods',label:'Goods',values:goods}]:[])
+          ...(!hasNativeCompanyFilter?[{index:companyIndex,key:'company',label:'Companies',values:companies}]:[]),
+          ...(goodsIndex>=0&&!hasNativeGoodsFilter?[{index:goodsIndex,key:'goods',label:'Goods',values:goods}]:[])
         ];
         configs.forEach(({index,key,label,values})=>{
           const th=headersEls[index];if(!th)return;
