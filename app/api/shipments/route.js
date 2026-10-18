@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../../../lib/partMail.js';
+import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -167,6 +168,7 @@ export async function POST(request){
       if((isOtherCountries(rowForSave)||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
+      if(incomingAwb.startsWith('160-'))rowForSave=preserveCathayFlight(existingRow?.data||{},rowForSave,incomingAwb);
       // Import part-load decisions belong to each physical movement; tracking
       // refreshes must never copy the first part's flags to all other parts.
       const supportsPartCustoms=['065','098','176','312'].some(p=>incomingAwb.startsWith(p));
