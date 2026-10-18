@@ -6,6 +6,7 @@
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
@@ -25,6 +26,8 @@ const locked = Object.freeze({
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
   'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
   'lib/cathay-browser-fallback.js':'2dafa8e0d28e4802bbb790d132d80998ba1c379a',
+  // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
+  'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
   'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
@@ -70,13 +73,51 @@ const cathayRouteContract=[
   ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb);"],
   ["Cathay prefix fast path","const cathayFastPath=mawb.startsWith('160-');"],
   ["Cathay shared persistence","airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath"],
-  ["Cathay saved-row eligibility","mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')"]
+  ["Cathay saved-row eligibility","mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')"],
+  ["Cathay verified flight/ETA retained before API response","shipment=preserveCathayFlight(previousCx,shipment,mawb);"],
+  ["Cathay verified flight/ETA retained during DB save","tracked=preserveCathayFlight(existingCx?.[0]?.data||{},tracked,mawb);"]
 ];
 for(const [label,fragment] of cathayRouteContract){
   if(!sharedRoute.includes(fragment)){
     console.error('LOCKED CATHAY INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
+}
+// The verified Cathay details must survive dashboard/browser saves as well as
+// the main /api/track response. These are shared modules, so enforce only the
+// CX-specific contracts instead of locking all airline dashboards or endpoints.
+const cxShipmentsRoute=readFileSync('app/api/shipments/route.js','utf8');
+if(!cxShipmentsRoute.includes("rowForSave=preserveCathayFlight(existingRow?.data||{},rowForSave,incomingAwb);")){
+  console.error('LOCKED CATHAY SHARED SAVE CONTRACT CHANGED: CX 160 must retain saved flight and arrival.');
+  changed=true;
+}
+const savedCx={mawb:'160-18873536',flightNo:'CX679',origin:'HKG',
+  destination:'DEL',arrivalDate:'2026-10-18',arrivalTime:'23:50',
+  arrivalIsActual:false,arrivalEstimate:true,status:'BOOKED'};
+const incomplete=preserveCathayFlight(savedCx,{mawb:savedCx.mawb,
+  flightNo:'',arrivalDate:'',arrivalTime:'',status:'TRACKING'},savedCx.mawb);
+if(incomplete.flightNo!=='CX679'||incomplete.arrivalDate!=='2026-10-18'||
+   incomplete.arrivalTime!=='23:50'||incomplete.status!=='BOOKED'){
+  console.error('LOCKED CATHAY RETENTION REGRESSION: Partial carrier response erased verified flight or arrival.');
+  changed=true;
+}
+const newerCx=preserveCathayFlight(savedCx,{mawb:savedCx.mawb,flightNo:'CX677',
+  arrivalDate:'',arrivalTime:''},savedCx.mawb);
+if(newerCx.flightNo!=='CX677'||newerCx.arrivalTime){
+  console.error('LOCKED CATHAY NEW-FLIGHT REGRESSION: Stale CX679 ETA was attached to CX677.');
+  changed=true;
+}
+const updatedCx=preserveCathayFlight(savedCx,{mawb:savedCx.mawb,flightNo:'CX679',
+  arrivalDate:'2026-10-19',arrivalTime:'01:15'},savedCx.mawb);
+if(updatedCx.arrivalDate!=='2026-10-19'||updatedCx.arrivalTime!=='01:15'){
+  console.error('LOCKED CATHAY NEW-ARRIVAL REGRESSION: New verified ETA did not replace old ETA.');
+  changed=true;
+}
+const qatarSame=preserveCathayFlight(savedCx,{mawb:'157-53523153',
+  flightNo:'',arrivalTime:''},'157-53523153');
+if(qatarSame.flightNo||qatarSame.arrivalTime){
+  console.error('LOCKED CATHAY CROSS-CARRIER REGRESSION: Other airline was modified.');
+  changed=true;
 }
 // Kuwait (229) uses a dedicated official reader with dated arrival fallback.
  // Protect the working shared-route wiring and save-to-existing-row contract
@@ -145,6 +186,18 @@ const ethiopianDashboardContract=[
 for(const [label,fragment] of ethiopianDashboardContract){
   if(!dashboard.includes(fragment)){
     console.error('LOCKED ETHIOPIAN DASHBOARD FLOW CHANGED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
+// Cathay 160: shared Neon data is authoritative, not a newer stale local
+// browser row which can be blank after a partially hydrated CX refresh.
+const cathayDashboardContract=[
+  ['CX startup DB hydration',"const serverAuthoritative=key.startsWith('071')||key.startsWith('098')||key.startsWith('160')"],
+  ['CX one-minute server sync',"out.push(key.startsWith('071')||key.startsWith('098')||key.startsWith('160')"]
+];
+for(const [label,fragment] of cathayDashboardContract){
+  if(!dashboard.includes(fragment)){
+    console.error('LOCKED CATHAY DISPLAY CONTRACT CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
 }
