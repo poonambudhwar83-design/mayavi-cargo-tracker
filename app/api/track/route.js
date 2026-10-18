@@ -144,6 +144,11 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     patch.masterWeight='';
     patch.weightSource='';
   }
+  // FZ only: a confirmed final cargo RCF may omit the actual clock.
+  // Clear the old ETA rather than mislabelling it as the actual arrival time.
+  if(mawb.startsWith('141-')&&tracked.flydubaiEvidence?.finalArrivalConfirmed===true&&!tracked.arrivalTime){
+    patch.arrivalTime='';
+  }
   if(clearStaleArrival){
     patch.arrivalDate='';
     patch.arrivalTime='';
