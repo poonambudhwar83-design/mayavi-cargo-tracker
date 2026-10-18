@@ -83,4 +83,31 @@ assert.equal(partlyReceived?.rcfMasterComplete,false);
 // The test must never treat flight booking at DWC as the original AWB booking.
 assert.equal(parsed?.bookingDate,'');
 
+
+// An actual RCF at the FINAL destination confirms arrival, even when the
+// prior route timeline also contains an RCF at intermediate DWC.
+const arrivedTimeline=[timeline,
+  'DEL, 4:12 AM,',
+  'Received at DEL from Flight No. FZ-3097, 18 Oct 2026, DWC-DEL',
+  '78 Pieces'
+].join('\n');
+const arrived=parseFlydubaiText(arrivedTimeline,[],awb);
+assert.equal(arrived?.status,'ARRIVED');
+assert.equal(arrived?.arrivalIsActual,true);
+assert.equal(arrived?.arrivalStation,'DEL');
+assert.equal(arrived?.arrivalDate,'2026-10-18');
+assert.equal(arrived?.arrivalTime,'04:12');
+assert.equal(arrived?.scheduledArrivalTime,'03:15');
+assert.equal(arrived?.flydubaiEvidence?.finalArrivalConfirmed,true);
+assert.equal(parsed?.flydubaiEvidence?.finalArrivalConfirmed,false);
+
+// If the carrier confirms DEL receipt without publishing an actual clock,
+// never copy the previous ETA into a falsely labelled actual timestamp.
+const arrivalWithoutClock=parseFlydubaiText([timeline,
+  'Received at DEL from Flight No. FZ-3097, 18 Oct 2026, DWC-DEL'
+].join('\n'),[],awb);
+assert.equal(arrivalWithoutClock?.status,'ARRIVED');
+assert.equal(arrivalWithoutClock?.arrivalIsActual,true);
+assert.equal(arrivalWithoutClock?.arrivalTime,'');
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
