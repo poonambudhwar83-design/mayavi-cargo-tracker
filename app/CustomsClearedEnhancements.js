@@ -32,11 +32,15 @@ function weightFromCell(value=''){
   return /^\d+(?:\.\d+)?$/.test(part)?Number(part):0;
 }
 function mailSortValue(value=''){
-  const m=String(value||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  // Customs Cleared uses newest Mail Time first; accept both old AM/PM
+  // timestamps and the dashboard's new 24-hour IST timestamps.
+  const m=String(value||'').trim().match(/(20\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
   if(!m)return null;
   let h=Number(m[4]);
-  if(h===12)h=0;
-  if(m[6].toUpperCase()==='PM')h+=12;
+  if(m[6]){
+    if(h<1||h>12)return null;
+    h=h%12+(m[6].toUpperCase()==='PM'?12:0);
+  }else if(h>23)return null;
   const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[5]),0,0);
   return Number.isFinite(d.getTime())?d.getTime():null;
 }
