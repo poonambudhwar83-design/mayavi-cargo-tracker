@@ -144,6 +144,7 @@ export async function GET(request){
   try{
     shipmentsCall=await fetchJsonWithRetry(`${origin}/api/shipments`,{headers:internalHeaders},4,'Shipment list');
   }catch(e){
+    console.error('mayavi_air_cron_list_error',String(e?.message||e));
     return Response.json({ok:false,error:e?.message||'Could not read shipments',retryExhausted:true},{status:503});
   }
   const shipments=shipmentsCall.data;
@@ -158,6 +159,7 @@ export async function GET(request){
     clearedLast72Hours:selected.filter(item=>item.scope==='CLEARED_RECENT').length,
     skippedArchived:selected.filter(item=>item.scope==='SKIP').length
   };
+  console.log('mayavi_air_cron_started',JSON.stringify({selected:rows.length,scopeCounts,at:new Date().toISOString()}));
   const refreshExisting=async existing=>{
     const mawb=normalize(existing.mawb||existing.awb);
     let track=null,trackAttempts=0,trackError='';
@@ -193,7 +195,7 @@ export async function GET(request){
     const saved=saveCall.data;
     if(!saved?.ok)throw new Error(saved?.error||'Save failed');
 
-    return {mawb,status:next.status||'',shipmentType:next.shipmentType,trackingAttempts:trackAttempts||0,saveAttempts:saveCall.attempt,backendOcrUsed:Boolean(next.backendOcrUsed)};
+    return {mawb,status:next.status||'',shipmentType:next.shipmentType,trackingSucceeded:Boolean(track?.ok&&track?.shipment),trackingAttempts:trackAttempts||0,saveAttempts:saveCall.attempt,backendOcrUsed:Boolean(next.backendOcrUsed)};
 
   };
   const importRows=rows.filter(r=>shipmentTypeOf(r.shipmentType)==='IMPORT');
@@ -206,12 +208,15 @@ export async function GET(request){
 
   const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
   const failed=results.filter(r=>r.status==='rejected').map(r=>String(r.reason?.message||r.reason||'Failed'));
+  const verified=ok.filter(r=>r.trackingSucceeded).length;
+  console.log('mayavi_air_cron_complete',JSON.stringify({selected:rows.length,saved:ok.length,verified,failed:failed.length,at:new Date().toISOString()}));
   return Response.json({
     ok:true,
     shipmentListAttempts:shipmentsCall.attempt,
     scopeCounts,
     selected:rows.length,
     refreshed:ok.length,
+    verified,
     failed:failed.length,
     results:ok,
     errors:failed
