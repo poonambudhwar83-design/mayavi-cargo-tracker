@@ -16,6 +16,9 @@ function good(value){return value!==undefined&&value!==null&&String(value).trim(
 async function updateOne(sql,row){
   const id=String(row.tracking_no||'');
   if(!/^ED\d{9}IN$/.test(id))return{success:false};
+  // Rotate even failed provider attempts: unavailable EDs must not starve other parcels.
+  const cronAttemptedAt=new Date().toISOString();
+  await sql`UPDATE mayavi_speedpost SET data=data || ${JSON.stringify({cronAttemptedAt})}::jsonb WHERE tracking_no=${id}`;
   const tracked=await trackSpeedPost(id);
   if(!tracked?.ok||!tracked.shipment)return{success:false};
   const incoming=tracked.shipment;
@@ -65,7 +68,7 @@ export async function GET(request){
         OR COALESCE(data->>'weight','')=''
         OR COALESCE(data->>'bookingDate','')=''
         OR COALESCE(data->>'deliveredAtText','')=''
-      ORDER BY COALESCE(data->>'lastChecked','') ASC,updated_at ASC
+      ORDER BY COALESCE(NULLIF(data->>'cronAttemptedAt',''),NULLIF(data->>'lastChecked',''),'') ASC,updated_at ASC
       LIMIT 12`;
     let checked=0,updated=0,errors=0;
     const workers=Array.from({length:Math.min(3,rows.length)},async(_,worker)=>{
@@ -76,9 +79,11 @@ export async function GET(request){
       }
     });
     await Promise.all(workers);
+    console.log('mayavi_speedpost_cron_complete',JSON.stringify({checked,updated,errors,at:new Date().toISOString()}));
     return Response.json({ok:true,checked,updated,errors,
       note:'Incomplete ED rows remain eligible for the next scheduled check.'});
   }catch(e){
+    console.error('mayavi_speedpost_cron_error',String(e?.message||e));
     return Response.json({ok:false,error:e?.message||'Speed Post sync unavailable.'},{status:503});
   }
 }
