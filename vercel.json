@@ -53,7 +53,7 @@
     },
     {
       "path": "/api/cron/speedpost",
-      "schedule": "*/10 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/cathay",
