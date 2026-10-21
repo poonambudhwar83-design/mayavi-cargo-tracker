@@ -117,6 +117,10 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('DELIVER'))return'DELIVERED';
+  // Thai CHORUS destination RCF is an actual arrival even when a BKK via leg
+  // remains in saved departureDestination. Do not let the via heuristic undo it.
+  if(n.startsWith('217-')&&row.arrivalIsActual===true&&
+     airportCode(row.destination)&&s==='ARRIVED')return'ARRIVED';
   const arrivedSignal=s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF');
   if(arrivedSignal){
     const finalDestination=airportCode(row.destination);
