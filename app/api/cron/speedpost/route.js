@@ -60,7 +60,7 @@ export async function GET(request){
     return Response.json({ok:false,error:'Unauthorized.'},{status:401});
   try{
     const sql=db();
-    // Oldest checked first. Delivered rows are revisited only while receipt
+    // Rotate through up to 18 records every ten minutes; site failures cannot\n    // block the rest. Delivered rows are revisited only while receipt
     // data (tariff/weight/booking/delivery date) remains incomplete.
     const rows=await sql`SELECT tracking_no,data FROM mayavi_speedpost
       WHERE COALESCE(data->>'delivered','false') <> 'true'
@@ -69,7 +69,7 @@ export async function GET(request){
         OR COALESCE(data->>'bookingDate','')=''
         OR COALESCE(data->>'deliveredAtText','')=''
       ORDER BY COALESCE(NULLIF(data->>'cronAttemptedAt',''),NULLIF(data->>'lastChecked',''),'') ASC,updated_at ASC
-      LIMIT 12`;
+      LIMIT 18`;
     let checked=0,updated=0,errors=0;
     const workers=Array.from({length:Math.min(3,rows.length)},async(_,worker)=>{
       for(let index=worker;index<rows.length;index+=3){
