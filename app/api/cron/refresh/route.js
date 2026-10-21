@@ -61,6 +61,8 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
 
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('DELIVER'))return'DELIVERED';
+  // Verified Thai destination RCF takes precedence over saved BKK transit-leg metadata.
+  if(normalize(mawb).startsWith('217-')&&arrivalIsActual===true&&airportCode(row.destination)&&s==='ARRIVED')return'ARRIVED';
   if(s.includes('DELAY')||s.includes('LATE'))return'DELAYED';
   if(isFiveAirline(mawb)&&!arrivalIsActual&&(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')))return'IN TRANSIT';
   if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){
