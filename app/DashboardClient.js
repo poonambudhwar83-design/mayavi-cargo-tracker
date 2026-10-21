@@ -262,6 +262,9 @@ function officialUrl(row={}){
   // Prefill this row's AWB when the operator clicks the carrier link.
   if(n.startsWith('141-'))return `https://prdonofz.accelya.io/app/offerandorder/#/shipments/list?type=D&values=${encodeURIComponent(allDigits)}`;
   // Emirates e-SkyCargo uses the same published Search & Track deep-link format.
+  // THAI CHORUS legacy GET AWB link. Prefills prefix/serial when supported
+  // by the carrier; clipboard fallback is already provided by openOfficial().
+  if(n.startsWith('217-'))return `https://chorus.thaicargo.com/skychain/app?PID=WEB01-10&doc_typ=AWB&awb_pre=217&awb_no=${encodeURIComponent(serial)}`;
   if(n.startsWith('176-'))return `https://eskycargo.emirates.com/app/offerandorder/#/shipments/list?type=D&values=${encodeURIComponent(allDigits)}`;
   if(n.startsWith('020-'))return `https://www.lufthansa-cargo.com/en/eservices/etracking/awb-details/-/awb/020/${encodeURIComponent(serial)}`;
   if(n.startsWith('075-')||n.startsWith('125-'))return `https://www.iagcargo.com/iagcargo/portlet/en/html/601/main/search?awb.cia=${n.slice(0,3)}&awb.cod=${encodeURIComponent(serial)}`;
@@ -276,7 +279,7 @@ function officialUrl(row={}){
   if(n.startsWith('514-'))return 'https://airarabia-g9.ibsplc.aero/icargoneoportal/app/main/#/app';
   return airline?.url||row.officialTracker||'';
 }
-function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return ['020-','074-','075-','125-','141-','157-','176-','232-','235-','312-','607-','807-'].some(prefix=>n.startsWith(prefix))}
+function officialHasDirectMawb(row={}){const n=normalize(row.mawb);return ['020-','074-','075-','125-','141-','157-','176-','217-','232-','235-','312-','607-','807-'].some(prefix=>n.startsWith(prefix))}
 function copyOfficialAwb(awb=''){
   const value=digits(awb);if(!/^\d{11}$/.test(value))return false;
   // Synchronous copy fallback matters: the carrier page opens in another tab,
