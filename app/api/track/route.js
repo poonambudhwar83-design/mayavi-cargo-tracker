@@ -246,6 +246,10 @@ function guardFinalDestinationArrival(shipment={}){
   const s=String(out.status||'').toUpperCase();
   const arrived=/ARRIVED|DESTINATION|LANDED|\bRCF\b/.test(s)&&!s.includes('PART ARRIVED');
   if(!arrived)return out;
+  // THAI CHORUS destination Received from Flight is a verified actual arrival.
+  // Saved BKK transit-leg metadata must not demote it to IN TRANSIT.
+  if(String(out.mawb||'').startsWith('217-')&&out.arrivalIsActual===true&&
+     /THAI Cargo CHORUS/i.test(String(out.source||'')))return out;
   const destination=airportCode(out.destination);
   const station=movementStation(out);
   const via=explicitVia(out);
