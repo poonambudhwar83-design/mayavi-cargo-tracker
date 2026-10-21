@@ -155,8 +155,8 @@ export async function POST(request){
     const markEntry=body?.markEntry===true&&!auth.internal;
     // Client ownership is operator-entered master data. Normal tracking refreshes,
     // company/goods edits and stale browser saves must never overwrite it.
-    // Only an explicit Admin client-edit request may change clientName/client.
-    const allowClientUpdate=body?.allowClientUpdate===true&&Boolean(auth.internal||auth.session?.role==='admin');
+    // Only an explicit authenticated client-edit request may change clientName/client.
+    const allowClientUpdate=body?.allowClientUpdate===true&&Boolean(auth.internal||auth.session?.role==='admin'||auth.session?.role==='employee');
     const sql=db();
     const saved=[];
     const weightMinusAllowed=canManageWeightMinus(auth.session,auth.internal);
