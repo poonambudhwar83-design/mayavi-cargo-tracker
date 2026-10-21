@@ -62,20 +62,21 @@ function weightSummary(rows){
   const unique=new Map();
   for(const row of rows){const ed=normalizeED(row.trackingNo);if(ed&&!unique.has(ed))unique.set(ed,row);}
   const countries=new Map(),months=new Map();
-  let totalKg=0,knownWeights=0;
+  let totalKg=0,totalRoundedKg=0,knownWeights=0;
   for(const row of unique.values()){
     const kg=weightInKg(row.weight);
+    const roundedKg=billedWeightKg(row.weight);
     const country=shipmentCountry(row);
     const date=row.createdAt?new Date(row.createdAt):null;
     const month=date&&!Number.isNaN(date.getTime())?new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:'Asia/Kolkata'}).format(date):'Entry date unknown';
     for(const [map,key] of [[countries,country],[months,month]]){
-      if(!map.has(key))map.set(key,{packets:0,knownWeights:0,kg:0});
+      if(!map.has(key))map.set(key,{packets:0,knownWeights:0,kg:0,roundedKg:0});
       const group=map.get(key);group.packets++;
-      if(kg!==null){group.kg+=kg;group.knownWeights++;}
+      if(kg!==null){group.kg+=kg;group.roundedKg+=roundedKg;group.knownWeights++;}
     }
-    if(kg!==null){totalKg+=kg;knownWeights++;}
+    if(kg!==null){totalKg+=kg;totalRoundedKg+=roundedKg;knownWeights++;}
   }
-  return {packets:unique.size,knownWeights,totalKg,countries:[...countries].sort((a,b)=>a[0].localeCompare(b[0])),months:[...months].sort((a,b)=>a[0].localeCompare(b[0]))};
+  return {packets:unique.size,knownWeights,totalKg,totalRoundedKg,countries:[...countries].sort((a,b)=>a[0].localeCompare(b[0])),months:[...months].sort((a,b)=>a[0].localeCompare(b[0]))};
 }
 
 function weightInKg(raw){
@@ -729,18 +730,18 @@ export default function SpeedPostDashboard({currentUser}){
 
       <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
         <h3 style={{fontSize:15,margin:'0 0 8px'}}>{speedPostTab==='DELIVERED'?'Delivered Sheet Weight Summary':'Current Sheet Weight Summary'}</h3>
-        <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg verified weight • {summary.packets-summary.knownWeights} missing weight</div>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg actual weight • {summary.totalRoundedKg.toLocaleString('en-IN')} kg total rounded weight • {summary.packets-summary.knownWeights} missing weight</div>
         <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
           {[[ 'Country-wise totals',summary.countries ]].map(([heading,groups])=>
             <div key={heading} style={{flex:'1 1 280px',minWidth:0}}>
               <h4 style={{fontSize:13,margin:'0 0 6px'}}>{heading}</h4>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                <thead><tr><th style={th}>{heading.startsWith('Country')?'Country':'Entry month'}</th><th style={th}>Parcels</th><th style={th}>Weight (kg)</th><th style={th}>Missing weight</th></tr></thead>
-                <tbody>{groups.map(([name,g])=><tr key={name}><td style={td}>{name}</td><td style={td}>{g.packets}</td><td style={td}>{g.kg.toLocaleString('en-IN',{maximumFractionDigits:4})}</td><td style={td}>{g.packets-g.knownWeights}</td></tr>)}</tbody>
+                <thead><tr><th style={th}>{heading.startsWith('Country')?'Country':'Entry month'}</th><th style={th}>Parcels</th><th style={th}>Weight (kg)</th><th style={th}>Rounded Weight (kg)</th><th style={th}>Missing weight</th></tr></thead>
+                <tbody>{groups.map(([name,g])=><tr key={name}><td style={td}>{name}</td><td style={td}>{g.packets}</td><td style={td}>{g.kg.toLocaleString('en-IN',{maximumFractionDigits:4})}</td><td style={td}>{g.roundedKg.toLocaleString('en-IN')}</td><td style={td}>{g.packets-g.knownWeights}</td></tr>)}</tbody>
               </table>
             </div>)}
         </div>
-        <p style={{fontSize:11,color:'#64748b'}}>Weights are actual recorded weights converted to kg, not rounded billing weights. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Current and Delivered sheets are counted separately. Entry-date month-wise aggregation will be added to monthly archives later.</p>
+        <p style={{fontSize:11,color:'#64748b'}}>Actual weight and rounded billing weight are totaled separately. Each parcel's rounded weight is rounded UP to the next whole kg, matching Cash Cost. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Current and Delivered sheets are counted separately. Entry-date month-wise aggregation will be added to monthly archives later.</p>
       </div>
       <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
