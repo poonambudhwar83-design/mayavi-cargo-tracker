@@ -25,7 +25,8 @@ function internalKey(){
 async function refreshOne(row,origin,key){
   const awb=digits(row.awb),mawb=awb.slice(0,3)+'-'+awb.slice(3),start=Date.now();
   try{
-    const response=await fetch(origin+'/api/track',{
+    const trackingOrigin=process.env.MAYAVI_TRACKING_ORIGIN||'https://tracker.mayavicargo.com';
+    const response=await fetch(trackingOrigin+'/api/track',{
       method:'POST',cache:'no-store',
       headers:{'content-type':'application/json','x-mayavi-internal-key':key},
       body:JSON.stringify({mawb,currentShipment:row.data||{}}),
@@ -33,12 +34,12 @@ async function refreshOne(row,origin,key){
     });
     const result=await response.json().catch(()=>null);
     const saved=response.ok&&result?.ok===true&&result?.serverSaved===true;
-    const error=saved?'':String(result?.trackingError||result?.error||
-      (response.ok?'Cathay tracking not persisted':'HTTP '+response.status)).slice(0,180);
+    const failure=result?.trackingError||result?.error||result?.reason;
+    const error=saved?'':(typeof failure==='string'?failure:failure?JSON.stringify(failure):'HTTP '+response.status).slice(0,180);
     return {mawb,ok:saved,status:saved?result.shipment?.status||'':'',
       arrivalDate:saved?result.shipment?.arrivalDate||'':'',
       arrivalTime:saved?result.shipment?.arrivalTime||'':'',
-      error,elapsedMs:Date.now()-start};
+      error,httpStatus:response.status,elapsedMs:Date.now()-start};
   }catch(e){
     return {mawb,ok:false,error:String(e?.message||e).slice(0,180),
       elapsedMs:Date.now()-start};
