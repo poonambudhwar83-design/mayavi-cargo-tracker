@@ -75,7 +75,8 @@ export async function GET(request){
       const recent=timestamp(data.enteredAt||row.updated_at)>=now-48*60*60*1000;
       return {row,checkedAt,missing,recent,unresolved,active};
     }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.unresolved&&x.active&&
-      now-x.checkedAt>=MIN_GAP_MS)
+      (now-x.checkedAt>=MIN_GAP_MS||
+        (x.missing&&x.recent&&now-x.checkedAt>=60*1000)))
       .sort((a,b)=>Number(b.missing)-Number(a.missing)||
         Number(b.recent)-Number(a.recent)||a.checkedAt-b.checkedAt)
       .slice(0,MAX_PER_TICK);
