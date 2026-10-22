@@ -25,7 +25,7 @@ const locked = Object.freeze({
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
   'lib/cathay.js':'5af8d076c2001942399f8c5984f59da3fe7ab5b7',
-  'lib/cathay-browser-fallback.js':'db35849475377c82ec26d233be90c285bb253154',
+  'lib/cathay-browser-fallback.js':'26075bd2bfc91c321899b1458855cd386860e938',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
