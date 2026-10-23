@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import styles from './AdminNotesDashboard.module.css';
+import AdminPaymentsDashboard from './AdminPaymentsDashboard.js';
 
 const API = '/api/admin-notes';
 const STATUSES = [
@@ -28,6 +29,7 @@ function statusLabel(value) {
 }
 
 export default function AdminNotesDashboard({ currentUser }) {
+  const [section, setSection] = useState('NOTES');
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,6 +72,7 @@ export default function AdminNotesDashboard({ currentUser }) {
   const overdue = items.filter(note => note.status !== 'COMPLETED' && note.dueDate && note.dueDate < todayIST()).length;
 
   function createNote(kind) {
+    setSection('NOTES');
     setEditingId('');
     setDraft(initial(kind));
     setFormOpen(true);
@@ -147,16 +150,19 @@ export default function AdminNotesDashboard({ currentUser }) {
     <header className={styles.header}>
       <div>
         <div className={styles.eyebrow}>MAYAVI CARGO • ADMIN PRIVATE</div>
-        <h1>Meetings &amp; Daily Updates</h1>
-        <p>Record meetings, daily progress, decisions and follow-ups in one place.</p>
+        <h1>Meetings, Daily Updates &amp; Payments</h1>
+        <p>Manage meetings, daily work updates and monthly payments in one private Admin section.</p>
         <small>Signed in as {currentUser?.displayName || 'Admin'} • Saved in Mayavi database</small>
       </div>
       <div className={styles.headerActions}>
         <button type="button" onClick={() => createNote('MEETING')}>+ New Meeting</button>
         <button type="button" className={styles.secondaryButton} onClick={() => createNote('DAILY_UPDATE')}>+ Daily Update</button>
+        <button type="button" className={styles.secondaryButton} onClick={() => { setSection('PAYMENTS'); setFormOpen(false); setMessage(''); }}>PAYMENTS</button>
+        {section === 'PAYMENTS' && <button type="button" onClick={() => setSection('NOTES')}>VIEW NOTES</button>}
       </div>
     </header>
 
+    {section === 'PAYMENTS' ? <AdminPaymentsDashboard currentUser={currentUser}/> : <>
     <section className={styles.stats}>
       <div><b>{items.length}</b><span>Total Records</span></div>
       <div><b>{items.filter(note => note.kind === 'MEETING').length}</b><span>Meetings</span></div>
@@ -269,5 +275,6 @@ export default function AdminNotesDashboard({ currentUser }) {
           </article>)}
         </div>}
     </section>
+    </>}
   </main>;
 }
