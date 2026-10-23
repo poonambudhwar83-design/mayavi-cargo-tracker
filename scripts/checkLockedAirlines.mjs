@@ -198,8 +198,23 @@ for(const [label,fragment] of saudiaManifestDisplayContract){
     changed=true;
   }
 }
+// The Active Sheet weight must count all visible physical parts, including
+// future manifests, without requiring ARRIVED/Customs Clear status.
+// Otherwise pending SV manifests silently disappear from the total.
+for(const [label,fragment] of [
+  ['all physical parts counted',"if(row._partKey)return partKg(row.weight)||0;"],
+  ['single partial rows counted',"return fractional?(partKg(row.weight)||0):weightForTotal(row);"],
+  ['one master or sum of physical parts',"if(parts.length)total+=parts.reduce((sum,p)=>sum+summaryRowWeight(p,activeTab),0);"],
+  ['no virtual DIS balance double count',"if(row._saudiaPendingVirtual===true)return 0;"]
+]){
+  if(!dashboard.includes(fragment)){
+    console.error('LOCKED ACTIVE WEIGHT REGRESSION: '+label);
+    changed=true;
+  }
+}
 // Backend scheduled tracking continues when no employee/admin has Mayavi open.
-if(!config.crons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')){
+const saudiaCronConfig=JSON.parse(readFileSync('vercel.json','utf8'));
+if(!Array.isArray(saudiaCronConfig.crons)||!saudiaCronConfig.crons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')){
   console.error('LOCKED MAYAVI AIR CARGO 2-HOUR SERVER REFRESH CHANGED.');
   changed=true;
 }
