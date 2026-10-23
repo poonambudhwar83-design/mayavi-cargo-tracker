@@ -157,7 +157,7 @@ export default function MonthlyDashboard(){
 
   return <main style={{paddingBottom:24}}>
     <section className="hero">
-      <div><div className="eyebrow">MAYAVI CARGO • ADMIN ARCHIVE</div><h1>Monthly Records Dashboard</h1><p>Closed months are saved separately. Import uses Arrival Date; Export uses Departure Date. Split Import parts are shown in their own arrival month.</p></div>
+      <div><div className="eyebrow">MAYAVI CARGO • ADMIN ARCHIVE</div><h1>Monthly Records Dashboard</h1><small style={{display:'inline-block',margin:'8px 0 0',padding:'5px 9px',background:'rgba(255,255,255,.15)',borderRadius:8,fontWeight:800}}>Goods • Client • Company filters available in table headings</small><p>Closed months are saved separately. Import uses Arrival Date; Export uses Departure Date. Split Import parts are shown in their own arrival month.</p></div>
       <div className="userPanel"><button className="logoutBtn" onClick={()=>{window.location.href='/'}}>← LIVE DASHBOARD</button></div>
     </section>
 
@@ -196,7 +196,32 @@ export default function MonthlyDashboard(){
       {note&&<div className="note">{note}</div>}
       <section className="tableWrap"><table>
         <thead><tr>
-          <th>S.No.</th><th>Entry Date</th><th>MAWB</th>{type==='IMPORT'&&<th>Goods</th>}<th>Client</th><th>Company</th><th>Entered By</th><th>Booking Date</th><th>Airline</th><th>Origin</th><th>Via</th><th>Destination</th><th>Bags/Pieces</th><th>Weight</th><th>Flight</th>
+          <th>S.No.</th><th>Entry Date</th><th>MAWB</th>
+          {type==='IMPORT'&&<th style={{minWidth:145}}>
+            <div style={{display:'grid',gap:5}}>
+              <span>Goods <span aria-hidden="true">▾</span></span>
+              <select aria-label="Goods column filter" value={goodsFilter} onChange={e=>setGoodsFilter(e.target.value)} style={{minWidth:135,maxWidth:190,height:33,border:'1px solid #b2c7df',borderRadius:7,padding:'0 6px',background:'#fff',fontSize:12,fontWeight:700,color:'#26496f'}}>
+                <option value="">All Goods</option>{filterOptions.goods.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </th>}
+          <th style={{minWidth:145}}>
+            <div style={{display:'grid',gap:5}}>
+              <span>Client <span aria-hidden="true">▾</span></span>
+              <select aria-label="Client column filter" value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{minWidth:140,maxWidth:200,height:33,border:'1px solid #b2c7df',borderRadius:7,padding:'0 6px',background:'#fff',fontSize:12,fontWeight:700,color:'#26496f'}}>
+                <option value="">All Clients</option>{filterOptions.clients.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </th>
+          <th style={{minWidth:145}}>
+            <div style={{display:'grid',gap:5}}>
+              <span>Company <span aria-hidden="true">▾</span></span>
+              <select aria-label="Company column filter" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{minWidth:140,maxWidth:200,height:33,border:'1px solid #b2c7df',borderRadius:7,padding:'0 6px',background:'#fff',fontSize:12,fontWeight:700,color:'#26496f'}}>
+                <option value="">All Companies</option>{filterOptions.companies.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </th>
+          <th>Entered By</th><th>Booking Date</th><th>Airline</th><th>Origin</th><th>Via</th><th>Destination</th><th>Bags/Pieces</th><th>Weight</th><th>Flight</th>
           {type==='EXPORT'&&<><th>Departure Date</th><th>Departure Time</th><th>Handover</th><th>Master Copy</th></>}
           <th>Arrival Date</th><th>Arrival Time</th>{type==='IMPORT'&&<><th>Mail</th><th>Customs Clear</th></>}<th>Status</th><th>Remarks</th>
         </tr></thead>
