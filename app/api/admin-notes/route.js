@@ -45,30 +45,42 @@ function validDate(value) {
 }
 function parseEntry(body) {
   const kind = ['MEETING', 'DAILY_UPDATE'].includes(body?.kind) ? body.kind : '';
-  const status = ['OPEN', 'IN_PROGRESS', 'COMPLETED'].includes(body?.status) ? body.status : '';
   const entry = {
     kind,
     date: clean(body?.date, 10),
-    time: clean(body?.time, 5),
-    title: clean(body?.title, 160),
-    attendees: clean(body?.attendees, 400),
-    discussion: clean(body?.discussion, 6000),
-    decisions: clean(body?.decisions, 4000),
-    actionItems: clean(body?.actionItems, 4000),
-    assignedTo: clean(body?.assignedTo, 200),
-    dueDate: clean(body?.dueDate, 10),
-    status
+    venue: clean(body?.venue, 250),
+    person: clean(body?.person, 250),
+    purpose: clean(body?.purpose, 5000),
+    topic: clean(body?.topic, 250),
+    remarks: clean(body?.remarks, 6000)
   };
-  if (!kind || !status || !entry.title || !validDate(entry.date) ||
-      (entry.dueDate && !validDate(entry.dueDate)) ||
-      (entry.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.time))) {
-    return { error: 'A title, date, note type and status are required.' };
+  if (!kind || !validDate(entry.date) ||
+      (kind === 'MEETING' && (!entry.person || !entry.purpose)) ||
+      (kind === 'DAILY_UPDATE' && !entry.topic)) {
+    return { error: kind === 'MEETING'
+      ? 'Meeting date, person to meet and agenda/purpose are required.'
+      : 'Daily update date and topic are required.' };
   }
   return { entry };
 }
+// Keep existing entries visible after simplifying the form. No historical
+// columns are dropped from the stored JSON unless a record is edited.
 function result(row) {
-  return { ...(row.data || {}), id: row.id, createdBy: row.created_by,
-    updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at };
+  const d = row.data || {};
+  return {
+    id: row.id,
+    kind: d.kind,
+    date: d.date || '',
+    venue: d.venue || '',
+    person: d.person || d.attendees || '',
+    purpose: d.purpose || [d.title, d.discussion, d.decisions, d.actionItems].filter(Boolean).join('\n'),
+    topic: d.topic || d.title || '',
+    remarks: d.remarks || [d.discussion, d.decisions, d.actionItems].filter(Boolean).join('\n'),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
 }
 async function findOne(sql, id) {
   const found = await sql`SELECT id, data, created_by, updated_by, created_at, updated_at
