@@ -37,7 +37,7 @@ async function ensureTable(sql) {
   )`;
 }
 const clean = (value, max) => String(value ?? '').trim().slice(0, max);
-const validMonth = (v) => /^20\d{2}-(0[1-9]|1[0-2])$/.test(v);
+const validMonth = value => /^20\d{2}-(0[1-9]|1[0-2])$/.test(value);
 function validDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const time = Date.parse(value + 'T00:00:00Z');
@@ -50,39 +50,40 @@ function paise(value) {
   const result = Number(rupees) * 100 + Number((fraction + '00').slice(0, 2));
   return Number.isSafeInteger(result) && result <= 1000000000000 ? result : null;
 }
-const money = (paiseValue = 0) => (Math.max(0, Number(paiseValue) || 0) / 100).toFixed(2);
+const money = p => (Math.max(0, Number(p) || 0) / 100).toFixed(2);
+
 function parseEntry(body) {
-  const month = clean(body?.month, 7);
-  const amountPaise = paise(body?.amount);
-  const paidPaise = paise(body?.paidAmount || '0');
-  const category = clean(body?.category, 40);
-  const method = clean(body?.method, 30);
   const entry = {
-    month, title: clean(body?.title, 160), payee: clean(body?.payee, 200),
-    category, amountPaise, paidPaise,
-    dueDate: clean(body?.dueDate, 10), paidDate: clean(body?.paidDate, 10),
-    method, reference: clean(body?.reference, 140), notes: clean(body?.notes, 4000)
+    month: clean(body?.month, 7),
+    name: clean(body?.name, 200),
+    amountPaise: paise(body?.amount),
+    dueDate: clean(body?.dueDate, 10),
+    paidDate: clean(body?.paidDate, 10)
   };
-  const categories = ['VENDOR', 'SALARY', 'FREIGHT', 'RENT', 'UTILITIES', 'TAX', 'OTHER'];
-  const methods = ['NONE', 'BANK_TRANSFER', 'UPI', 'CASH', 'CHEQUE', 'CARD', 'OTHER'];
-  if (!validMonth(month) || !entry.title || !entry.payee ||
-      amountPaise === null || amountPaise <= 0 || paidPaise === null ||
-      paidPaise > amountPaise || !categories.includes(category) || !methods.includes(method) ||
-      (entry.dueDate && !validDate(entry.dueDate)) ||
+  if (!validMonth(entry.month) || !entry.name || entry.amountPaise === null ||
+      entry.amountPaise <= 0 || !validDate(entry.dueDate) ||
       (entry.paidDate && !validDate(entry.paidDate))) {
-    return { error: 'Enter a valid month, payment, payee and amounts (paid cannot exceed total).' };
-  }
-  if (paidPaise === 0) {
-    entry.paidDate = ''; entry.method = 'NONE'; entry.reference = '';
+    return { error: 'Please enter name, amount and due date. Paid date may be left blank.' };
   }
   return { entry };
 }
-const output = (row) => ({
-  ...row.data, id: row.id,
-  amount: money(row.data?.amountPaise), paidAmount: money(row.data?.paidPaise),
-  createdBy: row.created_by, updatedBy: row.updated_by,
-  createdAt: row.created_at, updatedAt: row.updated_at
-});
+// Existing records from the old complex payment form remain visible.  Only
+// their four requested fields are shown; no database rows are discarded.
+const output = row => {
+  const d = row.data || {};
+  const storedPaise = Number.isFinite(Number(d.amountPaise))
+    ? Number(d.amountPaise) : paise(d.amount || '0');
+  return {
+    id: row.id,
+    month: d.month,
+    name: String(d.name || d.payee || d.title || '').trim(),
+    amount: money(storedPaise),
+    dueDate: d.dueDate || '',
+    paidDate: d.paidDate || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+};
 async function one(sql, id) {
   const found = await sql`SELECT id, data, created_by, updated_by, created_at, updated_at
     FROM mayavi_admin_payments WHERE id = ${id} LIMIT 1`;

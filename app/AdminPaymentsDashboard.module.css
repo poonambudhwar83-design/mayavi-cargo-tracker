@@ -56,3 +56,21 @@
 .footnote{margin:12px 0 0;font-size:11px;line-height:1.5;color:#697d94}
 @media(max-width:1000px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}.formGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.heading{flex-direction:column;align-items:flex-start}.heading h2{font-size:20px}.summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.summary>div{padding:12px}.formGrid{grid-template-columns:1fr}.formCard,.tableCard{padding:13px}.period{padding:11px;gap:7px}.period strong{margin:0}.tableToolbar{align-items:stretch}.tableToolbar label{width:100%;min-width:0!important}.tableToolbar>div{width:100%}}
+
+/* Minimal four-column payment register overrides. */
+.wrapper{gap:14px}
+.heading{align-items:center}
+.period strong{margin-left:0}
+.tableScroll table{min-width:660px}
+.tableScroll th{font-size:12px}
+.tableScroll td{font-size:13px;vertical-align:middle}
+.tableScroll .amount{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tableScroll th:nth-child(2){text-align:right}
+.tableScroll td:first-child{font-weight:700;color:#183d62;min-width:150px}
+.tableScroll td:nth-child(3),.tableScroll td:nth-child(4){white-space:nowrap}
+.tableScroll td:last-child{min-width:115px}
+.tableScroll .editingRow input{width:100%;min-width:110px;max-width:230px;padding:9px 8px;box-sizing:border-box;font:inherit;border:1px solid #b2cce2;border-radius:7px;background:#fff;color:#1b344e}
+.tableScroll .editingRow input[type="date"]{min-width:132px}
+.tableScroll tfoot td{font-weight:900}
+.paid{color:#157347;font-weight:800}
+.pending{color:#9b6713;font-weight:800}

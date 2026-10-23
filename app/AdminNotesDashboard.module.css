@@ -52,3 +52,30 @@
 .empty{text-align:center;color:#677b95;padding:48px 12px;font-size:14px}
 @media(max-width:850px){.header{align-items:flex-start;flex-direction:column}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:580px){.page{padding:12px 10px 30px}.header{padding:18px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.panel{padding:13px}.fields{grid-template-columns:1fr}.filters{grid-template-columns:1fr}.recordTop{align-items:stretch;flex-direction:column}.recordButtons{justify-content:flex-start}.headerActions button{white-space:normal}}
+
+/* Simple column-wise Meetings / Daily Updates registers */
+.headerActions .selectedTab{background:#fff;color:#153c65;border:2px solid #b9e6ff}
+.simpleToolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 10px;flex-wrap:wrap}
+.simpleToolbar h2{font-size:21px;margin:0 0 4px;color:#183d67}
+.simpleToolbar small{font-size:12px;color:#6a7c90}
+.simpleButtons{display:flex;gap:8px;flex-wrap:wrap}
+.addButton,.shareButton{background:#1a609b;border:1px solid #1a609b;color:#fff;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer}
+.shareButton{background:#f0f7fc;color:#1b5686;border-color:#b8d5ed}
+.simpleButtons button:disabled{opacity:.5;cursor:not-allowed}
+.simpleTableWrap{overflow:auto;max-width:100%;background:#fff;border:1px solid #dde8f3;border-radius:13px}
+.simpleTableWrap table{width:100%;min-width:715px;border-collapse:collapse}
+.simpleTableWrap th{text-align:left;font-size:12px;white-space:nowrap;color:#3d5671;background:#f1f6fc;padding:13px 14px;border-bottom:1px solid #d7e5f1}
+.simpleTableWrap td{padding:12px 14px;border-bottom:1px solid #e5edf5;font-size:13px;color:#1e3853;vertical-align:top}
+.simpleTableWrap tbody tr:last-child td{border-bottom:0}
+.simpleTableWrap .longCell{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45;min-width:220px;max-width:560px}
+.simpleTableWrap .editingRow input,.simpleTableWrap .editingRow textarea{background:#fff;border:1px solid #bad0e4;border-radius:7px;padding:8px;width:100%;min-width:105px;box-sizing:border-box;font-size:13px;color:#18364e}
+.simpleTableWrap .editingRow input[type="date"]{min-width:140px}
+.simpleTableWrap .editingRow textarea{min-width:200px;max-width:490px;resize:vertical}
+.tableActions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:150px}
+.tableActions button{padding:7px 9px;border:1px solid #b9d1e5;background:#fff;color:#1a5586;border-radius:7px;cursor:pointer;font-size:11px;font-weight:800;white-space:nowrap}
+.tableActions button[type="submit"]{background:#1a609b;color:#fff}
+.tableActions .deleteButton{border-color:#efcccc;color:#b23d3d}
+.tableActions .shareButton{background:#e9f5ff;border-color:#b8d5ed;color:#1d5789}
+.tableEmpty{text-align:center;color:#6f8298!important;padding:42px 14px!important}
+.shareHint{font-size:12px;color:#71839a;margin:9px 0}
+@media(max-width:580px){.simpleToolbar h2{font-size:19px}.simpleTableWrap table{min-width:690px}.simpleTableWrap td,.simpleTableWrap th{padding:10px 9px}.headerActions button{flex:1}}
