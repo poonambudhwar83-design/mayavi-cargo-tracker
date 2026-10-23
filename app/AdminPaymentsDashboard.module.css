@@ -1,0 +1,58 @@
+.wrapper{display:flex;flex-direction:column;gap:16px}
+.heading{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.heading h2{font-size:23px;margin:0 0 6px;color:#173962}
+.heading p{font-size:14px;margin:0 0 6px;color:#5d7290}
+.heading small{font-size:11px;color:#6d829c}
+.primary,.secondary,.period>button{border-radius:9px;padding:10px 15px;font-weight:800;cursor:pointer;font-size:13px;border:1px solid #c9d9ea}
+.primary{background:#1a609b;color:#fff;border-color:#1a609b}
+.secondary,.period>button{background:#fff;color:#2e5680}
+.primary:disabled,.secondary:disabled{opacity:.5;cursor:not-allowed}
+.period{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e0e8f2;border-radius:12px;padding:13px 16px}
+.period>button{font-size:14px}
+.period>label{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:800;color:#47607c}
+.period input{padding:8px;border:1px solid #cbd9e7;border-radius:7px;color:#223e62;background:#fff;font:inherit;min-height:36px;box-sizing:border-box}
+.period strong{color:#214466;margin:0 auto 0 6px;font-size:14px}
+.summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.summary>div{display:flex;flex-direction:column;gap:8px;padding:17px 15px;background:#fff;border:1px solid #dbe7f1;border-radius:12px;box-shadow:0 2px 8px rgba(20,60,100,.035);min-width:0}
+.summary span{font-size:12px;color:#657b91;font-weight:700}
+.summary b{font-size:clamp(15px,1.55vw,23px);color:#183b62;overflow-wrap:anywhere}
+.message{border:1px solid #bad7ed;background:#eff8ff;border-radius:9px;padding:10px 14px;font-size:13px;font-weight:700;color:#184975}
+.formCard,.tableCard{padding:20px;background:#fff;border:1px solid #dce6f1;border-radius:14px;box-shadow:0 3px 12px rgba(15,46,78,.035);min-width:0}
+.formTitle{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px}
+.formTitle h3,.tableToolbar h3{font-size:18px;margin:0;color:#193c64}
+.link{color:#236198;text-decoration:underline;cursor:pointer;border:0;background:transparent}
+.formGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.formGrid label,.tableToolbar label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:800;color:#3c5978;min-width:0}
+.formGrid input,.formGrid select,.formGrid textarea,.tableToolbar input,.tableToolbar select{font:inherit;font-size:13px;background:#fff;border:1px solid #cbd8e5;color:#182f49;border-radius:8px;padding:10px;min-width:0;width:100%;box-sizing:border-box}
+.formGrid input,.formGrid select,.tableToolbar input,.tableToolbar select{height:41px}
+.formGrid textarea{resize:vertical}
+.formGrid .full{grid-column:1/-1}
+.balancePreview{margin-top:14px;font-size:13px;background:#f1f7fd;border-radius:9px;padding:10px 13px}
+.balancePreview b{font-size:18px;color:#1c578a}
+.formActions{display:flex;gap:9px;margin-top:16px}
+.tableToolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:15px}
+.tableToolbar>div{margin-right:auto}
+.tableToolbar>div span{display:block;color:#71839a;font-size:12px;margin-top:4px}
+.tableToolbar label{min-width:145px}
+.tableToolbar label:nth-of-type(2){min-width:210px}
+.tableScroll{overflow:auto;max-width:100%}
+.tableScroll table{width:100%;border-collapse:collapse;min-width:1020px;table-layout:auto}
+.tableScroll th{white-space:nowrap;font-weight:800;text-align:left;font-size:11px;text-transform:uppercase;color:#536b83;background:#f1f6fb;padding:12px 11px;border-bottom:1px solid #d9e3ee}
+.tableScroll td{padding:13px 11px;font-size:12px;line-height:1.35;color:#31475f;vertical-align:top;border-bottom:1px solid #e5ecf4}
+.tableScroll td strong,.tableScroll td small{display:block}
+.tableScroll td strong{font-size:12px;color:#173d64;margin-bottom:3px}
+.tableScroll td small{font-size:11px;color:#8190a0;margin:2px 0 0;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tableScroll .number{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.tableScroll thead th:nth-child(4),.tableScroll thead th:nth-child(5),.tableScroll thead th:nth-child(6){text-align:right}
+.tableScroll tfoot td{font-weight:900;color:#143e6c;background:#edf4fb;border-bottom:0}
+.status{display:inline-block;border-radius:6px;padding:5px 8px;background:#fff0cf;color:#986009;font-size:11px;font-weight:800;white-space:nowrap}
+.status[data-status="PART_PAID"]{background:#e1efff;color:#135897}
+.status[data-status="PAID"]{background:#d9f2e5;color:#137342}
+.tableScroll .overdue{color:#b33030;font-weight:900}
+.actions{display:flex;gap:6px;white-space:nowrap}
+.actions button{font-size:11px;border:1px solid #b9cfe5;padding:7px 9px;border-radius:7px;background:#fff;color:#27618e;font-weight:800;cursor:pointer}
+.actions .delete{border-color:#f0c6c6;color:#ac3434}
+.empty{text-align:center;padding:40px!important;color:#75889d!important;font-size:13px!important}
+.footnote{margin:12px 0 0;font-size:11px;line-height:1.5;color:#697d94}
+@media(max-width:1000px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}.formGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.heading{flex-direction:column;align-items:flex-start}.heading h2{font-size:20px}.summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.summary>div{padding:12px}.formGrid{grid-template-columns:1fr}.formCard,.tableCard{padding:13px}.period{padding:11px;gap:7px}.period strong{margin:0}.tableToolbar{align-items:stretch}.tableToolbar label{width:100%;min-width:0!important}.tableToolbar>div{width:100%}}
