@@ -20,14 +20,16 @@ function isImportLikeType(value=''){return ['IMPORT','OTHER_COUNTRIES_IMPORT'].i
 function isExportLikeType(value=''){const t=shipmentTypeOf(value);return t==='EXPORT'||t==='OTHER_COUNTRIES'}
 function weightForTotal(row={}){return masterKg(row)||0}
 function summaryRowWeight(row={},tab='IMPORT'){
+  // "Total Weight" means the sum of the cargo weights shown on this sheet,
+  // NOT just the parts already arrived. Future manifests/FOW, departed and
+  // in-transit parts must contribute their physical numerator (kg).
+  // Never add the master denominator again for a split MAWB.
   if(row._saudiaPendingVirtual===true)return 0;
-  if(row._partKey){
-    return isImportLikeType(tab)&&!row._partArrivalConfirmed?0:(partKg(row.weight)||0);
-  }
+  if(row._partKey)return partKg(row.weight)||0;
   const fractional=isImportLikeType(tab)&&String(row.weight||'').includes('/')&&
     (row.isPartLoad===true||row.partLoad===true||
       /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(row.status||'')));
-  return fractional?(confirmedPartArrival(row)?(partKg(row.weight)||0):0):weightForTotal(row);
+  return fractional?(partKg(row.weight)||0):weightForTotal(row);
 }
 function weightMinusForTotal(row={}){const n=Number(String(row.weightMinus??'').replace(/,/g,'').trim());return Number.isFinite(n)&&n>=0?n:0}
 function normalizeFlightNo(mawb='',value=''){const n=normalize(mawb),f=String(value||'').trim().replace(/\s+/g,'').toUpperCase();if(n.startsWith('065-')&&/^\d{1,4}$/.test(f))return`SV${f}`;return f}
