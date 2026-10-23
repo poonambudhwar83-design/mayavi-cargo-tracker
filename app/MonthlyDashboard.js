@@ -85,6 +85,12 @@ export default function MonthlyDashboard(){
   const [rows,setRows]=useState([]);
   const [note,setNote]=useState('');
   const [search,setSearch]=useState('');
+  const [goodsFilter,setGoodsFilter]=useState('');
+  const [clientFilter,setClientFilter]=useState('');
+  const [companyFilter,setCompanyFilter]=useState('');
+  const clearFilters=()=>{
+    setSearch('');setGoodsFilter('');setClientFilter('');setCompanyFilter('');
+  };
 
   async function loadMeta(){
     const res=await fetch('/api/monthly-records',{cache:'no-store',credentials:'include'});
@@ -118,15 +124,30 @@ export default function MonthlyDashboard(){
   })();return()=>{active=false}},[authorized,month,type]);
 
   const selectedMeta=months.find(m=>m.key===month);
+  // Filter archived arrival parts separately while keeping totals in sync with
+  // the exact records visible in the monthly table.
+  const archivedRows=useMemo(()=>archiveVisibleRows(rows),[rows]);
+  const filterOptions=useMemo(()=>{
+    const distinct=read=>[...new Set(archivedRows.map(record=>String(read(record.data||{})||'').trim()).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+    return {
+      goods:distinct(d=>d.goodsDescription||d.goods),
+      clients:distinct(d=>d.clientName||d.client),
+      companies:distinct(d=>d.companyName||d.companyType)
+    };
+  },[archivedRows]);
   const visible=useMemo(()=>{
-    const q=String(search||'').trim().toLowerCase();
-    const dated=archiveVisibleRows(rows);
-    if(!q)return dated;
-    return dated.filter(r=>{
+    const normal=value=>String(value||'').trim().toLowerCase();
+    const q=normal(search);
+    return archivedRows.filter(r=>{
       const d=r.data||{};
-      return [r.awb,d.mawb,d.clientName,d.client,d.companyName,d.airlineName,d.origin,d.destination,d.flightNo,d.status].some(v=>String(v||'').toLowerCase().includes(q));
+      if(goodsFilter&&normal(d.goodsDescription||d.goods)!==normal(goodsFilter))return false;
+      if(clientFilter&&normal(d.clientName||d.client)!==normal(clientFilter))return false;
+      if(companyFilter&&normal(d.companyName||d.companyType)!==normal(companyFilter))return false;
+      return !q||[r.awb,d.mawb,d.goodsDescription,d.goods,d.clientName,d.client,d.companyName,d.companyType,
+        d.airlineName,d.origin,d.destination,d.flightNo,d.status].some(v=>normal(v).includes(q));
     });
-  },[rows,search]);
+  },[archivedRows,search,goodsFilter,clientFilter,companyFilter]);
   const totalWeight=useMemo(()=>visible.reduce((sum,r)=>sum+(weightValue(r.data||{},r.isArchivePart)||0),0),[visible]);
   const unknownWeights=useMemo(()=>visible.filter(r=>weightValue(r.data||{},r.isArchivePart)===null).length,[visible]);
   const clientCount=useMemo(()=>new Set(visible.map(r=>String(r.data?.clientName||r.data?.client||'').trim()).filter(Boolean)).size,[visible]);
@@ -144,14 +165,24 @@ export default function MonthlyDashboard(){
       <section className="adminBar"><div><b>MONTH-END ARCHIVE</b><span>Each closed calendar month is archived automatically. Import follows Arrival Date; Export follows Departure Date. Missing dates or missing source weights are not guessed.</span></div></section>
 
       <section className="filters" style={{alignItems:'end'}}>
-        <div><label>MONTH</label><select value={month} onChange={e=>{setMonth(e.target.value);setSearch('')}}>{months.length?months.map(m=><option key={m.key} value={m.key}>{String(m.label||m.key).toUpperCase()}</option>):<option value="">No closed month yet</option>}</select></div>
-        <div><label>SEARCH</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="MAWB, client, airline, origin…"/></div>
-        <button onClick={()=>loadMeta().catch(e=>setNote(e.message||'Refresh failed'))}>REFRESH MONTHS</button>
+        <div><label>MONTH</label><select value={month} onChange={e=>{setMonth(e.target.value);clearFilters()}}>{months.length?months.map(m=><option key={m.key} value={m.key}>{String(m.label||m.key).toUpperCase()}</option>):<option value="">No closed month yet</option>}</select></div>
+        <div><label>GOODS</label><select aria-label="Filter monthly records by goods" value={goodsFilter} onChange={e=>setGoodsFilter(e.target.value)}>
+          <option value="">All Goods</option>{filterOptions.goods.map(g=><option key={g} value={g}>{g}</option>)}
+        </select></div>
+        <div><label>CLIENT NAME</label><select aria-label="Filter monthly records by client" value={clientFilter} onChange={e=>setClientFilter(e.target.value)}>
+          <option value="">All Clients</option>{filterOptions.clients.map(c=><option key={c} value={c}>{c}</option>)}
+        </select></div>
+        <div><label>COMPANY NAME</label><select aria-label="Filter monthly records by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}>
+          <option value="">All Companies</option>{filterOptions.companies.map(c=><option key={c} value={c}>{c}</option>)}
+        </select></div>
+        <div><label>SEARCH</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="MAWB, goods, client, airline…"/></div>
+        <button type="button" onClick={clearFilters}>CLEAR FILTERS</button>
+        <button type="button" onClick={()=>loadMeta().catch(e=>setNote(e.message||'Refresh failed'))}>REFRESH MONTHS</button>
       </section>
 
       <section className="typeTabs">
-        <button className={type==='IMPORT'?'active':''} onClick={()=>setType('IMPORT')}>IMPORT ({selectedMeta?.importCount||0})</button>
-        <button className={type==='EXPORT'?'active':''} onClick={()=>setType('EXPORT')}>EXPORT ({selectedMeta?.exportCount||0})</button>
+        <button className={type==='IMPORT'?'active':''} onClick={()=>{setType('IMPORT');clearFilters()}}>IMPORT ({selectedMeta?.importCount||0})</button>
+        <button className={type==='EXPORT'?'active':''} onClick={()=>{setType('EXPORT');clearFilters()}}>EXPORT ({selectedMeta?.exportCount||0})</button>
       </section>
 
       <section className="stats">
@@ -170,10 +201,10 @@ export default function MonthlyDashboard(){
           <th>Arrival Date</th><th>Arrival Time</th>{type==='IMPORT'&&<><th>Mail</th><th>Customs Clear</th></>}<th>Status</th><th>Remarks</th>
         </tr></thead>
         <tbody>{visible.length?visible.map((record,index)=>{const r=record.data||{};return <tr key={record.archiveMonth+'-'+record.shipmentType+'-'+record.awb+'-'+(record.archivePartIndex??'master')}>
-          <td><strong>{index+1}</strong></td><td>{formatDate(r.enteredAt)}</td><td><strong>{r.mawb||(`${String(record.awb).slice(0,3)}-${String(record.awb).slice(3)}`)}</strong></td>{type==='IMPORT'&&<td>{r.goodsDescription||'—'}</td>}<td>{r.clientName||r.client||'—'}</td><td>{r.companyName||r.companyType||'—'}</td><td>{r.enteredBy||'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{viaForRow(r)}</td><td>{r.destination||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{weightValue(r,record.isArchivePart)!==null?`${weightValue(r,record.isArchivePart)} kg`:'—'}</td><td>{r.flightNo||'—'}</td>
+          <td><strong>{index+1}</strong></td><td>{formatDate(r.enteredAt)}</td><td><strong>{r.mawb||(`${String(record.awb).slice(0,3)}-${String(record.awb).slice(3)}`)}</strong></td>{type==='IMPORT'&&<td>{r.goodsDescription||r.goods||'—'}</td>}<td>{r.clientName||r.client||'—'}</td><td>{r.companyName||r.companyType||'—'}</td><td>{r.enteredBy||'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{viaForRow(r)}</td><td>{r.destination||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{weightValue(r,record.isArchivePart)!==null?`${weightValue(r,record.isArchivePart)} kg`:'—'}</td><td>{r.flightNo||'—'}</td>
           {type==='EXPORT'&&<><td>{r.departureDate||r.flightDate||'—'}</td><td>{formatTime(r.departureTime)}</td><td>{r.handoverDone===true?'YES':'NO'}</td><td>{r.masterCopyReceived===true?'RECEIVED':'PENDING'}</td></>}
           <td>{r.arrivalDate||'—'}</td><td>{formatTime(r.arrivalTime)}</td>{type==='IMPORT'&&<><td>{r.mailSent===true?'YES':'NO'}</td><td>{r.customsCleared===true?'CLEARED':'PENDING'}</td></>}<td><span className={`badge ${statusTone(r.status)}`}>{r.status||'BOOKED'}</span></td><td>{r.remarks||'—'}</td>
-        </tr>}):<tr><td className="empty" colSpan={type==='IMPORT'?24:23}>{month?'No '+type.toLowerCase()+' records in this month.':'No closed-month records yet.'}</td></tr>}</tbody>
+        </tr>}):<tr><td className="empty" colSpan={type==='IMPORT'?24:23}>{(search||goodsFilter||clientFilter||companyFilter)?'No records match the selected filters.':month?'No '+type.toLowerCase()+' records in this month.':'No closed-month records yet.'}</td></tr>}</tbody>
       </table></section>
       <section className="tableSummary"><span>{visible.length} master{visible.length===1?'':'s'} shown</span><strong>Total recorded Weight: {totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})} kg{unknownWeights>0?` • ${unknownWeights} row(s) without recorded weight`:''}</strong></section>
     </>}
