@@ -179,6 +179,39 @@ for(const [label,fragment] of ethiopianRouteContract){
 // Protect only Ethiopian's live-data preference on the shared dashboard.
 // The rest of the dashboard can evolve, including Remarks column styling.
 const dashboard=readFileSync('app/DashboardClient.js','utf8');
+// Saudia 065 manifest & physical-part display lock (23 Oct 2026).
+// Protect only the tested Saudia feature, not the whole shared dashboard.
+// A future edit which changes these guarantees must receive explicit approval.
+const saudiaManifestSnapshot = "function saudiaManifestPlan(master={},part={}){\n  if(part.arrivalDate||part.arrivalIsActual===true)return null;\n  const flightDate=String(part.flightDate||'').slice(0,10);\n  if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(flightDate))return null;\n  const partFlight=normalizeFlightNo(master.mawb,part.flightNo);\n  const masterFlight=normalizeFlightNo(master.mawb,master.flightNo);\n  const masterDate=String(master.arrivalDate||'').slice(0,10);\n  const masterTime=formatTime24(master.arrivalTime||'');\n  const matched=Boolean(partFlight&&masterFlight&&partFlight===masterFlight&&\n    masterDate===flightDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(masterTime)&&\n    master.arrivalIsActual!==true);\n  return {date:matched?masterDate:flightDate,time:matched?masterTime:'',\n    label:matched?'MANIFESTED • PLANNED ETA':'MANIFESTED • FLIGHT DATE'};\n}\n";
+const saudiaBlockStart=dashboard.indexOf('function saudiaManifestPlan(');
+const saudiaBlockEnd=dashboard.indexOf('function expandPartRows(',saudiaBlockStart);
+if(saudiaBlockStart<0||saudiaBlockEnd<=saudiaBlockStart||
+  dashboard.indexOf('function saudiaManifestPlan(',saudiaBlockStart+1)!==-1||
+  dashboard.slice(saudiaBlockStart,saudiaBlockEnd)!==saudiaManifestSnapshot){
+  console.error('LOCKED SAUDIA MANIFEST PLAN MODIFIED: approval needed before changing physical-part flight/ETA rules.');
+  changed=true;
+}
+const saudiaManifestDisplayContract = [["part-load eligibility","const genuinePartLoad=row.isPartLoad===true||row.partLoad===true"],["separate physical rows","return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;return({...row,"],["per-part manifest plan","_saudiaManifestPlan:saudiaPlan,"],["per-part stable Mail ID","_partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,"],["per-part independent Mail choice","mailSent:p.mailSent===true,"],["planned Mail clock only if ETA matches","||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):'')"],["manifest date display","r.arrivalDate||r._saudiaManifestPlan?.date||r._emiratesMasterEta?.date||'—'"],["manifest ETA label","r._saudiaManifestPlan.label"],["planned time display","r._saudiaManifestPlan?(formatTime24(r._saudiaManifestPlan.time)||'—'):"],["manifest warning","'ETA NOT CONFIRMED'"],["not counted as confirmed arrival","_partArrivalConfirmed:confirmedPartArrival(p)"],["independent physical-part customs","customsCleared:p.customsCleared===true,"]];
+for(const [label,fragment] of saudiaManifestDisplayContract){
+  if(!dashboard.includes(fragment)){
+    console.error('LOCKED SAUDIA PART DISPLAY MODIFIED: '+label+'. Explicit unlock approval required.');
+    changed=true;
+  }
+}
+// Backend scheduled tracking continues when no employee/admin has Mayavi open.
+if(!config.crons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')){
+  console.error('LOCKED MAYAVI AIR CARGO 2-HOUR SERVER REFRESH CHANGED.');
+  changed=true;
+}
+const saudiaCronRoute=readFileSync('app/api/cron/refresh/route.js','utf8');
+for(const fragment of ['refreshScope(row,checkedAt)',"mawb.startsWith('065-')?3:2",
+  'backendAutoRefresh:true','track?.ok&&track.shipment']){
+  if(!saudiaCronRoute.includes(fragment)){
+    console.error('LOCKED SAUDIA BACKGROUND REFRESH CONTRACT CHANGED: '+fragment);
+    changed=true;
+  }
+}
+
 const ethiopianDashboardContract=[
   ['Ethiopian database priority at startup',"const serverAuthoritative=key.startsWith('071')||"],
   ['Ethiopian database priority while polling',"out.push(key.startsWith('071')||"]
