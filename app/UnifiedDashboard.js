@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
 import SpeedPostDashboard from './SpeedPostDashboard.js';
+import AdminNotesDashboard from './AdminNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 
 const FALLBACK_USERS=[
@@ -147,12 +148,12 @@ export default function UnifiedDashboard(){
   if(session)return <>
     <div style={topAccountBar}>
       <SaudiaAssist/>
-      {speedPostAllowed&&selectedDashboard==='SPEED_POST'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
+      {selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
-      {speedPostAllowed&&selectedDashboard==='SPEED_POST'&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
+      {selectedDashboard!=='AIR_CARGO'&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
-    {speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null}/>}
+    {session.role==='admin'&&selectedDashboard==='NOTES'?<AdminNotesDashboard currentUser={session}/>:speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null} onOpenAdminNotes={session.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
