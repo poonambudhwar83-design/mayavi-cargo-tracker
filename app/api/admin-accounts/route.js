@@ -119,7 +119,7 @@ export async function PATCH(request){
   try{
     const sql=db(),a=await auth(request,sql);
     if(a.error)return reply({ok:false,error:a.error},a.status);
-    const body=await request.json().catch(()=>({});
+    const body=await request.json().catch(()=>({}));
     const id=clean(body?.id,80);
     if(!/^[0-9a-f-]{36}$/i.test(id))return reply({ok:false,error:'Invalid ID.'},400);
     const {entry,error}=validate(body);
