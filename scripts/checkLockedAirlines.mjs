@@ -341,7 +341,7 @@ if(!rapidCrons.some(c=>c.path==='/api/cron/saudia'&&c.schedule==='*/15 8-9 * * *
   !sharedRoute.includes("'/api/cron/saudia'")&&
     !readFileSync('app/api/cron/refresh/route.js','utf8').includes("pathname==='/api/cron/saudia'")||
   !dashboard.includes('function saudiaFowNeedsOffloadCheck(')||
-  !dashboard.includes("status:'OFFLOAD CHECK'")){
+  !dashboard.includes("status:'OFFLOADED (UNCONFIRMED)'")){
   console.error('SAUDIA RAPID 15-MINUTE / TWO-HOUR AUTO REFRESH CONTRACT MISSING.');
   changed=true;
 }
