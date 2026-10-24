@@ -197,6 +197,18 @@ for(const [label,fragment] of saudiaManifestDisplayContract){
     changed=true;
   }
 }
+// Saudia NO blink must wait for verified DEP, never FOW/EXPECTED.
+for(const [label,contract] of [
+  ['Saudia mail blink gate',"if(digits(row.mawb).startsWith('065')){"],
+  ['Saudia FOW mail blink suppressed',"if(event==='FOW'||!(movement==='DEPARTED'||event==='DEP'||row.arrivalIsActual===true||row._partArrivalConfirmed===true))return false;"],
+  ['Saudia dated shared ETA', 'function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){'],
+  ['Saudia flight ETA integrated', 'expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows))']
+]){
+  if(!dashboard.includes(contract)){
+    console.error('LOCKED SAUDIA MAIL BLINK / ETA CONTRACT MISSING: '+label);
+    changed=true;
+  }
+}
 // The Active Sheet weight must count all visible physical parts, including
 // future manifests, without requiring ARRIVED/Customs Clear status.
 // Otherwise pending SV manifests silently disappear from the total.

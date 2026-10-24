@@ -349,6 +349,13 @@ function mailTimeForRow(row={}){
 // Flash only overdue, unmailed Import entries. The displayed Mail Time is IST.
 function importMailOverdue(row={},nowMs=Date.now()){
   if(row.mailSent===true||row._saudiaPendingVirtual===true)return false;
+  // Saudia only: FOW/EXPECTED is not departure. Blink NO only after DEP or
+  // AWB-verified actual arrival, while retaining the existing overdue clock.
+  if(digits(row.mawb).startsWith('065')){
+    const movement=String(row.status||'').toUpperCase();
+    const event=String(row.sourceStatus||'').toUpperCase();
+    if(event==='FOW'||!(movement==='DEPARTED'||event==='DEP'||row.arrivalIsActual===true||row._partArrivalConfirmed===true))return false;
+  }
   const m=mailTimeForRow(row).match(/^(20\d{2}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
   if(!m)return false;
   const wallClock=istDateTimeValue(m[1],m[2]);
@@ -361,6 +368,53 @@ function mailSortTime(row={}){
 function handoverSortTime(row={}){const d=dateTimeValue(row.departureDate||row.flightDate||'',row.departureTime||'');if(!d)return Number.POSITIVE_INFINITY;d.setHours(d.getHours()-5);return d.getTime()}
 function priorityValue(row={}){const s=String(row.status||'').toUpperCase();if(s.includes('ARRIVED')&&!s.includes('PART ARRIVED'))return 0;if(s.includes('PART ARRIVED'))return 1;if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 2;if(s.includes('DELAY')||s.includes('RESCHEDUL'))return 3;return 4}
 function sortPriority(list=[]){return [...list].sort((a,b)=>{const p=priorityValue(a)-priorityValue(b);if(p)return p;const at=arrivalSortTime(a),bt=arrivalSortTime(b);if(at!==bt)return at-bt;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)})}
+// A flight has one dated ETA, even when several Saudia MAWBs share it.
+// A timestamp explicitly marked as a live/estimated flight arrival takes
+// precedence over older scheduled clocks. Actual cargo-part arrival is never
+// propagated to another MAWB or physical part.
+function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){
+  const flightInfo=(r,parent={})=>{
+    const mawb=r.mawb||parent.mawb||'';
+    if(!digits(mawb).startsWith('065'))return null;
+    const flight=normalizeFlightNo(mawb,r.flightNo||parent.flightNo||'');
+    const date=String(r.arrivalDate||r.flightDate||parent.arrivalDate||'').slice(0,10);
+    const destination=String(r.destination||parent.destination||'').toUpperCase();
+    if(!/^SV\d{2,4}$/.test(flight)||!/^20\d{2}-\d{2}-\d{2}$/.test(date)||destination!=='DEL')return null;
+    return {key:flight+'|'+date+'|DEL',date,flight};
+  };
+  const latestByFlight=new Map();
+  for(const master of sourceRows){
+    for(const candidate of [master,...(Array.isArray(master.partShipments)?master.partShipments:[])]){
+      if(candidate.arrivalIsActual===true)continue;
+      const info=flightInfo(candidate,master);
+      if(!info)continue;
+      const time=formatTime24(candidate.arrivalTime||'');
+      const source=String(candidate.arrivalTimeSource||'');
+      if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||
+        !/(?:live estimated|estimated arrival|flight-status ETA|predicted arrival)/i.test(source))continue;
+      const fresh=Date.parse(master.lastChecked||master._dbUpdatedAt||'')||0;
+      const previous=latestByFlight.get(info.key);
+      if(!previous||fresh>previous.fresh)
+        latestByFlight.set(info.key,{...info,time,source,fresh});
+    }
+  }
+  if(!latestByFlight.size)return viewRows;
+  return viewRows.map(master=>{
+    const info=flightInfo(master);
+    const latest=info&&latestByFlight.get(info.key);
+    if(!latest||master.arrivalIsActual===true)return master;
+    const matchingPart=part=>{
+      const pInfo=flightInfo(part,master);
+      if(!pInfo||pInfo.key!==latest.key||part.arrivalIsActual===true||
+        !/^(DEPARTED|IN TRANSIT|EXPECTED)$/i.test(String(part.status||'')))return part;
+      return {...part,arrivalTime:latest.time,arrivalEstimate:true,arrivalIsActual:false,
+        arrivalTimeSource:latest.source+'; shared matching dated Saudia flight ETA (not actual cargo arrival)'};
+    };
+    return {...master,arrivalTime:latest.time,arrivalEstimate:true,arrivalIsActual:false,
+      arrivalTimeSource:latest.source+'; shared matching dated Saudia flight ETA (not actual cargo arrival)',
+      partShipments:Array.isArray(master.partShipments)?master.partShipments.map(matchingPart):master.partShipments};
+  });
+}
 function saudiaDisplayPriority(row={}){
   const s=String(row.status||'').toUpperCase();
   if(s==='DEPARTED'||s==='DEP')return 0;
@@ -704,7 +758,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&importLikeTab;
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),goods:uniq(dashboardRows,'goodsDescription'),companies:[...new Set(dashboardRows.map(companyFilterLabel).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),enteredBy:uniq(dashboardRows,'enteredBy'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
-  const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clientFilter||r.clientName===clientFilter)&&(!goodsFilter||r.goodsDescription===goodsFilter)&&(!companyFilter||companyFilterLabel(r)===companyFilter)&&(!enteredByFilter||r.enteredBy===enteredByFilter)&&(!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter));const expanded=expandPartRows(filtered).filter(r=>{
+  const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clientFilter||r.clientName===clientFilter)&&(!goodsFilter||r.goodsDescription===goodsFilter)&&(!companyFilter||companyFilterLabel(r)===companyFilter)&&(!enteredByFilter||r.enteredBy===enteredByFilter)&&(!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter));const expanded=expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows)).filter(r=>{
     if(clearedFilterMode&&importLikeTab){
       // Filter AFTER physical part expansion: Sep part goes to Sep archive,
       // Oct part stays visible here even when both share one MAWB.
