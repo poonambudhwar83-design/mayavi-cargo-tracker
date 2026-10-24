@@ -116,6 +116,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   // A missed Ethiopian final-leg ETA must remain visible as RESCHEDULED,
   // not be collapsed to BOOKED by the generic display mapper.
   if(s.includes('RESCHEDUL'))return'RESCHEDULED';
+  if(n.startsWith('065-')&&String(row.sourceStatus||'').toUpperCase()==='FOW'&&row.arrivalIsActual!==true&&s==='IN TRANSIT')return'EXPECTED';
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('DELIVER'))return'DELIVERED';
@@ -360,7 +361,44 @@ function mailSortTime(row={}){
 function handoverSortTime(row={}){const d=dateTimeValue(row.departureDate||row.flightDate||'',row.departureTime||'');if(!d)return Number.POSITIVE_INFINITY;d.setHours(d.getHours()-5);return d.getTime()}
 function priorityValue(row={}){const s=String(row.status||'').toUpperCase();if(s.includes('ARRIVED')&&!s.includes('PART ARRIVED'))return 0;if(s.includes('PART ARRIVED'))return 1;if(s.includes('IN TRANSIT')||s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 2;if(s.includes('DELAY')||s.includes('RESCHEDUL'))return 3;return 4}
 function sortPriority(list=[]){return [...list].sort((a,b)=>{const p=priorityValue(a)-priorityValue(b);if(p)return p;const at=arrivalSortTime(a),bt=arrivalSortTime(b);if(at!==bt)return at-bt;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)})}
-function sortForDashboard(list=[],activeTab='IMPORT'){if(isExportLikeType(activeTab))return [...list].sort((a,b)=>{const ah=handoverSortTime(a),bh=handoverSortTime(b);if(ah!==bh)return ah-bh;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)});return [...list].sort((a,b)=>{const am=mailSortTime(a),bm=mailSortTime(b);if(am!==bm)return am-bm;const p=priorityValue(a)-priorityValue(b);if(p)return p;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)})}
+function saudiaDisplayPriority(row={}){
+  const s=String(row.status||'').toUpperCase();
+  if(s==='DEPARTED'||s==='DEP')return 0;
+  if(s==='IN TRANSIT'||s==='EXPECTED'||String(row.sourceStatus||'').toUpperCase()==='FOW')return 1;
+  if(s==='ARRIVED'||s==='PART ARRIVED')return 2;
+  return 3;
+}
+function sortForDashboard(list=[],activeTab='IMPORT'){
+  if(isExportLikeType(activeTab))return [...list].sort((a,b)=>{const ah=handoverSortTime(a),bh=handoverSortTime(b);if(ah!==bh)return ah-bh;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)});
+  return [...list].sort((a,b)=>{
+    if(digits(a.mawb).startsWith('065')&&digits(b.mawb).startsWith('065')){
+      const rank=saudiaDisplayPriority(a)-saudiaDisplayPriority(b);
+      if(rank)return rank;
+    }
+    const am=mailSortTime(a),bm=mailSortTime(b);
+    if(am!==bm)return am-bm;
+    const p=priorityValue(a)-priorityValue(b);
+    if(p)return p;
+    return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0);
+  });
+}
+// A SAL DEP part sometimes has a flight/date but no own arrival clock.
+// A published MAWB ETA may be used ONLY if the part matches that exact flight,
+// date and destination. It is explicitly an estimate, never actual cargo ARR.
+function saudiaMatchingPartEta(master={},part={}){
+  if(part.arrivalIsActual===true||String(part.arrivalTime||'').trim())return'';
+  if(!/^(DEPARTED|IN TRANSIT)$/i.test(String(part.status||'')))return'';
+  if(String(master.destination||'').toUpperCase()!=='DEL')return'';
+  const flight=normalizeFlightNo(master.mawb,master.flightNo||'');
+  const partFlight=normalizeFlightNo(master.mawb,part.flightNo||'');
+  const date=String(master.arrivalDate||'').slice(0,10);
+  const partDate=String(part.arrivalDate||part.flightDate||'').slice(0,10);
+  const flightDate=String(part.flightDate||'').slice(0,10);
+  const eta=formatTime24(master.arrivalTime||'');
+  if(!flight||flight!==partFlight||!date||date!==partDate||date!==flightDate||
+    !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(eta)||master.arrivalIsActual===true)return'';
+  return eta;
+}
 // Saudia SAL can publish a physical part's MAN flight/date before it publishes
 // that part's arrival fields. Render the manifest date immediately. Only show
 // a provisional arrival clock if the master ETA matches this same flight/date.
@@ -430,6 +468,15 @@ function expandPartRows(list=[]){
       });
     }
 
+    if(prefix==='065'&&status==='ARRIVED'&&parts.length>1){
+      const masterCount=Number(row.totalPieces||row.masterPieces||0);
+      const arrivedCount=Number(row.arrivedPieces||0);
+      const allArrived=parts.every(p=>p.arrivalIsActual===true&&String(p.status||'').toUpperCase()==='ARRIVED');
+      const actualTimes=new Set(parts.map(p=>[p.arrivalDate||'',p.arrivalTime||''].join(' ')));
+      if(masterCount>0&&arrivedCount>=masterCount&&allArrived&&actualTimes.size===1)
+        return[{...row,partLoad:false,isPartLoad:false}];
+    }
+
     // Duplicate MAWB display is allowed only for a true split shipment with at
     // least two distinct physical parts. Otherwise always show one master row.
     // A single remaining Saudia physical part after DIS/DUS still owns its Mail flag.
@@ -472,8 +519,9 @@ function expandPartRows(list=[]){
       ?{date:row.scheduledArrivalDate||row.arrivalDate,
         time:row.scheduledArrivalTime||row.arrivalTime}:null;
 
-    return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;return({...row,
+    return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;const saudiaEta=prefix==='065'?saudiaMatchingPartEta(row,p):'';return({...row,
       _saudiaManifestPlan:saudiaPlan,
+      _saudiaExpectedPart:prefix==='065'&&p.status==='IN TRANSIT',
       _emiratesMasterEta:emiratesMasterEta&&!p.arrivalDate&&!p.arrivalTime?emiratesMasterEta:null,
       _partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,
       _saudiaPendingVirtual:p._saudiaPendingVirtual===true,
@@ -491,12 +539,13 @@ function expandPartRows(list=[]){
       offloadDate:p.offloadDate||'',
       offloadTime:p.offloadTime||'',
       arrivalDate:p.arrivalDate||'',
-      arrivalTime:p.arrivalTime||'',
+      arrivalTime:p.arrivalTime||saudiaEta||'',
       arrivalIsActual:p.arrivalIsActual===true,
-      arrivalEstimate:p.arrivalEstimate===true,
-      arrivalTimeSource:p.arrivalTimeSource||'',
+      arrivalEstimate:p.arrivalEstimate===true||Boolean(saudiaEta),
+      arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?'Matching Saudia flight/date planned ETA; IST, not actual arrival':''),
       status:p.status||row.status,
-      mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||'')||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):''),
+      sourceStatus:prefix==='065'?(p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':p.arrivalIsActual===true?'ARR':row.sourceStatus):row.sourceStatus,
+      mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||saudiaEta||'')||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):''),
       mailSent:p.mailSent===true,
       mailUpdatedAt:p.mailUpdatedAt||'',
       customsCleared:p.customsCleared===true,
