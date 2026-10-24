@@ -415,12 +415,12 @@ function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){
       partShipments:Array.isArray(master.partShipments)?master.partShipments.map(matchingPart):master.partShipments};
   });
 }
-// SAL FOW is not confirmed offload. After the rapid departure window,
+// SAL FOW or RCS is not confirmed offload. After the rapid departure window,
 // label a still-unconverted FOW as a check item ONLY when SAL itself has
 // confirmed DEP for the same dated flight on another movement.
 function saudiaFowNeedsOffloadCheck(part={},masters=[],now=Date.now()){
   const mawb=digits(part.mawb);
-  if(!mawb.startsWith('065')||String(part.sourceStatus||'').toUpperCase()!=='FOW'||part.arrivalIsActual===true)return false;
+  if(!mawb.startsWith('065')||!/^(?:FOW|RCS)$/.test(String(part.sourceStatus||'').toUpperCase())||part.arrivalIsActual===true)return false;
   const flight=normalizeFlightNo(part.mawb,part.flightNo||'');
   const date=String(part.flightDate||part.arrivalDate||'').slice(0,10);
   const dparts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now));
@@ -431,7 +431,7 @@ function saudiaFowNeedsOffloadCheck(part={},masters=[],now=Date.now()){
   const freshCutoff=Date.parse(date+'T14:30:00+05:30');
   if(now<cutoff||(Date.parse(part.lastChecked||part._dbUpdatedAt||0)||0)<freshCutoff)return false;
   return masters.some(master=>{
-    if(!digits(master.mawb).startsWith('065')||master.mawb===part.mawb)return false;
+    if(!digits(master.mawb).startsWith('065'))return false;
     const updated=Date.parse(master.lastChecked||master._dbUpdatedAt||0)||0;
     if(updated<freshCutoff)return false;
     const matches=x=>normalizeFlightNo(master.mawb,x.flightNo||master.flightNo||'')===flight&&
@@ -786,7 +786,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),goods:uniq(dashboardRows,'goodsDescription'),companies:[...new Set(dashboardRows.map(companyFilterLabel).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),enteredBy:uniq(dashboardRows,'enteredBy'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
   const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clientFilter||r.clientName===clientFilter)&&(!goodsFilter||r.goodsDescription===goodsFilter)&&(!companyFilter||companyFilterLabel(r)===companyFilter)&&(!enteredByFilter||r.enteredBy===enteredByFilter)&&(!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter));const expanded=expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows)).map(r=>
     saudiaFowNeedsOffloadCheck(r,dashboardRows,mailClock)?{...r,
-      status:'OFFLOAD CHECK',remarks:'FOW remained after other cargo DEP on this flight; possible offload, awaiting SAL DIS/DUS confirmation'}:r
+      status:'OFFLOADED (UNCONFIRMED)',remarks:String(r.sourceStatus||'').toUpperCase()==='RCS'?'SAL still shows RCS after the same flight departed with other cargo; not loaded / possible offload, awaiting SAL confirmation':'SAL still shows FOW after the same flight departed with other cargo; possible offload, awaiting SAL confirmation'}:r
   ).filter(r=>{
     if(clearedFilterMode&&importLikeTab){
       // Filter AFTER physical part expansion: Sep part goes to Sep archive,

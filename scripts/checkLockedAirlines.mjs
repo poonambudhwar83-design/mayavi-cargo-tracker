@@ -209,6 +209,17 @@ for(const [label,contract] of [
     changed=true;
   }
 }
+// RCS and FOW left behind on a verified dated flight are displayed as
+// UNCONFIRMED offloads only after the 15:00 IST cutoff and a fresh SAL DEP.
+for(const [label,fragment] of [
+  ['Saudia RCS/FOW provisional check',"!/^(?:FOW|RCS)$/.test(String(part.sourceStatus||'').toUpperCase())"],
+  ['Saudia confirmed same-flight DEP',"String(master.sourceStatus||'').toUpperCase()==='DEP'"],
+  ['Saudia post-departure time check',"Date.parse(date+'T15:00:00+05:30')"],
+  ['Saudia provisional not actual',"status:'OFFLOADED (UNCONFIRMED)'"]
+])if(!dashboard.includes(fragment)){
+  console.error('LOCKED SAUDIA OFFLOAD EVIDENCE CHECK MISSING: '+label);
+  changed=true;
+}
 // The Active Sheet weight must count all visible physical parts, including
 // future manifests, without requiring ARRIVED/Customs Clear status.
 // Otherwise pending SV manifests silently disappear from the total.
