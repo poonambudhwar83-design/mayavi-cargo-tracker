@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { isActiveMaster } from '../../../../lib/autoRefreshScope.js';
+import { refreshScope } from '../../../../lib/autoRefreshScope.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -10,8 +10,8 @@ export const maxDuration=260;
 // Reuse the unchanged AWB-verified Cathay parser and its guarded DB saver.
 const PREFIX=/^160\d{8}$/;
 const MIN_GAP_MS=4*60*1000;
-const MAX_PER_TICK=6;
-const BATCH_SIZE=3;
+const MAX_PER_TICK=2;
+const BATCH_SIZE=2;
 const digits=value=>String(value||'').replace(/\D/g,'');
 const timestamp=value=>{const n=Date.parse(value||'');return Number.isFinite(n)?n:0;};
 
@@ -30,13 +30,16 @@ async function refreshOne(row,origin,key){
       method:'POST',cache:'no-store',
       headers:{'content-type':'application/json','x-mayavi-internal-key':key},
       body:JSON.stringify({mawb,currentShipment:row.data||{}}),
-      signal:AbortSignal.timeout(105000)
+      signal:AbortSignal.timeout(200000)
     });
     const result=await response.json().catch(()=>null);
     const saved=response.ok&&result?.ok===true&&result?.serverSaved===true;
+    const s=result?.shipment||{};
+    const detailsComplete=Boolean(s.flightNo&&s.arrivalDate&&s.arrivalTime);
     const failure=result?.trackingError||result?.error||result?.reason;
     const error=saved?'':(typeof failure==='string'?failure:failure?JSON.stringify(failure):'HTTP '+response.status).slice(0,180);
-    return {mawb,ok:saved,status:saved?result.shipment?.status||'':'',
+    return {mawb,ok:saved,detailsComplete,
+      incomplete:saved&&!detailsComplete,status:saved?result.shipment?.status||'':'',
       arrivalDate:saved?result.shipment?.arrivalDate||'':'',
       arrivalTime:saved?result.shipment?.arrivalTime||'':'',
       error,httpStatus:response.status,elapsedMs:Date.now()-start};
@@ -63,21 +66,21 @@ export async function GET(request){
   try{
     const sql=neon(db);
     const rows=await sql.query(
-      "SELECT awb,data,tracking_checked_at,updated_at FROM mayavi_shipments WHERE awb LIKE '160%' AND COALESCE(data->>'customsCleared','false')!='true' ORDER BY updated_at DESC LIMIT 50",[]);
+      "SELECT awb,data,tracking_checked_at,updated_at FROM mayavi_shipments WHERE regexp_replace(awb,'[^0-9]','','g') LIKE '160%' ORDER BY updated_at DESC LIMIT 120",[]);
     const now=Date.now();
     const candidate=rows.map(row=>{
       const data=row.data||{};
       const unresolved=data.arrivalIsActual!==true||
         !data.flightNo||!data.arrivalDate||!data.arrivalTime;
-      const active=isActiveMaster(data);
+      const scope=refreshScope(data,new Date(now));
+      const active=scope!=='SKIP';
       const checkedAt=timestamp(data.lastChecked||row.tracking_checked_at||
         data.enteredAt||row.updated_at);
       const missing=!data.flightNo||!data.arrivalDate||!data.arrivalTime;
       const recent=timestamp(data.enteredAt||row.updated_at)>=now-48*60*60*1000;
-      return {row,checkedAt,missing,recent,unresolved,active};
+      return {row,checkedAt,missing,recent,unresolved,active,scope};
     }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.unresolved&&x.active&&
-      (now-x.checkedAt>=MIN_GAP_MS||
-        (x.missing&&x.recent&&now-x.checkedAt>=60*1000)))
+      (x.missing||now-x.checkedAt>=MIN_GAP_MS))
       .sort((a,b)=>Number(b.missing)-Number(a.missing)||
         Number(b.recent)-Number(a.recent)||a.checkedAt-b.checkedAt)
       .slice(0,MAX_PER_TICK);
@@ -90,7 +93,11 @@ export async function GET(request){
         {ok:false,error:String(s.reason?.message||s.reason).slice(0,160)});
     }
     const summary={ok:true,carrier:'CX',frequency:'every 5 minutes',
+      inspected:rows.length,
+      activeOrRecentlyCleared:rows.filter(row=>refreshScope(row.data||{},new Date(now))!=='SKIP').length,
+      missingFlightOrArrival:rows.filter(row=>!row.data?.flightNo||!row.data?.arrivalDate||!row.data?.arrivalTime).length,
       candidates:candidate.length,refreshed:results.filter(r=>r.ok).length,
+      incomplete:results.filter(r=>r.incomplete).length,
       failed:results.filter(r=>!r.ok).length,results};
     console.log('cathay_five_minute_cron',JSON.stringify(summary));
     return Response.json(summary,{headers:{'Cache-Control':'no-store'}});
