@@ -10,8 +10,10 @@ export const maxDuration=260;
 // Reuse the unchanged AWB-verified Cathay parser and its guarded DB saver.
 const PREFIX=/^160\d{8}$/;
 const MIN_GAP_MS=4*60*1000;
-const MAX_PER_TICK=2;
-const BATCH_SIZE=2;
+const MAX_PER_TICK=1; // One CX AWB per tick leaves time for a controlled retry.
+const BATCH_SIZE=1;
+const ATTEMPT_TIMEOUT_MS=105000;
+const MAX_ATTEMPTS=2;
 const digits=value=>String(value||'').replace(/\D/g,'');
 const timestamp=value=>{const n=Date.parse(value||'');return Number.isFinite(n)?n:0;};
 
@@ -24,29 +26,38 @@ function internalKey(){
 }
 async function refreshOne(row,origin,key){
   const awb=digits(row.awb),mawb=awb.slice(0,3)+'-'+awb.slice(3),start=Date.now();
-  try{
-    const trackingOrigin=process.env.MAYAVI_TRACKING_ORIGIN||'https://tracker.mayavicargo.com';
-    const response=await fetch(trackingOrigin+'/api/track',{
-      method:'POST',cache:'no-store',
-      headers:{'content-type':'application/json','x-mayavi-internal-key':key},
-      body:JSON.stringify({mawb,currentShipment:row.data||{}}),
-      signal:AbortSignal.timeout(200000)
-    });
-    const result=await response.json().catch(()=>null);
-    const saved=response.ok&&result?.ok===true&&result?.serverSaved===true;
-    const s=result?.shipment||{};
-    const detailsComplete=Boolean(s.flightNo&&s.arrivalDate&&s.arrivalTime);
-    const failure=result?.trackingError||result?.error||result?.reason;
-    const error=saved?'':(typeof failure==='string'?failure:failure?JSON.stringify(failure):'HTTP '+response.status).slice(0,180);
-    return {mawb,ok:saved,detailsComplete,
-      incomplete:saved&&!detailsComplete,status:saved?result.shipment?.status||'':'',
-      arrivalDate:saved?result.shipment?.arrivalDate||'':'',
-      arrivalTime:saved?result.shipment?.arrivalTime||'':'',
-      error,httpStatus:response.status,elapsedMs:Date.now()-start};
-  }catch(e){
-    return {mawb,ok:false,error:String(e?.message||e).slice(0,180),
-      elapsedMs:Date.now()-start};
+  const trackingOrigin=process.env.MAYAVI_TRACKING_ORIGIN||'https://tracker.mayavicargo.com';
+  let lastError='Tracking request failed',lastStatus=0;
+  for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
+    try{
+      const response=await fetch(trackingOrigin+'/api/track',{
+        method:'POST',cache:'no-store',
+        headers:{'content-type':'application/json','x-mayavi-internal-key':key},
+        body:JSON.stringify({mawb,currentShipment:row.data||{}}),
+        signal:AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)
+      });
+      lastStatus=response.status;
+      const result=await response.json().catch(()=>null);
+      const saved=response.ok&&result?.ok===true&&result?.serverSaved===true;
+      const s=result?.shipment||{};
+      const detailsComplete=Boolean(s.flightNo&&s.arrivalDate&&s.arrivalTime);
+      if(saved)return {mawb,ok:true,attempts:attempt,detailsComplete,
+        incomplete:!detailsComplete,status:s.status||'',
+        arrivalDate:s.arrivalDate||'',arrivalTime:s.arrivalTime||'',
+        error:'',httpStatus:response.status,elapsedMs:Date.now()-start};
+      const failure=result?.trackingError||result?.error||result?.reason;
+      lastError=(typeof failure==='string'?failure:failure?JSON.stringify(failure):
+        'HTTP '+response.status).slice(0,180);
+      // Do not repeat a legitimate carrier response; retry only transient upstream failures.
+      if(response.status!==429&&response.status<500)break;
+    }catch(e){
+      lastError=String(e?.message||e).slice(0,180);
+    }
+    if(attempt<MAX_ATTEMPTS)await new Promise(resolve=>setTimeout(resolve,500));
   }
+  console.warn('cathay_refresh_attempts_exhausted',JSON.stringify({mawb,attempts:MAX_ATTEMPTS,error:lastError}));
+  return {mawb,ok:false,attempts:MAX_ATTEMPTS,error:lastError,
+    httpStatus:lastStatus,elapsedMs:Date.now()-start};
 }
 export async function GET(request){
   // CRON_SECRET authorization when configured; otherwise only Vercel's
