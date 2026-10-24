@@ -1,8 +1,8 @@
 // Air India (098) official Activity View integration locked 2026-10-17.
 // Working-carrier freeze requested 2026-10-08.
-// Change these hashes ONLY after the owner explicitly approves unlocking
-// Saudia (065), Emirates (176), Cathay Pacific (160), Ethiopian (071), or Kuwait (229).
-// Cathay's reusable, AWB-matched dated flight ETA extraction is protected here.
+// Keep non-CX carrier locks until explicitly approved.
+// Cathay Pacific (160) temporarily unlocked per owner request, 2026-10-24.
+// CX parser files are editable while Booking Status tracking is repaired.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -24,10 +24,7 @@ const locked = Object.freeze({
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
-  'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
-  'lib/cathay-browser-fallback.js':'2dafa8e0d28e4802bbb790d132d80998ba1c379a',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
-  'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
   'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
@@ -293,4 +290,4 @@ for(const [label,fragment] of saudiaRouteContract){
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Cathay Pacific (160), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
+console.log('Airline lock check passed (CX parser temporarily unlocked): Air India (098), IndiGo (312), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
