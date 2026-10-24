@@ -53,39 +53,33 @@ function paise(value) {
 const money = p => (Math.max(0, Number(p) || 0) / 100).toFixed(2);
 
 function parseEntry(body) {
-  const entry = {
-    month: clean(body?.month, 7),
-    name: clean(body?.name, 200),
-    direction: clean(body?.direction || 'PAY', 12),
-    remarks: clean(body?.remarks, 1000),
-    amountPaise: paise(body?.amount),
-    dueDate: clean(body?.dueDate, 10),
-    paidDate: clean(body?.paidDate, 10)
-  };
-  if (!validMonth(entry.month) || !entry.name || !['PAY','RECEIVE'].includes(entry.direction) || entry.amountPaise === null ||
-      entry.amountPaise <= 0 || !validDate(entry.dueDate) ||
-      (entry.paidDate && !validDate(entry.paidDate))) {
-    return { error: 'Enter a name, direction, amount and pending date.' };
-  }
-  return { entry };
+  const date=clean(body?.date,10);
+  const credit=paise(body?.credit || '0');
+  const debit=paise(body?.debit || '0');
+  const deadline=clean(body?.deadline,10);
+  const entry={month:date.slice(0,7),date,name:clean(body?.name,200),
+    creditPaise:credit,debitPaise:debit,remarks:clean(body?.remarks,1000),deadline};
+  if(!validDate(date)||!entry.name||credit===null||debit===null||
+    (credit<=0&&debit<=0)||(credit>0&&debit>0)||
+    (deadline&&!validDate(deadline)))return {error:'Enter date, name and either Credit or Debit. Deadline is optional.'};
+  return {entry};
 }
-// Existing records from the old complex payment form remain visible.  Only
-// their four requested fields are shown; no database rows are discarded.
-const output = row => {
-  const d = row.data || {};
-  const storedPaise = Number.isFinite(Number(d.amountPaise))
-    ? Number(d.amountPaise) : paise(d.amount || '0');
+// Preserve old payment records, mapping old PAY/RECEIVE to debit/credit without loss.
+const output=row=>{
+  const d=row.data||{};
+  const original=Number.isFinite(Number(d.amountPaise))?Number(d.amountPaise):paise(d.amount||'0');
+  const legacyCredit=d.direction==='RECEIVE'?original:0;
+  const legacyDebit=d.direction==='RECEIVE'?0:original;
+  const created=new Date(row.created_at);
+  const fallbackDate=Number.isNaN(created.getTime())?'':new Date(created.getTime()+330*60000).toISOString().slice(0,10);
   return {
-    id: row.id,
-    month: d.month,
-    name: String(d.name || d.payee || d.title || '').trim(),
-    amount: money(storedPaise),
-    direction: d.direction === 'RECEIVE' ? 'RECEIVE' : 'PAY',
-    remarks: d.remarks || '',
-    dueDate: d.dueDate || '',
-    paidDate: d.paidDate || '',
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    id:row.id,month:d.month||row.month_key,
+    date:d.date||fallbackDate,
+    name:String(d.name||d.payee||d.title||'').trim(),
+    credit:money(d.creditPaise===undefined?legacyCredit:Number(d.creditPaise)||0),
+    debit:money(d.debitPaise===undefined?legacyDebit:Number(d.debitPaise)||0),
+    remarks:d.remarks||'',deadline:d.deadline||d.dueDate||'',
+    createdAt:row.created_at,updatedAt:row.updated_at
   };
 };
 async function one(sql, id) {
