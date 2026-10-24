@@ -789,6 +789,15 @@ async function handle(mawb,fallback={}){
         arrivalEstimate:true,arrivalIsActual:false};
     });
   }
+  // A verified Malaysia response with no final-destination arrival must clear
+  // stale UI/database arrival values instead of preserving an old date.
+  if(malaysiaFastPath&&direct?.arrivalVerifiedAbsent===true){
+    shipment.arrivalVerifiedAbsent=true;
+    shipment.arrivalDate='';
+    shipment.arrivalTime='';
+    shipment.arrivalIsActual=false;
+    shipment.arrivalTimeSource='Malaysia final DEL arrival not yet published';
+  }
   // Saudia part clock resilience: the locked SAL adapter may provide DEP/FOW
   // with a dated final Delhi flight but no per-part ETA. Reuse ONLY the matching
   // master flight/date ETA (never another flight, an ARR time, or an actual arrival).
@@ -797,8 +806,8 @@ async function handle(mawb,fallback={}){
     const masterFlight=String(shipment.flightNo||'').toUpperCase();
     const masterDate=String(shipment.arrivalDate||'').slice(0,10);
     const masterEta=String(shipment.arrivalTime||'');
-    if(/^SV\\d{2,4}$/.test(masterFlight)&&/^20\\d{2}-\\d{2}-\\d{2}$/.test(masterDate)
-        &&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(masterEta)){
+    if(/^SV\d{2,4}$/.test(masterFlight)&&/^20\d{2}-\d{2}-\d{2}$/.test(masterDate)
+        &&/^([01]\d|2[0-3]):[0-5]\d$/.test(masterEta)){
       shipment.partShipments=shipment.partShipments.map(part=>{
         if(part.arrivalIsActual===true||part.arrivalTime||
             !/^(DEPARTED|IN TRANSIT)$/i.test(String(part.status||''))||
@@ -810,15 +819,6 @@ async function handle(mawb,fallback={}){
           arrivalTimeSource:'Same dated SV flight published master ETA; IST, not actual cargo arrival'};
       });
     }
-  }
-  // A verified Malaysia response with no final-destination arrival must clear
-  // stale UI/database arrival values instead of preserving an old date.
-  if(malaysiaFastPath&&direct?.arrivalVerifiedAbsent===true){
-    shipment.arrivalVerifiedAbsent=true;
-    shipment.arrivalDate='';
-    shipment.arrivalTime='';
-    shipment.arrivalIsActual=false;
-    shipment.arrivalTimeSource='Malaysia final DEL arrival not yet published';
   }
   // Air India dedicated adapter already normalizes international arrival date/time to IST.
   // Do not let generic preferred-arrival selection replace it with an unconverted value.

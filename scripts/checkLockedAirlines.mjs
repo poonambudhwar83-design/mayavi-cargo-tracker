@@ -190,7 +190,7 @@ if(saudiaBlockStart<0||saudiaBlockEnd<=saudiaBlockStart||
   console.error('LOCKED SAUDIA MANIFEST PLAN MODIFIED: approval needed before changing physical-part flight/ETA rules.');
   changed=true;
 }
-const saudiaManifestDisplayContract = [["part-load eligibility","const genuinePartLoad=row.isPartLoad===true||row.partLoad===true"],["separate physical rows","return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;return({...row,"],["per-part manifest plan","_saudiaManifestPlan:saudiaPlan,"],["per-part stable Mail ID","_partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,"],["per-part independent Mail choice","mailSent:p.mailSent===true,"],["planned Mail clock only if ETA matches","||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):'')"],["manifest date display","r.arrivalDate||r._saudiaManifestPlan?.date||r._emiratesMasterEta?.date||'—'"],["manifest ETA label","r._saudiaManifestPlan.label"],["planned time display","r._saudiaManifestPlan?(formatTime24(r._saudiaManifestPlan.time)||'—'):"],["manifest warning","'ETA NOT CONFIRMED'"],["not counted as confirmed arrival","_partArrivalConfirmed:confirmedPartArrival(p)"],["independent physical-part customs","customsCleared:p.customsCleared===true,"]];
+const saudiaManifestDisplayContract = [["part-load eligibility","const genuinePartLoad=row.isPartLoad===true||row.partLoad===true"],["separate physical rows","return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;const saudiaEta=prefix==='065'?saudiaMatchingPartEta(row,p):'';return({...row,"],["per-part manifest plan","_saudiaManifestPlan:saudiaPlan,"],["per-part stable Mail ID","_partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,"],["per-part independent Mail choice","mailSent:p.mailSent===true,"],["planned Mail clock only if ETA matches","||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):'')"],["manifest date display","r.arrivalDate||r._saudiaManifestPlan?.date||r._emiratesMasterEta?.date||'—'"],["manifest ETA label","r._saudiaManifestPlan.label"],["planned time display","r._saudiaManifestPlan?(formatTime24(r._saudiaManifestPlan.time)||'—'):"],["manifest warning","'ETA NOT CONFIRMED'"],["not counted as confirmed arrival","_partArrivalConfirmed:confirmedPartArrival(p)"],["independent physical-part customs","customsCleared:p.customsCleared===true,"]];
 for(const [label,fragment] of saudiaManifestDisplayContract){
   if(!dashboard.includes(fragment)){
     console.error('LOCKED SAUDIA PART DISPLAY MODIFIED: '+label+'. Explicit unlock approval required.');
@@ -208,6 +208,23 @@ for(const [label,fragment] of [
 ]){
   if(!dashboard.includes(fragment)){
     console.error('LOCKED ACTIVE WEIGHT REGRESSION: '+label);
+    changed=true;
+  }
+}
+
+// Preserve today's Saudia part ETA fallback and departed-first display without
+// changing the locked official SAL chronology parser.
+for(const [name,contract] of [
+  ['matching part flight/date clock', 'function saudiaMatchingPartEta(master={},part={})'],
+  ['Saudia departed-first priority', 'function saudiaDisplayPriority(row={})'],
+  ['part ETA displayed per physical row', "arrivalTime:p.arrivalTime||saudiaEta||''"],
+  ['part ETA source', "arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?"],
+  ['FOW displayed as expected', "return'EXPECTED';"],
+  ['server fallback for missing part ETA', 'Same dated SV flight published master ETA; IST, not actual cargo arrival']
+]){
+  const target=name==='server fallback for missing part ETA'?sharedRoute:dashboard;
+  if(!target.includes(contract)){
+    console.error('LOCKED SAUDIA PART ETA / DISPLAY CONTRACT MISSING: '+name);
     changed=true;
   }
 }

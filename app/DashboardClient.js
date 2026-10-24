@@ -396,7 +396,7 @@ function saudiaMatchingPartEta(master={},part={}){
   const flightDate=String(part.flightDate||'').slice(0,10);
   const eta=formatTime24(master.arrivalTime||'');
   if(!flight||flight!==partFlight||!date||date!==partDate||date!==flightDate||
-    !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(eta)||master.arrivalIsActual===true)return'';
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(eta)||master.arrivalIsActual===true)return'';
   return eta;
 }
 // Saudia SAL can publish a physical part's MAN flight/date before it publishes
