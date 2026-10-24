@@ -155,7 +155,8 @@ export async function GET(request){
   const allRows=(shipments.rows||[]).map(r=>r?.data||{}).filter(r=>normalize(r.mawb||r.awb));
   const checkedAt=new Date();
   const selected=allRows.map(row=>({row,scope:refreshScope(row,checkedAt)}));
-  const rows=selected.filter(item=>item.scope!=='SKIP').map(item=>item.row);
+  const saudiaRapid=new URL(request.url).pathname==='/api/cron/saudia';
+  const rows=selected.filter(item=>item.scope!=='SKIP'&&(!saudiaRapid||normalize(item.row.mawb||item.row.awb).startsWith('065-'))).map(item=>item.row);
   const scopeCounts={
     active:selected.filter(item=>item.scope==='ACTIVE').length,
     clearedLast72Hours:selected.filter(item=>item.scope==='CLEARED_RECENT').length,

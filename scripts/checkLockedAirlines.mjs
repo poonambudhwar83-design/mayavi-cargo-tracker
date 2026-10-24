@@ -320,5 +320,19 @@ for(const [label,fragment] of saudiaRouteContract){
     changed=true;
   }
 }
+// Saudia only: four rapid SAL checks 14:00, 14:15, 14:30, 14:45 IST.
+// All-carrier two-hour UTC schedule and working carrier parsers remain locked.
+const rapidSaudia=readFileSync('app/api/cron/saudia/route.js','utf8');
+const rapidCrons=JSON.parse(readFileSync('vercel.json','utf8')).crons;
+if(!rapidCrons.some(c=>c.path==='/api/cron/saudia'&&c.schedule==='*/15 8-9 * * *')||
+  !rapidCrons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')||
+  !rapidSaudia.includes('hour!==14||minute%15!==0')||
+  !sharedRoute.includes("'/api/cron/saudia'")&&
+    !readFileSync('app/api/cron/refresh/route.js','utf8').includes("pathname==='/api/cron/saudia'")||
+  !dashboard.includes('function saudiaFowNeedsOffloadCheck(')||
+  !dashboard.includes("status:'OFFLOAD CHECK'")){
+  console.error('SAUDIA RAPID 15-MINUTE / TWO-HOUR AUTO REFRESH CONTRACT MISSING.');
+  changed=true;
+}
 if(changed)process.exit(1);
 console.log('Airline lock check passed (CX Booking Status parser locked): Air India (098), IndiGo (312), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');

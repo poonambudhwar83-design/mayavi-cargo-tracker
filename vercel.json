@@ -36,6 +36,9 @@
     },
     "app/api/cron/cathay/route.js": {
       "maxDuration": 260
+    },
+    "app/api/cron/saudia/route.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -58,6 +61,10 @@
     {
       "path": "/api/cron/cathay",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/saudia",
+      "schedule": "*/15 8-9 * * *"
     }
   ]
 }

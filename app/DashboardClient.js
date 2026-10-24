@@ -415,6 +415,32 @@ function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){
       partShipments:Array.isArray(master.partShipments)?master.partShipments.map(matchingPart):master.partShipments};
   });
 }
+// SAL FOW is not confirmed offload. After the rapid departure window,
+// label a still-unconverted FOW as a check item ONLY when SAL itself has
+// confirmed DEP for the same dated flight on another movement.
+function saudiaFowNeedsOffloadCheck(part={},masters=[],now=Date.now()){
+  const mawb=digits(part.mawb);
+  if(!mawb.startsWith('065')||String(part.sourceStatus||'').toUpperCase()!=='FOW'||part.arrivalIsActual===true)return false;
+  const flight=normalizeFlightNo(part.mawb,part.flightNo||'');
+  const date=String(part.flightDate||part.arrivalDate||'').slice(0,10);
+  const dparts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now));
+  const df=x=>dparts.find(p=>p.type===x)?.value||'';
+  const istToday=df('year')+'-'+df('month')+'-'+df('day');
+  if(!flight||!/^20\d{2}-\d{2}-\d{2}$/.test(date)||date!==istToday)return false;
+  const cutoff=Date.parse(date+'T15:00:00+05:30');
+  const freshCutoff=Date.parse(date+'T14:30:00+05:30');
+  if(now<cutoff||(Date.parse(part.lastChecked||part._dbUpdatedAt||0)||0)<freshCutoff)return false;
+  return masters.some(master=>{
+    if(!digits(master.mawb).startsWith('065')||master.mawb===part.mawb)return false;
+    const updated=Date.parse(master.lastChecked||master._dbUpdatedAt||0)||0;
+    if(updated<freshCutoff)return false;
+    const matches=x=>normalizeFlightNo(master.mawb,x.flightNo||master.flightNo||'')===flight&&
+      String(x.flightDate||x.arrivalDate||master.flightDate||master.arrivalDate||'').slice(0,10)===date;
+    return (String(master.sourceStatus||'').toUpperCase()==='DEP'&&matches(master))||
+      (Array.isArray(master.partShipments)&&master.partShipments.some(p=>
+        String(p.status||'').toUpperCase()==='DEPARTED'&&matches(p)));
+  });
+}
 function saudiaDisplayPriority(row={}){
   const s=String(row.status||'').toUpperCase();
   if(s==='DEPARTED'||s==='DEP')return 0;
@@ -758,7 +784,10 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const clearedFilterMode=isAdmin&&adminView==='CLEARED';
   const customsFilterMode=clearedFilterMode&&importLikeTab;
   const filterOptions=useMemo(()=>({clients:uniq(dashboardRows,'clientName'),goods:uniq(dashboardRows,'goodsDescription'),companies:[...new Set(dashboardRows.map(companyFilterLabel).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),enteredBy:uniq(dashboardRows,'enteredBy'),origins:uniq(dashboardRows,'origin'),destinations:uniq(dashboardRows,'destination'),prefixes:[...new Set(dashboardRows.map(r=>digits(r.mawb).slice(0,3)).filter(Boolean))].sort()}),[dashboardRows]);
-  const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clientFilter||r.clientName===clientFilter)&&(!goodsFilter||r.goodsDescription===goodsFilter)&&(!companyFilter||companyFilterLabel(r)===companyFilter)&&(!enteredByFilter||r.enteredBy===enteredByFilter)&&(!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter));const expanded=expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows)).filter(r=>{
+  const visibleRows=useMemo(()=>{const filtered=dashboardRows.filter(r=>(!prefixFilter||digits(r.mawb).startsWith(prefixFilter))&&(!clientFilter||r.clientName===clientFilter)&&(!goodsFilter||r.goodsDescription===goodsFilter)&&(!companyFilter||companyFilterLabel(r)===companyFilter)&&(!enteredByFilter||r.enteredBy===enteredByFilter)&&(!originFilter||r.origin===originFilter)&&(!destinationFilter||r.destination===destinationFilter));const expanded=expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows)).map(r=>
+    saudiaFowNeedsOffloadCheck(r,dashboardRows,mailClock)?{...r,
+      status:'OFFLOAD CHECK',remarks:'FOW remained after other cargo DEP on this flight; possible offload, awaiting SAL DIS/DUS confirmation'}:r
+  ).filter(r=>{
     if(clearedFilterMode&&importLikeTab){
       // Filter AFTER physical part expansion: Sep part goes to Sep archive,
       // Oct part stays visible here even when both share one MAWB.
@@ -766,7 +795,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
     }
     if(!r._partKey)return true;
     return clearedFilterMode?r.customsCleared===true:r.customsCleared!==true;
-  });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,goodsFilter,companyFilter,enteredByFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth,privateTab]);
+  });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,goodsFilter,companyFilter,enteredByFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth,privateTab,mailClock]);
   const totalWeight=useMemo(()=>{
     const groups=new Map();
     for(const row of visibleRows){
