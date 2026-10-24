@@ -76,8 +76,8 @@ export async function GET(request){
   try{
     const sql=database(),auth=await authorized(request,sql);
     if(!auth.ok)return json({ok:false,error:auth.error},auth.status);
-    const rows=await sql`SELECT tracking_no,data,created_at,updated_at FROM mayavi_speedpost ORDER BY updated_at DESC LIMIT 300`;
-    return json({ok:true,rows:rows.map(rowToResult)});
+    const rows=await sql`SELECT tracking_no,data,created_at,updated_at FROM mayavi_speedpost ORDER BY updated_at DESC LIMIT 5001`;
+    return json({ok:true,rows:rows.slice(0,5000).map(rowToResult),hasMore:rows.length>5000});
   }catch(e){return json({ok:false,error:e?.message||'Speed Post records unavailable.'},503)}
 }
 export async function POST(request){

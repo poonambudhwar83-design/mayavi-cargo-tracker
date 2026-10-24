@@ -150,6 +150,7 @@ function statusBucket(row){
   const s=String(row?.status||'').trim().toLowerCase();
   if(!s||/pending|not found|not tracked|unavailable|verification|awaiting|unknown|no tracking|no information/.test(s))return 'PENDING';
   if(/dispatch|despatch|out for delivery|sent to export|forwarded|departed|sent abroad/.test(s))return 'DISPATCHED';
+  if(/in transit|transit|on the way|arrived at|received at|reached|at sorting|at delivery office|at airport/.test(s))return 'IN_TRANSIT';
   return 'OTHER';
 }
 function formatValue(value){return value?String(value):'—'}
@@ -183,7 +184,8 @@ export default function SpeedPostDashboard({currentUser}){
   const [rowDrafts,setRowDrafts]=useState({});
   const [rowSaving,setRowSaving]=useState('');
   const [statusFixing,setStatusFixing]=useState('');
-  const [exportStatus,setExportStatus]=useState('ALL');
+  const [exportStatus,setExportStatus]=useState('SHEET');
+  const [historyIncomplete,setHistoryIncomplete]=useState(false);
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -192,6 +194,7 @@ export default function SpeedPostDashboard({currentUser}){
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Cannot load records');
       setRows(result.rows||[]);
+      setHistoryIncomplete(Boolean(result.hasMore));
       setLoadError('');
     }catch(e){setLoadError(e.message||'Unable to load saved Speed Post records.')}
   },[]);
@@ -492,15 +495,23 @@ export default function SpeedPostDashboard({currentUser}){
   const activeRows=rows.filter(r=>!isDelivered(r));
   const deliveredRows=rows.filter(isDelivered);
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
-  const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
   const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
-  // Export scope includes BOTH Active and Delivered and is independent
-  // of the currently open tab. A single ED occurs at most once.
   const actualStatuses=[...new Set(rows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
-  const downloadRows=rows.filter(r=>exportStatus==='ALL'||(
-    exportStatus.startsWith('EXACT:')?
+  // Status filter controls the visible table AND both downloaded reports.
+  // Any explicit filter searches Active and Delivered together.
+  const displayedRows=exportStatus==='SHEET'?
+    (speedPostTab==='DELIVERED'?deliveredRows:activeRows):
+    exportStatus==='ALL'?rows:rows.filter(r=>exportStatus.startsWith('EXACT:')?
       String(r.status||'Pending Tracking').trim()===exportStatus.slice(6):
-      statusBucket(r)===exportStatus));
+      statusBucket(r)===exportStatus);
+  const downloadRows=displayedRows;
+  const countStatus=value=>rows.filter(r=>statusBucket(r)===value).length;
+  const filterLabel=exportStatus==='SHEET'?
+    (speedPostTab==='DELIVERED'?'Delivered Sheet':'Active Sheet'):
+    exportStatus==='ALL'?'All EMS':
+    exportStatus.startsWith('EXACT:')?exportStatus.slice(6):
+    ({DISPATCHED:'Dispatched',PENDING:'Pending Tracking',DELIVERED:'Delivered',
+      IN_TRANSIT:'In Transit',OTHER:'Other Statuses'})[exportStatus]||exportStatus;
   function downloadStatusFile(format){
     if(!downloadRows.length){
       setMessage('No Speed Post packets match the selected status.');
@@ -523,10 +534,7 @@ export default function SpeedPostDashboard({currentUser}){
         r.bookingDate||'—',r.status||'Pending Tracking',r.weight||'—',
         r.deliveredAtText||'—'
       ]);
-      const label=exportStatus==='ALL'?'All Records':
-        exportStatus.startsWith('EXACT:')?exportStatus.slice(6):
-        ({DISPATCHED:'Dispatched',PENDING:'Pending Tracking',DELIVERED:'Delivered',
-          OTHER:'In Transit and Other'})[exportStatus]||exportStatus;
+      const label=filterLabel;
       const data=format==='pdf'?createSpeedPostPdf(pdfRows,label):
         createSpeedPostXlsx(headers,excelRows);
       const ext=format==='pdf'?'pdf':'xlsx';
@@ -615,11 +623,11 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
     </section>
     <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
-      <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>setSpeedPostTab('TRACKING')}
+      <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>{setSpeedPostTab('TRACKING');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         EMS TRACKING
       </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>setSpeedPostTab('DELIVERED')}
+      <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>{setSpeedPostTab('DELIVERED');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         DELIVERED ({deliveredRows.length})
       </button>
@@ -710,39 +718,47 @@ export default function SpeedPostDashboard({currentUser}){
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
     <section style={card}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:13}}>
-        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'}</h2><span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} packets • {currentUser?.displayName||'Private access'}</span></div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-          <label htmlFor="emsDownloadStatus" style={{fontSize:12,fontWeight:800,color:'#173f91'}}>Download Status</label>
-          <select id="emsDownloadStatus" aria-label="Select Speed Post download status"
-            value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
-            style={{border:'1px solid #b7c9e4',borderRadius:8,padding:'8px 7px',color:'#173f91',background:'#fff',fontSize:12}}>
-            <option value="ALL">All Records</option>
-            <option value="DISPATCHED">Dispatched</option>
-            <option value="PENDING">Pending Tracking / Verification</option>
-            <option value="DELIVERED">Delivered</option>
-            <option value="OTHER">In Transit / Other</option>
-            {actualStatuses.map(st=><option key={'EXACT:'+st} value={'EXACT:'+st}>Status: {st}</option>)}
-          </select>
-          <button type="button" style={{...btn,padding:'8px 10px',fontSize:11}}
-            disabled={!downloadRows.length} onClick={()=>downloadStatusFile('pdf')}>
-            DOWNLOAD PDF ({downloadRows.length})
-          </button>
-          <button type="button" style={{...btn,padding:'8px 10px',fontSize:11,background:'#167046'}}
-            disabled={!downloadRows.length} onClick={()=>downloadStatusFile('xlsx')}>
-            DOWNLOAD EXCEL ({downloadRows.length})
-          </button>
-          <button type="button"
-            title="Download ED entries without a verified Booking Date as a PDF"
-            style={{...btn,padding:'8px 10px',background:'#fff7ed',color:'#9a3412',border:'1px solid #fbbf24',fontSize:11}}
-            disabled={!bookingPendingRows.length}
-            onClick={downloadPendingBookingPdf}>
-            DOWNLOAD BOOKING PENDING PDF ({bookingPendingRows.length})
-          </button>
-          <button style={{...btn,background:'#e7eefb',color:'#224f9b'}}
-            onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:12}}>
+        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{exportStatus==='SHEET'?(speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'):'EMS — '+filterLabel}</h2>
+          <span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} matching packets • {rows.length} saved records loaded • {currentUser?.displayName||'Private access'}</span>
         </div>
+        <button type="button" style={{...btn,background:'#e7eefb',color:'#224f9b',padding:'8px 10px'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
+      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,background:'#eef4ff',border:'2px solid #afc7f1',borderRadius:10,padding:'12px',marginBottom:12}}>
+        <label htmlFor="emsStatusFilter" style={{fontSize:13,fontWeight:900,color:'#173f91'}}>FILTER EMS STATUS</label>
+        <select id="emsStatusFilter" aria-label="Filter EMS sheet and download by shipment status"
+          value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
+          style={{...input,flex:'1 1 260px',width:'auto',maxWidth:390,fontSize:13,fontWeight:700,border:'2px solid #719ce0'}}>
+          <option value="SHEET">Current {speedPostTab==='DELIVERED'?'Delivered':'Active'} Sheet ({speedPostTab==='DELIVERED'?deliveredRows.length:activeRows.length})</option>
+          <option value="ALL">All EMS — Active + Delivered ({rows.length})</option>
+          <option value="DISPATCHED">Dispatched ({countStatus('DISPATCHED')})</option>
+          <option value="PENDING">Pending Tracking / Verification ({countStatus('PENDING')})</option>
+          <option value="IN_TRANSIT">In Transit ({countStatus('IN_TRANSIT')})</option>
+          <option value="DELIVERED">Delivered ({countStatus('DELIVERED')})</option>
+          <option value="OTHER">Other Statuses ({countStatus('OTHER')})</option>
+          {actualStatuses.map(st=><option key={'EXACT:'+st} value={'EXACT:'+st}>Exact: {st} ({rows.filter(r=>String(r.status||'Pending Tracking').trim()===st).length})</option>)}
+        </select>
+        <button type="button" style={{...btn,background:'#fff',color:'#173f91',border:'1px solid #a8bfdc',padding:'9px 11px'}}
+          onClick={()=>setExportStatus('SHEET')} disabled={exportStatus==='SHEET'}>CLEAR FILTER</button>
+        <strong style={{fontSize:13,color:'#173f91'}}>{displayedRows.length} PACKETS FOUND</strong>
+      </div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+        <span style={{fontSize:12,fontWeight:700,color:'#475569'}}>Download filtered packets:</span>
+        <button type="button" style={{...btn,padding:'8px 10px',fontSize:11}}
+          disabled={!downloadRows.length} onClick={()=>downloadStatusFile('pdf')}>
+          PDF ({downloadRows.length})
+        </button>
+        <button type="button" style={{...btn,padding:'8px 10px',fontSize:11,background:'#167046'}}
+          disabled={!downloadRows.length} onClick={()=>downloadStatusFile('xlsx')}>
+          EXCEL ({downloadRows.length})
+        </button>
+        <button type="button" title="Separate report: ED entries without a Booking Date, independent of status filter"
+          style={{...btn,padding:'8px 10px',background:'#fff7ed',color:'#9a3412',border:'1px solid #fbbf24',fontSize:11}}
+          disabled={!bookingPendingRows.length} onClick={downloadPendingBookingPdf}>
+          BOOKING PENDING PDF ({bookingPendingRows.length})
+        </button>
+      </div>
+      {historyIncomplete&&<p role="alert" style={{color:'#9a3412',fontWeight:700,fontSize:12}}>More than 5,000 saved EMS packets exist. This screen shows the newest 5,000; contact the administrator for a full archive.</p>}
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2470}}>
           <thead><tr>{[
@@ -805,12 +821,12 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match the selected EMS status filter. Clear filter to view the current sheet.':speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
         </table>
       </div>
 
       <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
-        <h3 style={{fontSize:15,margin:'0 0 8px'}}>{speedPostTab==='DELIVERED'?'Delivered Sheet Weight Summary':'Current Sheet Weight Summary'}</h3>
+        <h3 style={{fontSize:15,margin:'0 0 8px'}}>{exportStatus==='SHEET'?(speedPostTab==='DELIVERED'?'Delivered Sheet Weight Summary':'Current Sheet Weight Summary'):'Filtered Weight Summary'}</h3>
         <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg actual weight • {summary.totalRoundedKg.toLocaleString('en-IN')} kg total rounded weight • {summary.packets-summary.knownWeights} missing weight</div>
         <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
           {[[ 'Country-wise totals',summary.countries ]].map(([heading,groups])=>
