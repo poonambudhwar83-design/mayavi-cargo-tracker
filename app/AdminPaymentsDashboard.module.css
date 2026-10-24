@@ -74,3 +74,21 @@
 .tableScroll tfoot td{font-weight:900}
 .paid{color:#157347;font-weight:800}
 .pending{color:#9b6713;font-weight:800}
+
+
+/* Column-wise payment and account ledgers, independent of cargo tables. */
+.sectionHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:20px;margin-bottom:2px}
+.sectionHead h3{font-size:17px;margin:0 0 5px;color:#173962}
+.sectionHead small{font-size:12px;color:#556d87;font-weight:700}
+.payTable{min-width:920px!important}
+.ledgerTable{min-width:1090px!important}
+.payTable th:nth-child(2),.ledgerTable th:nth-child(4),.ledgerTable th:nth-child(5),.ledgerTable th:nth-child(6){text-align:left}
+.payTable td:nth-child(3),.ledgerTable td:nth-child(3),.ledgerTable td:nth-child(4),.ledgerTable td:nth-child(6){white-space:nowrap}
+.tableScroll .editingRow select{width:100%;min-width:110px;padding:9px 8px;box-sizing:border-box;font:inherit;border:1px solid #b2cce2;border-radius:7px;background:#fff;color:#1b344e}
+.tableScroll .editingRow td{min-width:115px}
+.tableScroll .editingRow td input[type=number]{min-width:105px;max-width:150px}
+.tableScroll .editingRow td:first-child{min-width:175px}
+.remarks{white-space:pre-wrap!important;min-width:160px;max-width:420px;overflow-wrap:anywhere}
+.receive{color:#136d47;font-weight:800}
+.payTable td:first-child,.ledgerTable td:nth-child(2){font-weight:700;color:#183d62}
+@media(max-width:650px){.sectionHead{align-items:flex-start}.sectionHead h3{font-size:15px}}

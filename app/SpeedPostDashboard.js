@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkEdChecksum } from '../lib/speedpostOcr.js';
 import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
+import { createSpeedPostPdf, createSpeedPostXlsx } from '../lib/speedpostExports.js';
 
 const API='/api/speedpost';
 const MAX_BATCH_PHOTOS=20;
@@ -131,6 +132,10 @@ function costPerKg(row){
   return total/kg;
 }
 const rupeePerKg=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
+function nowISTDate(){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'})
+    .format(new Date()).replace(/\//g,'-');
+}
 function formatEntryDate(value){
   if(!value)return '—';
   const d=new Date(value);
@@ -139,6 +144,13 @@ function formatEntryDate(value){
 }
 function isDelivered(row){
   return row?.delivered===true||/^delivered$/i.test(String(row?.status||'').trim());
+}
+function statusBucket(row){
+  if(isDelivered(row))return 'DELIVERED';
+  const s=String(row?.status||'').trim().toLowerCase();
+  if(!s||/pending|not found|not tracked|unavailable|verification|awaiting|unknown|no tracking|no information/.test(s))return 'PENDING';
+  if(/dispatch|despatch|out for delivery|sent to export|forwarded|departed|sent abroad/.test(s))return 'DISPATCHED';
+  return 'OTHER';
 }
 function formatValue(value){return value?String(value):'—'}
 function field(row,key){
@@ -171,6 +183,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [rowDrafts,setRowDrafts]=useState({});
   const [rowSaving,setRowSaving]=useState('');
   const [statusFixing,setStatusFixing]=useState('');
+  const [exportStatus,setExportStatus]=useState('ALL');
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -481,6 +494,55 @@ export default function SpeedPostDashboard({currentUser}){
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const displayedRows=speedPostTab==='DELIVERED'?deliveredRows:activeRows;
   const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
+  // Export scope includes BOTH Active and Delivered and is independent
+  // of the currently open tab. A single ED occurs at most once.
+  const actualStatuses=[...new Set(rows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
+  const downloadRows=rows.filter(r=>exportStatus==='ALL'||(
+    exportStatus.startsWith('EXACT:')?
+      String(r.status||'Pending Tracking').trim()===exportStatus.slice(6):
+      statusBucket(r)===exportStatus));
+  function downloadStatusFile(format){
+    if(!downloadRows.length){
+      setMessage('No Speed Post packets match the selected status.');
+      return;
+    }
+    try{
+      const headers=['ED No.','Consignee Name','Destination','Entry Date','Booking Date','Status',
+        'Delivered Date/Time','Origin','Actual Weight','Rounded Weight (kg)',
+        'Tariff (INR)','Cash Cost (INR)','Total Cost (INR)','Cost per kg (INR)','Tracking Address','Entered By'];
+      const excelRows=downloadRows.map(r=>{
+        const tariff=postalCost(r),cash=cashCost(r),cost=costPerKg(r),rounded=billedWeightKg(r.weight);
+        return [r.trackingNo||'',r.consigneeName||'',destinationWithCountry(r),formatEntryDate(r.createdAt),
+          r.bookingDate||'',r.status||'Pending Tracking',r.deliveredAtText||'',shortOrigin(r.origin),
+          r.weight||'',rounded===null?'':rounded,tariff===null?'':tariff,cash===null?'':cash,
+          tariff===null||cash===null?'':tariff+cash,cost===null?'':Number(cost.toFixed(2)),
+          r.address||'',r.enteredBy||''];
+      });
+      const pdfRows=downloadRows.map(r=>[
+        r.trackingNo||'',r.consigneeName||'',destinationWithCountry(r)||'—',
+        r.bookingDate||'—',r.status||'Pending Tracking',r.weight||'—',
+        r.deliveredAtText||'—'
+      ]);
+      const label=exportStatus==='ALL'?'All Records':
+        exportStatus.startsWith('EXACT:')?exportStatus.slice(6):
+        ({DISPATCHED:'Dispatched',PENDING:'Pending Tracking',DELIVERED:'Delivered',
+          OTHER:'In Transit and Other'})[exportStatus]||exportStatus;
+      const data=format==='pdf'?createSpeedPostPdf(pdfRows,label):
+        createSpeedPostXlsx(headers,excelRows);
+      const ext=format==='pdf'?'pdf':'xlsx';
+      const mime=format==='pdf'?'application/pdf':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const url=URL.createObjectURL(new Blob([data],{type:mime}));
+      const anchor=document.createElement('a');
+      const date=nowISTDate();
+      anchor.href=url;anchor.download='Mayavi_EMS_'+label.replace(/[^a-z0-9]+/gi,'_')+
+        '_'+date+'.'+ext;
+      document.body.appendChild(anchor);anchor.click();anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),15000);
+      setMessage(format.toUpperCase()+' downloaded: '+downloadRows.length+' parcels ('+label+').');
+    }catch(error){setMessage('Download failed: '+(error?.message||'Unknown error'));}
+  }
+
   const downloadPendingBookingPdf=()=>{
     if(!bookingPendingRows.length){
       setMessage('All recorded Speed Post EDs have a Booking Date.');
@@ -651,6 +713,25 @@ export default function SpeedPostDashboard({currentUser}){
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:13}}>
         <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'}</h2><span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} packets • {currentUser?.displayName||'Private access'}</span></div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <label htmlFor="emsDownloadStatus" style={{fontSize:12,fontWeight:800,color:'#173f91'}}>Download Status</label>
+          <select id="emsDownloadStatus" aria-label="Select Speed Post download status"
+            value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
+            style={{border:'1px solid #b7c9e4',borderRadius:8,padding:'8px 7px',color:'#173f91',background:'#fff',fontSize:12}}>
+            <option value="ALL">All Records</option>
+            <option value="DISPATCHED">Dispatched</option>
+            <option value="PENDING">Pending Tracking / Verification</option>
+            <option value="DELIVERED">Delivered</option>
+            <option value="OTHER">In Transit / Other</option>
+            {actualStatuses.map(st=><option key={'EXACT:'+st} value={'EXACT:'+st}>Status: {st}</option>)}
+          </select>
+          <button type="button" style={{...btn,padding:'8px 10px',fontSize:11}}
+            disabled={!downloadRows.length} onClick={()=>downloadStatusFile('pdf')}>
+            DOWNLOAD PDF ({downloadRows.length})
+          </button>
+          <button type="button" style={{...btn,padding:'8px 10px',fontSize:11,background:'#167046'}}
+            disabled={!downloadRows.length} onClick={()=>downloadStatusFile('xlsx')}>
+            DOWNLOAD EXCEL ({downloadRows.length})
+          </button>
           <button type="button"
             title="Download ED entries without a verified Booking Date as a PDF"
             style={{...btn,padding:'8px 10px',background:'#fff7ed',color:'#9a3412',border:'1px solid #fbbf24',fontSize:11}}

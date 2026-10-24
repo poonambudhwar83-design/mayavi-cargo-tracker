@@ -56,14 +56,16 @@ function parseEntry(body) {
   const entry = {
     month: clean(body?.month, 7),
     name: clean(body?.name, 200),
+    direction: clean(body?.direction || 'PAY', 12),
+    remarks: clean(body?.remarks, 1000),
     amountPaise: paise(body?.amount),
     dueDate: clean(body?.dueDate, 10),
     paidDate: clean(body?.paidDate, 10)
   };
-  if (!validMonth(entry.month) || !entry.name || entry.amountPaise === null ||
+  if (!validMonth(entry.month) || !entry.name || !['PAY','RECEIVE'].includes(entry.direction) || entry.amountPaise === null ||
       entry.amountPaise <= 0 || !validDate(entry.dueDate) ||
       (entry.paidDate && !validDate(entry.paidDate))) {
-    return { error: 'Please enter name, amount and due date. Paid date may be left blank.' };
+    return { error: 'Enter a name, direction, amount and pending date.' };
   }
   return { entry };
 }
@@ -78,6 +80,8 @@ const output = row => {
     month: d.month,
     name: String(d.name || d.payee || d.title || '').trim(),
     amount: money(storedPaise),
+    direction: d.direction === 'RECEIVE' ? 'RECEIVE' : 'PAY',
+    remarks: d.remarks || '',
     dueDate: d.dueDate || '',
     paidDate: d.paidDate || '',
     createdAt: row.created_at,
@@ -127,7 +131,7 @@ export async function PATCH(request) {
     await ensureTable(sql);
     const by = auth.session.displayName || auth.session.username;
     const updated = await sql`UPDATE mayavi_admin_payments
-      SET month_key = ${entry.month}, data = ${JSON.stringify(entry)}::jsonb,
+      SET month_key = ${entry.month}, data = data || ${JSON.stringify(entry)}::jsonb,
           updated_by = ${by}, updated_at = NOW()
       WHERE id = ${id} RETURNING id`;
     if (!updated.length) return reply({ ok: false, error: 'Payment record not found.' }, 404);
