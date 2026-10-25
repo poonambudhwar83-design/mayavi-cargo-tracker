@@ -23,7 +23,9 @@ function awbDigits(value=''){
 }
 function numericPart(value){
   const text=String(value??'').replace(/,/g,'').trim();
-  const numeric=Number(text.includes('/')?text.split('/').at(-1):text);
+  const reference=text.includes('/')?text.split('/').at(-1):text;
+  const number=reference.includes('+')?reference.split('+').reduce((sum,p)=>sum+Number(p),0):Number(reference);
+  const numeric=/^\d+(?:\.\d+)?(?:\+\d+(?:\.\d+)?)*$/.test(reference)?number:NaN;
   return Number.isFinite(numeric)&&numeric>0?numeric:null;
 }
 function uniqueParts(record={}){
@@ -56,6 +58,17 @@ function totalBags(record={}){
   const sum=parts.reduce((total,part)=>total+(numericPart(String(part.pieces||part.bags||'').split('/')[0])||0),0);
   return sum>0?sum:null;
 }
+function normalizeGoods(value=''){
+  const category=String(value||'').trim().toUpperCase();
+  return ['HH','PROTEIN','CLOTHES'].includes(category)?category:'';
+}
+function inferGoods(value=''){
+  const raw=String(value||'').toUpperCase();
+  if(/\bPROTEIN\b|\bWHEY\b/.test(raw))return 'PROTEIN';
+  if(/\bCLOTH(?:ES|ING)?\b|\bGARMENTS?\b|\bAPPAREL\b/.test(raw))return 'CLOTHES';
+  if(/\bHH\b|\bHOUSE\s*HOLD\b|\bHOUSEHOLD\b/.test(raw))return 'HH';
+  return '';
+}
 function numberField(value){
   if(value===null||value===undefined||String(value).trim()==='')return null;
   const clean=String(value).replace(/,/g,'').trim();
@@ -70,8 +83,10 @@ async function ensureStore(sql){
     total_duty NUMERIC(16,2),
     rate NUMERIC(16,4),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_by TEXT NOT NULL DEFAULT ''
+    updated_by TEXT NOT NULL DEFAULT '',
+    goods_category TEXT
   )`;
+  await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS goods_category TEXT`;
 }
 export async function GET(request){
   if(!adminOnly(request))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
@@ -82,7 +97,7 @@ export async function GET(request){
       sql`SELECT awb,data FROM mayavi_shipments
           WHERE COALESCE(data->>'shipmentType','IMPORT')='IMPORT'
           ORDER BY updated_at DESC`,
-      sql`SELECT awb,total_duty,rate FROM mayavi_import_profit`
+      sql`SELECT awb,total_duty,rate,goods_category FROM mayavi_import_profit`
     ]);
     const saved=new Map(profit.map(row=>[awbDigits(row.awb),row]));
     const seen=new Set();
@@ -100,6 +115,10 @@ export async function GET(request){
         weight:totalWeight(data),
         totalDuty:financial.total_duty===null||financial.total_duty===undefined?'':String(financial.total_duty),
         rate:financial.rate===null||financial.rate===undefined?'':String(financial.rate),
+        goodsDescription:String(data.goodsDescription||data.goods_description||''),
+        goodsCategory:financial.goods_category===null||financial.goods_category===undefined
+          ?inferGoods(data.goodsDescription||data.goods_description||'')
+          :normalizeGoods(financial.goods_category),
         enteredAt:data.enteredAt||'',
         arrivalDate:data.arrivalDate||''
       });
@@ -116,9 +135,11 @@ export async function PATCH(request){
     const body=await request.json();
     const awb=awbDigits(body?.mawb);
     const field=body?.field;
-    if(!awb||!['totalDuty','rate'].includes(field))
+    if(!awb||!['totalDuty','rate','goodsCategory'].includes(field))
       return Response.json({ok:false,error:'Invalid profit-sheet update.'},{status:400});
-    const number=numberField(body?.value);
+    const value=field==='goodsCategory'?normalizeGoods(body?.value):numberField(body?.value);
+    if(field==='goodsCategory'&&String(body?.value||'').trim()&&!value)
+      return Response.json({ok:false,error:'Choose HH, Protein, or Clothes.'},{status:400});
     const sql=sqlClient();
     await ensureStore(sql);
     const [shipment]=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
@@ -126,16 +147,21 @@ export async function PATCH(request){
     if(!shipment)return Response.json({ok:false,error:'Import MAWB not found. Refresh the sheet.'},{status:404});
     if(field==='totalDuty'){
       await sql`INSERT INTO mayavi_import_profit (awb,total_duty,updated_by)
-        VALUES (${awb},${number},${admin.username})
+        VALUES (${awb},${value},${admin.username})
         ON CONFLICT (awb) DO UPDATE SET total_duty=EXCLUDED.total_duty,
         updated_by=EXCLUDED.updated_by,updated_at=now()`;
-    }else{
+    }else if(field==='rate'){
       await sql`INSERT INTO mayavi_import_profit (awb,rate,updated_by)
-        VALUES (${awb},${number},${admin.username})
+        VALUES (${awb},${value},${admin.username})
         ON CONFLICT (awb) DO UPDATE SET rate=EXCLUDED.rate,
         updated_by=EXCLUDED.updated_by,updated_at=now()`;
+    }else{
+      await sql`INSERT INTO mayavi_import_profit (awb,goods_category,updated_by)
+        VALUES (${awb},${value},${admin.username})
+        ON CONFLICT (awb) DO UPDATE SET goods_category=EXCLUDED.goods_category,
+        updated_by=EXCLUDED.updated_by,updated_at=now()`;
     }
-    return Response.json({ok:true,mawb:awb,field,value:number===null?'':String(number)});
+    return Response.json({ok:true,mawb:awb,field,value:value===null?'':String(value)});
   }catch(error){
     return Response.json({ok:false,error:error?.message||'Could not save the amount.'},{status:400});
   }
