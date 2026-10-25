@@ -113,9 +113,19 @@ export async function GET(request){
       const arrivalDate=importProfitArrivalDate(data,month);
       if(!arrivalDate)continue; // Actual arrival only, not booked/manifested/estimated.
       const financial=saved.get(awb)||{};
+      // Use the same Customs Cleared state that controls the Import Active Masters
+      // view; a true split MAWB remains active while at least one physical
+      // part has not been customs-cleared.
+      const parts=Array.isArray(data.partShipments)?data.partShipments.filter(Boolean):[];
+      const splitLoad=data.isPartLoad===true||data.partLoad===true||
+        /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(data.status||''));
+      const isActiveMaster=splitLoad&&parts.length
+        ?parts.some(part=>part.customsCleared!==true)
+        :data.customsCleared!==true;
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         clientName:data.clientName||data.client||'',
+        isActiveMaster,
         // Read the master shipment's origin (not an intermediate via/hub).
         origin:String(data.origin||''),
         bags:totalBags(data),
