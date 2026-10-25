@@ -46,11 +46,11 @@ function figures(row={}){
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
-function downloadCsv(rows){
-  const columns=['MAWB','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (400 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - SIIB)','Profit per kg (Profit / Total Weight)'];
+function downloadCsv(rows,month=''){
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (400 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - SIIB)','Profit per kg (Profit / Total Weight)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.siibDeduction,n.totalCost,n.profit,n.profitPerKg];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.siibDeduction,n.totalCost,n.profit,n.profitPerKg];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -58,7 +58,7 @@ function downloadCsv(rows){
     return '"'+safe.replace(/"/g,'""')+'"';
   }).join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
-  const link=document.createElement('a');link.href=url;link.download='mayavi-import-profit-sheet.csv';
+  const link=document.createElement('a');link.href=url;link.download='mayavi-import-profit-'+(month||'monthly')+'.csv';
   document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
 }
 export default function ImportProfitSheet(){
@@ -71,22 +71,24 @@ export default function ImportProfitSheet(){
   const [clientFilter,setClientFilter]=useState('');
   const [goodsFilter,setGoodsFilter]=useState('');
   const [rateSort,setRateSort]=useState('');
+  const [period,setPeriod]=useState('');
+  const [periodOptions,setPeriodOptions]=useState([]);
   const [lastLoaded,setLastLoaded]=useState('');
   useEffect(()=>{
     let active=true;
     async function load(){
       try{
-        const response=await fetch('/api/import-profit',{credentials:'include',cache:'no-store'});
+        const response=await fetch('/api/import-profit'+(period?'?month='+encodeURIComponent(period):''),{credentials:'include',cache:'no-store'});
         const data=await response.json();
         if(!data.ok)throw new Error(data.error||'Could not open profit sheet.');
-        if(active){setRows(data.rows||[]);setLastLoaded(new Date().toLocaleTimeString('en-IN'));setMessage(current=>current.startsWith('Unable to load')?'':current)}
+        if(active){setRows(data.rows||[]);setPeriodOptions(data.months||[]);setLastLoaded(new Date().toLocaleTimeString('en-IN'));setMessage(current=>current.startsWith('Unable to load')?'':current)}
       }catch(error){if(active)setMessage('Unable to load Import Profit Sheet: '+(error?.message||error))}
       finally{if(active)setLoading(false)}
     }
     load();
     const timer=setInterval(load,120000);
     return()=>{active=false;clearInterval(timer)};
-  },[]);
+  },[period]);
   function effective(row){
     return {...row,...(drafts[row.mawb]||{})};
   }
@@ -148,9 +150,9 @@ export default function ImportProfitSheet(){
         <div>
           <div style={{fontSize:12,letterSpacing:1.5,fontWeight:900,color:'#3464ae'}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{margin:'5px 0',fontSize:27}}>Import Profit Sheet</h1>
-          <p style={{margin:'6px 0',color:'#52657f'}}>One row per MAWB. Total weight and bags sync from Import automatically, including part shipments.</p>
+          <p style={{margin:'6px 0',color:'#52657f'}}>Monthly profit from October 2026 onward • Only confirmed arrivals during the selected month • One master MAWB counted once (including part shipments).</p>
         </div>
-        <button onClick={()=>downloadCsv(filtered)} disabled={!filtered.length} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
+        <button onClick={()=>downloadCsv(filtered,period||periodOptions.at(-1)||'')} disabled={!filtered.length} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
       </div>
       <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:16}}>
         <div style={summaryCard}><small>IMPORT MAWBs</small><div style={{fontSize:23,fontWeight:900}}>{displayAmount(filtered.length)}</div></div>
@@ -161,6 +163,10 @@ export default function ImportProfitSheet(){
       </div>
       <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'space-between',alignItems:'center',margin:'18px 0 12px'}}>
         <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
+          <label htmlFor="import-profit-period" style={{fontSize:12,fontWeight:800}}>ARRIVAL MONTH</label>
+          <select id="import-profit-period" aria-label="Import profit arrival month" value={period||periodOptions.at(-1)||''} onChange={e=>{setPeriod(e.target.value);setRows([]);setLoading(true);setDrafts({});setClientFilter('');setGoodsFilter('');setSearch('')}} style={{padding:'11px 12px',minWidth:155,border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',fontWeight:700}}>
+            {periodOptions.map(key=><option key={key} value={key}>{new Date(key+'-01T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>)}
+          </select>
           <label htmlFor="import-profit-client-filter" style={{fontSize:12,fontWeight:800}}>CLIENT</label>
           <select id="import-profit-client-filter" aria-label="Filter Import Profit Sheet by Client" value={clientFilter} onChange={e=>setClientFilter(e.target.value)}
             style={{padding:'11px 12px',minWidth:175,border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',fontWeight:700}}>
@@ -186,7 +192,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -196,6 +202,7 @@ export default function ImportProfitSheet(){
               return <tr key={row.mawb} style={{background:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.row||'#fff'}}>
                 <td style={cell}>{index+1}</td>
                 <td style={{...cell,fontWeight:800}}>{row.mawb}</td>
+                <td style={cell}>{row.arrivalDate||'—'}</td>
                 <td style={cell}>{row.clientName||'—'}</td>
                 <td style={cell}>
                   <select aria-label={'Goods for '+row.mawb} value={row.goodsCategory||''}
@@ -244,10 +251,10 @@ export default function ImportProfitSheet(){
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
               </tr>
             })}
-            {!filtered.length&&<tr><td colSpan={14} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={15} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
-            <td colSpan={4} style={cell}>TOTAL • {filtered.length} MAWBs</td>
+            <td colSpan={5} style={cell}>TOTAL • {filtered.length} MAWBs</td>
             <td style={cell}>{displayAmount(totals.bags)}</td>
             <td style={cell}>{displayAmount(totals.weight)}</td>
             <td style={cell}>{displayMoney(totals.duty)}</td>
@@ -262,7 +269,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹400 × Total Weight for Protein originating from JFK only) − (₹30 × Total Weight for Clothes as SIIB). DXB and JFK refer to shipment Origin, not an intermediate Via stop. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Client, Goods and search filters.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹400 × Total Weight for Protein originating from JFK only) − (₹30 × Total Weight for Clothes as SIIB). DXB and JFK refer to shipment Origin, not an intermediate Via stop. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
   </main>;
