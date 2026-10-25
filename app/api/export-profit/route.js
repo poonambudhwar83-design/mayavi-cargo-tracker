@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
+import { selectedProfitMonth, profitMonths, exportProfitHandoverDate, exportProfitHandoverMonth, exportRateForCompany } from '../../../lib/profitPeriod.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,8 @@ function companyName(data={}){
 export async function GET(request){
   if(readSession(request)?.role!=='admin')
     return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+  const month=selectedProfitMonth(new URL(request.url).searchParams.get('month'));
+  if(!month)return Response.json({ok:false,error:'Profit sheets start from October 2026. Choose a valid month.'},{status:400});
   try{
     const sql=sqlClient();
     const shipments=await sql`SELECT awb,data FROM mayavi_shipments
@@ -53,16 +56,21 @@ export async function GET(request){
       if(!awb||seen.has(awb))continue;
       seen.add(awb);
       const data=shipment.data||{};
+      if(exportProfitHandoverMonth(data)!==month)continue;
       const weight=totalWeight(data);
+      const company=companyName(data);
+      const rate=exportRateForCompany(company);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
+        handoverDate:exportProfitHandoverDate(data),
         weight,
-        companyName:companyName(data),
-        shipmentCharge:1000, // One fixed shipment charge per unique master MAWB.
-        profit:weight===null?null:Math.round((weight*6-1000)*100)/100
+        companyName:company,
+        rate,
+        shipmentCharge:1000, // Deduct once per master MAWB.
+        profit:weight===null?null:Math.round((weight*rate-1000)*100)/100
       });
     }
-    return Response.json({ok:true,rows},{headers:{'Cache-Control':'no-store, private'}});
+    return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
   }catch(error){
     return Response.json({ok:false,error:error?.message||'Export Profit Sheet unavailable.'},{status:503});
   }
