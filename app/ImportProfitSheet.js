@@ -29,15 +29,16 @@ function figures(row={}){
   // Do not show a misleading profit until all the required inputs are available.
   const proteinDeduction=category==='PROTEIN'&&kg!==null?50*kg:0;
   const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction;
-  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,profit};
+  const profitPerKg=profit===null||kg===null||kg<=0?null:profit/kg;
+  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,profit,profitPerKg};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows){
-  const columns=['MAWB','Client','Goods','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (16 x kg)','Goods Charge (HH 340, Protein 3000, Clothes 1500 per bag)','Total Cost','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein 50 x Weight)'];
+  const columns=['MAWB','Client','Goods','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (16 x kg)','Goods Charge (HH 340, Protein 3000, Clothes 1500 per bag)','Total Cost','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein 50 x Weight)','Profit per kg (Profit / Total Weight)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.clientName,row.goodsCategory||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.totalCost,n.profit];
+    return [row.mawb,row.clientName,row.goodsCategory||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.totalCost,n.profit,n.profitPerKg];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -111,7 +112,7 @@ export default function ImportProfitSheet(){
     return results;
   },[rows,drafts,search,clientFilter,rateSort]);
   const totals=useMemo(()=>{
-    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0;
+    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
     for(const row of filtered){
       const n=figures(row);
       bags+=Number(row.bags)||0;
@@ -122,9 +123,9 @@ export default function ImportProfitSheet(){
       if(n.dutyPerKg!==null){dutyPerKgSum+=n.dutyPerKg;dutyPerKgKnown++}
       if(n.rate!==null){rateSum+=n.rate;rateKnown++}
       if(n.totalCost!==null)cost+=n.totalCost;
-      if(n.profit!==null){profit+=n.profit;completed++}
+      if(n.profitPerKg!==null){profit+=n.profit;completedWeight+=n.kg;completed++}
     }
-    return {bags,weight,duty,eici,goodsCharge,cost,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown};
+    return {bags,weight,duty,eici,goodsCharge,cost,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
   },[filtered]);
   return <main style={{padding:'20px clamp(12px,3vw,32px)',background:'#f5f8fc',minHeight:'75vh',color:'#122139'}}>
     <div style={{maxWidth:1650,margin:'auto'}}>
@@ -164,7 +165,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 16 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 16 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -219,9 +220,10 @@ export default function ImportProfitSheet(){
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?'Select goods to calculate':money.format(n.chargePerBag)+'/bag'}</small></td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
                 <td style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}</td>
+                <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
               </tr>
             })}
-            {!filtered.length&&<tr><td colSpan={13} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={14} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
             <td colSpan={4} style={cell}>TOTAL • {filtered.length} MAWBs</td>
@@ -234,11 +236,12 @@ export default function ImportProfitSheet(){
             <td style={cell}>{displayMoney(totals.goodsCharge)}</td>
             <td style={cell}>{displayMoney(totals.cost)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(totals.profit)}</td>
+            <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
           </tr></tfoot>}
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only). Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only). Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
       </p>
     </div>
   </main>;
