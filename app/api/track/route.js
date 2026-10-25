@@ -1451,7 +1451,7 @@ async function handle(mawb,fallback={}){
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final
   // destination is DEL. Never convert that hub event into Delhi arrival.
-  if(saudiaFastPath)shipment=await guardSaudiaFromLatestSal(mawb,shipment);
+  if(saudiaFastPath)shipment=await guardSaudiaFromLatestSal(mawb,shipment,{flightSchedule:trackFlightScheduleFast});
   if(cathayFastPath){
     // Return previously verified fields to the dashboard as well as protect DB writes.
     const previousCx=await loadStoredTrackingFallback(mawb);
