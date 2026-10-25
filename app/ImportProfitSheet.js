@@ -25,6 +25,9 @@ function figures(row={}){
   // Base goods charge depends on the origin airport, not transit (Via).
   const isDxbOrigin=/(^|[^A-Z0-9])(DXB|DUBAI)($|[^A-Z0-9])/.test(origin);
   const isJfkOrigin=/(^|[^A-Z0-9])JFK($|[^A-Z0-9])/.test(origin);
+  // Canadian origin names and airport codes only; a Canadian destination or
+  // transit stop does not trigger the Import Protein freight deduction.
+  const isCanadaOrigin=/(^|[^A-Z0-9])(CANADA|CANADIAN|TORONTO|VANCOUVER|MONTREAL|MONTRÉAL|CALGARY|EDMONTON|OTTAWA|WINNIPEG|HALIFAX|QUEBEC|QUÉBEC|VICTORIA|SASKATOON|REGINA|YYZ|YVR|YUL|YYC|YEG|YOW|YWG|YHZ|YQB|YYJ|YXE|YQR|YKF|YHM|YXX|YQG|YQM|YYT|YXS|YQT|YQR)($|[^A-Z0-9])/.test(origin);
   // If Protein origin is missing, do not assume the cheaper other-origin tariff.
   const chargePerBag=category==='HH'?340:category==='CLOTHES'?1500:
     category==='PROTEIN'?(origin?(isDxbOrigin||isJfkOrigin?3000:1500):null):null;
@@ -39,18 +42,19 @@ function figures(row={}){
   const dxbFreightDeduction=category==='PROTEIN'&&isDxbOrigin&&kg!==null?185*kg:0;
   // JFK-specific freight applies only to Protein whose master shipment origin is JFK.
   const jfkFreightDeduction=category==='PROTEIN'&&isJfkOrigin&&kg!==null?400*kg:0;
+  const canadaFreightDeduction=category==='PROTEIN'&&isCanadaOrigin&&kg!==null?550*kg:0;
   const siibDeduction=category==='CLOTHES'&&kg!==null?30*kg:0;
-  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-siibDeduction;
+  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-canadaFreightDeduction-siibDeduction;
   const profitPerKg=profit===null||kg===null||kg<=0?null:profit/kg;
-  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,siibDeduction,profit,profitPerKg};
+  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,siibDeduction,profit,profitPerKg};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (400 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - SIIB)','Profit per kg (Profit / Total Weight)'];
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (400 x kg)','Canada Protein Freight (550 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - SIIB)','Profit per kg (Profit / Total Weight)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.siibDeduction,n.totalCost,n.profit,n.profitPerKg];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.siibDeduction,n.totalCost,n.profit,n.profitPerKg];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -247,7 +251,7 @@ export default function ImportProfitSheet(){
                 <td style={cell}>{displayMoney(n.eici)}</td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?(String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&!String(row.origin||'').trim()?'Origin needed':'Select goods to calculate'):money.format(n.chargePerBag)+'/bag'}</small></td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
-                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹400/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}</td>
+                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹400/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹550/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}</td>
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
               </tr>
             })}
@@ -269,7 +273,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹400 × Total Weight for Protein originating from JFK only) − (₹30 × Total Weight for Clothes as SIIB). DXB and JFK refer to shipment Origin, not an intermediate Via stop. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹400 × Total Weight for Protein originating from JFK only) − (₹550 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹30 × Total Weight for Clothes as SIIB). DXB, JFK and Canada refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
   </main>;
