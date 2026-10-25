@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkEdChecksum } from '../lib/speedpostOcr.js';
 import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
 import { createSpeedPostPdf, createSpeedPostXlsx } from '../lib/speedpostExports.js';
+import { speedPostEntryDay, speedPostEntryMonth, speedPostCostSummary,
+  speedPostGroupByEntryDay, speedPostGroupByEntryMonth } from '../lib/speedpostCostReports.js';
 
 const API='/api/speedpost';
 const MAX_BATCH_PHOTOS=20;
@@ -164,6 +166,8 @@ function field(row,key){
 export default function SpeedPostDashboard({currentUser}){
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
+  const [selectedEntryDay,setSelectedEntryDay]=useState('LATEST');
+  const [selectedEntryMonth,setSelectedEntryMonth]=useState('LATEST');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
 
@@ -492,26 +496,42 @@ export default function SpeedPostDashboard({currentUser}){
     finally{setBusy('');}
   }
   const anythingBusy=Boolean(busy||ocrBusy||batchRunning);
+  // The database's immutable createdAt, converted to IST, defines the daily
+  // page and monthly ledger. A later Delivered status doesn't change this date.
   const activeRows=rows.filter(r=>!isDelivered(r));
   const deliveredRows=rows.filter(isDelivered);
+  const entryDays=speedPostGroupByEntryDay(rows);
+  const entryMonths=speedPostGroupByEntryMonth(rows);
+  const effectiveDay=selectedEntryDay==='LATEST'?entryDays[0]?.[0]||'':selectedEntryDay;
+  const effectiveMonth=selectedEntryMonth==='LATEST'?entryMonths[0]?.[0]||'':selectedEntryMonth;
+  const dayRows=entryDays.find(([day])=>day===effectiveDay)?.[1]||[];
+  const monthRows=entryMonths.find(([month])=>month===effectiveMonth)?.[1]||[];
+  const pageRows=speedPostTab==='DELIVERED'?deliveredRows:
+    speedPostTab==='MONTHLY'?monthRows:dayRows;
+  const pageLabel=speedPostTab==='DELIVERED'?'Delivered (All Dates)':
+    speedPostTab==='MONTHLY'?'Monthly Entry Records '+effectiveMonth:
+    'Entry Date '+effectiveDay;
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
-  const actualStatuses=[...new Set(rows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
-  // Status filter controls the visible table AND both downloaded reports.
-  // Any explicit filter searches Active and Delivered together.
-  const displayedRows=exportStatus==='SHEET'?
-    (speedPostTab==='DELIVERED'?deliveredRows:activeRows):
-    exportStatus==='ALL'?rows:rows.filter(r=>exportStatus.startsWith('EXACT:')?
+  const actualStatuses=[...new Set(pageRows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
+  // Status filters and downloads never leak records from another daily page.
+  const displayedRows=(exportStatus==='SHEET'||exportStatus==='ALL'?pageRows:
+    pageRows.filter(r=>exportStatus.startsWith('EXACT:')?
       String(r.status||'Pending Tracking').trim()===exportStatus.slice(6):
-      statusBucket(r)===exportStatus);
+      statusBucket(r)===exportStatus))
+    .slice().sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
   const downloadRows=displayedRows;
-  const countStatus=value=>rows.filter(r=>statusBucket(r)===value).length;
-  const filterLabel=exportStatus==='SHEET'?
-    (speedPostTab==='DELIVERED'?'Delivered Sheet':'Active Sheet'):
-    exportStatus==='ALL'?'All EMS':
-    exportStatus.startsWith('EXACT:')?exportStatus.slice(6):
-    ({DISPATCHED:'Dispatched',PENDING:'Pending Tracking',DELIVERED:'Delivered',
-      IN_TRANSIT:'In Transit',OTHER:'Other Statuses'})[exportStatus]||exportStatus;
+  const countStatus=value=>pageRows.filter(r=>statusBucket(r)===value).length;
+  const filterLabel=exportStatus==='SHEET'||exportStatus==='ALL'?pageLabel:
+    pageLabel+' '+(exportStatus.startsWith('EXACT:')?exportStatus.slice(6):
+      ({DISPATCHED:'Dispatched',PENDING:'Pending Tracking',DELIVERED:'Delivered',
+        IN_TRANSIT:'In Transit',OTHER:'Other Statuses'})[exportStatus]||exportStatus);
+  const reportOptions={tariffOf:postalCost,cashOf:cashCost};
+  const reportTotals=speedPostCostSummary(pageRows,reportOptions);
+  const filteredTotals=speedPostCostSummary(displayedRows,reportOptions);
+  const allTotals=speedPostCostSummary(rows,reportOptions);
+  const monthDayGroups=speedPostGroupByEntryDay(monthRows);
+  const currency=n=>rupeePerKg.format(n);
   function downloadStatusFile(format){
     if(!downloadRows.length){
       setMessage('No Speed Post packets match the selected status.');
