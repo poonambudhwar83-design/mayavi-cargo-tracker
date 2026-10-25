@@ -810,7 +810,7 @@ export default function SpeedPostDashboard({currentUser}){
     </section>
     <section style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:12}}>
-        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{exportStatus==='SHEET'?(speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'):'EMS — '+filterLabel}</h2>
+        <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{exportStatus==='SHEET'?pageLabel+' • Entry-wise Sheet':'EMS — '+filterLabel}</h2>
           <span style={{color:'#64748b',fontSize:12}}>{displayedRows.length} matching packets • {rows.length} saved records loaded • {currentUser?.displayName||'Private access'}</span>
         </div>
         <button type="button" style={{...btn,background:'#e7eefb',color:'#224f9b',padding:'8px 10px'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
@@ -820,8 +820,8 @@ export default function SpeedPostDashboard({currentUser}){
         <select id="emsStatusFilter" aria-label="Filter EMS sheet and download by shipment status"
           value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
           style={{...input,flex:'1 1 260px',width:'auto',maxWidth:390,fontSize:13,fontWeight:700,border:'2px solid #719ce0'}}>
-          <option value="SHEET">Current {speedPostTab==='DELIVERED'?'Delivered':'Active'} Sheet ({speedPostTab==='DELIVERED'?deliveredRows.length:activeRows.length})</option>
-          <option value="ALL">All EMS — Active + Delivered ({rows.length})</option>
+          <option value="SHEET">Current Page • All Statuses ({pageRows.length})</option>
+          <option value="ALL">All Statuses On This Page ({pageRows.length})</option>
           <option value="DISPATCHED">Dispatched ({countStatus('DISPATCHED')})</option>
           <option value="PENDING">Pending Tracking / Verification ({countStatus('PENDING')})</option>
           <option value="IN_TRANSIT">In Transit ({countStatus('IN_TRANSIT')})</option>
@@ -851,11 +851,11 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       {historyIncomplete&&<p role="alert" style={{color:'#9a3412',fontWeight:700,fontSize:12}}>More than 5,000 saved EMS packets exist. This screen shows the newest 5,000; contact the administrator for a full archive.</p>}
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2470}}>
+        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
             'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
-            'Total Cost (₹)','Cost per kg (₹)','Status',
+            'Total Cost (₹)','Tariff − Cash (₹)','Cost per kg (₹)','Status',
             'Origin','Weight','Rounded Weight (kg)','Last Updated','Actions'
           ].map((label,index)=><th key={label} className={index<5?'sp-freeze-'+index:undefined}
             style={{...th,...(index<5?{padding:'8px 4px'}:{})}}>{index===3?
@@ -895,6 +895,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
+            <td style={{...td,fontWeight:800,color:postalCost(r)!==null&&cashCost(r)!==null&&postalCost(r)<cashCost(r)?'#b91c1c':'#166534'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)-cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
@@ -912,7 +913,7 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match the selected EMS status filter. Clear filter to view the current sheet.':speedPostTab==='DELIVERED'?'No parcels are marked Delivered yet.':'No active parcels. Add a new ED number above or check the Delivered tab.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={18} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No Delivered parcels yet.':speedPostTab==='MONTHLY'?'No entries in this month.':'No packets for this Entry Date. Select another date or add a new ED.'}</td></tr>}</tbody>
         </table>
       </div>
 
