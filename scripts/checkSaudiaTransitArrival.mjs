@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { applySaudiaConnectionGuard, guardSaudiaConnectingFlightWithoutSal } from '../lib/saudiaTransitGuard.js';
 const base={mawb:'065-11493672',origin:'DMM',destination:'DEL',
   flightNo:'SV1125',flightDestination:'JED',airport:'DMM',sourceStatus:'DEP',
@@ -112,4 +113,9 @@ assert.equal(transitPart.partShipments[1].transitArrivalTime,'23:55');
 assert.equal(transitPart.partShipments[1].arrivalDate,'');
 assert.equal(transitPart.status,'PART ARRIVED');
 
+// The saved history fallback must be used by the dashboard itself, not only
+// by the background refresh: a 49+50 split must render even before cron writes.
+const dashboard=readFileSync('app/DashboardClient.js','utf8');
+assert.ok(dashboard.includes("guardSaudiaConnectingFlightWithoutSal(savedRow)"));
+assert.ok(dashboard.includes("p.arrivalIsActual===true?row.destination:(p.transitAirport||row.airport||'')"));
 console.log('Saudia transit-JED vs final-DEL arrival regression passed');
