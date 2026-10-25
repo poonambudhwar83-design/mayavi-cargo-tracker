@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
+import { selectedProfitMonth, profitMonths, importProfitArrivalDate } from '../../../lib/profitPeriod.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -90,6 +91,8 @@ async function ensureStore(sql){
 }
 export async function GET(request){
   if(!adminOnly(request))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+  const month=selectedProfitMonth(new URL(request.url).searchParams.get('month'));
+  if(!month)return Response.json({ok:false,error:'Profit sheets start from October 2026. Choose a valid month.'},{status:400});
   try{
     const sql=sqlClient();
     await ensureStore(sql);
@@ -107,6 +110,8 @@ export async function GET(request){
       if(!awb||seen.has(awb))continue;
       seen.add(awb);
       const data=shipment.data||{};
+      const arrivalDate=importProfitArrivalDate(data,month);
+      if(!arrivalDate)continue; // Actual arrival only, not booked/manifested/estimated.
       const financial=saved.get(awb)||{};
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
@@ -122,10 +127,10 @@ export async function GET(request){
           ?inferGoods(data.goodsDescription||data.goods_description||'')
           :normalizeGoods(financial.goods_category),
         enteredAt:data.enteredAt||'',
-        arrivalDate:data.arrivalDate||''
+        arrivalDate
       });
     }
-    return Response.json({ok:true,rows},{headers:{'Cache-Control':'no-store, private'}});
+    return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
   }catch(error){
     return Response.json({ok:false,error:error?.message||'Import Profit Sheet unavailable.'},{status:503});
   }
