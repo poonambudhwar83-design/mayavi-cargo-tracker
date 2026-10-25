@@ -917,7 +917,16 @@ export default function SpeedPostDashboard({currentUser}){
         </table>
       </div>
 
-      <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
+      <div style={{marginTop:13,padding:12,background:'#eef4ff',borderRadius:9}}>
+         <strong style={{fontSize:13}}>FILTERED ENTRIES TOTAL ({displayedRows.length})</strong>
+         <div style={{display:'flex',flexWrap:'wrap',gap:18,marginTop:7,fontSize:12}}>
+           <span>Tariff: <b>{currency(filteredTotals.tariff)}</b></span>
+           <span>Cash Cost: <b>{currency(filteredTotals.cash)}</b></span>
+           <span>Combined: <b>{currency(filteredTotals.combined)}</b></span>
+           <span>Tariff − Cash: <b>{currency(filteredTotals.difference)}</b></span>
+         </div>
+       </div>
+       <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
         <h3 style={{fontSize:15,margin:'0 0 8px'}}>{exportStatus==='SHEET'?(speedPostTab==='DELIVERED'?'Delivered Sheet Weight Summary':'Current Sheet Weight Summary'):'Filtered Weight Summary'}</h3>
         <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Grand Total: {summary.packets} parcels • {summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg actual weight • {summary.totalRoundedKg.toLocaleString('en-IN')} kg total rounded weight • {summary.packets-summary.knownWeights} missing weight</div>
         <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
@@ -930,9 +939,20 @@ export default function SpeedPostDashboard({currentUser}){
               </table>
             </div>)}
         </div>
-        <p style={{fontSize:11,color:'#64748b'}}>Actual weight and rounded billing weight are totaled separately. Each parcel's rounded weight is rounded UP to the next whole kg, matching Cash Cost. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Current and Delivered sheets are counted separately. Entry-date month-wise aggregation will be added to monthly archives later.</p>
+        <p style={{fontSize:11,color:'#64748b'}}>Actual weight and rounded billing weight are totaled separately. Each parcel's rounded weight is rounded UP to the next whole kg, matching Cash Cost. Missing weights are excluded from kg totals, not treated as zero. Country not verified is grouped as Unknown. Current and Delivered sheets are counted separately. Entry-date Monthly Records are now available, using the original date even after delivery.</p>
       </div>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is calculated for each parcel as Tariff + Cash Cost. If either amount is missing, the total shows —. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <section aria-label="All entries grand totals" style={{marginTop:15,border:'2px solid #cbd8ef',borderRadius:10,padding:12,background:'#f8faff'}}>
+        <h3 style={{fontSize:15,margin:'0 0 8px',color:'#173f91'}}>ALL ENTRIES • GRAND TOTAL (Active + Delivered)</h3>
+        <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:12}}>
+          <span>Packets: <strong>{allTotals.packets}</strong></span>
+          <span>Tariff: <strong>{currency(allTotals.tariff)}</strong></span>
+          <span>Cash Cost: <strong>{currency(allTotals.cash)}</strong></span>
+          <span>Combined Total: <strong>{currency(allTotals.combined)}</strong></span>
+          <span>Tariff − Cash: <strong>{currency(allTotals.difference)}</strong></span>
+        </div>
+        <p style={{fontSize:11,margin:'7px 0 0',color:'#64748b'}}>Missing Tariff: {allTotals.tariffMissing} • Missing Cash Cost: {allTotals.cashMissing} • Both available: {allTotals.completePackets}. Every ED is counted once, including Delivered entries.</p>
+      </section>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is Tariff + Cash Cost, and Difference is Tariff − Cash Cost. Both must be available for an individual Total or Difference. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
