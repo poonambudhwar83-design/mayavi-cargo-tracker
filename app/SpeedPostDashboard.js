@@ -540,22 +540,31 @@ export default function SpeedPostDashboard({currentUser}){
     try{
       const headers=['ED No.','Consignee Name','Destination','Entry Date','Booking Date','Status',
         'Delivered Date/Time','Origin','Actual Weight','Rounded Weight (kg)',
-        'Tariff (INR)','Cash Cost (INR)','Total Cost (INR)','Cost per kg (INR)','Tracking Address','Entered By'];
+        'Tariff (INR)','Cash Cost (INR)','Total Cost (INR)','Tariff - Cash (INR)',
+        'Cost per kg (INR)','Tracking Address','Entered By'];
       const excelRows=downloadRows.map(r=>{
         const tariff=postalCost(r),cash=cashCost(r),cost=costPerKg(r),rounded=billedWeightKg(r.weight);
         return [r.trackingNo||'',r.consigneeName||'',destinationWithCountry(r),formatEntryDate(r.createdAt),
           r.bookingDate||'',r.status||'Pending Tracking',r.deliveredAtText||'',shortOrigin(r.origin),
           r.weight||'',rounded===null?'':rounded,tariff===null?'':tariff,cash===null?'':cash,
-          tariff===null||cash===null?'':tariff+cash,cost===null?'':Number(cost.toFixed(2)),
-          r.address||'',r.enteredBy||''];
+          tariff===null||cash===null?'':tariff+cash,
+          tariff===null||cash===null?'':tariff-cash,
+          cost===null?'':Number(cost.toFixed(2)),r.address||'',r.enteredBy||''];
       });
-      const pdfRows=downloadRows.map(r=>[
-        r.trackingNo||'',r.consigneeName||'',destinationWithCountry(r)||'—',
-        r.bookingDate||'—',r.status||'Pending Tracking',r.weight||'—',
-        r.deliveredAtText||'—'
-      ]);
+      excelRows.push(['TOTAL '+downloadRows.length+' ENTRIES','','','','','',
+        '','','','',filteredTotals.tariff,filteredTotals.cash,
+        filteredTotals.combined,filteredTotals.difference,'','','']);
+      const pdfRows=downloadRows.map(r=>{
+        const tariff=postalCost(r),cash=cashCost(r);
+        return [r.trackingNo||'',r.consigneeName||'',formatEntryDate(r.createdAt),
+          destinationWithCountry(r)||'—',r.status||'Pending Tracking',r.weight||'—',
+          tariff===null?'—':String(tariff),cash===null?'—':String(cash),
+          tariff===null||cash===null?'—':String(tariff+cash),
+          tariff===null||cash===null?'—':String(tariff-cash),
+          r.deliveredAtText||'—'];
+      });
       const label=filterLabel;
-      const data=format==='pdf'?createSpeedPostPdf(pdfRows,label):
+      const data=format==='pdf'?createSpeedPostPdf(pdfRows,label,filteredTotals):
         createSpeedPostXlsx(headers,excelRows);
       const ext=format==='pdf'?'pdf':'xlsx';
       const mime=format==='pdf'?'application/pdf':
@@ -605,9 +614,6 @@ export default function SpeedPostDashboard({currentUser}){
       setMessage('PDF creation failed: '+(error?.message||'Unknown error'));
     }
   };
-  // Daily totals are calculated from ALL unique ED records so moving a
-  // Delivered packet does not change its original booking-date total.
-  const dateCostGroups=entryDateCostGroups(rows);
   const summary=weightSummary(displayedRows);
   return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
@@ -645,11 +651,15 @@ export default function SpeedPostDashboard({currentUser}){
     <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
       <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>{setSpeedPostTab('TRACKING');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        EMS TRACKING
+        DAILY ENTRY PAGES
       </button>
       <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>{setSpeedPostTab('DELIVERED');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         DELIVERED ({deliveredRows.length})
+      </button>
+      <button type="button" role="tab" aria-selected={speedPostTab==='MONTHLY'} onClick={()=>{setSpeedPostTab('MONTHLY');setExportStatus('SHEET');}}
+        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='MONTHLY'?'#2258ce':'#fff',color:speedPostTab==='MONTHLY'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        MONTHLY RECORDS
       </button>
     </div>
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
@@ -664,7 +674,7 @@ export default function SpeedPostDashboard({currentUser}){
         </div>)}
       </div>
     </div>}
-    {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED')&&<>
+    {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED'||speedPostTab==='MONTHLY')&&<>
     {speedPostTab==='TRACKING'&&<section aria-label="Add Speed Post ED" style={{...card,padding:'8px 10px',borderRadius:9,marginBottom:8}}>
       <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
         <label htmlFor="spPhotoInput" style={{fontSize:12,fontWeight:800,color:'#163c80',whiteSpace:'nowrap'}}>Scan photo</label>
