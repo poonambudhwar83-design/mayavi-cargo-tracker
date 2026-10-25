@@ -6,6 +6,7 @@ import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.j
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
+import { guardSaudiaConnectingFlightWithoutSal } from '../lib/saudiaTransitGuard.js';
 
 const KEY='mayavi_v3_shipments';
 const TAB_KEY='mayavi_dashboard_active_tab';
@@ -507,7 +508,13 @@ function saudiaManifestPlan(master={},part={}){
     label:matched?'MANIFESTED • PLANNED ETA':'MANIFESTED • FLIGHT DATE'};
 }
 function expandPartRows(list=[]){
-  return list.flatMap(row=>{
+  return list.flatMap(savedRow=>{
+    // A saved Saudia master can contain a confirmed SV1125 50-bag DEP in
+    // partLoadHistory while its older partShipments array only contains the
+    // 49 bags which reached DEL. Reconstruct the missing pending part in view
+    // even before the background SAL refresh writes it to Neon.
+    const row=digits(savedRow.mawb).startsWith('065')
+      ?guardSaudiaConnectingFlightWithoutSal(savedRow):savedRow;
     const prefix=digits(row.mawb).slice(0,3);
     if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176')return[row];
 
