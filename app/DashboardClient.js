@@ -389,6 +389,9 @@ function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){
     const flight=normalizeFlightNo(mawb,r.flightNo||parent.flightNo||'');
     const date=String(r.arrivalDate||r.flightDate||parent.arrivalDate||'').slice(0,10);
     const destination=String(r.destination||parent.destination||'').toUpperCase();
+    // Never spread an ETA between a JED/RUH connecting flight and a DEL flight.
+    const legDest=String(r.flightDestination||(!r.flightNo?parent.flightDestination:'')||'').toUpperCase();
+    if(legDest&&legDest!==destination)return null;
     if(!/^SV\d{2,4}$/.test(flight)||!/^20\d{2}-\d{2}-\d{2}$/.test(date)||destination!=='DEL')return null;
     return {key:flight+'|'+date+'|DEL',date,flight};
   };
@@ -462,6 +465,9 @@ function sortForDashboard(list=[],activeTab='IMPORT'){
   if(isExportLikeType(activeTab))return [...list].sort((a,b)=>{const ah=handoverSortTime(a),bh=handoverSortTime(b);if(ah!==bh)return ah-bh;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)});
   return [...list].sort((a,b)=>{
     if(digits(a.mawb).startsWith('065')&&digits(b.mawb).startsWith('065')){
+      // Pre-arrival mail deadlines take precedence over older arrived parts.
+      const at=mailSortTime(a),bt=mailSortTime(b);
+      if(at!==bt&&(Number.isFinite(at)||Number.isFinite(bt)))return at-bt;
       const rank=saudiaDisplayPriority(a)-saudiaDisplayPriority(b);
       if(rank)return rank;
     }
@@ -479,6 +485,8 @@ function saudiaMatchingPartEta(master={},part={}){
   if(part.arrivalIsActual===true||String(part.arrivalTime||'').trim())return'';
   if(!/^(DEPARTED|IN TRANSIT)$/i.test(String(part.status||'')))return'';
   if(String(master.destination||'').toUpperCase()!=='DEL')return'';
+  if(part.flightDestination&&String(part.flightDestination).toUpperCase()!=='DEL')return'';
+  if(master.flightDestination&&String(master.flightDestination).toUpperCase()!=='DEL')return'';
   const flight=normalizeFlightNo(master.mawb,master.flightNo||'');
   const partFlight=normalizeFlightNo(master.mawb,part.flightNo||'');
   const date=String(master.arrivalDate||'').slice(0,10);
@@ -495,17 +503,20 @@ function saudiaMatchingPartEta(master={},part={}){
 // Never treat a manifest as a confirmed arrival or backfill a different flight.
 function saudiaManifestPlan(master={},part={}){
   if(part.arrivalDate||part.arrivalIsActual===true)return null;
+  // Hub-bound MAN/FOW flight dates are NOT Delhi arrival dates.
+  if(part.flightDestination&&String(part.flightDestination).toUpperCase()!==String(master.destination||'').toUpperCase())return null;
   const flightDate=String(part.flightDate||'').slice(0,10);
   if(!/^20\d{2}-\d{2}-\d{2}$/.test(flightDate))return null;
   const partFlight=normalizeFlightNo(master.mawb,part.flightNo);
   const masterFlight=normalizeFlightNo(master.mawb,master.flightNo);
   const masterDate=String(master.arrivalDate||'').slice(0,10);
   const masterTime=formatTime24(master.arrivalTime||'');
-  const matched=Boolean(partFlight&&masterFlight&&partFlight===masterFlight&&
+  const matched=Boolean((!master.flightDestination||String(master.flightDestination).toUpperCase()==='DEL')&&
+    partFlight&&masterFlight&&partFlight===masterFlight&&
     masterDate===flightDate&&/^([01]\d|2[0-3]):[0-5]\d$/.test(masterTime)&&
     master.arrivalIsActual!==true);
   return {date:matched?masterDate:flightDate,time:matched?masterTime:'',
-    label:matched?'MANIFESTED • PLANNED ETA':'MANIFESTED • FLIGHT DATE'};
+    label:matched?'DEL FLIGHT • PLANNED ETA':'DEL FLIGHT DATE • ETA PENDING'};
 }
 function expandPartRows(list=[]){
   return list.flatMap(savedRow=>{
