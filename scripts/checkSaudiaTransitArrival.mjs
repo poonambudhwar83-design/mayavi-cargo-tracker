@@ -61,4 +61,55 @@ assert.equal(offline.arrivalDate,'');
 assert.equal(offline.arrivalTime,'');
 assert.equal(offline.arrivalVerifiedAbsent,true);
 assert.equal(offline.status,'DEPARTED');
+
+// Master 065-11493661: 49 bags DEL arrived, 50 bags on SV1125 for JED.
+// Earlier source versions omitted the second physical row despite DEP evidence.
+const split={mawb:'065-11493661',origin:'DMM',destination:'DEL',
+  flightNo:'SV1125',flightDestination:'JED',airport:'DMM',sourceStatus:'DEP',
+  status:'IN TRANSIT',arrivalDate:'2026-10-24',arrivalTime:'17:16',
+  arrivalIsActual:false,arrivedPieces:49,arrivedWeight:1147,totalPieces:99,totalWeight:2565,
+  pendingPieces:50,pendingWeight:1418,partLoad:true,isPartLoad:true,
+  partLoadHistory:[
+    {flightNo:'SV760',flightDate:'10/24/2026 12:00:00 AM',
+      departed:{pieces:49,weight:1147}},
+    {flightNo:'SV1125',flightDate:'10/24/2026 12:00:00 AM',
+      departed:{pieces:50,weight:1418}}
+  ],
+  partShipments:[{partId:'SV760|2026-10-24|49|1147',
+    partKey:'SV760|2026-10-24|49|1147',flightNo:'SV760',
+    flightDate:'2026-10-24',pieces:49,weight:1147,totalPieces:99,
+    totalWeight:2565,status:'ARRIVED',arrivalIsActual:true,
+    arrivalDate:'2026-10-24',arrivalTime:'17:16',mailSent:true}]
+};
+const retained=guardSaudiaConnectingFlightWithoutSal(split);
+assert.equal(retained.partShipments.length,2);
+assert.equal(retained.partShipments[0].pieces,49);
+assert.equal(retained.partShipments[0].arrivalIsActual,true);
+assert.equal(retained.partShipments[0].mailSent,true);
+assert.equal(retained.partShipments[0].arrivalTime,'17:16');
+assert.equal(retained.partShipments[1].pieces,50);
+assert.equal(retained.partShipments[1].weight,1418);
+assert.equal(retained.partShipments[1].flightNo,'SV1125');
+assert.equal(retained.partShipments[1].flightDestination,'JED');
+assert.equal(retained.partShipments[1].status,'IN TRANSIT');
+assert.equal(retained.partShipments[1].arrivalIsActual,false);
+assert.equal(retained.partShipments[1].arrivalDate,'');
+assert.equal(retained.status,'PART ARRIVED');
+const splitTimeline={Awb:'06511493661',Destination:'DEL',Parts:[{Events:[
+ {...event('ARR','DEL','10/24/2026 17:16','DEL','SV760'),Pieces:49,Weight:1147},
+ {...event('DEP','DMM','10/24/2026 22:48','JED','SV1125'),Pieces:50,Weight:1418},
+ {...event('ARR','JED','10/24/2026 23:55','JED','SV1125'),Pieces:50,Weight:1418}
+]}]};
+const transitPart=applySaudiaConnectionGuard(retained,splitTimeline);
+assert.equal(transitPart.partShipments.length,2);
+assert.deepEqual(transitPart.partShipments.map(p=>p.pieces),[49,50]);
+assert.equal(transitPart.partShipments.reduce((total,p)=>total+p.weight,0),2565);
+assert.equal(transitPart.partShipments[0].status,'ARRIVED');
+assert.equal(transitPart.partShipments[0].mailSent,true);
+assert.equal(transitPart.partShipments[1].status,'IN TRANSIT');
+assert.equal(transitPart.partShipments[1].transitAirport,'JED');
+assert.equal(transitPart.partShipments[1].transitArrivalTime,'23:55');
+assert.equal(transitPart.partShipments[1].arrivalDate,'');
+assert.equal(transitPart.status,'PART ARRIVED');
+
 console.log('Saudia transit-JED vs final-DEL arrival regression passed');
