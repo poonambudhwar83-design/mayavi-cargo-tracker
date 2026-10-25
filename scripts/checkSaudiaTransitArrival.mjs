@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applySaudiaConnectionGuard, guardSaudiaConnectingFlightWithoutSal, planSaudiaDelhiPreArrival } from '../lib/saudiaTransitGuard.js';
+import { applySaudiaConnectionGuard, guardSaudiaConnectingFlightWithoutSal, planSaudiaDelhiPreArrival, enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
 const base={mawb:'065-11493672',origin:'DMM',destination:'DEL',
   flightNo:'SV1125',flightDestination:'JED',airport:'DMM',sourceStatus:'DEP',
   status:'DEPARTED',arrivalDate:'2026-10-24',arrivalTime:'17:00',
@@ -138,7 +138,7 @@ const officialSchedule=async ({flightNo,date,origin,destination})=>{
 };
 const planned=await planSaudiaDelhiPreArrival(transitPart,manifest,
   {flightSchedule:officialSchedule});
-assert.equal(checked,1);
+assert.equal(checked,0); // SAL MAN alone never creates cargo Arrival/Mail clocks.
 assert.equal(planned.status,'PART ARRIVED');
 assert.equal(planned.partShipments.length,2);
 assert.equal(planned.partShipments[0].mailSent,true);
@@ -147,15 +147,44 @@ assert.equal(planned.partShipments[0].arrivalTime,'17:16');
 assert.equal(planned.partShipments[1].flightNo,'SV760');
 assert.equal(planned.partShipments[1].flightDestination,'DEL');
 assert.equal(planned.partShipments[1].sourceStatus,'MAN');
-assert.equal(planned.partShipments[1].status,'IN TRANSIT');
-assert.equal(planned.partShipments[1].arrivalDate,'2026-10-25');
-assert.equal(planned.partShipments[1].arrivalTime,'17:29');
-assert.equal(planned.partShipments[1].arrivalEstimate,true);
-assert.equal(planned.partShipments[1].arrivalIsActual,false);
+assert.equal(planned.partShipments[1].status,'BOOKED');
+assert.equal(planned.partShipments[1].arrivalDate,'');
+assert.equal(planned.partShipments[1].arrivalTime,'');
+assert.equal(planned.partShipments[1].saudiaArrivalStage,'PLANNED');
+assert.equal(planned.partShipments[1].arrivalEstimate,false);
 assert.equal(planned.partShipments[1].mailSent,false);
-const predicted=Date.parse(planned.partShipments[1].arrivalDate+'T'+planned.partShipments[1].arrivalTime+':00Z');
+// After actual SAL FOW this AWB can receive a verified pre-arrival ETA.
+const fowManifest={...manifest,Parts:[{Events:[
+  ...manifest.Parts[0].Events.slice(0,-1),
+  {...manifest.Parts[0].Events.at(-1),Status:'FOW'}
+]}]};
+const fow=await planSaudiaDelhiPreArrival(transitPart,fowManifest,
+  {flightSchedule:officialSchedule});
+assert.equal(checked,1);
+assert.equal(fow.partShipments[1].sourceStatus,'FOW');
+assert.equal(fow.partShipments[1].status,'IN TRANSIT');
+assert.equal(fow.partShipments[1].saudiaArrivalStage,'ESTIMATED');
+assert.equal(fow.partShipments[1].arrivalDate,'2026-10-25');
+assert.equal(fow.partShipments[1].arrivalTime,'17:29');
+assert.equal(fow.partShipments[1].arrivalEstimate,true);
+assert.equal(fow.partShipments[1].arrivalIsActual,false);
+assert.equal(fow.partShipments[1].mailSent,false);
+const predicted=Date.parse(fow.partShipments[1].arrivalDate+'T'+fow.partShipments[1].arrivalTime+':00Z');
 const deadline=new Date(predicted-6*3600*1000).toISOString().slice(0,16);
 assert.equal(deadline,'2026-10-25T11:29');
+// SAL DEP confirms flight departed, NOT the cargo's actual ARR at Delhi.
+const depManifest={...manifest,Parts:[{Events:[
+ ...manifest.Parts[0].Events.slice(0,-1),
+ {...manifest.Parts[0].Events.at(-1),Status:'DEP'}
+]}]};
+const dep=await planSaudiaDelhiPreArrival(transitPart,depManifest,
+  {flightSchedule:officialSchedule});
+assert.equal(dep.partShipments[1].sourceStatus,'DEP');
+assert.equal(dep.partShipments[1].status,'DEPARTED');
+assert.equal(dep.partShipments[1].saudiaArrivalStage,'CONFIRMED_ETA');
+assert.equal(dep.partShipments[1].arrivalTime,'17:29');
+assert.equal(dep.partShipments[1].arrivalIsActual,false);
+
 
 // SV1125 arrives JED only: no Delhi forecast or email deadline may come from it.
 const noFinal=await planSaudiaDelhiPreArrival(transitPart,splitTimeline,
@@ -180,21 +209,22 @@ const advanceManifest={...splitTimeline,Parts:[{Events:[
 const advanced=await planSaudiaDelhiPreArrival(transitPart,advanceManifest,
   {flightSchedule:officialSchedule});
 assert.equal(advanced.partShipments[1].flightNo,'SV760');
-assert.equal(advanced.partShipments[1].arrivalTime,'17:29');
+assert.equal(advanced.partShipments[1].arrivalTime,'');
+assert.equal(advanced.partShipments[1].saudiaArrivalStage,'PLANNED');
 assert.equal(advanced.partShipments[1].arrivalIsActual,false);
 // Even if a flight timetable returns the wrong route, no Mail ETA is created.
-const wrongRoute=await planSaudiaDelhiPreArrival(transitPart,manifest,
+const wrongRoute=await planSaudiaDelhiPreArrival(transitPart,fowManifest,
   {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureDestination:'JED',
       arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
 assert.equal(wrongRoute.partShipments[1].arrivalTime,'');
 assert.equal(wrongRoute.partShipments[1].mailSent,false);
 // Even the correct SV number must not borrow a different origin/date's ETA.
-const wrongOrigin=await planSaudiaDelhiPreArrival(transitPart,manifest,
+const wrongOrigin=await planSaudiaDelhiPreArrival(transitPart,fowManifest,
   {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureOrigin:'RUH',
     departureDestination:'DEL',departureDate:'2026-10-25',
     arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
 assert.equal(wrongOrigin.partShipments[1].arrivalTime,'');
-const wrongOperatingDate=await planSaudiaDelhiPreArrival(transitPart,manifest,
+const wrongOperatingDate=await planSaudiaDelhiPreArrival(transitPart,fowManifest,
   {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureOrigin:'JED',
     departureDestination:'DEL',departureDate:'2026-10-24',
     arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
@@ -219,11 +249,55 @@ const firstManifest={Awb:'06599999123',Destination:'DEL',Parts:[{Events:[
 const first=await planSaudiaDelhiPreArrival(newMaster,firstManifest,
   {flightSchedule:officialSchedule});
 assert.equal(first.partShipments.length,1);
-assert.equal(first.partShipments[0].arrivalEstimate,true);
+assert.equal(first.partShipments[0].arrivalEstimate,false);
+assert.equal(first.partShipments[0].saudiaArrivalStage,'PLANNED');
 assert.equal(first.partShipments[0].arrivalIsActual,false);
-assert.equal(first.arrivalDate,'2026-10-25');
-assert.equal(first.arrivalTime,'17:29');
-assert.equal(first.status,'IN TRANSIT');
+assert.equal(first.arrivalDate,'');
+assert.equal(first.arrivalTime,'');
+assert.equal(first.status,'BOOKED');
+// AWB 06511493775: only SAL RCS/BOOKED, despite passenger flight SV760
+// landing at 17:16 on 24 Oct. It did not prove 24 Oct cargo ARR.
+const stale={mawb:'065-11493775',destination:'DEL',status:'BOOKED',
+  sourceStatus:'RCS',flightNo:'SV760',flightDate:'2026-10-24',
+  flightDestination:'DEL',arrivalDate:'2026-10-24',arrivalTime:'17:16',
+  scheduledArrivalDate:'2026-10-24',scheduledArrivalTime:'17:00',
+  arrivalTimeSource:'FlightStats actual aircraft arrival',
+  arrivalIsActual:false,mailTime:'2026-10-24 11:16'};
+const cleared=enforceSaudiaArrivalEvidence(stale);
+assert.equal(cleared.saudiaArrivalStage,'PLANNED');
+assert.equal(cleared.status,'BOOKED');
+assert.equal(cleared.flightNo,'SV760');
+assert.equal(cleared.arrivalDate,'');
+assert.equal(cleared.arrivalTime,'');
+assert.equal(cleared.scheduledArrivalDate,'');
+assert.equal(cleared.scheduledArrivalTime,'');
+assert.equal(cleared.arrivalVerifiedAbsent,true);
+assert.equal(cleared.mailTime,'');
+// An FOW may show an estimated arrival; a departure confirms flight movement,
+// while neither one is an actual cargo arrival.
+const fowStage=enforceSaudiaArrivalEvidence({
+  ...stale,sourceStatus:'FOW',arrivalTimeSource:'SAL final flight ETA'});
+assert.equal(fowStage.saudiaArrivalStage,'ESTIMATED');
+assert.equal(fowStage.arrivalEstimate,true);
+assert.equal(fowStage.arrivalIsActual,false);
+const departedStage=enforceSaudiaArrivalEvidence({
+  ...stale,sourceStatus:'DEP',arrivalTimeSource:'SAL final flight ETA'});
+assert.equal(departedStage.saudiaArrivalStage,'CONFIRMED_ETA');
+assert.equal(departedStage.arrivalEstimate,true);
+assert.equal(departedStage.arrivalIsActual,false);
+const trueArrival=enforceSaudiaArrivalEvidence({...stale,
+  status:'ARRIVED',sourceStatus:'ARR',airport:'DEL',arrivalIsActual:true});
+assert.equal(trueArrival.saudiaArrivalStage,'ACTUAL');
+assert.equal(trueArrival.arrivalDate,'2026-10-24');
+assert.equal(trueArrival.arrivalTime,'17:16');
+const transitNotDelhi=enforceSaudiaArrivalEvidence({...stale,
+  status:'ARRIVED',sourceStatus:'ARR',airport:'JED',arrivalIsActual:true,
+  flightDestination:'JED'});
+assert.equal(transitNotDelhi.arrivalDate,'');
+assert.equal(transitNotDelhi.arrivalIsActual,false);
+const otherAirline=enforceSaudiaArrivalEvidence({...stale,mawb:'098-11493775'});
+assert.equal(otherAirline.arrivalTime,'17:16');
+
 // Dashboard must reject JED hub dates while preserving Delhi-flight estimated time.
 const currentDashboard=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(currentDashboard.includes("if(part.flightDestination&&String(part.flightDestination).toUpperCase()!==String(master.destination||'').toUpperCase())return null;"));
