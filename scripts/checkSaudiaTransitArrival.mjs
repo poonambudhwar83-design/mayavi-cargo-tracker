@@ -188,6 +188,17 @@ const wrongRoute=await planSaudiaDelhiPreArrival(transitPart,manifest,
       arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
 assert.equal(wrongRoute.partShipments[1].arrivalTime,'');
 assert.equal(wrongRoute.partShipments[1].mailSent,false);
+// Even the correct SV number must not borrow a different origin/date's ETA.
+const wrongOrigin=await planSaudiaDelhiPreArrival(transitPart,manifest,
+  {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureOrigin:'RUH',
+    departureDestination:'DEL',departureDate:'2026-10-25',
+    arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
+assert.equal(wrongOrigin.partShipments[1].arrivalTime,'');
+const wrongOperatingDate=await planSaudiaDelhiPreArrival(transitPart,manifest,
+  {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureOrigin:'JED',
+    departureDestination:'DEL',departureDate:'2026-10-24',
+    arrivalDate:'2026-10-25',arrivalTime:'17:29',arrivalTimeZone:'IST'})});
+assert.equal(wrongOperatingDate.partShipments[1].arrivalTime,'');
 // MAN canceled by DIS must not produce a final Delhi mail deadline.
 const cancelledManifest={...manifest,Parts:[{Events:[
  ...manifest.Parts[0].Events,
