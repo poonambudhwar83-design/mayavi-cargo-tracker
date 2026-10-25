@@ -13,6 +13,9 @@ const goodsColors={
   PROTEIN:{row:'#f5f3ff',badge:'#ede9fe',text:'#5b21b6'},
   CLOTHES:{row:'#fff7ed',badge:'#ffedd5',text:'#9a3412'}
 };
+// Active Masters take priority over goods category row backgrounds.
+// Goods remain recognizable by the coloured Goods dropdown.
+const activeMasterColor={row:'#dcfce7',border:'#16a34a',badge:'#bbf7d0',text:'#166534'};
 const dataNumber=value=>value===null||value===undefined||value===''?null:Number(value);
 function figures(row={}){
   const kg=dataNumber(row.weight);
@@ -191,7 +194,8 @@ export default function ImportProfitSheet(){
         <small style={{color:'#64748b'}}>Updated: {lastLoaded||'—'} • Automatically checks Import every 2 minutes</small>
       </div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',margin:'4px 0 10px'}}>
-        <small style={{fontWeight:800,color:'#52657f'}}>COMMODITY COLOURS:</small>
+        <span style={{background:activeMasterColor.badge,color:activeMasterColor.text,border:'1px solid '+activeMasterColor.border,fontSize:12,fontWeight:900,padding:'4px 9px',borderRadius:6}}>ACTIVE MASTER (light green row)</span>
+        <small style={{fontWeight:800,color:'#52657f'}}>OTHER ROWS / GOODS COLOURS:</small>
         {Object.entries(goodsColors).map(([type,style])=><span key={type} style={{background:style.badge,color:style.text,fontSize:12,fontWeight:800,padding:'4px 9px',borderRadius:6}}>{type==='HH'?'HH':type==='PROTEIN'?'Protein':'Clothes'}</span>)}
       </div>
       {message&&<p role="status" style={{padding:'9px 12px',background:'#eaf0fa',borderRadius:8,color:'#173e6f'}}>{message}</p>}
@@ -205,9 +209,10 @@ export default function ImportProfitSheet(){
           <tbody>
             {filtered.map((row,index)=>{
               const n=figures(row);
-              return <tr key={row.mawb} style={{background:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.row||'#fff'}}>
-                <td style={cell}>{index+1}</td>
-                <td style={{...cell,fontWeight:800}}>{row.mawb}</td>
+              const active=row.isActiveMaster===true;
+              return <tr key={row.mawb} title={active?'Import Active Masters — not fully customs cleared':'Not in Import Active Masters'} style={{background:active?activeMasterColor.row:(goodsColors[String(row.goodsCategory||'').toUpperCase()]?.row||'#fff')}}>
+                <td style={{...cell,borderLeft:active?'4px solid '+activeMasterColor.border:'4px solid transparent',paddingLeft:4}}>{index+1}</td>
+                <td style={{...cell,fontWeight:800}}>{row.mawb}{active&&<small style={{marginLeft:6,padding:'2px 5px',background:activeMasterColor.badge,color:activeMasterColor.text,borderRadius:4,fontWeight:800,fontSize:10}}>ACTIVE</small>}</td>
                 <td style={cell}>{row.arrivalDate||'—'}</td>
                 <td style={cell}>{row.clientName||'—'}</td>
                 <td style={cell}>
@@ -275,7 +280,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB). DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB). DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Active Import Masters are highlighted with a light green row and green left border. Cleared rows retain their goods-based colours. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
   </main>;
