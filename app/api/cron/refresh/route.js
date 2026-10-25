@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { refreshScope } from '../../../../lib/autoRefreshScope.js';
+import { enforceSaudiaArrivalEvidence } from '../../../../lib/saudiaTransitGuard.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
@@ -76,6 +77,9 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   return'BOOKED';
 }
 function decorateTiming(existing={},incoming={}){
+  // Background refresh must clear stale 24 Oct Saudia RCS arrivals too;
+  // never resurrect a historic flight time from an existing DB row.
+  incoming=enforceSaudiaArrivalEvidence({...existing,...incoming});
   const shipmentType=shipmentTypeOf(incoming.shipmentType||existing.shipmentType);
   const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
   const clearArrival=incoming.arrivalVerifiedAbsent===true;
