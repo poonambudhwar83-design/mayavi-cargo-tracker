@@ -5,7 +5,7 @@ import { trackCathay } from '../../../lib/cathay.js';
 import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
-import { guardSaudiaFromLatestSal } from '../../../lib/saudiaTransitGuard.js';
+import { guardSaudiaFromLatestSal, enforceSaudiaArrivalEvidence } from '../../../lib/saudiaTransitGuard.js';
 import { trackTurkish } from '../../../lib/turkish.js';
 import { trackTurkishTrackingOne } from '../../../lib/turkishTrackingOne.js';
 import { trackTurkishFreight } from '../../../lib/turkishFreight.js';
@@ -1451,7 +1451,12 @@ async function handle(mawb,fallback={}){
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final
   // destination is DEL. Never convert that hub event into Delhi arrival.
-  if(saudiaFastPath)shipment=await guardSaudiaFromLatestSal(mawb,shipment,{flightSchedule:trackFlightScheduleFast});
+  if(saudiaFastPath){
+    shipment=await guardSaudiaFromLatestSal(mawb,shipment,{flightSchedule:trackFlightScheduleFast});
+    // Recheck at the final response boundary, AFTER any generic flight ETA
+    // merge. Passenger flight landing never confirms SAL cargo ARR.
+    shipment=enforceSaudiaArrivalEvidence(shipment);
+  }
   if(cathayFastPath){
     // Return previously verified fields to the dashboard as well as protect DB writes.
     const previousCx=await loadStoredTrackingFallback(mawb);
