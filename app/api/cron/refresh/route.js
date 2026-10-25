@@ -79,8 +79,9 @@ function decorateTiming(existing={},incoming={}){
   const shipmentType=shipmentTypeOf(incoming.shipmentType||existing.shipmentType);
   const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
   const clearArrival=incoming.arrivalVerifiedAbsent===true;
-  const scheduledArrivalDate=incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'';
-  const scheduledArrivalTime=incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'';
+  const clearSaudiaEta=clearArrival&&mawb.startsWith('065-');
+  const scheduledArrivalDate=clearSaudiaEta?'':(incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'');
+  const scheduledArrivalTime=clearSaudiaEta?'':(incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'');
   const arrivalDate=clearArrival?'':(incoming.arrivalDate||existing.arrivalDate||'');
   // Flydubai may confirm final RCF without an actual clock: never carry the
   // previous ETA into the actual arrival-time cell.
