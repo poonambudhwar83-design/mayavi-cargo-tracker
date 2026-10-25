@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { applySaudiaConnectionGuard } from '../lib/saudiaTransitGuard.js';
+import { applySaudiaConnectionGuard, guardSaudiaConnectingFlightWithoutSal } from '../lib/saudiaTransitGuard.js';
 const base={mawb:'065-11493672',origin:'DMM',destination:'DEL',
   flightNo:'SV1125',flightDestination:'JED',airport:'DMM',sourceStatus:'DEP',
   status:'DEPARTED',arrivalDate:'2026-10-24',arrivalTime:'17:00',
@@ -56,4 +56,9 @@ assert.equal(newer.arrivalDate,'2026-10-25');
 assert.notEqual(newer.status,'ARRIVED');
 assert.equal(applySaudiaConnectionGuard({...base,mawb:'098-11493672'},timeline).status,'DEPARTED');
 assert.equal(applySaudiaConnectionGuard(base,{...timeline,Awb:'06599999999'}).status,'DEPARTED');
+const offline=guardSaudiaConnectingFlightWithoutSal(base);
+assert.equal(offline.arrivalDate,'');
+assert.equal(offline.arrivalTime,'');
+assert.equal(offline.arrivalVerifiedAbsent,true);
+assert.equal(offline.status,'DEPARTED');
 console.log('Saudia transit-JED vs final-DEL arrival regression passed');
