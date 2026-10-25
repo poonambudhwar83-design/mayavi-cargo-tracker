@@ -165,12 +165,23 @@ assert.equal(noFinal.partShipments[1].flightDestination,'JED');
 // A stale previously manifested Delhi leg, before the JED transit ARR,
 // must not be reused to promise a future Delhi arrival.
 const oldManifest={...splitTimeline,Parts:[{Events:[
- {...manifest.Parts[0].Events.at(-1),DateTime_LT:'10/24/2026 18:15',Pieces:50},
+ {...manifest.Parts[0].Events.at(-1),DateTime_LT:'10/24/2026 18:15',Flight_Date:'10/24/2026 12:00 AM',Pieces:50},
  ...splitTimeline.Parts[0].Events
 ]}]};
 const ignored=await planSaudiaDelhiPreArrival(transitPart,oldManifest,
   {flightSchedule:async()=>{throw Error('Stale flight must not be scheduled');}});
 assert.equal(ignored.flightNo,'SV1125');
+// SAL may already MAN next day's DEL flight before the same cargo arrives JED.
+// Advance notice must survive this earlier, legitimate MAN event.
+const advanceManifest={...splitTimeline,Parts:[{Events:[
+ {...manifest.Parts[0].Events.at(-1),DateTime_LT:'10/24/2026 22:00',Pieces:50},
+ ...splitTimeline.Parts[0].Events
+]}]};
+const advanced=await planSaudiaDelhiPreArrival(transitPart,advanceManifest,
+  {flightSchedule:officialSchedule});
+assert.equal(advanced.partShipments[1].flightNo,'SV760');
+assert.equal(advanced.partShipments[1].arrivalTime,'17:29');
+assert.equal(advanced.partShipments[1].arrivalIsActual,false);
 // Even if a flight timetable returns the wrong route, no Mail ETA is created.
 const wrongRoute=await planSaudiaDelhiPreArrival(transitPart,manifest,
   {flightSchedule:async()=>({ok:true,flightNo:'SV760',departureDestination:'JED',
