@@ -58,7 +58,8 @@ export async function GET(request){
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         weight,
         companyName:companyName(data),
-        profit:weight===null?null:Math.round(weight*600)/100
+        shipmentCharge:1000, // One fixed shipment charge per unique master MAWB.
+        profit:weight===null?null:Math.round((weight*6-1000)*100)/100
       });
     }
     return Response.json({ok:true,rows},{headers:{'Cache-Control':'no-store, private'}});
