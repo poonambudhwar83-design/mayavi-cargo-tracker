@@ -233,8 +233,8 @@ export async function POST(request){
             'departureTime',COALESCE(NULLIF(EXCLUDED.data->>'departureTime',''),mayavi_shipments.data->>'departureTime',''),
             'arrivalDate',CASE WHEN EXCLUDED.data->>'arrivalVerifiedAbsent'='true' THEN '' ELSE COALESCE(NULLIF(EXCLUDED.data->>'arrivalDate',''),mayavi_shipments.data->>'arrivalDate','') END,
             'arrivalTime',CASE WHEN EXCLUDED.data->>'arrivalVerifiedAbsent'='true' THEN '' ELSE COALESCE(NULLIF(EXCLUDED.data->>'arrivalTime',''),mayavi_shipments.data->>'arrivalTime','') END,
-            'scheduledArrivalDate',COALESCE(NULLIF(EXCLUDED.data->>'scheduledArrivalDate',''),mayavi_shipments.data->>'scheduledArrivalDate',''),
-            'scheduledArrivalTime',COALESCE(NULLIF(EXCLUDED.data->>'scheduledArrivalTime',''),mayavi_shipments.data->>'scheduledArrivalTime',''),
+            'scheduledArrivalDate',CASE WHEN LEFT(EXCLUDED.awb,3)='065' AND EXCLUDED.data->>'arrivalVerifiedAbsent'='true' THEN '' ELSE COALESCE(NULLIF(EXCLUDED.data->>'scheduledArrivalDate',''),mayavi_shipments.data->>'scheduledArrivalDate','') END,
+            'scheduledArrivalTime',CASE WHEN LEFT(EXCLUDED.awb,3)='065' AND EXCLUDED.data->>'arrivalVerifiedAbsent'='true' THEN '' ELSE COALESCE(NULLIF(EXCLUDED.data->>'scheduledArrivalTime',''),mayavi_shipments.data->>'scheduledArrivalTime','') END,
             'goodsDescription',COALESCE(NULLIF(EXCLUDED.data->>'goodsDescription',''),mayavi_shipments.data->>'goodsDescription',''),
             'companyType',COALESCE(NULLIF(EXCLUDED.data->>'companyType',''),mayavi_shipments.data->>'companyType',''),
             'companyName',COALESCE(NULLIF(EXCLUDED.data->>'companyName',''),mayavi_shipments.data->>'companyName','')
