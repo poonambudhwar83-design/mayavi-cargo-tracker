@@ -6,7 +6,7 @@ import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.j
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
-import { guardSaudiaConnectingFlightWithoutSal } from '../lib/saudiaTransitGuard.js';
+import { guardSaudiaConnectingFlightWithoutSal, enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
 
 const KEY='mayavi_v3_shipments';
 const TAB_KEY='mayavi_dashboard_active_tab';
@@ -160,16 +160,19 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
 function expectedArrivalLabel(row={}){
   if(row.arrivalEstimate!==true)return'';
   const isSaudia=digits(row.mawb).startsWith('065');
-  const hasFowEvidence=/\bFOW\b/i.test([
-    row.sourceStatus||'',row.arrivalTimeSource||'',row.remarks||''
-  ].join(' '));
-  return isSaudia&&hasFowEvidence?'FLIGHT CONFIRMED • ETA':'EXPECTED ARRIVAL';
+  if(isSaudia){
+    const stage=String(row.saudiaArrivalStage||'').toUpperCase();
+    const event=String(row.sourceStatus||'').toUpperCase();
+    if(stage==='CONFIRMED_ETA'||event==='DEP')return'FLIGHT DEPARTED • CONFIRMED ETA';
+    if(stage==='ESTIMATED'||event==='FOW')return'ESTIMATED ARRIVAL • FOW';
+  }
+  return'EXPECTED ARRIVAL';
 }
 // Older saved Saudia rows can contain carrier event wording until the next live sync.
  // Display a business-friendly label only for prefix 065; never rewrite other airlines.
 function shipmentDisplayRemarks(row={}){
   const original=String(row.remarks||'');
-  return digits(row.mawb).startsWith('065')?original.replace(/\bFOW\b/gi,'Flight confirmed'):original;
+  return digits(row.mawb).startsWith('065')?original.replace(/\bFOW\b/gi,'Loaded (FOW)'):original;
 }
 function tone(status=''){const s=String(status).toUpperCase();if(s.includes('OFFLOAD')||s.includes('RESCHEDUL'))return'delayed';if(s.includes('PART ARRIVED')||s.includes('PART LOAD'))return'transit';if(s.includes('DELIVER')||s.includes('ARRIVED'))return'arrived';if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return'transit';if(s.includes('DELAY'))return'delayed';if(s.includes('EARLY'))return'early';return'booked'}
 function trackingProgress(status=''){const s=String(status||'').toUpperCase();if(s.includes('DELIVER'))return 6;if(s.includes('ARRIVED')||s.includes('RCF')||s.includes('LANDED'))return 5;if(s.includes('DELAY')||s.includes('RESCHEDUL'))return 4;if(s.includes('TRANSIT')||s.includes('DEPART')||s.includes('AIRBORNE')||s.includes('IN FLIGHT'))return 3;if(s.includes('BOOK')||s.includes('ACCEPT')||s.includes('MANIFEST'))return 2;return 0}
@@ -191,7 +194,7 @@ function recoverTurkishLocal(server={},local={}){
   return{row:out,changed};
 }
 function decorateTiming(existing={},incoming={}){
-  const raw={...existing,...incoming};
+  const raw=enforceSaudiaArrivalEvidence({...existing,...incoming});
   // Malaysia final-arrival absence is an explicit value, not a missing value.
   // Never let scheduled/legacy fields rebuild a stale arrival after refresh.
   if(normalize(incoming.mawb||existing.mawb||existing.awb||'').startsWith('232-')&&incoming.arrivalVerifiedAbsent===true){
@@ -217,9 +220,8 @@ function decorateTiming(existing={},incoming={}){
   const saudiaMawb=normalize(rowMawb).startsWith('065-');
   const saudiaFlightDate=String(merged.flightDate||'').match(/^(20\d{2}-\d{2}-\d{2})/)?.[1]||'';
   const hasIncomingArrivalDate=Object.prototype.hasOwnProperty.call(incoming,'arrivalDate');
-  const arrivalDate=saudiaMawb
-    ? (hasIncomingArrivalDate?(merged.arrivalDate||''):(saudiaFlightDate||merged.arrivalDate||''))
-    : (hasIncomingArrivalDate?(merged.arrivalDate||''):(merged.arrivalDate||''));
+  // SAL flightDate alone is a planned flight, never AWB arrival evidence.
+  const arrivalDate=hasIncomingArrivalDate?(merged.arrivalDate||''):(merged.arrivalDate||'');
   const arrivalTime=Object.prototype.hasOwnProperty.call(incoming,'arrivalTime')?(merged.arrivalTime||''):(merged.arrivalTime||'');
 
   const planned=dateTimeValue(scheduledArrivalDate,scheduledArrivalTime);
@@ -502,6 +504,9 @@ function saudiaMatchingPartEta(master={},part={}){
 // a provisional arrival clock if the master ETA matches this same flight/date.
 // Never treat a manifest as a confirmed arrival or backfill a different flight.
 function saudiaManifestPlan(master={},part={}){
+  // A MAN flight date belongs in flight planning, NOT the Arrival columns.
+  // Estimated/confirmed dates show only after AWB-specific SAL FOW/DEP.
+  if(!/^(FOW|DEP)$/.test(String(part.sourceStatus||'').toUpperCase()))return null;
   if(part.arrivalDate||part.arrivalIsActual===true)return null;
   // Hub-bound MAN/FOW flight dates are NOT Delhi arrival dates.
   if(part.flightDestination&&String(part.flightDestination).toUpperCase()!==String(master.destination||'').toUpperCase())return null;
@@ -525,7 +530,7 @@ function expandPartRows(list=[]){
     // 49 bags which reached DEL. Reconstruct the missing pending part in view
     // even before the background SAL refresh writes it to Neon.
     const row=digits(savedRow.mawb).startsWith('065')
-      ?guardSaudiaConnectingFlightWithoutSal(savedRow):savedRow;
+      ?enforceSaudiaArrivalEvidence(guardSaudiaConnectingFlightWithoutSal(savedRow)):savedRow;
     const prefix=digits(row.mawb).slice(0,3);
     if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176')return[row];
 
@@ -877,7 +882,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       },8000);
     }
   }}
-  async function refreshByMawb(value,{silent=false}={}){const index=rowsRef.current.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rowsRef.current[index];if(!row)return;if(!silent)setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));const saudiaLocked=normalize(row.mawb).startsWith('065-')&&row.saudiaExpectedArrivalLocked===true&&s.arrivalIsActual!==true&&!saudiaDis;if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}else if(saudiaLocked){live={...s,flightDate:s.flightDate||row.flightDate,arrivalDate:s.arrivalDate||row.arrivalDate,arrivalTime:s.arrivalTime||row.arrivalTime,bookingDate:s.bookingDate||row.bookingDate,arrivalIsActual:false,saudiaExpectedArrivalLocked:true,expectedDateOverrideSource:s.arrivalDate?'SAL live expected arrival':(row.expectedDateOverrideSource||'Verified Saudia/SAL expected arrival')};}if(Array.isArray(live.partShipments)){
+  async function refreshByMawb(value,{silent=false}={}){const index=rowsRef.current.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rowsRef.current[index];if(!row)return;if(!silent)setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));const saudiaLocked=normalize(row.mawb).startsWith('065-')&&row.saudiaExpectedArrivalLocked===true&&s.arrivalIsActual!==true&&s.arrivalVerifiedAbsent!==true&&!saudiaDis&&/^(FOW|DEP)$/.test(String(s.finalFlightSourceStatus||s.sourceStatus||'').toUpperCase());if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}else if(saudiaLocked){live={...s,flightDate:s.flightDate||row.flightDate,arrivalDate:s.arrivalDate||row.arrivalDate,arrivalTime:s.arrivalTime||row.arrivalTime,bookingDate:s.bookingDate||row.bookingDate,arrivalIsActual:false,saudiaExpectedArrivalLocked:true,expectedDateOverrideSource:s.arrivalDate?'SAL live expected arrival':(row.expectedDateOverrideSource||'Verified Saudia/SAL expected arrival')};}if(Array.isArray(live.partShipments)){
   live.partShipments=mergePartMail(live.partShipments,row.partShipments||[]);
   if(['065','098','176','312'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
     live.partShipments=mergePartCustoms(live.partShipments,row.partShipments||[]);
