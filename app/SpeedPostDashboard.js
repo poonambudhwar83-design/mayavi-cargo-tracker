@@ -747,6 +747,67 @@ export default function SpeedPostDashboard({currentUser}){
       <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter only the consignee name manually in each row. Uncertain OCR numbers require confirmation.</div>
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
+    {speedPostTab==='TRACKING'&&<section aria-label="Entry date pages" style={{...card,marginBottom:10,padding:12}}>
+      <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:9}}>
+        <strong style={{fontSize:13,color:'#163c80'}}>ENTRY DATE • DAILY PAGE</strong>
+        <select aria-label="Choose entry date page" value={effectiveDay} onChange={e=>{setSelectedEntryDay(e.target.value);setExportStatus('SHEET');}}
+          style={{...input,width:'auto',minWidth:180,height:35,fontWeight:700}}>
+          {entryDays.length?entryDays.map(([day,items])=><option key={day} value={day}>{day==='UNKNOWN'?'Date unavailable':day} • {items.length} entries</option>):<option value="">No entries yet</option>}
+        </select>
+        <span style={{fontSize:12,color:'#475569'}}>Original Entry Date used. Previously entered packets only; no re-entry required.</span>
+      </div>
+      <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:9}}>
+        {entryDays.slice(0,7).map(([day,items])=><button type="button" key={day}
+          onClick={()=>{setSelectedEntryDay(day);setExportStatus('SHEET');}}
+          style={{...btn,padding:'6px 9px',fontSize:11,
+            background:effectiveDay===day?'#2258ce':'#eef4ff',color:effectiveDay===day?'#fff':'#1e40af'}}>
+          {day} ({items.length})
+        </button>)}
+      </div>
+    </section>}
+    {speedPostTab==='MONTHLY'&&<section aria-label="Monthly entry records" style={{...card,marginBottom:10,padding:12}}>
+      <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:10}}>
+        <strong style={{color:'#173f91',fontSize:13}}>ENTRY-WISE MONTHLY RECORDS</strong>
+        <select aria-label="Select entry month" value={effectiveMonth} onChange={e=>{setSelectedEntryMonth(e.target.value);setExportStatus('SHEET');}}
+          style={{...input,width:'auto',height:35,minWidth:180,fontWeight:700}}>
+          {entryMonths.length?entryMonths.map(([month,items])=><option key={month} value={month}>{month==='UNKNOWN'?'Date unavailable':month} • {items.length} entries</option>):<option value="">No entries yet</option>}
+        </select>
+        <span style={{fontSize:12,color:'#475569'}}>Delivery updates do not change the original Entry Date.</span>
+      </div>
+      <h3 style={{fontSize:13,margin:'14px 0 7px'}}>Entry-day breakdown • {effectiveMonth}</h3>
+      <div style={{overflowX:'auto'}}>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:680,fontSize:12}}>
+          <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total','Tariff − Cash'].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
+          <tbody>{monthDayGroups.map(([day,items])=>{const t=speedPostCostSummary(items,reportOptions);return <tr key={day}>
+            <td style={td}>{day}</td><td style={td}>{t.packets}</td>
+            <td style={td}>{currency(t.tariff)}</td><td style={td}>{currency(t.cash)}</td>
+            <td style={{...td,fontWeight:700}}>{currency(t.combined)}</td>
+            <td style={td}>{currency(t.difference)}</td>
+          </tr>})}</tbody>
+        </table>
+      </div>
+    </section>}
+    {speedPostTab==='DELIVERED'&&<p style={{fontSize:12,color:'#475569',margin:'0 0 10px'}}>All delivered ED packets are compiled in this single sheet across every Entry Date and month.</p>}
+    <section style={{...card,padding:12,marginBottom:10}}>
+      <h3 style={{margin:'0 0 8px',fontSize:14,color:'#163c80'}}>{pageLabel} • Financial Totals</h3>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
+        {[
+          ['Entries',String(reportTotals.packets)],
+          ['Tariff Total',currency(reportTotals.tariff)],
+          ['Cash Cost Total',currency(reportTotals.cash)],
+          ['Combined Total',currency(reportTotals.combined)],
+          ['Tariff − Cash',currency(reportTotals.difference)]
+        ].map(([name,value])=><div key={name} style={{background:'#f1f5fd',borderRadius:8,padding:'9px 10px'}}>
+          <div style={{fontSize:11,color:'#475569'}}>{name}</div>
+          <strong style={{fontSize:16,color:'#173f91'}}>{value}</strong>
+        </div>)}
+      </div>
+      <p style={{fontSize:11,color:'#64748b',margin:'9px 0 0'}}>
+        Missing Tariff: {reportTotals.tariffMissing} • Missing Cash Cost: {reportTotals.cashMissing} •
+        Both available: {reportTotals.completePackets}. Combined Total adds available Tariff and Cash Cost amounts.
+        Per-entry Total and Difference stay blank until both amounts exist.
+      </p>
+    </section>
     <section style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:12}}>
         <div><h2 style={{fontSize:18,margin:'0 0 4px'}}>{exportStatus==='SHEET'?(speedPostTab==='DELIVERED'?'Delivered Speed Post Sheet':'Active Speed Post Sheet'):'EMS — '+filterLabel}</h2>
