@@ -111,6 +111,8 @@ export async function GET(request){
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         clientName:data.clientName||data.client||'',
+        // Read the master shipment's origin (not an intermediate via/hub).
+        origin:String(data.origin||''),
         bags:totalBags(data),
         weight:totalWeight(data),
         totalDuty:financial.total_duty===null||financial.total_duty===undefined?'':String(financial.total_duty),
