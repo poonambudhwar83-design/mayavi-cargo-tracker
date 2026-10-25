@@ -7,6 +7,9 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
+// User-approved removal of Saudia code protection, 25 Oct 2026.
+// Other airlines keep their SHA and integration guards.
+// Saudia safety is checked by scripts/checkSaudiaTransitArrival.mjs.
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
   'lib/airIndia.js':'8345dc7ebd4fcf0f178d2214b2e272703340a5bf',
@@ -29,11 +32,6 @@ const locked = Object.freeze({
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
-  'lib/saudiaDirect.js':'cf70796f383793531541f72ed48add3e05fbdda4',
-  'lib/saudiaStrong.js':'d24fecbc68d30fa76f142db9d13401a6feb86e68',
-  'lib/saudiaSalPublic.js':'9c55a2fc495706ab8fc799800a0d29b48a1b316c',
-  'lib/saudia.js':'db7739b0860ad49ac762fded8b82654e6c05ff31',
-  'lib/saudiaSal.js':'3e6ee3646ae3b67833d3c379af2b85ffab999fda'
 });
 let changed=false;
 for (const [filename,expected] of Object.entries(locked)){
@@ -178,48 +176,6 @@ for(const [label,fragment] of ethiopianRouteContract){
 // Protect only Ethiopian's live-data preference on the shared dashboard.
 // The rest of the dashboard can evolve, including Remarks column styling.
 const dashboard=readFileSync('app/DashboardClient.js','utf8');
-// Saudia 065 manifest & physical-part display lock (23 Oct 2026).
-// Protect only the tested Saudia feature, not the whole shared dashboard.
-// A future edit which changes these guarantees must receive explicit approval.
-const saudiaManifestSnapshot = "function saudiaManifestPlan(master={},part={}){\n  if(part.arrivalDate||part.arrivalIsActual===true)return null;\n  const flightDate=String(part.flightDate||'').slice(0,10);\n  if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(flightDate))return null;\n  const partFlight=normalizeFlightNo(master.mawb,part.flightNo);\n  const masterFlight=normalizeFlightNo(master.mawb,master.flightNo);\n  const masterDate=String(master.arrivalDate||'').slice(0,10);\n  const masterTime=formatTime24(master.arrivalTime||'');\n  const matched=Boolean(partFlight&&masterFlight&&partFlight===masterFlight&&\n    masterDate===flightDate&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(masterTime)&&\n    master.arrivalIsActual!==true);\n  return {date:matched?masterDate:flightDate,time:matched?masterTime:'',\n    label:matched?'MANIFESTED • PLANNED ETA':'MANIFESTED • FLIGHT DATE'};\n}\n";
-const saudiaBlockStart=dashboard.indexOf('function saudiaManifestPlan(');
-const saudiaBlockEnd=dashboard.indexOf('function expandPartRows(',saudiaBlockStart);
-if(saudiaBlockStart<0||saudiaBlockEnd<=saudiaBlockStart||
-  dashboard.indexOf('function saudiaManifestPlan(',saudiaBlockStart+1)!==-1||
-  dashboard.slice(saudiaBlockStart,saudiaBlockEnd)!==saudiaManifestSnapshot){
-  console.error('LOCKED SAUDIA MANIFEST PLAN MODIFIED: approval needed before changing physical-part flight/ETA rules.');
-  changed=true;
-}
-const saudiaManifestDisplayContract = [["part-load eligibility","const genuinePartLoad=row.isPartLoad===true||row.partLoad===true"],["separate physical rows","return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;const saudiaEta=prefix==='065'?saudiaMatchingPartEta(row,p):'';return({...row,"],["per-part manifest plan","_saudiaManifestPlan:saudiaPlan,"],["per-part stable Mail ID","_partKey:p._saudiaPendingVirtual?'':`${digits(row.mawb)}::${partIdentity(p,idx)}`,"],["per-part independent Mail choice","mailSent:p.mailSent===true,"],["planned Mail clock only if ETA matches","||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):'')"],["manifest date display","r.arrivalDate||r._saudiaManifestPlan?.date||r._emiratesMasterEta?.date||'—'"],["manifest ETA label","r._saudiaManifestPlan.label"],["planned time display","r._saudiaManifestPlan?(formatTime24(r._saudiaManifestPlan.time)||'—'):"],["manifest warning","'ETA NOT CONFIRMED'"],["not counted as confirmed arrival","_partArrivalConfirmed:confirmedPartArrival(p)"],["independent physical-part customs","customsCleared:p.customsCleared===true,"]];
-for(const [label,fragment] of saudiaManifestDisplayContract){
-  if(!dashboard.includes(fragment)){
-    console.error('LOCKED SAUDIA PART DISPLAY MODIFIED: '+label+'. Explicit unlock approval required.');
-    changed=true;
-  }
-}
-// Saudia NO blink must wait for verified DEP, never FOW/EXPECTED.
-for(const [label,contract] of [
-  ['Saudia mail blink gate',"if(digits(row.mawb).startsWith('065')){"],
-  ['Saudia FOW mail blink suppressed',"if(event==='FOW'||!(movement==='DEPARTED'||event==='DEP'||row.arrivalIsActual===true||row._partArrivalConfirmed===true))return false;"],
-  ['Saudia dated shared ETA', 'function harmonizeSaudiaFlightEtas(viewRows=[],sourceRows=viewRows){'],
-  ['Saudia flight ETA integrated', 'expandPartRows(harmonizeSaudiaFlightEtas(filtered,dashboardRows))']
-]){
-  if(!dashboard.includes(contract)){
-    console.error('LOCKED SAUDIA MAIL BLINK / ETA CONTRACT MISSING: '+label);
-    changed=true;
-  }
-}
-// RCS and FOW left behind on a verified dated flight are displayed as
-// UNCONFIRMED offloads only after the 15:00 IST cutoff and a fresh SAL DEP.
-for(const [label,fragment] of [
-  ['Saudia RCS/FOW provisional check',"!/^(?:FOW|RCS)$/.test(String(part.sourceStatus||'').toUpperCase())"],
-  ['Saudia confirmed same-flight DEP',"String(master.sourceStatus||'').toUpperCase()==='DEP'"],
-  ['Saudia post-departure time check',"Date.parse(date+'T15:00:00+05:30')"],
-  ['Saudia provisional not actual',"status:'OFFLOADED (UNCONFIRMED)'"]
-])if(!dashboard.includes(fragment)){
-  console.error('LOCKED SAUDIA OFFLOAD EVIDENCE CHECK MISSING: '+label);
-  changed=true;
-}
 // The Active Sheet weight must count all visible physical parts, including
 // future manifests, without requiring ARRIVED/Customs Clear status.
 // Otherwise pending SV manifests silently disappear from the total.
@@ -235,37 +191,12 @@ for(const [label,fragment] of [
   }
 }
 
-// Preserve today's Saudia part ETA fallback and departed-first display without
-// changing the locked official SAL chronology parser.
-for(const [name,contract] of [
-  ['matching part flight/date clock', 'function saudiaMatchingPartEta(master={},part={})'],
-  ['Saudia departed-first priority', 'function saudiaDisplayPriority(row={})'],
-  ['part ETA displayed per physical row', "arrivalTime:p.arrivalTime||saudiaEta||''"],
-  ['part ETA source', "arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?"],
-  ['FOW displayed as expected', "return'EXPECTED';"],
-  ['server fallback for missing part ETA', 'Same dated SV flight published master ETA; IST, not actual cargo arrival']
-]){
-  const target=name==='server fallback for missing part ETA'?sharedRoute:dashboard;
-  if(!target.includes(contract)){
-    console.error('LOCKED SAUDIA PART ETA / DISPLAY CONTRACT MISSING: '+name);
-    changed=true;
-  }
-}
 // Backend scheduled tracking continues when no employee/admin has Mayavi open.
 const saudiaCronConfig=JSON.parse(readFileSync('vercel.json','utf8'));
 if(!Array.isArray(saudiaCronConfig.crons)||!saudiaCronConfig.crons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')){
   console.error('LOCKED MAYAVI AIR CARGO 2-HOUR SERVER REFRESH CHANGED.');
   changed=true;
 }
-const saudiaCronRoute=readFileSync('app/api/cron/refresh/route.js','utf8');
-for(const fragment of ['refreshScope(row,checkedAt)',"mawb.startsWith('065-')?3:2",
-  'backendAutoRefresh:true','track?.ok&&track.shipment']){
-  if(!saudiaCronRoute.includes(fragment)){
-    console.error('LOCKED SAUDIA BACKGROUND REFRESH CONTRACT CHANGED: '+fragment);
-    changed=true;
-  }
-}
-
 const ethiopianDashboardContract=[
   ['Ethiopian database priority at startup',"const serverAuthoritative=key.startsWith('071')||"],
   ['Ethiopian database priority while polling',"out.push(key.startsWith('071')||"]
@@ -296,54 +227,5 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   console.error('LOCKED ETHIOPIAN AUTO REFRESH CHANGED: Explicit unlock approval required.');
   changed=true;
 }
-// Saudia SV760 working FOW -> DEP pending-part ETA was verified on 2026-10-10.
-// Freeze precisely that source block, not the entire shared multi-airline route,
-// so maintenance to KLM, Speed Post, or another airline stays independent.
-// The Saudia adapter files above were already Git-blob SHA-locked.
-const saudiaRouteStart="  // Saudia-only: an FOW-to-DEP transition confirms flight departure, not cargo";
-const saudiaRouteEnd="  // A verified Malaysia response";
-const saudiaRouteStartAt=sharedRoute.indexOf(saudiaRouteStart);
-const saudiaRouteEndAt=sharedRoute.indexOf(saudiaRouteEnd,saudiaRouteStartAt);
-const saudiaEtaSha256='5351c72981e3a378ef48028cd938309c8060f722b687a710b31c9716a2866172';
-if(saudiaRouteStartAt<0||saudiaRouteEndAt<=saudiaRouteStartAt
-  ||sharedRoute.indexOf(saudiaRouteStart,saudiaRouteStartAt+saudiaRouteStart.length)!==-1){
-  console.error('LOCKED SAUDIA ETA BLOCK MISSING OR DUPLICATED: Explicit unlock approval required.');
-  changed=true;
-}else{
-  const protectedCode=sharedRoute.slice(saudiaRouteStartAt,saudiaRouteEndAt);
-  const actual=createHash('sha256').update(protectedCode,'utf8').digest('hex');
-  if(actual!==saudiaEtaSha256){
-    console.error('LOCKED SAUDIA FOW/DEP FLIGHT ETA MODIFIED: Explicit unlock approval required.');
-    changed=true;
-  }
-}
-const saudiaRouteContract=[
-  ['Official Saudia adapter import',"import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';"],
-  ['Saudia official browser routing',"return mawb.startsWith('065-')?trackSaudiaDirect(mawb):trackWithBrowser(mawb);"],
-  ['Saudia prefix fast path',"const saudiaFastPath=mawb.startsWith('065-');"],
-  ['Saudia official-only API routing', '||cathayFastPath||saudiaFastPath||thaiFastPath||'],
-  ['Saudia ETA flight-reader imports', 'trackFlightArrivalEstimate, trackFlightScheduleFast'],
-  ['Saudia preferred-arrival placement', 'shipment=applyPreferredArrival(shipment,direct,browser,api,ocr);']
-];
-for(const [label,fragment] of saudiaRouteContract){
-  if(!sharedRoute.includes(fragment)){
-    console.error('LOCKED SAUDIA INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
-    changed=true;
-  }
-}
-// Saudia only: four rapid SAL checks 14:00, 14:15, 14:30, 14:45 IST.
-// All-carrier two-hour UTC schedule and working carrier parsers remain locked.
-const rapidSaudia=readFileSync('app/api/cron/saudia/route.js','utf8');
-const rapidCrons=JSON.parse(readFileSync('vercel.json','utf8')).crons;
-if(!rapidCrons.some(c=>c.path==='/api/cron/saudia'&&c.schedule==='*/15 8-9 * * *')||
-  !rapidCrons.some(c=>c.path==='/api/cron/refresh'&&c.schedule==='0 */2 * * *')||
-  !rapidSaudia.includes('hour!==14||minute%15!==0')||
-  !sharedRoute.includes("'/api/cron/saudia'")&&
-    !readFileSync('app/api/cron/refresh/route.js','utf8').includes("pathname==='/api/cron/saudia'")||
-  !dashboard.includes('function saudiaFowNeedsOffloadCheck(')||
-  !dashboard.includes("status:'OFFLOADED (UNCONFIRMED)'")){
-  console.error('SAUDIA RAPID 15-MINUTE / TWO-HOUR AUTO REFRESH CONTRACT MISSING.');
-  changed=true;
-}
 if(changed)process.exit(1);
-console.log('Airline lock check passed (CX Booking Status parser locked): Air India (098), IndiGo (312), Ethiopian (071), Saudia (065), Emirates (176), and Kuwait (229).');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229). Saudia (065) unlocked; functional regression tests remain.');
