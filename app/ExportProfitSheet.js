@@ -6,6 +6,14 @@ const number=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
 const cell={padding:'6px 9px',borderBottom:'1px solid #e3e9f2',fontSize:13,textAlign:'left',whiteSpace:'nowrap'};
 const header={...cell,position:'sticky',top:0,zIndex:1,background:'#eaf1fd',fontWeight:800,color:'#18345b'};
 const summary={background:'#fff',padding:16,border:'1px solid #dce6f1',borderRadius:12,flex:'1 1 190px'};
+// Consistent soft colours per client, without changing the client's original name.
+function clientBadgeStyle(name=''){
+  const label=String(name||'').trim();
+  if(!label)return {};
+  let hash=0;
+  for(let i=0;i<label.length;i++)hash=(hash*31+label.toUpperCase().charCodeAt(i))%360;
+  return {display:'inline-block',backgroundColor:`hsl(${hash} 76% 91%)`,color:`hsl(${hash} 65% 26%)`,border:`1px solid hsl(${hash} 55% 78%)`,borderRadius:7,padding:'5px 9px',fontWeight:850,whiteSpace:'nowrap'};
+}
 const SHIPMENT_CHARGE=1000; // Fixed once per master Export MAWB, not once per part shipment.
 function showMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function showWeight(value){return value===null||!Number.isFinite(value)?'—':number.format(value)}
@@ -15,8 +23,8 @@ function profitFor(row={}){
   return row.weight===null||row.weight===''||!Number.isFinite(value)||value<=0?null:Math.round((value*rate-SHIPMENT_CHARGE)*100)/100;
 }
 function exportCsv(rows,month=''){
-  const columns=['MAWB No.','Handover Date','Client Name','Weight (kg)','Rate (INR/kg)','Shipment Charge (INR per MAWB)','Profit (INR)'];
-  const data=rows.map(r=>[r.mawb,r.handoverDate||'',r.clientName||'',r.weight??'',r.rate??6,SHIPMENT_CHARGE,profitFor(r)??'']);
+  const columns=['MAWB No.','Client Name','Weight (kg)','Rate (INR/kg)','Shipment Charge (INR per MAWB)','Profit (INR)'];
+  const data=rows.map(r=>[r.mawb,r.clientName||'',r.weight??'',r.rate??6,SHIPMENT_CHARGE,profitFor(r)??'']);
   const csv=[columns,...data].map(items=>items.map(v=>{
     const raw=String(v??'');
     const safe=/^[=+@\-]/.test(raw)?"'"+raw:raw;
@@ -102,22 +110,21 @@ export default function ExportProfitSheet(){
       {message&&<p role="status" style={{background:'#eaf0fa',color:'#173e6f',padding:10,borderRadius:8}}>{message}</p>}
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
-          <thead><tr>{['S.No.','MAWB No.','Handover Date','Client Name','Weight (kg)','Rate (₹/kg)','Shipment Charge (₹)','Profit (₹)'].map(label=><th key={label} style={header}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','MAWB No.','Client Name','Weight (kg)','Rate (₹/kg)','Shipment Charge (₹)','Profit (₹)'].map(label=><th key={label} style={header}>{label}</th>)}</tr></thead>
           <tbody>
             {filtered.map((row,index)=><tr key={row.mawb}>
               <td style={cell}>{index+1}</td>
               <td style={{...cell,fontWeight:800}}>{row.mawb}</td>
-              <td style={cell}>{row.handoverDate||'—'}</td>
-              <td style={cell}>{row.clientName||'—'}</td>
+              <td style={cell}><span style={clientBadgeStyle(row.clientName)}>{row.clientName||'—'}</span></td>
               <td style={cell}>{showWeight(row.weight)}</td>
               <td style={cell}>{showMoney(Number(row.rate)||6)}</td>
               <td style={{...cell,fontWeight:800}}>{showMoney(SHIPMENT_CHARGE)}</td>
               <td style={{...cell,fontWeight:900,color:profitFor(row)!==null&&profitFor(row)<0?'#b91c1c':'#14804b'}}>{showMoney(profitFor(row))}</td>
             </tr>)}
-            {!filtered.length&&<tr><td colSpan={8} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading Export shipments…':'No Export MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={7} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading Export shipments…':'No Export MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
-            <td colSpan={4} style={cell}>TOTAL • {filtered.length} MAWBs</td>
+            <td colSpan={3} style={cell}>TOTAL • {filtered.length} MAWBs</td>
             <td style={cell}>{showWeight(totals.weight)}</td>
             <td style={cell} title="Sum of rates (not average)">{showMoney(totals.rateSum)}</td>
             <td style={cell}>{showMoney(totals.shipmentCharges)}</td>
