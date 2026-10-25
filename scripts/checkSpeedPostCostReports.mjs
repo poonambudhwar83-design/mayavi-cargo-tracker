@@ -46,7 +46,8 @@ for(const piece of [
   "speedPostTab==='MONTHLY'","speedPostTab==='DELIVERED'?deliveredRows",
   'ALL ENTRIES • GRAND TOTAL','FILTERED ENTRIES TOTAL',
   "currency(reportTotals.tariff)","currency(reportTotals.cash)",
-  "currency(allTotals.combined)","rupeePerKg.format(postalCost(r)-cashCost(r))"
+  "currency(allTotals.combined)","currency(filteredTotals.tariff)",
+  "<tfoot>","MONTH TOTAL","TOTAL • {displayedRows.length} ENTRIES"
 ]){
   assert.ok(screen.includes(piece),'EMS financial dashboard contract: '+piece);
 }
@@ -54,12 +55,13 @@ const headers=['ED','Tariff','Cash','Total','Difference'];
 const xlsx=createSpeedPostXlsx(headers,[['ED111111111IN',700,300,1000,400]]);
 assert.ok(xlsx instanceof Uint8Array&&xlsx.length>300,'XLSX bytes');
 assert.equal(new TextDecoder().decode(xlsx.slice(0,2)),'PK');
+assert.ok(!screen.includes('Tariff − Cash'),'Tariff minus Cash column is removed');
 const pdf=createSpeedPostPdf([[
   'ED111111111IN','TEST CONSIGNEE','14/10/2026','UK','Delivered','1560 g',
-  '700','300','1000','400','14/10/2026'
+  '700','300','1000','14/10/2026'
 ]],'2026-10-14',summary);
 const pdfText=new TextDecoder().decode(pdf);
-assert.ok(pdfText.includes('Tariff-Cash'),'PDF must have cost difference column');
+assert.ok(!pdfText.includes('Tariff-Cash'),'PDF must omit deleted difference column');
 assert.ok(pdfText.includes('Combined: INR 2250.00'),'PDF financial totals visible');
 assert.ok(pdfText.includes('ED111111111IN'),'PDF must include tracked ED');
 console.log('EMS date-wise and monthly costs, compiled Delivered, XLSX/PDF financial regression passed');
