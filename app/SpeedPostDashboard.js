@@ -528,6 +528,7 @@ export default function SpeedPostDashboard({currentUser}){
         IN_TRANSIT:'In Transit',OTHER:'Other Statuses'})[exportStatus]||exportStatus);
   const reportOptions={tariffOf:postalCost,cashOf:cashCost};
   const reportTotals=speedPostCostSummary(pageRows,reportOptions);
+  const monthlyTotals=speedPostCostSummary(monthRows,reportOptions);
   const filteredTotals=speedPostCostSummary(displayedRows,reportOptions);
   const allTotals=speedPostCostSummary(rows,reportOptions);
   const monthDayGroups=speedPostGroupByEntryDay(monthRows);
@@ -540,7 +541,7 @@ export default function SpeedPostDashboard({currentUser}){
     try{
       const headers=['ED No.','Consignee Name','Destination','Entry Date','Booking Date','Status',
         'Delivered Date/Time','Origin','Actual Weight','Rounded Weight (kg)',
-        'Tariff (INR)','Cash Cost (INR)','Total Cost (INR)','Tariff - Cash (INR)',
+        'Tariff (INR)','Cash Cost (INR)','Total Cost (INR)',
         'Cost per kg (INR)','Tracking Address','Entered By'];
       const excelRows=downloadRows.map(r=>{
         const tariff=postalCost(r),cash=cashCost(r),cost=costPerKg(r),rounded=billedWeightKg(r.weight);
@@ -548,19 +549,19 @@ export default function SpeedPostDashboard({currentUser}){
           r.bookingDate||'',r.status||'Pending Tracking',r.deliveredAtText||'',shortOrigin(r.origin),
           r.weight||'',rounded===null?'':rounded,tariff===null?'':tariff,cash===null?'':cash,
           tariff===null||cash===null?'':tariff+cash,
-          tariff===null||cash===null?'':tariff-cash,
           cost===null?'':Number(cost.toFixed(2)),r.address||'',r.enteredBy||''];
       });
+      const exportWeight=weightSummary(downloadRows);
       excelRows.push(['TOTAL '+downloadRows.length+' ENTRIES','','','','','',
-        '','','','',filteredTotals.tariff,filteredTotals.cash,
-        filteredTotals.combined,filteredTotals.difference,'','','']);
+        '','',Number(exportWeight.totalKg.toFixed(4)),exportWeight.totalRoundedKg,
+        filteredTotals.tariff,filteredTotals.cash,filteredTotals.combined,
+        averageCostPerKg===null?'':Number(averageCostPerKg.toFixed(2)),'','']);
       const pdfRows=downloadRows.map(r=>{
         const tariff=postalCost(r),cash=cashCost(r);
         return [r.trackingNo||'',r.consigneeName||'',formatEntryDate(r.createdAt),
           destinationWithCountry(r)||'—',r.status||'Pending Tracking',r.weight||'—',
           tariff===null?'—':String(tariff),cash===null?'—':String(cash),
           tariff===null||cash===null?'—':String(tariff+cash),
-          tariff===null||cash===null?'—':String(tariff-cash),
           r.deliveredAtText||'—'];
       });
       const label=filterLabel;
@@ -615,6 +616,9 @@ export default function SpeedPostDashboard({currentUser}){
     }
   };
   const summary=weightSummary(displayedRows);
+  const ratedRows=displayedRows.filter(r=>postalCost(r)!==null&&weightInKg(r.weight)!==null);
+  const ratedWeight=ratedRows.reduce((sum,r)=>sum+weightInKg(r.weight),0);
+  const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+postalCost(r),0)/ratedWeight:null;
   return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -777,13 +781,13 @@ export default function SpeedPostDashboard({currentUser}){
       <h3 style={{fontSize:13,margin:'14px 0 7px'}}>Entry-day breakdown • {effectiveMonth}</h3>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:680,fontSize:12}}>
-          <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total','Tariff − Cash'].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
+          <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total'].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
           <tbody>{monthDayGroups.map(([day,items])=>{const t=speedPostCostSummary(items,reportOptions);return <tr key={day}>
             <td style={td}>{day}</td><td style={td}>{t.packets}</td>
             <td style={td}>{currency(t.tariff)}</td><td style={td}>{currency(t.cash)}</td>
             <td style={{...td,fontWeight:700}}>{currency(t.combined)}</td>
-            <td style={td}>{currency(t.difference)}</td>
           </tr>})}</tbody>
+          <tfoot><tr style={{background:'#eaf2ff',fontWeight:900}}><td style={td}>MONTH TOTAL</td><td style={td}>{monthlyTotals.packets}</td><td style={td}>{currency(monthlyTotals.tariff)}</td><td style={td}>{currency(monthlyTotals.cash)}</td><td style={td}>{currency(monthlyTotals.combined)}</td></tr></tfoot>
         </table>
       </div>
     </section>}
@@ -795,8 +799,7 @@ export default function SpeedPostDashboard({currentUser}){
           ['Entries',String(reportTotals.packets)],
           ['Tariff Total',currency(reportTotals.tariff)],
           ['Cash Cost Total',currency(reportTotals.cash)],
-          ['Combined Total',currency(reportTotals.combined)],
-          ['Tariff − Cash',currency(reportTotals.difference)]
+          ['Combined Total',currency(reportTotals.combined)]
         ].map(([name,value])=><div key={name} style={{background:'#f1f5fd',borderRadius:8,padding:'9px 10px'}}>
           <div style={{fontSize:11,color:'#475569'}}>{name}</div>
           <strong style={{fontSize:16,color:'#173f91'}}>{value}</strong>
@@ -805,7 +808,7 @@ export default function SpeedPostDashboard({currentUser}){
       <p style={{fontSize:11,color:'#64748b',margin:'9px 0 0'}}>
         Missing Tariff: {reportTotals.tariffMissing} • Missing Cash Cost: {reportTotals.cashMissing} •
         Both available: {reportTotals.completePackets}. Combined Total adds available Tariff and Cash Cost amounts.
-        Per-entry Total and Difference stay blank until both amounts exist.
+        Per-entry Total Cost stays blank until both amounts exist.
       </p>
     </section>
     <section style={card}>
@@ -855,7 +858,7 @@ export default function SpeedPostDashboard({currentUser}){
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
             'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
-            'Total Cost (₹)','Tariff − Cash (₹)','Cost per kg (₹)','Status',
+            'Total Cost (₹)','Cost per kg (₹)','Status',
             'Origin','Weight','Rounded Weight (kg)','Last Updated','Actions'
           ].map((label,index)=><th key={label} className={index<5?'sp-freeze-'+index:undefined}
             style={{...th,...(index<5?{padding:'8px 4px'}:{})}}>{index===3?
@@ -895,7 +898,6 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{r.tariff?<span>₹{field(r,'tariff')}</span>:'—'}</td>
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
-            <td style={{...td,fontWeight:800,color:postalCost(r)!==null&&cashCost(r)!==null&&postalCost(r)<cashCost(r)?'#b91c1c':'#166534'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)-cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
             <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
@@ -913,8 +915,19 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={18} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No Delivered parcels yet.':speedPostTab==='MONTHLY'?'No entries in this month.':'No packets for this Entry Date. Select another date or add a new ED.'}</td></tr>}</tbody>
-        </table>
+          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No Delivered parcels yet.':speedPostTab==='MONTHLY'?'No entries in this month.':'No packets for this Entry Date. Select another date or add a new ED.'}</td></tr>}</tbody>
+        <tfoot><tr style={{background:'#eaf2ff',fontWeight:900,color:'#153866'}}>
+            <td colSpan={7} style={{...td,padding:'10px 6px'}}>TOTAL • {displayedRows.length} ENTRIES</td>
+            <td style={td}>{currency(filteredTotals.tariff)}</td>
+            <td style={td}>{currency(filteredTotals.cash)}</td>
+            <td style={td}>{currency(filteredTotals.combined)}</td>
+            <td style={td}>{averageCostPerKg===null?'—':currency(averageCostPerKg)+'/kg'}</td>
+            <td colSpan={2} style={td}></td>
+            <td style={td}>{summary.totalKg.toLocaleString('en-IN',{maximumFractionDigits:4})} kg</td>
+            <td style={td}>{summary.totalRoundedKg.toLocaleString('en-IN')} kg</td>
+            <td colSpan={2} style={td}></td>
+          </tr></tfoot>
+          </table>
       </div>
 
       <div style={{marginTop:13,padding:12,background:'#eef4ff',borderRadius:9}}>
@@ -923,7 +936,6 @@ export default function SpeedPostDashboard({currentUser}){
            <span>Tariff: <b>{currency(filteredTotals.tariff)}</b></span>
            <span>Cash Cost: <b>{currency(filteredTotals.cash)}</b></span>
            <span>Combined: <b>{currency(filteredTotals.combined)}</b></span>
-           <span>Tariff − Cash: <b>{currency(filteredTotals.difference)}</b></span>
          </div>
        </div>
        <div style={{marginTop:14,borderTop:'1px solid #dce4ef',paddingTop:12}}>
@@ -948,11 +960,10 @@ export default function SpeedPostDashboard({currentUser}){
           <span>Tariff: <strong>{currency(allTotals.tariff)}</strong></span>
           <span>Cash Cost: <strong>{currency(allTotals.cash)}</strong></span>
           <span>Combined Total: <strong>{currency(allTotals.combined)}</strong></span>
-          <span>Tariff − Cash: <strong>{currency(allTotals.difference)}</strong></span>
         </div>
         <p style={{fontSize:11,margin:'7px 0 0',color:'#64748b'}}>Missing Tariff: {allTotals.tariffMissing} • Missing Cash Cost: {allTotals.cashMissing} • Both available: {allTotals.completePackets}. Every ED is counted once, including Delivered entries.</p>
       </section>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is Tariff + Cash Cost, and Difference is Tariff − Cash Cost. Both must be available for an individual Total or Difference. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is Tariff + Cash Cost, and no separate Tariff minus Cash column is shown. Both amounts must be available for an individual Total Cost. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
