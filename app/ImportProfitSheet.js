@@ -27,13 +27,14 @@ function figures(row={}){
   const dutyPerKg=kg>0&&duty!==null?duty/kg:null;
   // Profit is earned at the manually entered selling rate per kg, never a fixed tariff.
   // Do not show a misleading profit until all the required inputs are available.
-  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge;
-  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,profit};
+  const proteinDeduction=category==='PROTEIN'&&kg!==null?50*kg:0;
+  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction;
+  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,profit};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows){
-  const columns=['MAWB','Client','Goods','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (16 x kg)','Goods Charge (HH 340, Protein 3000, Clothes 1500 per bag)','Total Cost','Profit (Rate x Weight - EICI - Duty - Goods Charge)'];
+  const columns=['MAWB','Client','Goods','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (16 x kg)','Goods Charge (HH 340, Protein 3000, Clothes 1500 per bag)','Total Cost','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein 50 x Weight)'];
   const values=rows.map(row=>{
     const n=figures(row);
     return [row.mawb,row.clientName,row.goodsCategory||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.totalCost,n.profit];
@@ -237,7 +238,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only). Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
       </p>
     </div>
   </main>;
