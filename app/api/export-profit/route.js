@@ -34,11 +34,8 @@ function totalWeight(data={}){
   }
   return result>0?result:null;
 }
-function companyName(data={}){
-  const name=String(data.companyName||'').trim();
-  if(name)return name;
-  const type=String(data.companyType||'').trim().toUpperCase();
-  return type==='KCC'||type==='PV'?type:'';
+function clientName(data={}){
+  return String(data.clientName||data.client||'').trim();
 }
 export async function GET(request){
   if(readSession(request)?.role!=='admin')
@@ -58,13 +55,13 @@ export async function GET(request){
       const data=shipment.data||{};
       if(exportProfitHandoverMonth(data)!==month)continue;
       const weight=totalWeight(data);
-      const company=companyName(data);
-      const rate=exportRateForCompany(company);
+      const client=clientName(data);
+      const rate=exportRateForCompany(client);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         handoverDate:exportProfitHandoverDate(data),
         weight,
-        companyName:company,
+        clientName:client,
         rate,
         shipmentCharge:1000, // Deduct once per master MAWB.
         profit:weight===null?null:Math.round((weight*rate-1000)*100)/100
