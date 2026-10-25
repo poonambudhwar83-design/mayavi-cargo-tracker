@@ -3,10 +3,16 @@ import {useEffect,useMemo,useState} from 'react';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const quantity=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
-const cell={padding:'10px 9px',borderBottom:'1px solid #e3e9f2',whiteSpace:'nowrap',textAlign:'left',fontSize:13};
+const cell={padding:'5px 6px',borderBottom:'1px solid #e3e9f2',whiteSpace:'nowrap',textAlign:'left',fontSize:12};
 const header={...cell,background:'#eaf1fd',position:'sticky',top:0,zIndex:2,fontWeight:800,color:'#18345b'};
-const inputStyle={width:112,boxSizing:'border-box',border:'1px solid #b6c5db',borderRadius:7,padding:'8px',fontWeight:700,background:'#fff',color:'#122139'};
+const inputStyle={width:92,boxSizing:'border-box',border:'1px solid #b6c5db',borderRadius:6,padding:'5px 6px',fontSize:12,fontWeight:700,background:'#fff',color:'#122139'};
 const summaryCard={background:'#fff',padding:16,border:'1px solid #dce6f1',borderRadius:12,flex:'1 1 150px',minWidth:130};
+// Colour is for easy visual recognition; the category text stays visible too.
+const goodsColors={
+  HH:{row:'#eff6ff',badge:'#dbeafe',text:'#1e40af'},
+  PROTEIN:{row:'#f5f3ff',badge:'#ede9fe',text:'#5b21b6'},
+  CLOTHES:{row:'#fff7ed',badge:'#ffedd5',text:'#9a3412'}
+};
 const dataNumber=value=>value===null||value===undefined||value===''?null:Number(value);
 function figures(row={}){
   const kg=dataNumber(row.weight);
@@ -49,6 +55,7 @@ export default function ImportProfitSheet(){
   const [message,setMessage]=useState('');
   const [search,setSearch]=useState('');
   const [clientFilter,setClientFilter]=useState('');
+  const [rateSort,setRateSort]=useState('');
   const [lastLoaded,setLastLoaded]=useState('');
   useEffect(()=>{
     let active=true;
@@ -89,12 +96,21 @@ export default function ImportProfitSheet(){
     finally{setSaving(previous=>({...previous,[key]:false}))}
   }
   const clientOptions=useMemo(()=>[...new Set(rows.map(r=>String(r.clientName||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
-  const filtered=useMemo(()=>rows.map(effective).filter(row=>
-    (!clientFilter||String(row.clientName||'').trim()===clientFilter)&&
-    (!search||[row.mawb,row.clientName,row.goodsDescription].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
-  ),[rows,drafts,search,clientFilter]);
+  const filtered=useMemo(()=>{
+    const results=rows.map(effective).filter(row=>
+      (!clientFilter||String(row.clientName||'').trim()===clientFilter)&&
+      (!search||[row.mawb,row.clientName,row.goodsDescription].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
+    );
+    if(rateSort)results.sort((a,b)=>{
+      const aRate=figures(a).rate,bRate=figures(b).rate;
+      if(aRate===null)return bRate===null?0:1;
+      if(bRate===null)return -1;
+      return rateSort==='asc'?aRate-bRate:bRate-aRate;
+    });
+    return results;
+  },[rows,drafts,search,clientFilter,rateSort]);
   const totals=useMemo(()=>{
-    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0;
+    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0;
     for(const row of filtered){
       const n=figures(row);
       bags+=Number(row.bags)||0;
@@ -102,10 +118,12 @@ export default function ImportProfitSheet(){
       if(n.eici!==null)eici+=n.eici;
       if(n.goodsCharge!==null)goodsCharge+=n.goodsCharge;
       if(n.duty!==null){duty+=n.duty;dutyKnown++}
+      if(n.dutyPerKg!==null){dutyPerKgSum+=n.dutyPerKg;dutyPerKgKnown++}
+      if(n.rate!==null){rateSum+=n.rate;rateKnown++}
       if(n.totalCost!==null)cost+=n.totalCost;
       if(n.profit!==null){profit+=n.profit;completed++}
     }
-    return {bags,weight,duty,eici,goodsCharge,cost,profit,completed,dutyKnown};
+    return {bags,weight,duty,eici,goodsCharge,cost,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown};
   },[filtered]);
   return <main style={{padding:'20px clamp(12px,3vw,32px)',background:'#f5f8fc',minHeight:'75vh',color:'#122139'}}>
     <div style={{maxWidth:1650,margin:'auto'}}>
@@ -137,16 +155,22 @@ export default function ImportProfitSheet(){
         </div>
         <small style={{color:'#64748b'}}>Updated: {lastLoaded||'—'} • Automatically checks Import every 2 minutes</small>
       </div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',margin:'4px 0 10px'}}>
+        <small style={{fontWeight:800,color:'#52657f'}}>COMMODITY COLOURS:</small>
+        {Object.entries(goodsColors).map(([type,style])=><span key={type} style={{background:style.badge,color:style.text,fontSize:12,fontWeight:800,padding:'4px 9px',borderRadius:6}}>{type==='HH'?'HH':type==='PROTEIN'?'Protein':'Clothes'}</span>)}
+      </div>
       {message&&<p role="status" style={{padding:'9px 12px',background:'#eaf0fa',borderRadius:8,color:'#173e6f'}}>{message}</p>}
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 16 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)'].map(label=><th key={label} style={header}>{label}</th>)}
+            {['S.No.','MAWB','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 16 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)'].map(label=><th key={label} style={header}>
+              {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
+            </th>)}
           </tr></thead>
           <tbody>
             {filtered.map((row,index)=>{
               const n=figures(row);
-              return <tr key={row.mawb}>
+              return <tr key={row.mawb} style={{background:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.row||'#fff'}}>
                 <td style={cell}>{index+1}</td>
                 <td style={{...cell,fontWeight:800}}>{row.mawb}</td>
                 <td style={cell}>{row.clientName||'—'}</td>
@@ -158,7 +182,7 @@ export default function ImportProfitSheet(){
                     }}
                     disabled={Boolean(saving[row.mawb+':goodsCategory'])}
                     title={row.goodsDescription||'Choose goods type'}
-                    style={{...inputStyle,width:125}}>
+                    style={{...inputStyle,width:108,background:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.badge||'#fff',color:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.text||'#122139',borderColor:goodsColors[String(row.goodsCategory||'').toUpperCase()]?.text||'#b6c5db'}}>
                     <option value="">Select Goods</option>
                     <option value="HH">HH</option>
                     <option value="PROTEIN">Protein</option>
@@ -169,7 +193,27 @@ export default function ImportProfitSheet(){
                 <td style={{...cell,fontWeight:700}}>{displayAmount(n.kg)}</td>
                 {['totalDuty'].map(field=><td key={field} style={cell}><input aria-label={'Total Duty for '+row.mawb} type="number" min="0" step="any" value={row[field]??''} onChange={e=>setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),[field]:e.target.value}}))} onBlur={e=>save(row.mawb,field,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} disabled={Boolean(saving[row.mawb+':'+field])} placeholder="Enter duty" style={inputStyle}/></td>)}
                 <td style={cell}>{n.dutyPerKg===null?'—':money.format(n.dutyPerKg)}</td>
-                {['rate'].map(field=><td key={field} style={cell}><input aria-label={'Rate for '+row.mawb} type="number" min="0" step="any" value={row[field]??''} onChange={e=>setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),[field]:e.target.value}}))} onBlur={e=>save(row.mawb,field,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} disabled={Boolean(saving[row.mawb+':'+field])} placeholder="Enter rate" style={inputStyle}/></td>)}
+                {['rate'].map(field=><td key={field} style={cell}>
+                  <div style={{display:'flex',alignItems:'center',gap:2}}>
+                    <input aria-label={'Rate for '+row.mawb} type="number" inputMode="decimal" min="0" step="0.01" value={row[field]??''}
+                      onChange={e=>setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),[field]:e.target.value}}))}
+                      onBlur={e=>save(row.mawb,field,e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}
+                      disabled={Boolean(saving[row.mawb+':'+field])}
+                      placeholder="Enter rate" style={{...inputStyle,width:83}}/>
+                    <div style={{display:'flex',flexDirection:'column',gap:1}}>
+                      {[0.01,-0.01].map(delta=><button key={delta} type="button" title={delta>0?'Increase rate by ₹0.01':'Decrease rate by ₹0.01'} aria-label={(delta>0?'Increase':'Decrease')+' rate for '+row.mawb}
+                        disabled={Boolean(saving[row.mawb+':'+field])}
+                        onPointerDown={e=>e.preventDefault()}
+                        onClick={()=>{
+                          const next=(Math.max(0,Math.round(((Number(row[field])||0)+delta)*100)/100)).toFixed(2);
+                          setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),[field]:next}}));
+                          void save(row.mawb,field,next);
+                        }}
+                        style={{border:'1px solid #cbd5e1',borderRadius:4,background:'#f8fafc',color:'#23456a',height:16,minWidth:20,fontSize:10,lineHeight:'12px',cursor:'pointer',padding:0}}>{delta>0?'▲':'▼'}</button>)}
+                    </div>
+                  </div>
+                </td>)}
                 <td style={cell}>{displayMoney(n.eici)}</td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?'Select goods to calculate':money.format(n.chargePerBag)+'/bag'}</small></td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
@@ -183,8 +227,8 @@ export default function ImportProfitSheet(){
             <td style={cell}>{displayAmount(totals.bags)}</td>
             <td style={cell}>{displayAmount(totals.weight)}</td>
             <td style={cell}>{displayMoney(totals.duty)}</td>
-            <td style={cell}>{totals.dutyKnown===filtered.length&&totals.weight>0?displayMoney(totals.duty/totals.weight):'—'}</td>
-            <td style={cell}>—</td>
+            <td style={cell}>{totals.dutyPerKgKnown?displayMoney(totals.dutyPerKgSum):'—'}</td>
+            <td style={cell}>{totals.rateKnown?displayMoney(totals.rateSum):'—'}</td>
             <td style={cell}>{displayMoney(totals.eici)}</td>
             <td style={cell}>{displayMoney(totals.goodsCharge)}</td>
             <td style={cell}>{displayMoney(totals.cost)}</td>
@@ -193,7 +237,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Totals respect the selected Client filter.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
       </p>
     </div>
   </main>;
