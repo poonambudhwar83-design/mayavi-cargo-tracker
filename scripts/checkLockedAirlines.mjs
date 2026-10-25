@@ -7,10 +7,22 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
-// User-approved removal of Saudia code protection, 25 Oct 2026.
-// Other airlines keep their SHA and integration guards.
-// Saudia safety is checked by scripts/checkSaudiaTransitArrival.mjs.
+// Saudia (065) TEMPORARILY RELOCKED by user on 25 Oct 2026.
+// Stable base: commit 33b75eec16698221b55a6ea1957788734a49f243
+// Baseline branch: lock/saudia-working-baseline-20261025
+// For a future SAL edge case: explicitly unlock the affected parser, write
+// dated AWB regression tests, verify a READY deployment, then update the
+// expected blob hash and relock. Do NOT disable other airline locks.
+// Saudia functional regression is checked by checkSaudiaTransitArrival.mjs.
 const locked = Object.freeze({
+  // Saudia (065) temporary verified baseline. All 6 actively used SAL
+  // modules are protected by exact Git blob hashes to prevent silent drift.
+  'lib/saudiaStrong.js':'7cdd23ed97b6bcbf24f2b0fe5572ade431b45473',
+  'lib/saudiaDirect.js':'cb39b401c2634dac681021299a328f36cdf6dbb5',
+  'lib/saudiaTransitGuard.js':'1a370687ad36bb80bebad085e7ae600fb8ff90f1',
+  'lib/saudiaSalPublic.js':'9c55a2fc495706ab8fc799800a0d29b48a1b316c',
+  'lib/saudiaSal.js':'3e6ee3646ae3b67833d3c379af2b85ffab999fda',
+  'lib/saudia.js':'db7739b0860ad49ac762fded8b82654e6c05ff31',
   // Air India (098) official Activity View parser, FOW and movement tracking.
   'lib/airIndia.js':'8345dc7ebd4fcf0f178d2214b2e272703340a5bf',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
@@ -65,6 +77,41 @@ for(const [label,fragment] of airIndiaRouteContract){
     changed=true;
   }
 }
+// Saudia is a shared /api/track integration, so protect only its 065 wiring.
+// Keep other airlines' routing and timings independently editable.
+const saudiaRouteContract=[
+  ['SAL direct adapter import',"import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';"],
+  ['SAL event guard import',"import { guardSaudiaFromLatestSal, enforceSaudiaArrivalEvidence } from '../../../lib/saudiaTransitGuard.js';"],
+  ['SAL 065 fast path',"const saudiaFastPath=mawb.startsWith('065-');"],
+  ['Dated Delhi flight schedule',"shipment=await guardSaudiaFromLatestSal(mawb,shipment,{flightSchedule:trackFlightScheduleFast});"],
+  ['Cargo arrival evidence stage gate',"shipment=enforceSaudiaArrivalEvidence(shipment);"],
+];
+for(const [label,fragment] of saudiaRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('TEMPORARILY LOCKED SAUDIA TRACKING CHANGED: '+label+'. Explicit user-approved update required.');
+    changed=true;
+  }
+}
+const saudiaCron=readFileSync('app/api/cron/refresh/route.js','utf8');
+if(!saudiaCron.includes('incoming=enforceSaudiaArrivalEvidence({...existing,...incoming});')){
+  console.error('TEMPORARILY LOCKED SAUDIA CRON CHANGED: RCS planned arrival must be cleared.');
+  changed=true;
+}
+const saudiaDashboard=readFileSync('app/DashboardClient.js','utf8');
+const saudiaDashboardContract=[
+  ['FOW estimated label',"return'ESTIMATED ARRIVAL • FOW';"],
+  ['DEP confirmed-flight label',"return'FLIGHT DEPARTED • CONFIRMED ETA';"],
+  ['Explicit SAL arrival evidence',"const raw=enforceSaudiaArrivalEvidence({...existing,...incoming});"],
+  ['Saved SAL arrival evidence',"enforceSaudiaArrivalEvidence(guardSaudiaConnectingFlightWithoutSal(savedRow))"],
+  ['MAN flight date not auto-promoted',"if(!/^(FOW|DEP)$/.test(String(part.sourceStatus||'').toUpperCase()))return null;"],
+];
+for(const [label,fragment] of saudiaDashboardContract){
+  if(!saudiaDashboard.includes(fragment)){
+    console.error('TEMPORARILY LOCKED SAUDIA DASHBOARD CHANGED: '+label);
+    changed=true;
+  }
+}
+
 const cathayRouteContract=[
   ["Cathay official adapter import","import { trackCathay } from '../../../lib/cathay.js';"],
   ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb);"],
@@ -228,4 +275,4 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   changed=true;
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229). Saudia (065) unlocked; functional regression tests remain.');
+console.log('Airline lock check passed: Saudia (065) temporarily LOCKED at 2026-10-25 working baseline; Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229) remain LOCKED.');
