@@ -633,7 +633,11 @@ function expandPartRows(list=[]){
       arrivalEstimate:p.arrivalEstimate===true||Boolean(saudiaEta),
       arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?'Matching Saudia flight/date planned ETA; IST, not actual arrival':''),
       status:p.status||row.status,
-      sourceStatus:prefix==='065'?(p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':p.arrivalIsActual===true?'ARR':row.sourceStatus):row.sourceStatus,
+      // Each Saudia physical part owns its own station and latest event. The
+      // master may currently be at JED while another part already arrived DEL.
+      airport:prefix==='065'?(p.arrivalIsActual===true?row.destination:(p.transitAirport||row.airport||'')):row.airport,
+      currentLocation:prefix==='065'?(p.arrivalIsActual===true?row.destination:(p.transitAirport||row.currentLocation||'')):row.currentLocation,
+      sourceStatus:prefix==='065'?(p.arrivalIsActual===true?'ARR':/^(ARR|DEP)$/.test(String(p.sourceStatus||'').toUpperCase())?String(p.sourceStatus).toUpperCase():p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':row.sourceStatus):row.sourceStatus,
       mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||saudiaEta||'')||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):''),
       mailSent:p.mailSent===true,
       mailUpdatedAt:p.mailUpdatedAt||'',
