@@ -57,6 +57,7 @@ export default function ImportProfitSheet(){
   const [message,setMessage]=useState('');
   const [search,setSearch]=useState('');
   const [clientFilter,setClientFilter]=useState('');
+  const [goodsFilter,setGoodsFilter]=useState('');
   const [rateSort,setRateSort]=useState('');
   const [lastLoaded,setLastLoaded]=useState('');
   useEffect(()=>{
@@ -98,9 +99,11 @@ export default function ImportProfitSheet(){
     finally{setSaving(previous=>({...previous,[key]:false}))}
   }
   const clientOptions=useMemo(()=>[...new Set(rows.map(r=>String(r.clientName||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
+  const goodsOptions=useMemo(()=>[...new Set(rows.map(r=>String((drafts[r.mawb]?.goodsCategory??r.goodsCategory)||'').trim().toUpperCase()).filter(Boolean))].sort(),[rows,drafts]);
   const filtered=useMemo(()=>{
     const results=rows.map(effective).filter(row=>
       (!clientFilter||String(row.clientName||'').trim()===clientFilter)&&
+      (!goodsFilter||String(row.goodsCategory||'').trim().toUpperCase()===goodsFilter)&&
       (!search||[row.mawb,row.clientName,row.goodsDescription].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
     );
     if(rateSort)results.sort((a,b)=>{
@@ -110,7 +113,7 @@ export default function ImportProfitSheet(){
       return rateSort==='asc'?aRate-bRate:bRate-aRate;
     });
     return results;
-  },[rows,drafts,search,clientFilter,rateSort]);
+  },[rows,drafts,search,clientFilter,goodsFilter,rateSort]);
   const totals=useMemo(()=>{
     let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
     for(const row of filtered){
@@ -152,8 +155,14 @@ export default function ImportProfitSheet(){
             <option value="">All Clients ({clientOptions.length})</option>
             {clientOptions.map(client=><option key={client} value={client}>{client}</option>)}
           </select>
+          <label htmlFor="import-profit-goods-filter" style={{fontSize:12,fontWeight:800}}>GOODS</label>
+          <select id="import-profit-goods-filter" aria-label="Filter Import Profit Sheet by Goods" value={goodsFilter} onChange={e=>setGoodsFilter(e.target.value)}
+            style={{padding:'11px 12px',minWidth:130,border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',fontWeight:700}}>
+            <option value="">All Goods</option>
+            {goodsOptions.map(goods=><option key={goods} value={goods}>{goods==='HH'?'HH':goods==='PROTEIN'?'Protein':goods==='CLOTHES'?'Clothes':goods}</option>)}
+          </select>
           <input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MAWB, client, goods" style={{padding:'11px 12px',minWidth:'min(260px,100%)',border:'1px solid #cbd5e1',borderRadius:8}}/>
-          {(clientFilter||search)&&<button type="button" onClick={()=>{setClientFilter('');setSearch('')}} style={{border:'1px solid #b8c6db',borderRadius:8,background:'#fff',padding:'11px'}}>CLEAR FILTERS</button>}
+          {(clientFilter||goodsFilter||search)&&<button type="button" onClick={()=>{setClientFilter('');setGoodsFilter('');setSearch('')}} style={{border:'1px solid #b8c6db',borderRadius:8,background:'#fff',padding:'11px'}}>CLEAR FILTERS</button>}
         </div>
         <small style={{color:'#64748b'}}>Updated: {lastLoaded||'—'} • Automatically checks Import every 2 minutes</small>
       </div>
@@ -241,7 +250,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only). Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected filters.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹16 × Total Weight • Goods Charge = HH ₹340/bag, Protein ₹3,000/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only). Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Blank amounts are excluded. Totals respect the selected Client, Goods and search filters.
       </p>
     </div>
   </main>;
