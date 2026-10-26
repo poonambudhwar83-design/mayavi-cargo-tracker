@@ -5,10 +5,13 @@ import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,ini
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
-// One shared width blueprint keeps saved values exactly beneath their respective headings.
-const LEDGER_WIDTHS=[92,184,126,110,138,136,132,125,160,165,145,120,202,161,176,133,132,151];
-const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,192)+(extra?142:0);
-const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS,...(extra?[142]:[]),192].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
+// Each data/edit column and its matching header share the exact same width.
+// Enough room for controls prevents a field from covering the neighbouring column.
+const LEDGER_WIDTHS=[130,190,145,135,146,155,143,148,177,181,188,184,220,177,192,150,148,176];
+const EXTRA_COST_WIDTH=152;
+const TOTAL_JEPO_WIDTH=206;
+const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
+const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS,...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',
@@ -276,7 +279,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
-    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch = Amount − Amount Paid to JEPO (auto-calculated). Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics. For Ghee, JEPO Extra Cost = No. of Bottles × ₹250, and the remainder goes to Branch; for other mixed-household commodities the full Extra Cost goes to JEPO.</p>
+    <p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>
       <div className={styles.scroller}><table className={styles.table} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
