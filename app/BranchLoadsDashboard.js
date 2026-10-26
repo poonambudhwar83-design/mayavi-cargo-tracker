@@ -12,8 +12,9 @@ const fresh=(branch='JIND')=>({
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
-const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'short',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
+const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'long',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
 const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
+const employeeName=value=>String(value||'').split(/[._-]/).map(v=>v? v[0].toUpperCase()+v.slice(1):'').join(' ')||'—';
 const fmt=(v)=>v===null?'—':'₹'+money(v);
 const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
 
@@ -31,7 +32,7 @@ function FieldChoice({name,list,value,onChange}){
 
 export default function BranchLoadsDashboard({currentUser}){
   const isAdmin=currentUser?.role==='admin';
-  const userBranch=isAdmin?'':String(currentUser?.username||'').toUpperCase();
+  const userBranch=isAdmin?'':String(currentUser?.branchScope||currentUser?.username||'').toUpperCase();
   const [filter,setFilter]=useState(isAdmin?'ALL':userBranch);
   const [rows,setRows]=useState([]);
   const [loaded,setLoaded]=useState(false);
@@ -160,9 +161,9 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   function downloadCsv(){
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',r.status||'PENDING']);
-    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','']);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status','Entered By','Last Edited By'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy)]);
+    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','','','']);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
@@ -186,6 +187,8 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>set('commodity',v)}/></td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
+      <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
+      <td className={styles.audit}>{editing==='new'?'—':currentUser?.displayName||employeeName(currentUser?.username)}</td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
     </tr>;
   }
@@ -210,12 +213,14 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
+    <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
+    <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button><button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button></td>
   ];
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
-        <p>Daily entries directly in the columns • Automatically calculated totals • Separate Delivered sheet</p></div>
+        <p>Daily Load Entry above • Employee attribution • Automatically calculated totals • Separate Delivered sheet</p></div>
     </header>
     <div className={styles.metrics}>
       <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>
@@ -225,26 +230,36 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
+    <form onSubmit={save}>
+      {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
+        <div className={styles.loadEntryTitle}>
+          <div><h2>Load Entry</h2><p>Enter today's load here. Change date for an earlier entry. Day appears automatically.</p></div>
+          <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
+        </div>
+        <div className={styles.scroller}><table className={styles.table}>
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>Paid to JEPO (₹)</th><th>Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th></tr></thead>
+          <tbody>{entryRow()}</tbody>
+        </table></div>
+      </section>}
     <nav className={styles.sheetTabs} aria-label="Load sheet">
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
     <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields.</p>
-    <form onSubmit={save}>
       <div className={styles.scroller}><table className={styles.table}>
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Actions</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>
         </tr></thead>
         <tbody>
-          {sheet==='ACTIVE'&&editing==='new'&&entryRow()}
+          {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={15}>Loading branch entries…</td></tr>}
-          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={15} className={styles.empty}>No saved loads in this sheet. Enter a new load in the Active table.</td></tr>}
+          {!loaded&&<tr><td colSpan={17}>Loading branch entries…</td></tr>}
+          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={17} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={6}>—</td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td></tr></tfoot>
       </table></div>
     </form>
     <footer className={styles.foot}>
