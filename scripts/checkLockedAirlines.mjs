@@ -1,7 +1,7 @@
 // Air India (098) official Activity View integration locked 2026-10-17.
 // Working-carrier freeze requested 2026-10-08.
-// Cathay Pacific (160) relocked 2026-10-24 after owner confirmed all details arrived.
-// Booking Status panel expansion is retained as the verified working CX version.
+// Cathay Pacific (160): user-approved exact ZIP restore on 2026-10-26.
+// Restore the original ZIP Booking Status/browser fallback and lock its exact source hashes.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -26,8 +26,8 @@ const locked = Object.freeze({
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
-  'lib/cathay.js':'4d7019c1d75cab806c1adeb0172272f56bdf083c',
-  'lib/cathay-browser-fallback.js':'af19b774dc7dd01b850f211242b11ed38e03c030',
+  'lib/cathay.js':'c7a87ebde14d5c7ca184f5b0e6bfdeb95da63f1b',
+  'lib/cathay-browser-fallback.js':'262b552e22ef44b425a8a7668ab7147059536458',
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
