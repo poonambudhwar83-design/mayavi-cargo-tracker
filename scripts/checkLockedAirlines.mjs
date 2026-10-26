@@ -29,6 +29,10 @@ const locked = Object.freeze({
   'lib/cathay.js':'c7a87ebde14d5c7ca184f5b0e6bfdeb95da63f1b',
   'lib/cathay-browser-fallback.js':'262b552e22ef44b425a8a7668ab7147059536458',
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
+  // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
+  'lib/cathayFinalArrival.js':'dd5df361b50618a6788e0768fffb3dc0b1d19831',
+  // Keep the production 5-minute Cathay-only auto-refresh implementation stable.
+  'app/api/cron/cathay/route.js':'51eacdcf506445e205f00e8a1556ca694df56595',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
@@ -107,7 +111,9 @@ const cathayRouteContract=[
   ["Cathay shared persistence","airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath"],
   ["Cathay saved-row eligibility","mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')"],
   ["Cathay verified flight/ETA retained before API response","shipment=preserveCathayFlight(previousCx,shipment,mawb);"],
-  ["Cathay verified flight/ETA retained during DB save","tracked=preserveCathayFlight(existingCx?.[0]?.data||{},tracked,mawb);"]
+  ["CX current official response must pass final-arrival status guard","shipment=guardCathayFinalArrival(shipment);"],
+  ["Cathay verified flight/ETA retained during DB save","tracked=preserveCathayFlight(existingCx?.[0]?.data||{},tracked,mawb);"],
+  ["Cathay final-arrival status guarded before DB persistence","tracked=guardCathayFinalArrival(tracked);"]
 ];
 for(const [label,fragment] of cathayRouteContract){
   if(!sharedRoute.includes(fragment)){
@@ -119,6 +125,10 @@ for(const [label,fragment] of cathayRouteContract){
 // the main /api/track response. These are shared modules, so enforce only the
 // CX-specific contracts instead of locking all airline dashboards or endpoints.
 const cxShipmentsRoute=readFileSync('app/api/shipments/route.js','utf8');
+if(!cxShipmentsRoute.includes("if(incomingAwb.startsWith('160-'))rowForSave=guardCathayFinalArrival(rowForSave);")){
+  console.error('TEMPORARILY LOCKED CATHAY STATUS SAVE CHANGED: Future arrival cannot be shown as ARRIVED.');
+  changed=true;
+}
 if(!cxShipmentsRoute.includes("rowForSave=preserveCathayFlight(existingRow?.data||{},rowForSave,incomingAwb);")){
   console.error('LOCKED CATHAY SHARED SAVE CONTRACT CHANGED: CX 160 must retain saved flight and arrival.');
   changed=true;
@@ -246,6 +256,7 @@ for(const [label,fragment] of ethiopianDashboardContract){
 // browser row which can be blank after a partially hydrated CX refresh.
 const cathayDashboardContract=[
   ['CX startup DB hydration',"const serverAuthoritative=key.startsWith('071')||key.startsWith('098')||key.startsWith('160')"],
+  ['CX final destination status protection',"Object.assign(merged,guardCathayFinalArrival(merged));"],
   ['CX one-minute server sync',"out.push(key.startsWith('071')||key.startsWith('098')||key.startsWith('160')"]
 ];
 for(const [label,fragment] of cathayDashboardContract){
@@ -253,6 +264,12 @@ for(const [label,fragment] of cathayDashboardContract){
     console.error('LOCKED CATHAY DISPLAY CONTRACT CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
+}
+// Cathay 160 automatic refresh remains every five minutes, even with the app closed.
+if(!Array.isArray(config.crons)||!config.crons.some(item=>
+  item.path==='/api/cron/cathay'&&item.schedule==='*/5 * * * *')){
+  console.error('TEMPORARILY LOCKED CATHAY 5-MINUTE BACKGROUND REFRESH CHANGED.');
+  changed=true;
 }
 // The live ET cron must continue independently of other airlines; only the
 // ET-specific cadence is guarded (other schedules may be changed normally).
@@ -263,4 +280,4 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   changed=true;
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Saudia (065) temporary hash lock removed; SAL regression and arrival-evidence checks remain. Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229) remain LOCKED.');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including final-arrival guard and 5-min cron), Emirates (176), and Kuwait (229) are LOCKED; Saudia (065) remains regression-guarded.');
