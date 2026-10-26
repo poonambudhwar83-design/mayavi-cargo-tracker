@@ -355,7 +355,7 @@ export default function BranchLoadsDashboard({currentUser}){
       </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
       <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button>{saveError&&<p role="alert" className={styles.inlineSaveError}>{saveError}</p>}</td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
-        <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
+        <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to Branch'}</small></>:'—'}</td>}
       <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
     </tr>;
   }
