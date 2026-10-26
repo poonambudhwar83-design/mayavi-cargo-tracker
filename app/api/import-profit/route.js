@@ -61,13 +61,14 @@ function totalBags(record={}){
 }
 function normalizeGoods(value=''){
   const category=String(value||'').trim().toUpperCase();
-  return ['HH','PROTEIN','CLOTHES'].includes(category)?category:'';
+  return ['HH','PROTEIN','CLOTHES','BATTERY'].includes(category)?category:'';
 }
 function inferGoods(value=''){
   const raw=String(value||'').toUpperCase();
   if(/\bPROTEIN\b|\bWHEY\b/.test(raw))return 'PROTEIN';
   if(/\bCLOTH(?:ES|ING)?\b|\bGARMENTS?\b|\bAPPAREL\b/.test(raw))return 'CLOTHES';
   if(/\bHH\b|\bHOUSE\s*HOLD\b|\bHOUSEHOLD\b/.test(raw))return 'HH';
+  if(/\bBATTER(?:Y|IES)\b/.test(raw))return 'BATTERY';
   return '';
 }
 function numberField(value){
@@ -85,9 +86,11 @@ async function ensureStore(sql){
     rate NUMERIC(16,4),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by TEXT NOT NULL DEFAULT '',
-    goods_category TEXT
+    goods_category TEXT,
+    goods_charge_override NUMERIC(16,2)
   )`;
   await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS goods_category TEXT`;
+  await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS goods_charge_override NUMERIC(16,2)`;
 }
 export async function GET(request){
   if(!adminOnly(request))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
@@ -100,7 +103,7 @@ export async function GET(request){
       sql`SELECT awb,data FROM mayavi_shipments
           WHERE COALESCE(data->>'shipmentType','IMPORT')='IMPORT'
           ORDER BY updated_at DESC`,
-      sql`SELECT awb,total_duty,rate,goods_category FROM mayavi_import_profit`
+      sql`SELECT awb,total_duty,rate,goods_category,goods_charge_override FROM mayavi_import_profit`
     ]);
     const saved=new Map(profit.map(row=>[awbDigits(row.awb),row]));
     const seen=new Set();
@@ -132,6 +135,7 @@ export async function GET(request){
         weight:totalWeight(data),
         totalDuty:financial.total_duty===null||financial.total_duty===undefined?'':String(financial.total_duty),
         rate:financial.rate===null||financial.rate===undefined?'':String(financial.rate),
+        goodsChargeOverride:financial.goods_charge_override===null||financial.goods_charge_override===undefined?'':String(financial.goods_charge_override),
         goodsDescription:String(data.goodsDescription||data.goods_description||''),
         goodsCategory:financial.goods_category===null||financial.goods_category===undefined
           ?inferGoods(data.goodsDescription||data.goods_description||'')
@@ -152,11 +156,11 @@ export async function PATCH(request){
     const body=await request.json();
     const awb=awbDigits(body?.mawb);
     const field=body?.field;
-    if(!awb||!['totalDuty','rate','goodsCategory'].includes(field))
+    if(!awb||!['totalDuty','rate','goodsCategory','goodsChargeOverride'].includes(field))
       return Response.json({ok:false,error:'Invalid profit-sheet update.'},{status:400});
     const value=field==='goodsCategory'?normalizeGoods(body?.value):numberField(body?.value);
     if(field==='goodsCategory'&&String(body?.value||'').trim()&&!value)
-      return Response.json({ok:false,error:'Choose HH, Protein, or Clothes.'},{status:400});
+      return Response.json({ok:false,error:'Choose HH, Protein, Clothes, or Battery.'},{status:400});
     const sql=sqlClient();
     await ensureStore(sql);
     const [shipment]=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
@@ -171,6 +175,11 @@ export async function PATCH(request){
       await sql`INSERT INTO mayavi_import_profit (awb,rate,updated_by)
         VALUES (${awb},${value},${admin.username})
         ON CONFLICT (awb) DO UPDATE SET rate=EXCLUDED.rate,
+        updated_by=EXCLUDED.updated_by,updated_at=now()`;
+    }else if(field==='goodsChargeOverride'){
+      await sql`INSERT INTO mayavi_import_profit (awb,goods_charge_override,updated_by)
+        VALUES (${awb},${value},${admin.username})
+        ON CONFLICT (awb) DO UPDATE SET goods_charge_override=EXCLUDED.goods_charge_override,
         updated_by=EXCLUDED.updated_by,updated_at=now()`;
     }else{
       await sql`INSERT INTO mayavi_import_profit (awb,goods_category,updated_by)
