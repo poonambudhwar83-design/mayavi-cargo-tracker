@@ -5,13 +5,15 @@ import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,ini
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
-// Each data/edit column and its matching header share the exact same width.
-// Enough room for controls prevents a field from covering the neighbouring column.
-const LEDGER_WIDTHS=[130,190,145,135,146,155,143,148,177,181,188,184,220,177,192,150,148,176];
-const EXTRA_COST_WIDTH=152;
-const TOTAL_JEPO_WIDTH=206;
-const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
-const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS,...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
+// Saved entries can be denser than the editable form.  Keeping two width
+// profiles makes the ledger compact without crowding Date, Rate or the selects.
+// Every header and row within its table still uses the same colgroup.
+const ENTRY_WIDTHS=[116,172,124,114,132,132,120,124,150,155,164,155,207,160,177,126,128,147];
+const SAVED_WIDTHS=[108,165,115,106,127,126,116,118,144,151,141,129,190,155,170,117,121,137];
+const EXTRA_COST_WIDTH=140;
+const TOTAL_JEPO_WIDTH=186;
+const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
+const ledgerColumns=(extra,editable=false)=><colgroup>{[...(editable?ENTRY_WIDTHS:SAVED_WIDTHS),...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',
@@ -268,8 +270,8 @@ export default function BranchLoadsDashboard({currentUser}){
           <div><h2>Load Entry</h2><p>Enter today's load here. Change date for an earlier entry. Day appears automatically.</p></div>
           <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
         </div>
-        <div className={styles.scroller}><table className={styles.table} style={{width:ledgerWidth(requiresExtraCost(draft.commodity))+'px',minWidth:'100%'}}>
-          {ledgerColumns(requiresExtraCost(draft.commodity))}
+        <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
+          {ledgerColumns(requiresExtraCost(draft.commodity),true)}
           <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
@@ -280,7 +282,7 @@ export default function BranchLoadsDashboard({currentUser}){
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
     <p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>
-      <div className={styles.scroller}><table className={styles.table} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
+      <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
