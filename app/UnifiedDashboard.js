@@ -6,6 +6,7 @@ import AdminNotesDashboard from './AdminNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportProfitSheet from './ImportProfitSheet.js';
 import ExportProfitSheet from './ExportProfitSheet.js';
+import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 
 const FALLBACK_USERS=[
   {username:'admin',displayName:'Admin',role:'admin',passwordSet:false},
@@ -15,7 +16,9 @@ const FALLBACK_USERS=[
   {username:'mandeep',displayName:'Mandeep',role:'employee',passwordSet:false},
   {username:'parvesh',displayName:'Parvesh',role:'employee',passwordSet:false},
   {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false},
-  {username:'sonu',displayName:'Sonu',role:'employee',passwordSet:false}
+  {username:'sonu',displayName:'Sonu',role:'employee',passwordSet:false},
+  {username:'jind',displayName:'Jind',role:'employee',passwordSet:false},
+  {username:'karnal',displayName:'Karnal',role:'employee',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
 
@@ -75,6 +78,7 @@ export default function UnifiedDashboard(){
           // DashboardClient paints it immediately while the server list loads.
           // An explicit new login still clears any previous user's local cache.
           setSession(data.session);
+          if(['jind','karnal'].includes(String(data.session.username||'').toLowerCase()))setSelectedDashboard('BRANCH_LOADS');
         }
         if(!data.ok&&data.error)setNote(data.error);
       }catch{if(active)setNote('Login service is temporarily unavailable.')}finally{if(active)setLoading(false)}
@@ -90,7 +94,7 @@ export default function UnifiedDashboard(){
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
       const data=await res.json();
       if(!data.ok)throw new Error(data.error||'Login failed.');
-      clearStaleShipmentBackup();setSession(data.session);setPassword('');setShowPassword(false);
+      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(['jind','karnal'].includes(String(data.session.username||'').toLowerCase())?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
       await loadUsers().catch(()=>{});
     }catch(e){setNote(e.message||'Login failed.')}finally{setBusy(false)}
   }
@@ -145,19 +149,21 @@ export default function UnifiedDashboard(){
   }
 
   const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
+  const branchLogin=Boolean(session&&session.role!=='admin'&&['jind','karnal'].includes(String(session.username||'').toLowerCase()));
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
     <div style={topAccountBar}>
       <SaudiaAssist/>
-      {selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
+      {!branchLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
-      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
+      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
-      {selectedDashboard!=='AIR_CARGO'&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
+      {(branchLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
-    {session.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'?<ImportProfitSheet/>:session.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'?<ExportProfitSheet/>:session.role==='admin'&&selectedDashboard==='NOTES'?<AdminNotesDashboard currentUser={session}/>:speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null} onOpenAdminNotes={session.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>}
+    {(branchLogin||(session.role==='admin'&&selectedDashboard==='BRANCH_LOADS'))?<BranchLoadsDashboard currentUser={session}/>:session.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'?<ImportProfitSheet/>:session.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'?<ExportProfitSheet/>:session.role==='admin'&&selectedDashboard==='NOTES'?<AdminNotesDashboard currentUser={session}/>:speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null} onOpenAdminNotes={session.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>

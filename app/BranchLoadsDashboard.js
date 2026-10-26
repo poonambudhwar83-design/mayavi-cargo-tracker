@@ -1,0 +1,216 @@
+'use client';
+
+import {useEffect,useMemo,useState} from 'react';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,amounts} from '../lib/branchLoads.js';
+import styles from './BranchLoadsDashboard.module.css';
+
+const API='/api/branch-loads';
+const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
+const fresh=(branch='JIND')=>({
+  branch,date:todayIST(),weight:'',rate:'',received:'',paidToJepo:'',paidToBranch:'',
+  destination:'',service:'',commodity:''
+});
+const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
+const showDate=value=>value?String(value).split('-').reverse().join('/'):'—';
+const fmt=(v)=>v===null?'—':'₹'+money(v);
+const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
+
+function FieldChoice({name,list,value,onChange}){
+  const selected=list.includes(value)?value:value?'__other__':'';
+  return <div className={styles.choice}>
+    <select aria-label={name} required value={selected} onChange={e=>onChange(e.target.value==='__other__'?'__other__':e.target.value)}>
+      <option value="">Select {name.toLowerCase()}</option>
+      {list.filter(x=>x!=='Other').map(x=><option key={x} value={x}>{x}</option>)}
+      <option value="__other__">Other / Enter manually</option>
+    </select>
+    {selected==='__other__'&&<input aria-label={'Enter '+name} required autoComplete="off" placeholder={'Type '+name.toLowerCase()} maxLength={120} value={value==='__other__'?'':value} onChange={e=>onChange(e.target.value||'__other__')}/>}
+  </div>;
+}
+
+export default function BranchLoadsDashboard({currentUser}){
+  const isAdmin=currentUser?.role==='admin';
+  const userBranch=isAdmin?'':String(currentUser?.username||'').toUpperCase();
+  const [filter,setFilter]=useState(isAdmin?'ALL':userBranch);
+  const [rows,setRows]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState('');
+  const [editing,setEditing]=useState('');
+  const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
+  const [search,setSearch]=useState('');
+  const [month,setMonth]=useState('');
+  const [lastUpdated,setLastUpdated]=useState('');
+
+  async function load(){
+    try{
+      const res=await fetch(API,{credentials:'include',cache:'no-store'});
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||'Unable to load branch records.');
+      setRows(data.rows||[]);
+      setLastUpdated(new Date().toLocaleTimeString('en-IN'));
+      setMessage(m=>m.startsWith('Unable')?'':m);
+    }catch(e){setMessage('Unable to load records: '+(e?.message||e));}
+    finally{setLoaded(true);}
+  }
+  useEffect(()=>{
+    void load();
+    const onFocus=()=>{if(document.visibilityState==='visible')void load()};
+    const timer=setInterval(onFocus,60000);
+    document.addEventListener('visibilitychange',onFocus);
+    window.addEventListener('focus',onFocus);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onFocus);window.removeEventListener('focus',onFocus);};
+  },[]);
+
+  const shown=useMemo(()=>rows.filter(r=>
+    (filter==='ALL'||r.branch===filter)&&
+    (!month||String(r.date||'').startsWith(month))&&
+    (!search||[r.destination,r.service,r.commodity,r.branch,r.date].join(' ').toLowerCase().includes(search.toLowerCase()))
+  ),[rows,filter,month,search]);
+  const totals=useMemo(()=>shown.reduce((t,r)=>({
+    weight:t.weight+Number(r.weight||0),
+    amount:t.amount+Number(r.amount||0),
+    received:t.received+Number(r.received||0),
+    balance:t.balance+Number(r.balance||0),
+    paidToJepo:t.paidToJepo+Number(r.paidToJepo||0),
+    paidToBranch:t.paidToBranch+Number(r.paidToBranch||0)
+  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0}),[shown]);
+  const preview=amounts(draft.weight,draft.rate,draft.received);
+  const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
+
+  function add(){
+    setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
+    setEditing('new');setMessage('');
+  }
+  function edit(row){
+    setEditing(row.id);
+    setDraft({
+      branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
+      received:row.received||'',paidToJepo:row.paidToJepo||'',paidToBranch:row.paidToBranch||'',
+      destination:row.destination||'',service:row.service||'',commodity:row.commodity||''
+    });
+    setMessage('');
+  }
+  function cancel(){setEditing('');setMessage('');}
+  async function save(event){
+    event.preventDefault();
+    if(busy||!editing)return;
+    if(['destination','service','commodity'].some(k=>!draft[k]||draft[k]==='__other__')){
+      setMessage('Please select or type Destination, Service and Commodity.');return;
+    }
+    if(preview===null){setMessage('Enter a positive Load Weight and valid Rate / Received amounts.');return;}
+    const currentId=editing;
+    setBusy(true);setMessage('');
+    try{
+      const res=await fetch(API,{method:currentId==='new'?'POST':'PATCH',
+        headers:{'content-type':'application/json'},credentials:'include',
+        body:JSON.stringify({...draft,...(currentId==='new'?{}:{id:currentId})})
+      });
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
+      setRows(prev=>currentId==='new'?[data.row,...prev]:prev.map(r=>r.id===currentId?data.row:r));
+      setEditing('');setDraft(fresh(userBranch||'JIND'));
+      setMessage('Entry saved. Amount and Balance calculated automatically.');
+    }catch(e){setMessage(e?.message||'Could not save entry.');}
+    finally{setBusy(false);}
+  }
+  async function remove(row){
+    if(!window.confirm('Delete '+row.branch+' entry dated '+showDate(row.date)+'?'))return;
+    setBusy(true);setMessage('');
+    try{
+      const res=await fetch(API+'?id='+encodeURIComponent(row.id),{method:'DELETE',credentials:'include'});
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||'Delete failed.');
+      setRows(p=>p.filter(r=>r.id!==row.id));
+      if(editing===row.id)setEditing('');
+      setMessage('Entry deleted.');
+    }catch(e){setMessage(e?.message||'Unable to delete.');}
+    finally{setBusy(false);}
+  }
+  function downloadCsv(){
+    const labels=['Branch','Date','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity'];
+    const data=shown.map(r=>[r.branch,r.date,r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity]);
+    data.push(['TOTAL','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','']);
+    const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const anchor=document.createElement('a');
+    anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-loads'+(month?'-'+month:'')+'.csv';
+    anchor.click();URL.revokeObjectURL(url);
+  }
+  const input={type:'number',min:'0',step:'any',inputMode:'decimal'};
+  function entryRow(){
+    return <tr className={styles.editRow}>
+      <td>{isAdmin?<select aria-label="Branch" value={draft.branch} onChange={e=>set('branch',e.target.value)}>{BRANCHES.map(x=><option key={x}>{x}</option>)}</select>:<b>{userBranch}</b>}</td>
+      <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/></td>
+      <td><input aria-label="Load received kilograms" {...input} required value={draft.weight} placeholder="Weight kg" onChange={e=>set('weight',e.target.value)}/></td>
+      <td><input aria-label="Rate per kg" {...input} required value={draft.rate} placeholder="₹/kg" onChange={e=>set('rate',e.target.value)}/></td>
+      <td className={styles.computed}>{fmt(preview?.amount??null)}</td>
+      <td><input aria-label="Received payment" {...input} value={draft.received} placeholder="₹ received" onChange={e=>set('received',e.target.value)}/></td>
+      <td className={styles.computed}>{fmt(preview?.balance??null)}</td>
+      <td><input aria-label="Amount paid to JEPO" {...input} value={draft.paidToJepo} placeholder="₹ JEPO" onChange={e=>set('paidToJepo',e.target.value)}/></td>
+      <td><input aria-label="Amount paid to Branch" {...input} value={draft.paidToBranch} placeholder="₹ Branch" onChange={e=>set('paidToBranch',e.target.value)}/></td>
+      <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
+      <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
+      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>set('commodity',v)}/></td>
+      <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
+    </tr>;
+  }
+  function entryRowCells(){
+    // Reuse the complete edit row cell layout for existing entries.
+    return entryRow().props.children;
+  }
+  const dataCells=record=>[
+    <td key="branch"><span className={styles.branchTag}>{record.branch}</span></td>,
+    <td key="date">{showDate(record.date)}</td>,
+    <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
+    <td key="rate" className={styles.number}>{money(record.rate)}</td>,
+    <td key="amount" className={styles.number}><b>{money(record.amount)}</b></td>,
+    <td key="received" className={styles.number}>{money(record.received)}</td>,
+    <td key="balance" className={styles.number}><strong className={Number(record.balance)>0?styles.due:styles.clear}>{money(record.balance)}</strong></td>,
+    <td key="jepo" className={styles.number}>{money(record.paidToJepo)}</td>,
+    <td key="branchpaid" className={styles.number}>{money(record.paidToBranch)}</td>,
+    <td key="destination">{record.destination}</td>,
+    <td key="service">{record.service}</td>,
+    <td key="commodity">{record.commodity}</td>,
+    <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button><button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button></td>
+  ];
+  return <main className={styles.page}>
+    <header className={styles.heading}>
+      <div><small>MAYAVI CARGO • BRANCH REGISTER</small><h1>Jind &amp; Karnal — Load &amp; Payments</h1>
+        <p>{isAdmin?'Admin can view and manage both branches.':'Your branch entries are private to your login.'} All entries are stored in shared Mayavi.</p></div>
+      <button type="button" className={styles.refresh} onClick={()=>void load()}>Refresh Data</button>
+    </header>
+    <section className={styles.controls}>
+      <div><label>Branch</label><select disabled={!isAdmin} value={filter} onChange={e=>setFilter(e.target.value)}>
+        {isAdmin&&<option value="ALL">All Branches</option>}
+        {(isAdmin?BRANCHES:[userBranch]).map(x=><option key={x}>{x}</option>)}</select></div>
+      <div><label>Month (optional)</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
+      <div><label>Search</label><input placeholder="Destination, commodity, service…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      <button type="button" className={styles.primary} onClick={add} disabled={busy||editing==='new'}>+ Add Load Entry</button>
+      <button type="button" className={styles.secondary} disabled={!shown.length} onClick={downloadCsv}>Download Excel CSV</button>
+    </section>
+    <div className={styles.metrics}>
+      <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>
+      <div><span>Amount</span><strong>{fmt(totals.amount)}</strong></div>
+      <div><span>Received</span><strong>{fmt(totals.received)}</strong></div>
+      <div><span>Balance</span><strong>{fmt(totals.balance)}</strong></div>
+      <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
+      <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
+    </div>
+    {message&&<div className={styles.message} role="status">{message}</div>}
+    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields.</p>
+    <form onSubmit={save}>
+      <div className={styles.scroller}><table className={styles.table}>
+        <thead><tr><th>Branch</th><th>Date</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>Actions</th></tr></thead>
+        <tbody>
+          {editing==='new'&&entryRow()}
+          {shown.map(row=>editing===row.id?<tr key={row.id}>{entryRowCells()}</tr>:<tr key={row.id}>{dataCells(row)}</tr>)}
+          {!loaded&&<tr><td colSpan={13}>Loading branch entries…</td></tr>}
+          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={13} className={styles.empty}>No entries yet. Select “Add Load Entry” to begin.</td></tr>}
+        </tbody>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={4}>—</td></tr></tfoot>
+      </table></div>
+    </form>
+    <footer className={styles.foot}>Only the selected branch can view its entries. Admin can see both. {lastUpdated&&'Last synced: '+lastUpdated}</footer>
+  </main>;
+}
