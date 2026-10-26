@@ -13,5 +13,6 @@ assert.equal(decimal('1.234',2),null);
 assert.ok(DESTINATIONS.includes('UK')&&DESTINATIONS.includes('USA')&&DESTINATIONS.includes('Australia'));
 assert.ok(COMMODITIES.includes('Protein')&&COMMODITIES.includes('Clothes'));
 assert.ok(SERVICES.includes('FedEx')&&SERVICES.includes('Aramex')&&SERVICES.includes('DHL')&&SERVICES.includes('Self'));
-assert.deepEqual(LOAD_STATUSES,['PENDING','IN_TRANSIT','DISPATCHED','DELIVERED']);
+assert.deepEqual(LOAD_STATUSES,['AT_JIND_OFFICE','AT_KARNAL_OFFICE','AT_JEPO_OFFICE','DISPATCHED','IN_TRANSIT','DELIVERED']);
+assert.ok(SERVICES.includes('TPL')&&SERVICES.includes('KCC'));
 console.log('Jind/Karnal daily load, courier services, and delivery status validation passed.');
