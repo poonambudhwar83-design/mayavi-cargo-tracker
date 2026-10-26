@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,jepoAmount,branchPayment,branchFromSavedAmounts} from '../../../lib/branchLoads.js';
+import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,requiresBottleCount,parseBottleCount,allocateExtraCost,jepoAmount,branchPayment,totalBranchForLoad} from '../../../lib/branchLoads.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -40,6 +40,7 @@ async function ensure(sql){
     destination TEXT NOT NULL,
     service TEXT NOT NULL DEFAULT '',
     commodity TEXT NOT NULL DEFAULT '',
+    bottle_count INTEGER CHECK(bottle_count BETWEEN 1 AND 10000),
     tracking_no TEXT NOT NULL DEFAULT '',
     delivery_status TEXT NOT NULL DEFAULT 'PENDING',
     created_by TEXT NOT NULL DEFAULT '',
@@ -50,6 +51,7 @@ async function ensure(sql){
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS tracking_no TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'PENDING'`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(18,2) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS bottle_count INTEGER`;
   // NULL denotes older financial records: show an inferred rate while retaining
   // their original JEPO amount until explicitly edited and saved.
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_rate NUMERIC(15,4)`;
@@ -63,10 +65,14 @@ function parse(body,auth){
   const received=decimal(body.received,2);
   const jepoRate=decimal(body.jepoRate,4,true);
   const paidToJepo=jepoAmount(weight,body.jepoRate);
-  const paidToBranch=branchPayment(weight,rate,body.jepoRate);
+  const basePaidToBranch=branchPayment(weight,rate,body.jepoRate);
   const destination=textField(body.destination,100);
   const service=textField(body.service,120),commodity=textField(body.commodity,120);
   const extraCost=requiresExtraCost(commodity)?decimal(body.extraCost,2):0;
+  const bottleCount=requiresBottleCount(commodity)?parseBottleCount(body.bottleCount):null;
+  const extraAllocation=extraCost===null?null:allocateExtraCost(commodity,extraCost,bottleCount);
+  const paidToBranch=basePaidToBranch===null||extraAllocation===null?null:
+    Math.round((basePaidToBranch+extraAllocation.toBranch+Number.EPSILON)*100)/100;
   const trackingNo=textField(body.trackingNo,100);
   const status=textField(body.status||initialBranchStatus(branch),30).toUpperCase();
   if(!branch)return {error:'Select Jind or Karnal.'};
@@ -74,6 +80,10 @@ function parse(body,auth){
   if(weight===null||weight<=0)return {error:'Load received must be greater than 0 kg (up to 3 decimals).'};
   if(rate===null)return {error:'Enter a valid rate (up to 4 decimals).'};
   if(jepoRate===null)return {error:'Enter a valid JEPO Rate per kg (up to 4 decimals).'};
+  if(requiresBottleCount(commodity)&&bottleCount===null)return {error:'Enter No. of Bottles (whole number 1–10000) for Household and Ghee.'};
+  if(extraCost===null)return {error:'Extra Cost must be a valid non-negative amount (up to 2 decimals).'};
+  if(requiresBottleCount(commodity)&&extraCost<bottleCount*250)
+    return {error:'For Ghee, Extra Cost must cover bottles × ₹250; the remaining Extra Cost goes to the branch.'};
   if([received,paidToJepo,paidToBranch].some(v=>v===null))return {error:'Payments must be valid amounts (up to 2 decimals).'};
   if(paidToBranch<0)return {error:'JEPO Rate is higher than the selling Rate; Paid to Branch cannot be negative.'};
   if(!destination)return {error:'Select or enter destination country.'};
@@ -81,7 +91,7 @@ function parse(body,auth){
   if(!commodity)return {error:'Select or enter commodity.'};
   if(extraCost===null)return {error:'Extra Cost must be a valid non-negative amount (up to 2 decimals).'};
   if(!LOAD_STATUSES.includes(status))return {error:'Select a valid shipment status.'};
-  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,trackingNo,status}};
+  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,bottleCount,trackingNo,status}};
 }
 function display(r){return {
   id:r.id,branch:r.branch,date:r.record_date,
@@ -95,15 +105,16 @@ function display(r){return {
   // Display current formula for old and new shipments; older stored branch
   // payout values remain untouched in Neon for audit until an explicit edit.
   paidToJepo:String(r.paid_to_jepo),
-  paidToBranch:String(branchFromSavedAmounts(r.amount,r.paid_to_jepo)??0),
+  paidToBranch:String(totalBranchForLoad(r.amount,r.paid_to_jepo,r.commodity,r.extra_cost,r.bottle_count,{legacy:true})??0),
   extraCost:String(r.extra_cost||0),
   destination:r.destination,service:r.service,commodity:r.commodity,
+  bottleCount:r.bottle_count===null||r.bottle_count===undefined?null:Number(r.bottle_count),
   trackingNo:r.tracking_no||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
 };}
 async function one(sql,id){
   const rows=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,tracking_no,delivery_status,created_by,updated_by,updated_at
+    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
     FROM mayavi_branch_loads WHERE id=${id} LIMIT 1`;
   return rows[0]?display(rows[0]):null;
 }
@@ -114,10 +125,10 @@ export async function GET(request){
     await ensure(sql);
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,tracking_no,delivery_status,created_by,updated_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
         FROM mayavi_branch_loads ORDER BY record_date DESC, created_at DESC LIMIT 10000`
       :await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,tracking_no,delivery_status,created_by,updated_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
         FROM mayavi_branch_loads WHERE branch=${auth.branch} ORDER BY record_date DESC, created_at DESC LIMIT 10000`;
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
@@ -131,9 +142,9 @@ export async function POST(request){
     await ensure(sql);
     const id=randomUUID();
     await sql`INSERT INTO mayavi_branch_loads
-      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,tracking_no,delivery_status,created_by,updated_by)
+      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by)
       VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.trackingNo},${entry.status},${auth.username},${auth.username})`;
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username})`;
     return json({ok:true,row:await one(sql,id)},201);
   }catch(e){return json({ok:false,error:e?.message||'Save failed.'},503);}
 }
@@ -161,11 +172,11 @@ export async function PATCH(request){
     const updated=auth.admin
       ?await sql`UPDATE mayavi_branch_loads SET branch=${entry.branch},record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
       :await sql`UPDATE mayavi_branch_loads SET record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
     if(!updated.length)return json({ok:false,error:'Entry not found or access denied.'},404);
     return json({ok:true,row:await one(sql,id)});
