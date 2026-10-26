@@ -10,10 +10,10 @@ const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID
 // Saved entries can be denser than the editable form.  Keeping two width
 // profiles makes the ledger compact without crowding Date, Rate or the selects.
 // Every header and row within its table still uses the same colgroup.
-const ENTRY_WIDTHS=[116,172,124,114,132,132,120,124,150,155,164,155,207,160,177,126,128,147];
-const SAVED_WIDTHS=[108,165,115,106,127,126,116,118,144,151,141,129,190,155,170,117,121,137];
-const EXTRA_COST_WIDTH=140;
-const TOTAL_JEPO_WIDTH=186;
+const ENTRY_WIDTHS=[108,160,118,108,118,122,110,116,138,144,152,148,192,146,166,120,122,130];
+const SAVED_WIDTHS=[100,156,106,88,121,121,105,112,133,134,122,112,172,143,148,108,114,134];
+const EXTRA_COST_WIDTH=132;
+const TOTAL_JEPO_WIDTH=174;
 const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
 const ledgerColumns=(extra,editable=false)=><colgroup>{[...(editable?ENTRY_WIDTHS:SAVED_WIDTHS),...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
