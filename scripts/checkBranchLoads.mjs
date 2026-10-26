@@ -37,8 +37,8 @@ assert.equal(allocateExtraCost('Household and Medicine',699,null),null);
 assert.equal(allocateExtraCost('Household and Nutrition',149,null),null);
 assert.deepEqual(allocateExtraCost('Household and Medicine',699,null,{legacy:true}),{toJepo:699,toBranch:0});
 assert.deepEqual(allocateExtraCost('Household and Nutrition',149,null,{legacy:true}),{toJepo:149,toBranch:0});
-assert.equal(allocateExtraCost('Household and Electronics',1400,null).toBranch,0);
-assert.equal(allocateExtraCost('Household and Hookah',300,null).toJepo,300);
+assert.equal(allocateExtraCost('Household and Electronics',1400,null).toBranch,1400);
+assert.equal(allocateExtraCost('Household and Hookah',300,null).toJepo,0);
 assert.equal(allocateExtraCost('Household and Nutrition',500,null).toJepo,150);
 assert.equal(totalJepoForLoad(11685,'Household and Ghee',1400,4),12685);
 assert.equal(totalBranchForLoad(12000,11685,'Household and Ghee',1400,4),715);
@@ -46,7 +46,7 @@ assert.equal(totalJepoForLoad(11685,'Household and Medicine',1400,null),12385);
 assert.equal(totalBranchForLoad(12000,11685,'Household and Medicine',1400,null),1015);
 assert.equal(totalJepoForLoad(11685,'Household and Nutrition',500,null),11835);
 assert.equal(totalBranchForLoad(12000,11685,'Household and Nutrition',500,null),665);
-assert.equal(totalBranchForLoad(12000,11685,'Household and Electronics',1400,null),315);
+assert.equal(totalBranchForLoad(12000,11685,'Household and Electronics',1400,null),1715);
 assert.deepEqual(allocateExtraCost('Household and Ghee',900,null,{legacy:true}),{toJepo:900,toBranch:0});
 assert.equal(requiresExtraCost('Medicine'),false);
 assert.equal(requiresExtraCost('Household and Electronics + other'),false);
@@ -245,10 +245,18 @@ assert.equal(allocateExtraCost('Household and Nutrition',400,null).toJepo,150);
 assert.equal(totalJepoForLoad(5000,'Household and Nutrition',400,null),5150);
 assert.equal(allocateExtraCost('Household and Ghee',1100,4).toJepo,1000);
 assert.equal(totalJepoForLoad(5000,'Household and Ghee',1100,4),6000);
-assert.equal(allocateExtraCost('Household and Electronics',500,null).toJepo,500);
-assert.equal(totalJepoForLoad(5000,'Household and Electronics',500,null),5500);
+assert.equal(allocateExtraCost('Household and Electronics',500,null).toJepo,0);
+assert.equal(totalJepoForLoad(5000,'Household and Electronics',500,null),5000);
 assert.equal(allocateExtraCost('Clothes',0,null).toJepo,0);
 assert.equal(totalJepoForLoad(5000,'Clothes',0,null),5000);
+
+// Hookah / Electronics surcharge stays entirely with the branch in saved and
+// on-screen calculations, while established JEPO fees are unchanged.
+assert.ok(ui.includes("'Full Extra Cost to Branch'"));
+assert.deepEqual(allocateExtraCost('Household and Electronics',500,null),{toJepo:0,toBranch:500});
+assert.deepEqual(allocateExtraCost('Household and Hookah',300,null),{toJepo:0,toBranch:300});
+assert.equal(totalBranchForLoad(12000,11685,'Household and Hookah',300,null),615);
+assert.equal(totalJepoForLoad(5000,'Household and Hookah',300,null),5000);
 
 // Remarks are optional, editable after Save and visible to employees only in
 // their own branch. Preserve them in Active, Delivered and CSV exports.
