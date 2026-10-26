@@ -558,27 +558,59 @@ function expandPartRows(list=[]){
       parts.push(p);
     }
 
-    // SAL DIS/DUS cancels the pending FOW. A previously arrived physical
-    // Saudia part may already be Customs Cleared. Rendering only that part
-    // hides the remaining offloaded balance from Active Masters.
-    // Represent the balance as a VIEW-ONLY pending row, not another flight,
-    // an actual arrival, or a new/saved MAWB. When a real FOW/DEP part
-    // arrives from SAL this virtual row automatically disappears.
-    const saudiaDis=prefix==='065'&&(row.disAfterFow===true||/^(?:DIS|DUS)$/i.test(String(row.sourceStatus||'')));
-    const pendingPieces=Number(row.pendingPieces??row.remainingPieces??0);
-    const pendingWeight=Number(row.pendingWeight??row.remainingWeight??0);
-    if(saudiaDis&&pendingPieces>0&&parts.some(p=>p.arrivalIsActual===true)&&
-       !parts.some(p=>p.arrivalIsActual!==true)){
-      parts.push({
-        partId:'SAL_DIS_PENDING_BALANCE',_saudiaPendingVirtual:true,
-        pieces:String(pendingPieces),totalPieces:String(row.totalPieces||row.masterPieces||''),
-        weight:pendingWeight>0?String(pendingWeight):'',
-        totalWeight:String(row.totalWeight||row.masterWeight||''),
-        flightNo:'',flightDate:'',arrivalDate:'',arrivalTime:'',
-        arrivalIsActual:false,arrivalEstimate:false,
-        status:'OFFLOADED',mailSent:false,customsCleared:false,
-        remarks:'DIS — Offloaded / awaiting next flight'
-      });
+    // Saudia: mirror the physical split-load balance in Active Masters even when
+    // SAL has no new MAN/FOW/DEP flight card for the remainder. This is the
+    // general version of the original ZIP's DIS-only pending-balance row.
+    // The record is VIEW ONLY: never invent a flight, ETA, DEP, ARR or Mail YES.
+    // For example 065-11493661 must show 49/99 ARRIVED and 50/99 PENDING.
+    if(prefix==='065'){
+      const masterTotal=Number(row.totalPieces||row.masterPieces||0);
+      const recordedArrived=Number(row.arrivedPieces??0);
+      const confirmedArrived=parts
+        .filter(p=>p.arrivalIsActual===true)
+        .reduce((sum,p)=>sum+(Number(p.pieces)||0),0);
+      const arrived=Math.min(masterTotal,Math.max(recordedArrived,confirmedArrived));
+      // Repeated DEP and ARR for the same physical flight/part identity must
+      // count once, with the confirmed destination ARR taking precedence.
+      const actualKeys=new Set(parts.filter(p=>p.arrivalIsActual===true)
+        .map(p=>String(p.partKey||p.partId||'')));
+      for(let i=parts.length-1;i>=0;i--){
+        const p=parts[i];
+        if(p.arrivalIsActual!==true&&actualKeys.has(String(p.partKey||p.partId||''))
+          &&String(p.partKey||p.partId||''))parts.splice(i,1);
+      }
+      const unarrived=parts.filter(p=>p.arrivalIsActual!==true&&p._saudiaPendingVirtual!==true);
+      let available=Math.max(0,masterTotal-arrived);
+      // Accept only identifiable physical movements within the real balance.
+      // Never overstate bag counts when SAL repeats an old DEP/FOW card.
+      for(const p of unarrived){
+        const q=Number(p.pieces)||0;
+        if(q>0&&q<=available)available-=q;
+        else {const at=parts.indexOf(p);if(at>=0)parts.splice(at,1);}
+      }
+      if(masterTotal>0&&arrived>0&&available>0){
+        const arrivedWeight=parts.filter(p=>p.arrivalIsActual===true)
+          .reduce((sum,p)=>sum+(Number(p.weight)||0),0);
+        const knownPendingWeight=parts.filter(p=>p.arrivalIsActual!==true)
+          .reduce((sum,p)=>sum+(Number(p.weight)||0),0);
+        const totalWeight=Number(row.totalWeight||row.masterWeight||0);
+        const pendingWeight=Number(row.pendingWeight??row.remainingWeight??0);
+        const remainderWeight=Math.max(0,(pendingWeight>0?pendingWeight:Math.max(0,totalWeight-arrivedWeight))-knownPendingWeight);
+        const cancelled=row.disAfterFow===true||/^(?:DIS|DUS)$/i.test(String(row.sourceStatus||''));
+        const balanceKey='SAL_PENDING_BALANCE|'+masterTotal+'|'+available;
+        parts.push({
+          partId:balanceKey,partKey:balanceKey,_saudiaPendingVirtual:true,
+          pieces:available,totalPieces:masterTotal,
+          weight:remainderWeight||'',totalWeight:totalWeight||'',
+          flightNo:'',flightDate:'',flightDestination:'',transitAirport:'',
+          arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalEstimate:false,
+          status:cancelled?'OFFLOADED':'PENDING AT SAUDIA',
+          sourceStatus:cancelled?'DIS':'RCS',mailSent:false,customsCleared:false,
+          remarks:cancelled
+            ?'SAL DIS/DUS — balance offloaded; awaiting next flight'
+            :'Balance at Saudia — awaiting MAN/FOW/DEP flight assignment (not yet arrived)'
+        });
+      }
     }
 
     if(prefix==='065'&&status==='ARRIVED'&&parts.length>1){
@@ -659,8 +691,8 @@ function expandPartRows(list=[]){
       status:p.status||row.status,
       // Each Saudia physical part owns its own station and latest event. The
       // master may currently be at JED while another part already arrived DEL.
-      airport:prefix==='065'?(p.arrivalIsActual===true?row.destination:(p.transitAirport||row.airport||'')):row.airport,
-      currentLocation:prefix==='065'?(p.arrivalIsActual===true?row.destination:(p.transitAirport||row.currentLocation||'')):row.currentLocation,
+      airport:prefix==='065'?(p._saudiaPendingVirtual?'':p.arrivalIsActual===true?row.destination:(p.transitAirport||row.airport||'')):row.airport,
+      currentLocation:prefix==='065'?(p._saudiaPendingVirtual?'SAUDIA PENDING':p.arrivalIsActual===true?row.destination:(p.transitAirport||row.currentLocation||'')):row.currentLocation,
       sourceStatus:prefix==='065'?(p.arrivalIsActual===true?'ARR':/^(ARR|DEP)$/.test(String(p.sourceStatus||'').toUpperCase())?String(p.sourceStatus).toUpperCase():p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':row.sourceStatus):row.sourceStatus,
       mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||saudiaEta||'')||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):''),
       mailSent:p.mailSent===true,
@@ -883,7 +915,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
       },8000);
     }
   }}
-  async function refreshByMawb(value,{silent=false}={}){const index=rowsRef.current.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rowsRef.current[index];if(!row)return;if(!silent)setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));const saudiaLocked=normalize(row.mawb).startsWith('065-')&&row.saudiaExpectedArrivalLocked===true&&s.arrivalIsActual!==true&&s.arrivalVerifiedAbsent!==true&&!saudiaDis&&/^(FOW|DEP)$/.test(String(s.finalFlightSourceStatus||s.sourceStatus||'').toUpperCase());if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}else if(saudiaLocked){live={...s,flightDate:s.flightDate||row.flightDate,arrivalDate:s.arrivalDate||row.arrivalDate,arrivalTime:s.arrivalTime||row.arrivalTime,bookingDate:s.bookingDate||row.bookingDate,arrivalIsActual:false,saudiaExpectedArrivalLocked:true,expectedDateOverrideSource:s.arrivalDate?'SAL live expected arrival':(row.expectedDateOverrideSource||'Verified Saudia/SAL expected arrival')};}if(Array.isArray(live.partShipments)){
+  async function refreshByMawb(value,{silent=false}={}){const index=rowsRef.current.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rowsRef.current[index];if(!row)return;if(!silent)setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));/* Removed temporary Saudia ETA protection lock: live SAL evidence is authoritative. */if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}if(Array.isArray(live.partShipments)){
   live.partShipments=mergePartMail(live.partShipments,row.partShipments||[]);
   if(['065','098','176','312'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
     live.partShipments=mergePartCustoms(live.partShipments,row.partShipments||[]);
