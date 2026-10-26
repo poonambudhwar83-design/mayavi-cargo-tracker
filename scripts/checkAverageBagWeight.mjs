@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {averageWeightPerBag} from '../lib/averageBagWeight.js';
+assert.equal(averageWeightPerBag({mawb:'065-11493661',bags:'49/99',weight:'1147/2565',_partKey:'arrived'}),1147/49);
+assert.equal(averageWeightPerBag({mawb:'065-11493661',bags:'50/99',weight:'1418/2565',_saudiaPendingVirtual:true}),1418/50);
+assert.equal(averageWeightPerBag({bags:99,weight:2565}),2565/99);
+assert.equal(averageWeightPerBag({bags:99,totalWeight:2565}),2565/99);
+assert.equal(averageWeightPerBag({bags:0,weight:2565}),null);
+assert.equal(averageWeightPerBag({bags:'49/99',weight:''}),null);
+assert.equal(averageWeightPerBag({bags:'ABC',weight:600}),null);
+console.log('Average bag weight tests passed for 49/99 arrived, 50/99 pending and master rows.');
