@@ -25,6 +25,7 @@ function figures(row={}){
   const rate=dataNumber(row.rate);
   const eici=kg===null?null:15*kg;
   const bags=dataNumber(row.bags);
+  const averageWeightPerBag=kg!==null&&Number.isFinite(kg)&&bags!==null&&Number.isFinite(bags)&&bags>0?kg/bags:null;
   const category=String(row.goodsCategory||'').toUpperCase();
   const origin=String(row.origin||'').trim().toUpperCase();
   // Base goods charge depends on the origin airport, not transit (Via).
@@ -60,15 +61,15 @@ function figures(row={}){
   const driverExpense=dataNumber(row.driverExpense)??DRIVER_EXPENSE_PER_MAWB;
   const profit=totalCost===null||rate===null||goodsCharge15Percent===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-canadaFreightDeduction-germanyFreightDeduction-siibDeduction-driverExpense-goodsCharge15Percent;
   const profitPerKg=profit===null||kg===null||kg<=0?null:profit/kg;
-  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,goodsCharge15Eligible,goodsCharge15Percent,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,driverExpense,profit,profitPerKg};
+  return {kg,bags,averageWeightPerBag,duty,rate,eici,goodsCharge,chargePerBag,goodsCharge15Eligible,goodsCharge15Percent,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,driverExpense,profit,profitPerKg};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Protein / Clothes Deduction (Protein 50 x kg, Clothes 30 x kg)'];
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Protein / Clothes Deduction (Protein 50 x kg, Clothes 30 x kg)','Average Weight per Bag (kg)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',['PROTEIN','CLOTHES'].includes(String(row.goodsCategory||'').toUpperCase())&&n.kg!==null?n.proteinDeduction+n.siibDeduction:''];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',['PROTEIN','CLOTHES'].includes(String(row.goodsCategory||'').toUpperCase())&&n.kg!==null?n.proteinDeduction+n.siibDeduction:'',n.averageWeightPerBag];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -147,11 +148,12 @@ export default function ImportProfitSheet(){
     return results;
   },[rows,drafts,search,clientFilter,goodsFilter,rateSort]);
   const totals=useMemo(()=>{
-    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,goodsCharge15Percent=0,proteinClothesDeduction=0,cost=0,driverExpense=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
+    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,goodsCharge15Percent=0,proteinClothesDeduction=0,cost=0,driverExpense=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0,averageWeightTotal=0,averageBagsTotal=0;
     for(const row of filtered){
       const n=figures(row);
       bags+=Number(row.bags)||0;
       weight+=n.kg||0;
+      if(n.averageWeightPerBag!==null){averageWeightTotal+=n.kg;averageBagsTotal+=n.bags;}
       if(n.eici!==null)eici+=n.eici;
       if(n.goodsCharge!==null)goodsCharge+=n.goodsCharge;
       if(n.goodsCharge15Percent!==null)goodsCharge15Percent+=n.goodsCharge15Percent;
@@ -163,7 +165,7 @@ export default function ImportProfitSheet(){
       driverExpense+=n.driverExpense;
       if(n.profitPerKg!==null){profit+=n.profit;completedWeight+=n.kg;completed++}
     }
-    return {bags,weight,duty,eici,goodsCharge,goodsCharge15Percent,proteinClothesDeduction,cost,driverExpense,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
+    return {bags,weight,duty,eici,goodsCharge,goodsCharge15Percent,proteinClothesDeduction,cost,driverExpense,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight,averageWeightPerBag:averageBagsTotal>0?averageWeightTotal/averageBagsTotal:null};
   },[filtered]);
   return <main style={{padding:'20px clamp(12px,3vw,32px)',background:'#f5f8fc',minHeight:'75vh',color:'#122139'}}>
     <div style={{maxWidth:1650,margin:'auto'}}>
@@ -214,7 +216,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Profit (₹)','Total Cost (₹)','Driver Expense (₹)','Profit per kg (₹/kg)','15% Goods Charge (₹)','Protein / Clothes Deduction (₹)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Profit (₹)','Total Cost (₹)','Driver Expense (₹)','Profit per kg (₹/kg)','15% Goods Charge (₹)','Protein / Clothes Deduction (₹)','Average Weight per Bag (kg)'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -286,9 +288,10 @@ export default function ImportProfitSheet(){
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
                 <td style={{...cell,fontWeight:800,color:'#9a3412'}} title={n.goodsCharge15Eligible?'15% of applicable goods charge, deducted from Profit':'Not applicable'}>{n.goodsCharge15Eligible?displayMoney(n.goodsCharge15Percent):'—'}</td>
                 <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Already deducted from Profit: Protein ₹50 × weight; Clothes ₹30 × weight">{['PROTEIN','CLOTHES'].includes(String(row.goodsCategory||'').toUpperCase())&&n.kg!==null?displayMoney(n.proteinDeduction+n.siibDeduction):'—'}</td>
+                <td style={{...cell,fontWeight:800}} title="Total master weight divided by total bags">{displayAmount(n.averageWeightPerBag)}</td>
               </tr>
             })}
-            {!filtered.length&&<tr><td colSpan={18} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={19} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
             <td colSpan={5} style={cell}>TOTAL • {filtered.length} MAWBs</td>
@@ -305,6 +308,7 @@ export default function ImportProfitSheet(){
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
             <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.goodsCharge15Percent)}</td>
             <td style={{...cell,color:'#9a3412'}} title="Combined Protein (₹50/kg) and Clothes (₹30/kg) deductions already applied to Profit">{displayMoney(totals.proteinClothesDeduction)}</td>
+            <td style={{...cell,fontWeight:800}} title="Total weight ÷ total bags for entries with valid bag and weight values (weighted average)">{displayAmount(totals.averageWeightPerBag)}</td>
           </tr></tfoot>}
         </table>
       </div>
