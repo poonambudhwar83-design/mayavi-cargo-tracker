@@ -68,7 +68,6 @@ export default function BranchLoadsDashboard({currentUser}){
   const [message,setMessage]=useState('');
   // Keep save failures visible beside the row button even on a wide scrolling table.
   const [saveError,setSaveError]=useState('');
-  const [saveNotice,setSaveNotice]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -151,7 +150,6 @@ export default function BranchLoadsDashboard({currentUser}){
     const message='Save nahi hua: '+String(reason||'Please check the entry.');
     setMessage(message);
     setSaveError(message);
-    setSaveNotice('');
   }
 
   function add(){
@@ -174,7 +172,7 @@ export default function BranchLoadsDashboard({currentUser}){
   async function save(event){
     event?.preventDefault?.();
     if(busy||!editing)return;
-    setSaveError('');setSaveNotice('');
+    setSaveError('');
     // Native HTML form validation silently blocks submit for far-right fields
     // inside the horizontally-scrolling ledger. Validate here and show feedback.
     if(!dateValid(draft.date)){showSaveFailure('select a valid Entry Date.');return;}
@@ -253,7 +251,6 @@ export default function BranchLoadsDashboard({currentUser}){
       setSheet(saved.status==='DELIVERED'?'DELIVERED':'ACTIVE');
       setSearch('');
       setSaveError('');
-      setSaveNotice('✓ SAVED in '+(saved.status==='DELIVERED'?'Delivered Sheet':'Active Loads')+' • '+showDate(saved.date));
       setMessage('✓ '+saved.branch+' entry SAVED in database ('+showDate(saved.date)+'). '+(saved.status==='DELIVERED'?'See Delivered Sheet.':'Entry is in Active Loads. You can add the next load.'));
     }catch(e){
       showSaveFailure(''+(e?.message||'Please try again. Your entered details are still here.'));
@@ -354,7 +351,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </select>
         {draft.confirmationMode==='UTR'&&<input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Enter UTR if available" value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>}
       </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
-      <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button>{saveError&&<p role="alert" className={styles.inlineSaveError}>{saveError}</p>}{saveNotice&&<p role="status" className={styles.inlineSaveSuccess}>{saveNotice}</p>}</td>
+      <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button>{saveError&&<p role="alert" className={styles.inlineSaveError}>{saveError}</p>}</td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
       <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
