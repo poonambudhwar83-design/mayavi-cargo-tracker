@@ -90,3 +90,22 @@
 @media(max-width:900px){
   .table .statusChip{min-width:95px}
 }
+
+
+/* Daily entry is a first-class section above the Active/Delivered ledgers. */
+.loadEntrySection{margin:14px 0 18px;border:1px solid #bfd3f6;border-left:6px solid #2563eb;border-radius:12px;background:#fff;box-shadow:0 3px 16px rgba(37,99,235,.08);overflow:hidden}
+.loadEntryTitle{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:linear-gradient(105deg,#eef5ff,#f2efff);padding:13px 16px}
+.loadEntryTitle h2{font-size:17px;font-weight:900;margin:0;color:#1e40af}
+.loadEntryTitle p{font-size:12px;color:#475569;margin:4px 0 0}
+.actorName{font-size:11px;font-weight:900;color:#5b21b6;background:#ede9fe;border:1px solid #ddd6fe;padding:8px 10px;border-radius:9px}
+.loadEntrySection .scroller{border:none;border-top:1px solid #d9e4f4;border-radius:0}
+.loadEntrySection .table .editRow td{background:#e7f2ff!important}
+.audit{font-size:11px;white-space:nowrap;font-weight:800;color:#334155}
+.dateDay{display:block;margin-top:4px;font-size:11px;font-weight:800;color:#0c4a6e}
+.table .statusChip[data-status="AT_JIND_OFFICE"]{background:#dbeafe!important;color:#1d4ed8!important;border-color:#93c5fd!important;min-width:145px}
+.table .statusChip[data-status="AT_KARNAL_OFFICE"]{background:#ede9fe!important;color:#6d28d9!important;border-color:#c4b5fd!important;min-width:145px}
+.table .statusChip[data-status="AT_JEPO_OFFICE"]{background:#ccfbf1!important;color:#0f766e!important;border-color:#5eead4!important;min-width:145px}
+.table .statusChip[data-status="DISPATCHED"]{background:#e0e7ff!important;color:#4338ca!important;border-color:#a5b4fc!important}
+.table .statusChip[data-status="IN_TRANSIT"]{background:#fef3c7!important;color:#92400e!important;border-color:#fcd34d!important}
+.table tbody tr .audit{font-size:11px;color:#1e3a8a}
+@media(max-width:900px){.loadEntryTitle{padding:11px}.loadEntryTitle h2{font-size:15px}.actorName{padding:5px 8px}}
