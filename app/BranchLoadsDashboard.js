@@ -365,20 +365,22 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
     <td key="confirmation" className={styles.confirmCell}>
-      <strong className={styles.confirmNumber}>{confirmationModeFor(record)==='CASH'?'Cash':confirmationModeFor(record)==='UTR'?'UTR':'Pending'}</strong>
-      {confirmationModeFor(record)==='UTR'&&<small className={styles.confirmName}>{record.confirmationNo||'UTR not entered'}</small>}
-      {isAdmin&&<>
-        {record.confirmationDecision==='YES'||record.confirmationApprovedAt
-          ?<span className={styles.confirmApproved}>Yes • Confirmed</span>
-          :record.confirmationDecision==='NO'
-            ?<span className={styles.confirmIncomplete}>No • Not confirmed</span>
-            :awaitingAdminDecision(record)
-              ?<span className={styles.confirmPendingBlink}>Pending Admin Decision</span>:null}
-        {awaitingAdminDecision(record)&&<div className={styles.adminDecisionButtons}>
+      <div className={styles.transactionInline}>
+        <div className={styles.transactionDetails}>
+          <strong className={styles.confirmNumber}>{confirmationModeFor(record)==='CASH'?'Cash':confirmationModeFor(record)==='UTR'?'UTR':'Pending'}</strong>
+          {confirmationModeFor(record)==='UTR'&&<small className={styles.confirmName}>{record.confirmationNo||'UTR not entered'}</small>}
+        </div>
+        {isAdmin&&awaitingAdminDecision(record)&&<div className={styles.adminDecisionButtons}>
           <button type="button" className={styles.approveButton} disabled={busy} onClick={()=>decideTransaction(record,'YES')}>Yes</button>
           <button type="button" className={styles.rejectButton} disabled={busy} onClick={()=>decideTransaction(record,'NO')}>No</button>
         </div>}
-      </>}
+      </div>
+      {isAdmin&&(record.confirmationDecision==='YES'||record.confirmationApprovedAt
+        ?<span className={styles.confirmApproved}>Yes • Confirmed</span>
+        :record.confirmationDecision==='NO'
+          ?<span className={styles.confirmIncomplete}>No • Not confirmed</span>
+          :awaitingAdminDecision(record)
+            ?<span className={styles.confirmPendingBlink}>Pending Admin Decision</span>:null)}
     </td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
