@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
@@ -68,23 +68,31 @@ export default function BranchLoadsDashboard({currentUser}){
   const [message,setMessage]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
-  const [dayFilter,setDayFilter]=useState('');
+  const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
   const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
   const [search,setSearch]=useState('');
   const [month,setMonth]=useState('');
   const [lastUpdated,setLastUpdated]=useState('');
+  // Background refresh must never replace a just-saved Active row with an
+  // older snapshot. Every successful mutation invalidates in-flight reads.
+  const writeRevision=useRef(0);
+  const latestRead=useRef(0);
+  const recordWrite=()=>{writeRevision.current+=1;latestRead.current+=1;};
 
   async function load(){
+    const read=++latestRead.current,revision=writeRevision.current;
+    const current=()=>read===latestRead.current&&revision===writeRevision.current;
     try{
       const res=await fetch(API,{credentials:'include',cache:'no-store'});
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data.error||'Unable to load branch records.');
+      if(!current())return;
       setRows(data.rows||[]);
       setLastUpdated(new Date().toLocaleTimeString('en-IN'));
       setMessage(m=>m.startsWith('Unable')?'':m);
-    }catch(e){setMessage('Unable to load records: '+(e?.message||e));}
-    finally{setLoaded(true);}
+    }catch(e){if(current())setMessage('Unable to load records: '+(e?.message||e));}
+    finally{if(current())setLoaded(true);}
   }
   useEffect(()=>{
     void load();
@@ -102,7 +110,8 @@ export default function BranchLoadsDashboard({currentUser}){
     (!month||String(r.date||'').startsWith(month))&&
     (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,sheet,dayFilter,month,search]);
-  const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
+  const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED'&&
+    (isAdmin||!dayFilter||r.date===dayFilter)).length,[rows,filter,isAdmin,dayFilter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
   // The Admin sees all pending confirmations regardless of selected branch,
   // date filter, or whether a shipment has moved to Delivered Sheet.
@@ -112,7 +121,7 @@ export default function BranchLoadsDashboard({currentUser}){
   // Pending Yes/No actions are displayed beside their own transaction row;
   // no separate approval queue that detaches a decision from the saved load.
   function switchSheet(next){
-    setSheet(next);setMessage('');setDayFilter('');setMonth('');setSearch('');
+    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
@@ -230,6 +239,7 @@ export default function BranchLoadsDashboard({currentUser}){
         }
       }
       if(!saved)throw new Error('Could not confirm save after retry. Your typed entry is still here.');
+      recordWrite();
       setRows(prev=>currentId==='new'?[saved,...prev.filter(r=>r.id!==saved.id)]:prev.map(r=>r.id===currentId?saved:r));
       setSaveRequestId(newSaveRequestId());
       setEditing(saved.status==='DELIVERED'?'': 'new');
@@ -250,6 +260,7 @@ export default function BranchLoadsDashboard({currentUser}){
       const res=await fetch(API+'?id='+encodeURIComponent(row.id),{method:'DELETE',credentials:'include'});
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data.error||'Delete failed.');
+      recordWrite();
       setRows(p=>p.filter(r=>r.id!==row.id));
       if(editing===row.id)setEditing(sheet==='ACTIVE'?'new':'');
       setMessage('Entry deleted.');
@@ -263,6 +274,7 @@ export default function BranchLoadsDashboard({currentUser}){
       const response=await fetch(API,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:row.id,status,statusOnly:true})});
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'Status change failed.');
+      recordWrite();
       setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
       setMessage(status==='DELIVERED'
         ?'Delivered — the entry has moved to Delivered Sheet.'
@@ -285,6 +297,7 @@ export default function BranchLoadsDashboard({currentUser}){
       const data=await response.json().catch(()=>({ok:false,error:'Could not read Admin decision confirmation.'}));
       if(!response.ok||!data.ok||!data.row||data.row.confirmationDecision!==decision)
         throw new Error(data.error||'Decision could not be saved. Refresh and try again.');
+      recordWrite();
       setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
       setMessage('✓ '+row.branch+' '+(mode==='CASH'?'Cash':row.confirmationNo)+' marked '+decision+' by Admin.');
     }catch(e){setMessage('Admin decision not saved: '+(e?.message||'Please try again.'));}
@@ -334,7 +347,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </select>
         {draft.confirmationMode==='UTR'&&<input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Enter UTR if available" value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>}
       </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
-      <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
+      <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
       <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
@@ -345,7 +358,8 @@ export default function BranchLoadsDashboard({currentUser}){
     return entryRow(hasExtraCostColumn).props.children;
   }
   const dataCells=record=>[
-    <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span></td>,
+    <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span>
+      {isAdmin&&<button type="button" aria-label={'Delete '+record.branch+' entry '+showDate(record.date)} className={styles.quickDelete} disabled={busy} onClick={()=>remove(record)}>Delete</button>}</td>,
     <td key="date">{showDate(record.date)}</td>,
     <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
     <td key="rate" className={styles.number}>{money(record.rate)}</td>,
@@ -382,7 +396,7 @@ export default function BranchLoadsDashboard({currentUser}){
           :awaitingAdminDecision(record)
             ?<span className={styles.confirmPendingBlink}>Pending Admin Decision</span>:null)}
     </td>,
-    <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
+    <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button></td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
     <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit
       total={totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true})}
@@ -404,11 +418,12 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
+    {!isAdmin&&sheet==='ACTIVE'&&<p className={styles.branchDailyNotice}>Daily Active view • {showDate(dayFilter||todayIST())}. Older monthly records are reserved for Admin; select a specific date to review that day's loads.</p>}
     <form noValidate onSubmit={save}>
       {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
         <div className={styles.loadEntryTitle}>
-          <div><h2>Load Entry</h2><p>Enter today's load here. Change date for an earlier entry. Day appears automatically.</p></div>
-          <div className={styles.loadEntryActions}><span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span><button type="submit" className={styles.saveLoadTopButton} disabled={busy}>{busy?'Saving…':'Save Load'}</button></div>
+          <div><h2>Load Entry</h2><p>Enter load details, then click Save in the same row. Day appears automatically.</p></div>
+          <div className={styles.loadEntryActions}><span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span></div>
         </div>
         <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
           {ledgerColumns(requiresExtraCost(draft.commodity),true)}
@@ -420,20 +435,20 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
-    {editing!==''&&editing!=='new'&&<button type="submit" className={styles.saveLoadTopButton} disabled={busy}>{busy?'Saving…':'Save Edited Load'}</button>}
+
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee ₹250 per bottle to JEPO, Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah Extra Cost goes to JEPO.</p>}
       <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
-          <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
+          <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/>{isAdmin&&<button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button>}</>}</th>
           <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
           {!loaded&&<tr><td colSpan={20+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
-          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
+          {loaded&&!shown.length&&<tr><td colSpan={20+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads for the selected {sheet==='ACTIVE'?'day':'sheet'}. Use the row Save button above or check the date filter.</td></tr>}
         </tbody>
         <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={9}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
       </table></div>
