@@ -65,10 +65,10 @@ function figures(row={}){
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Clothes SIIB (30 x kg)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','Profit per kg (Profit / Total Weight)'];
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.siibDeduction,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',n.totalCost,n.driverExpense,n.profit,n.profitPerKg];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.siibDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:''];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -213,7 +213,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','15% Goods Charge (₹)','Total Cost (₹)','Driver Expense (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Profit (₹)','Total Cost (₹)','Driver Expense (₹)','Profit per kg (₹/kg)','15% Goods Charge (₹)'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -274,7 +274,7 @@ export default function ImportProfitSheet(){
                     onBlur={e=>save(row.mawb,'goodsChargeOverride',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}
                     disabled={Boolean(saving[row.mawb+':goodsChargeOverride'])} style={{...inputStyle,width:120}}/>
                   :<>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?(String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&!String(row.origin||'').trim()?'Origin needed':'Select goods to calculate'):money.format(n.chargePerBag)+'/bag'}</small></>}</td>
-                <td style={{...cell,fontWeight:800,color:'#9a3412'}} title={n.goodsCharge15Eligible?'15% of applicable goods charge, deducted from Profit':'Not applicable'}>{n.goodsCharge15Eligible?displayMoney(n.goodsCharge15Percent):'—'}</td>
+                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹450/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹400/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹330/kg deduction: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):'','Driver expense: '+displayMoney(n.driverExpense),n.goodsCharge15Eligible?'15% Goods Charge: '+displayMoney(n.goodsCharge15Percent):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
                 <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Edit Driver Expense for this master MAWB (default ₹2,600); counted once for part shipments">
                   <input aria-label={'Driver Expense for '+row.mawb} type="number" inputMode="decimal" min="0" step="0.01" placeholder="2600" value={row.driverExpense??DRIVER_EXPENSE_PER_MAWB}
@@ -282,8 +282,8 @@ export default function ImportProfitSheet(){
                     onBlur={e=>save(row.mawb,'driverExpense',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}
                     disabled={Boolean(saving[row.mawb+':driverExpense'])} style={{...inputStyle,width:110,color:'#9a3412'}}/>
                 </td>
-                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹450/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹400/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹330/kg deduction: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):'','Driver expense: '+displayMoney(n.driverExpense),n.goodsCharge15Eligible?'15% Goods Charge: '+displayMoney(n.goodsCharge15Percent):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
+                <td style={{...cell,fontWeight:800,color:'#9a3412'}} title={n.goodsCharge15Eligible?'15% of applicable goods charge, deducted from Profit':'Not applicable'}>{n.goodsCharge15Eligible?displayMoney(n.goodsCharge15Percent):'—'}</td>
               </tr>
             })}
             {!filtered.length&&<tr><td colSpan={17} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
@@ -297,11 +297,11 @@ export default function ImportProfitSheet(){
             <td style={cell}>{totals.rateKnown?displayMoney(totals.rateSum):'—'}</td>
             <td style={cell}>{displayMoney(totals.eici)}</td>
             <td style={cell}>{displayMoney(totals.goodsCharge)}</td>
-            <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.goodsCharge15Percent)}</td>
+            <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(totals.profit)}</td>
             <td style={cell}>{displayMoney(totals.cost)}</td>
             <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.driverExpense)}</td>
-            <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(totals.profit)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
+            <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.goodsCharge15Percent)}</td>
           </tr></tfoot>}
         </table>
       </div>
