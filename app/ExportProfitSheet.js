@@ -1,10 +1,11 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
+import { subscribeProfitSourceChanges } from '../lib/profitSync.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const number=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
 const cell={padding:'6px 9px',borderBottom:'1px solid #e3e9f2',fontSize:13,textAlign:'left',whiteSpace:'nowrap'};
-const header={...cell,position:'sticky',top:0,zIndex:1,background:'#eaf1fd',fontWeight:800,color:'#18345b'};
+const header={...cell,padding:'4px 5px',fontSize:11,lineHeight:1.15,whiteSpace:'normal',overflowWrap:'break-word',verticalAlign:'middle',maxWidth:130,position:'sticky',top:0,zIndex:1,background:'#eaf1fd',fontWeight:800,color:'#18345b'};
 const summary={background:'#fff',padding:16,border:'1px solid #dce6f1',borderRadius:12,flex:'1 1 190px'};
 // Consistent soft colours per client, without changing the client's original name.
 function clientBadgeStyle(name=''){
@@ -45,24 +46,28 @@ export default function ExportProfitSheet(){
   const [search,setSearch]=useState('');
   const [lastLoaded,setLastLoaded]=useState('');
   useEffect(()=>{
-    let active=true;
+    let active=true,requestSequence=0;
     async function load(){
+      if(!active)return;
+      const request=++requestSequence;
       try{
         const response=await fetch('/api/export-profit'+(period?'?month='+encodeURIComponent(period):''),{credentials:'include',cache:'no-store'});
         const data=await response.json();
         if(!data.ok)throw new Error(data.error||'Could not load Export Profit Sheet.');
-        if(active){
+        if(active&&request===requestSequence){
           setRows(data.rows||[]);
           setPeriodOptions(data.months||[]);
           setLastLoaded(new Date().toLocaleTimeString('en-IN'));
           setMessage('');
         }
-      }catch(error){if(active)setMessage('Unable to load Export Profit Sheet: '+(error?.message||error))}
-      finally{if(active)setLoading(false)}
+      }catch(error){if(active&&request===requestSequence)setMessage('Unable to load Export Profit Sheet: '+(error?.message||error))}
+      finally{if(active&&request===requestSequence)setLoading(false)}
     }
-    load();
-    const timer=setInterval(load,120000);
-    return()=>{active=false;clearInterval(timer)};
+    const refresh=()=>{if(document.visibilityState!=='hidden')void load()};
+    void load();
+    const unsubscribe=subscribeProfitSourceChanges(refresh);
+    const timer=setInterval(refresh,30000);
+    return()=>{active=false;requestSequence++;clearInterval(timer);unsubscribe()};
   },[period]);
   const clientOptions=useMemo(()=>[...new Set(rows.map(r=>String(r.clientName||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
   const filtered=useMemo(()=>rows.filter(row=>
@@ -105,7 +110,7 @@ export default function ExportProfitSheet(){
         </select>
         <input type="search" aria-label="Search Export MAWB or client" placeholder="Search MAWB or client" value={search} onChange={e=>setSearch(e.target.value)} style={{padding:'10px',minWidth:220,border:'1px solid #cbd5e1',borderRadius:8}}/>
         {(clientFilter||search)&&<button type="button" onClick={()=>{setClientFilter('');setSearch('')}} style={{padding:10,background:'#fff',border:'1px solid #cbd5e1',borderRadius:8}}>CLEAR FILTERS</button>}
-        <small style={{color:'#64748b',marginLeft:'auto'}}>Updated: {lastLoaded||'—'} • Checks every 2 minutes</small>
+        <small style={{color:'#64748b',marginLeft:'auto'}}>Updated: {lastLoaded||'—'} • Syncs master updates automatically • checks every 30 seconds</small>
       </div>
       {message&&<p role="status" style={{background:'#eaf0fa',color:'#173e6f',padding:10,borderRadius:8}}>{message}</p>}
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>

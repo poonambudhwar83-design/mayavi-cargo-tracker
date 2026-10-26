@@ -5,6 +5,7 @@ import { normalizeExportTimesToIst } from '../lib/exportIst.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.js';
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
+import { notifyProfitSourceChanged } from '../lib/profitSync.js';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 import { guardSaudiaConnectingFlightWithoutSal, enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
 
@@ -706,7 +707,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   const privateTab=isPrivateType(activeTab);
    const importLikeTab=isImportLikeType(activeTab);
   const exportLikeTab=isExportLikeType(activeTab);
-  async function persistRows(list,markEntry=false,allowClientUpdate=false){const clean=list.filter(x=>normalize(x?.mawb)).map(withoutMeta);if(!clean.length)return[];const res=await fetch('/api/shipments',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean,markEntry,allowClientUpdate})});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database save failed.');return data.rows||[]}
+  async function persistRows(list,markEntry=false,allowClientUpdate=false){const clean=list.filter(x=>normalize(x?.mawb)).map(withoutMeta);if(!clean.length)return[];const res=await fetch('/api/shipments',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({rows:clean,markEntry,allowClientUpdate})});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database save failed.');notifyProfitSourceChanged();return data.rows||[]}
   async function persistRow(row,markEntry=false,allowClientUpdate=false){return persistRows([row],markEntry,allowClientUpdate)}
   useEffect(()=>{try{const saved=localStorage.getItem(TAB_KEY);if(saved==='IMPORT'||saved==='EXPORT'||(isAdmin&&isPrivateType(saved)))setActiveTab(saved)}catch{}},[isAdmin]);
   useEffect(()=>{try{localStorage.setItem(TAB_KEY,activeTab)}catch{}},[activeTab]);
@@ -934,6 +935,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
        if(!data.ok)throw new Error(data.error||'Mail update failed');
        if(data.row)setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?dbToRow(data.row):x));
        setShared(true);
+       notifyProfitSourceChanged();
        setNote(`${row.mawb}${physicalId?' • part '+(partIndex+1):''}: Mail ${sent?'YES':'NO'} saved independently.`);
      }catch(e){
        setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?row:x));
@@ -968,6 +970,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
         if(!data.ok)throw new Error(data.error||'Customs clearance save failed');
         if(data.row)setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?dbToRow(data.row):x));
         setShared(true);
+        notifyProfitSourceChanged();
         setNote(`${row.mawb} • part ${partIndex+1}: Customs ${cleared?'CLEARED':'PENDING'} saved independently.`);
       }catch(e){
         setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?row:x));
@@ -989,7 +992,7 @@ export default function DashboardClient({isAdmin=false,currentUser=null,onLogout
   async function saveCompany(value,companyType,companyName=''){const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;const type=String(companyType||'').toUpperCase();const name=type==='KCC'?'KCC':type==='PV'?'PV':type==='OTHER'?String(companyName||'').trim():'';const next={...row,companyType:type,companyName:name,companyUpdatedAt:new Date().toISOString(),companyUpdatedBy:employeeName||'User'};setRows(r=>r.map((x,i)=>i===index?next:x));try{await persistRow(next);setShared(true);setNote(`${row.mawb}: Company ${name||type||'cleared'} saved.`)}catch(e){setShared(false);setNote(`Company save failed: ${e.message||e}`)}}
   async function editClientName(value){const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;const current=String(row.clientName||'').trim();const entered=window.prompt(`Change client name for ${row.mawb}`,current);if(entered===null)return;const clientName=String(entered||'').trim();if(!clientName){setNote('Client name cannot be blank.');return}if(clientName===current){setNote(`${row.mawb}: Client name unchanged.`);return}const next={...row,clientName,client:clientName,clientUpdatedAt:new Date().toISOString(),clientUpdatedBy:employeeName||employeeUsername||'User'};setRows(r=>r.map((x,i)=>i===index?next:x));try{await persistRow(next,false,true);setShared(true);setNote(`${row.mawb}: Client changed from ${current||'—'} to ${clientName} by ${employeeName||employeeUsername||'user'}.`)}catch(e){setRows(r=>r.map((x,i)=>i===index?row:x));setShared(false);setNote(`Client name change failed: ${e.message||e}`)}}
   async function moveShipment(value){const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;if(isPrivateType(row.shipmentType)){setNote(`${row.mawb} is protected in Other Countries and cannot be moved to an employee-visible tab.`);return}const target=isExportLikeType(row.shipmentType)?'IMPORT':'EXPORT';const next=decorateTiming(row,{...row,shipmentType:target,mailSent:target==='IMPORT'?false:undefined,mailUpdatedAt:target==='IMPORT'?row.mailUpdatedAt:undefined,customsCleared:target==='IMPORT'?false:undefined,customsClearedAt:target==='IMPORT'?'':undefined,customsClearedBy:target==='IMPORT'?'':undefined,masterCopyReceived:target==='EXPORT'?false:undefined,masterCopyReceivedAt:target==='EXPORT'?'':undefined,masterCopyReceivedBy:target==='EXPORT'?'':undefined,lastChecked:row.lastChecked||new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?next:x));try{await persistRow(next);setShared(true);setNote(`${row.mawb} moved to ${target}.`)}catch(e){setShared(false);setNote(`Could not move shipment: ${e.message||e}`)}}
-  async function remove(value){if(!isAdmin)return;const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;if(!window.confirm(`Delete ${row.mawb} from the shared tracker?`))return;try{const res=await fetch(`/api/shipments?awb=${encodeURIComponent(row.mawb)}`,{method:'DELETE',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Delete failed');setRows(r=>r.filter((_,i)=>i!==index));setShared(true);setNote(`${row.mawb} deleted by admin.`)}catch(e){setNote(`Delete blocked: ${e.message||e}`)}}
+  async function remove(value){if(!isAdmin)return;const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];if(!row)return;if(!window.confirm(`Delete ${row.mawb} from the shared tracker?`))return;try{const res=await fetch(`/api/shipments?awb=${encodeURIComponent(row.mawb)}`,{method:'DELETE',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Delete failed');setRows(r=>r.filter((_,i)=>i!==index));setShared(true);notifyProfitSourceChanged();setNote(`${row.mawb} deleted by admin.`)}catch(e){setNote(`Delete blocked: ${e.message||e}`)}}
   const serialWidth=52,mawbWidth=132,goodsWidth=100,clientWidth=118,companyWidth=92;
   const mawbLeft=serialWidth,goodsLeft=serialWidth+mawbWidth,clientLeft=importLikeTab?serialWidth+mawbWidth+goodsWidth:serialWidth+mawbWidth,companyLeft=clientLeft+clientWidth;
   return <main>
