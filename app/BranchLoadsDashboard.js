@@ -228,7 +228,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
-    {message&&<div className={styles.message} role="status">{message}</div>
+    {message&&<div className={styles.message} role="status">{message}</div>}
     <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields.</p>
     <form onSubmit={save}>
       <div className={styles.scroller}><table className={styles.table}>
