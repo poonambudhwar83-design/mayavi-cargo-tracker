@@ -16,6 +16,7 @@ const goodsColors={
 // Active Masters take priority over goods category row backgrounds.
 // Goods remain recognizable by the coloured Goods dropdown.
 const activeMasterColor={row:'#dcfce7',border:'#16a34a',badge:'#bbf7d0',text:'#166534'};
+const DRIVER_EXPENSE_PER_MAWB=2600;
 const dataNumber=value=>value===null||value===undefined||value===''?null:Number(value);
 function figures(row={}){
   const kg=dataNumber(row.weight);
@@ -50,17 +51,19 @@ function figures(row={}){
   const canadaFreightDeduction=category==='PROTEIN'&&isCanadaOrigin&&kg!==null?400*kg:0;
   const germanyFreightDeduction=category==='PROTEIN'&&isGermanyOrigin&&kg!==null?330*kg:0;
   const siibDeduction=category==='CLOTHES'&&kg!==null?30*kg:0;
-  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-canadaFreightDeduction-germanyFreightDeduction-siibDeduction;
+  // One import profit row per master MAWB: charge the driver once, even if arrival is split into parts.
+  const driverExpense=DRIVER_EXPENSE_PER_MAWB;
+  const profit=totalCost===null||rate===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-canadaFreightDeduction-germanyFreightDeduction-siibDeduction-driverExpense;
   const profitPerKg=profit===null||kg===null||kg<=0?null:profit/kg;
-  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,profit,profitPerKg};
+  return {kg,bags,duty,rate,eici,goodsCharge,chargePerBag,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,driverExpense,profit,profitPerKg};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB)','Profit per kg (Profit / Total Weight)'];
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Driver Expense (INR 2600 per master MAWB)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense)','Profit per kg (Profit / Total Weight)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.siibDeduction,n.totalCost,n.profit,n.profitPerKg];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.siibDeduction,n.totalCost,n.driverExpense,n.profit,n.profitPerKg];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -139,7 +142,7 @@ export default function ImportProfitSheet(){
     return results;
   },[rows,drafts,search,clientFilter,goodsFilter,rateSort]);
   const totals=useMemo(()=>{
-    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
+    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,cost=0,driverExpense=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
     for(const row of filtered){
       const n=figures(row);
       bags+=Number(row.bags)||0;
@@ -150,9 +153,10 @@ export default function ImportProfitSheet(){
       if(n.dutyPerKg!==null){dutyPerKgSum+=n.dutyPerKg;dutyPerKgKnown++}
       if(n.rate!==null){rateSum+=n.rate;rateKnown++}
       if(n.totalCost!==null)cost+=n.totalCost;
+      driverExpense+=n.driverExpense;
       if(n.profitPerKg!==null){profit+=n.profit;completedWeight+=n.kg;completed++}
     }
-    return {bags,weight,duty,eici,goodsCharge,cost,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
+    return {bags,weight,duty,eici,goodsCharge,cost,driverExpense,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
   },[filtered]);
   return <main style={{padding:'20px clamp(12px,3vw,32px)',background:'#f5f8fc',minHeight:'75vh',color:'#122139'}}>
     <div style={{maxWidth:1650,margin:'auto'}}>
@@ -203,7 +207,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Total Cost (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Total Cost (₹)','Driver Expense (₹)','Profit (₹)','Profit per kg (₹/kg)'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -259,11 +263,12 @@ export default function ImportProfitSheet(){
                 <td style={cell}>{displayMoney(n.eici)}</td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?(String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&!String(row.origin||'').trim()?'Origin needed':'Select goods to calculate'):money.format(n.chargePerBag)+'/bag'}</small></td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
-                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹450/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹400/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹330/kg deduction: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
+                <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Driver expense charged once per master MAWB, including part shipments">{displayMoney(n.driverExpense)}</td>
+                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹450/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹400/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹330/kg deduction: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):'','Driver expense: '+displayMoney(n.driverExpense)].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
               </tr>
             })}
-            {!filtered.length&&<tr><td colSpan={15} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={16} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
             <td colSpan={5} style={cell}>TOTAL • {filtered.length} MAWBs</td>
@@ -275,13 +280,14 @@ export default function ImportProfitSheet(){
             <td style={cell}>{displayMoney(totals.eici)}</td>
             <td style={cell}>{displayMoney(totals.goodsCharge)}</td>
             <td style={cell}>{displayMoney(totals.cost)}</td>
+            <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.driverExpense)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(totals.profit)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
           </tr></tfoot>}
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH originating from HKG (Hong Kong) ₹1,500/bag, HH from other origins ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB). DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Active Import Masters are highlighted with a light green row and green left border. Cleared rows retain their goods-based colours. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH originating from HKG (Hong Kong) ₹1,500/bag, HH from other origins ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹50 × Total Weight for Protein only) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB) − ₹2,600 Driver Expense per master MAWB (one charge even for part shipments). DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions and Driver Expense apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Active Import Masters are highlighted with a light green row and green left border. Cleared rows retain their goods-based colours. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
   </main>;
