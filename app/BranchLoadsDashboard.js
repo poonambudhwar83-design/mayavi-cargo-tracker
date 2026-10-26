@@ -193,7 +193,7 @@ export default function BranchLoadsDashboard({currentUser}){
     return entryRow().props.children;
   }
   const dataCells=record=>[
-    <td key="branch"><span className={styles.branchTag}>{record.branch}</span></td>,
+    <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span></td>,
     <td key="date">{showDate(record.date)}</td>,
     <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
     <td key="rate" className={styles.number}>{money(record.rate)}</td>,
@@ -226,7 +226,7 @@ export default function BranchLoadsDashboard({currentUser}){
     </div>
     <nav className={styles.sheetTabs} aria-label="Load sheet">
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
-      <button type="button" className={sheet==='DELIVERED'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
+      <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
     <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields.</p>
@@ -239,7 +239,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </tr></thead>
         <tbody>
           {sheet==='ACTIVE'&&editing==='new'&&entryRow()}
-          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
+          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
           {!loaded&&<tr><td colSpan={15}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={15} className={styles.empty}>No saved loads in this sheet. Enter a new load in the Active table.</td></tr>}
         </tbody>

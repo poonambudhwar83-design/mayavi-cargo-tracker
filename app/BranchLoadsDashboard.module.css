@@ -76,3 +76,17 @@
 .footerActions button{padding:9px 11px;border:1px solid #b7c9e5;background:#fff;color:#1d4ed8;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800}
 .footerActions button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:900px){.metrics{gap:7px}.metrics div{padding:10px 7px}.metrics span{font-size:10px}.sheetTabs button{padding:9px 11px}}
+
+/* Jind blue, Karnal violet, Delivered green. Restrained contrasting colors
+   distinguish branch rows without losing readability or screen hierarchy. */
+.table .branchTag[data-branch="JIND"]{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.table .branchTag[data-branch="KARNAL"]{background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd}
+.table tbody tr[data-branch="JIND"]:not(.deliveredRow):not(.editRow) > td{background:#f2f7ff}
+.table tbody tr[data-branch="KARNAL"]:not(.deliveredRow):not(.editRow) > td{background:#faf5ff}
+.table tbody tr.deliveredRow > td{background:#ecfdf5!important;border-bottom:1px solid #a7f3d0}
+.table tbody tr[data-branch]:hover > td{filter:brightness(.98)}
+.deliveredTab{background:#047857!important;color:#fff!important;border:1px solid #047857!important;box-shadow:0 3px 10px rgba(4,120,87,.18)}
+.table .statusChip[data-status="DELIVERED"]{background:#dcfce7!important;color:#166534!important;border-color:#86efac!important}
+@media(max-width:900px){
+  .table .statusChip{min-width:95px}
+}
