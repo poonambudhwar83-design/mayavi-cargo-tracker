@@ -151,6 +151,23 @@ export default function UnifiedDashboard(){
 
   const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
   const branchLogin=Boolean(session&&session.role!=='admin'&&['jind','karnal'].includes(String(session.username||'').toLowerCase()));
+  // Keep the view switch separate from the account-bar JSX. Each branch
+  // employee gets only its own dedicated page; Admin can switch back freely.
+  const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));
+  const dashboardView=branchSelected
+    ?<BranchLoadsDashboard currentUser={session}/>
+    :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
+      ?<ImportProfitSheet/>
+    :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
+      ?<ExportProfitSheet/>
+    :session?.role==='admin'&&selectedDashboard==='NOTES'
+      ?<AdminNotesDashboard currentUser={session}/>
+    :speedPostAllowed&&selectedDashboard==='SPEED_POST'
+      ?<SpeedPostDashboard currentUser={session}/>
+    :<DashboardClient isAdmin={session?.role==='admin'} currentUser={session}
+        onLogout={logout}
+        onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null}
+        onOpenAdminNotes={session?.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>;
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
@@ -164,7 +181,7 @@ export default function UnifiedDashboard(){
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
       {(branchLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
-    {(branchLogin||(session.role==='admin'&&selectedDashboard==='BRANCH_LOADS'))?<BranchLoadsDashboard currentUser={session}/>:session.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'?<ImportProfitSheet/>:session.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'?<ExportProfitSheet/>:session.role==='admin'&&selectedDashboard==='NOTES'?<AdminNotesDashboard currentUser={session}/>:speedPostAllowed&&selectedDashboard==='SPEED_POST'?<SpeedPostDashboard currentUser={session}/>:<DashboardClient isAdmin={session.role==='admin'} currentUser={session} onLogout={logout} onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null} onOpenAdminNotes={session.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>}
+    {dashboardView}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
