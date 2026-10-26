@@ -106,12 +106,12 @@ export default function BranchLoadsDashboard({currentUser}){
   const shown=useMemo(()=>rows.filter(r=>
     (filter==='ALL'||r.branch===filter)&&
     (sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED'))&&
-    (!dayFilter||r.date===dayFilter)&&
+    (sheet==='ACTIVE'&&!isAdmin?r.date===(dayFilter||todayIST()):(!dayFilter||r.date===dayFilter))&&
     (!month||String(r.date||'').startsWith(month))&&
     (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,sheet,dayFilter,month,search]);
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED'&&
-    (isAdmin||!dayFilter||r.date===dayFilter)).length,[rows,filter,isAdmin,dayFilter]);
+    (isAdmin||r.date===(dayFilter||todayIST()))).length,[rows,filter,isAdmin,dayFilter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
   // The Admin sees all pending confirmations regardless of selected branch,
   // date filter, or whether a shipment has moved to Delivered Sheet.
@@ -418,7 +418,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
-    {!isAdmin&&sheet==='ACTIVE'&&<p className={styles.branchDailyNotice}>Daily Active view • {showDate(dayFilter||todayIST())}. Older monthly records are reserved for Admin; select a specific date to review that day's loads.</p>}
+    {!isAdmin&&sheet==='ACTIVE'&&<p className={styles.branchDailyNotice}>Daily Active view • {showDate(dayFilter||todayIST())}. Older entries are hidden by default. Select a date to review that day's loads.</p>}
     <form noValidate onSubmit={save}>
       {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
         <div className={styles.loadEntryTitle}>
