@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,jepoAmount,branchPayment} from '../../../lib/branchLoads.js';
+import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,jepoAmount,branchPayment,branchFromSavedAmounts} from '../../../lib/branchLoads.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -92,7 +92,11 @@ function display(r){return {
   jepoRate:r.jepo_rate===null||r.jepo_rate===undefined
     ?(Number(r.load_kg)>0?(Number(r.paid_to_jepo)/Number(r.load_kg)).toFixed(4):'0.0000')
     :String(r.jepo_rate),
-  paidToJepo:String(r.paid_to_jepo),paidToBranch:String(r.paid_to_branch),extraCost:String(r.extra_cost||0),
+  // Display current formula for old and new shipments; older stored branch
+  // payout values remain untouched in Neon for audit until an explicit edit.
+  paidToJepo:String(r.paid_to_jepo),
+  paidToBranch:String(branchFromSavedAmounts(r.amount,r.paid_to_jepo)??0),
+  extraCost:String(r.extra_cost||0),
   destination:r.destination,service:r.service,commodity:r.commodity,
   trackingNo:r.tracking_no||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
