@@ -1,4 +1,4 @@
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#102038}main{padding:26px;max-width:1700px;margin:auto}.hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#112b57,#173f80);color:white;padding:28px;border-radius:22px}.hero h1{margin:6px 0;font-size:36px}.hero p{margin:0;opacity:.82;max-width:980px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:1.5px}.version{background:#ffffff18;border:1px solid #ffffff33;padding:10px 14px;border-radius:999px;font-size:12px;font-weight:800}.userPanel{display:flex;gap:9px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.logoutBtn{height:36px;border:1px solid #ffffff44;background:#ffffff14;color:#fff;border-radius:10px;padding:0 13px;font-weight:900;cursor:pointer}.adminBar{display:flex;justify-content:space-between;align-items:center;gap:16px;background:#fff7ed;border:1px solid #fed7aa;padding:14px 16px;border-radius:16px;margin-top:14px}.adminBar div{display:flex;flex-direction:column;gap:3px}.adminBar b{font-size:12px;color:#9a3412}.adminBar span{font-size:12px;color:#7c2d12}.typeTabs{display:flex;gap:10px;margin:18px 0 4px}.typeTabs button{height:42px;min-width:150px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#475569;font-weight:900;cursor:pointer}.typeTabs button.active{background:#164da3;color:#fff;border-color:#164da3;box-shadow:0 4px 14px #164da326}.adminViews{display:flex;gap:8px;margin:10px 0 2px}.adminViews button{height:36px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:0 14px;font-size:11px;font-weight:900;cursor:pointer}.adminViews button.active{background:#0f766e;color:#fff;border-color:#0f766e}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:14px 0 18px}.stats div{background:white;padding:18px;border-radius:16px;box-shadow:0 5px 18px #14213d10}.stats b{display:block;font-size:28px}.stats span{font-size:12px;color:#667085;text-transform:uppercase}.entry{display:grid;grid-template-columns:1.2fr 1fr auto auto;gap:12px;align-items:end;background:white;padding:18px;border-radius:18px;box-shadow:0 5px 18px #14213d10}.entry label{display:block;font-size:11px;font-weight:800;color:#667085;margin-bottom:6px}.entry input{width:100%;height:44px;border:1px solid #d9e0ec;border-radius:10px;padding:0 12px;font-size:15px}.entry input:required{border-color:#b8c7dc}.entry button{height:44px;border:0;border-radius:10px;padding:0 16px;font-weight:800;cursor:pointer;background:#164da3;color:#fff}.entry button.secondary{background:#eaf1fb;color:#164da3}.entry button:disabled{opacity:.5;cursor:not-allowed}.note{margin:12px 0;background:#edf4ff;border:1px solid #cfe0fb;color:#224d87;padding:11px 14px;border-radius:12px}.filters{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr)) auto;gap:10px;align-items:end;margin-top:14px;background:#fff;padding:14px;border-radius:16px;box-shadow:0 5px 18px #14213d10}.filters label{display:block;font-size:10px;font-weight:900;color:#667085;margin-bottom:5px}.filters select{width:100%;height:38px;border:1px solid #d9e0ec;border-radius:9px;background:#fff;padding:0 10px;color:#344054}.filters>button{height:38px;border:0;border-radius:9px;background:#eef2f6;color:#344054;padding:0 12px;font-size:10px;font-weight:900;cursor:pointer}.tableWrap{margin-top:16px;background:white;border-radius:18px;box-shadow:0 5px 18px #14213d10;overflow:auto}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#102038}main{padding:26px;max-width:1700px;margin:auto}.hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#112b57,#173f80);color:white;padding:28px;border-radius:22px}.hero h1{margin:6px 0;font-size:36px}.hero p{margin:0;opacity:.82;max-width:980px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:1.5px}.version{background:#ffffff18;border:1px solid #ffffff33;padding:10px 14px;border-radius:999px;font-size:12px;font-weight:800}.userPanel{display:flex;gap:9px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.logoutBtn{height:36px;border:1px solid #ffffff44;background:#ffffff14;color:inherit;border-radius:10px;padding:0 13px;font-weight:900;cursor:pointer}.adminBar{display:flex;justify-content:space-between;align-items:center;gap:16px;background:#fff7ed;border:1px solid #fed7aa;padding:14px 16px;border-radius:16px;margin-top:14px}.adminBar div{display:flex;flex-direction:column;gap:3px}.adminBar b{font-size:12px;color:#9a3412}.adminBar span{font-size:12px;color:#7c2d12}.typeTabs{display:flex;gap:10px;margin:18px 0 4px}.typeTabs button{height:42px;min-width:150px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#475569;font-weight:900;cursor:pointer}.typeTabs button.active{background:#164da3;color:#fff;border-color:#164da3;box-shadow:0 4px 14px #164da326}.adminViews{display:flex;gap:8px;margin:10px 0 2px}.adminViews button{height:36px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;padding:0 14px;font-size:11px;font-weight:900;cursor:pointer}.adminViews button.active{background:#0f766e;color:#fff;border-color:#0f766e}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:14px 0 18px}.stats div{background:white;padding:18px;border-radius:16px;box-shadow:0 5px 18px #14213d10}.stats b{display:block;font-size:28px}.stats span{font-size:12px;color:#667085;text-transform:uppercase}.entry{display:grid;grid-template-columns:1.2fr 1fr auto auto;gap:12px;align-items:end;background:white;padding:18px;border-radius:18px;box-shadow:0 5px 18px #14213d10}.entry label{display:block;font-size:11px;font-weight:800;color:#667085;margin-bottom:6px}.entry input{width:100%;height:44px;border:1px solid #d9e0ec;border-radius:10px;padding:0 12px;font-size:15px}.entry input:required{border-color:#b8c7dc}.entry button{height:44px;border:0;border-radius:10px;padding:0 16px;font-weight:800;cursor:pointer;background:#164da3;color:#fff}.entry button.secondary{background:#eaf1fb;color:#164da3}.entry button:disabled{opacity:.5;cursor:not-allowed}.note{margin:12px 0;background:#edf4ff;border:1px solid #cfe0fb;color:#224d87;padding:11px 14px;border-radius:12px}.filters{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr)) auto;gap:10px;align-items:end;margin-top:14px;background:#fff;padding:14px;border-radius:16px;box-shadow:0 5px 18px #14213d10}.filters label{display:block;font-size:10px;font-weight:900;color:#667085;margin-bottom:5px}.filters select{width:100%;height:38px;border:1px solid #d9e0ec;border-radius:9px;background:#fff;padding:0 10px;color:#344054}.filters>button{height:38px;border:0;border-radius:9px;background:#eef2f6;color:#344054;padding:0 12px;font-size:10px;font-weight:900;cursor:pointer}.tableWrap{margin-top:16px;background:white;border-radius:18px;box-shadow:0 5px 18px #14213d10;overflow:auto}
 /* Keep the MAWB column headings visible while scrolling rows. */
 .tableWrap{max-height:min(72vh,780px);overflow:auto;isolation:isolate}
 .tableWrap table{border-collapse:separate;border-spacing:0}
@@ -67,27 +67,15 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
   .loginCard h1{font-size:25px}
 }
 
-/* Saudia SAL RCF: bold purple indicates follow-up on the matching physical
-   shipment part, not an automatic customs clearance. RCS stays unhighlighted. */
-.tableWrap tbody tr.saudiaRcfAttention > td{
-  background:#eee9ff!important;
-  border-top:1px solid #a78bfa!important;
-  border-bottom:1px solid #a78bfa!important;
-}
-.tableWrap tbody tr.saudiaRcfAttention > td:first-child{
-  box-shadow:inset 6px 0 #6d28d9!important;
-}
-.tableWrap tbody tr.saudiaRcfAttention > td:nth-child(2){
-  color:#4c1d95;
-}
+/* RCF records use the same row styling as all other cargo shipments. */
 .saudiaRcfPill{
   display:inline-block;
   vertical-align:middle;
   margin-top:4px;
   padding:6px 10px;
   border-radius:6px;
-  background:#5b21b6;
-  border:1px solid #4c1d95;
+  background:transparent;
+  border:0;
   color:#fff;
   font-size:10px;
   font-weight:900;
@@ -95,7 +83,7 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
   letter-spacing:.3px;
   white-space:normal;
   max-width:160px;
-  box-shadow:0 1px 3px rgba(91,33,182,.22);
+  box-shadow:none;
 }
 
 /* Cargo tracking only — denser, calmer table without changing any tracking or
