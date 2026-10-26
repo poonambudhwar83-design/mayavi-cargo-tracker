@@ -178,7 +178,12 @@ assert.ok(route.includes("ADD COLUMN IF NOT EXISTS amount_confirmation_decided_b
 assert.ok(route.includes("amount_confirmation_mode=${entry.confirmationMode}"));
 assert.ok(!route.includes("if(!confirmationNo)return"));
 assert.ok(!route.includes("if(!confirmationName)return"));
-assert.ok(ui.includes('pendingConfirmations.map(record=>'));
+assert.ok(!ui.includes('pendingConfirmations.map(record=>'));
+assert.ok(!ui.includes('className={styles.adminApprovals}'));
+assert.ok(ui.includes('UTR / Cash • Admin Yes/No'));
+assert.ok(ui.includes('key="confirmation"'));
+assert.ok(ui.includes("onClick={()=>decideTransaction(record,'YES')}"));
+assert.ok(ui.includes("onClick={()=>decideTransaction(record,'NO')}"));
 assert.ok(ui.includes('styles.confirmPendingBlink'));
 assert.ok(ui.includes("onClick={()=>decideTransaction(record,'YES')}"));
 assert.ok(ui.includes("onClick={()=>decideTransaction(record,'NO')}"));
