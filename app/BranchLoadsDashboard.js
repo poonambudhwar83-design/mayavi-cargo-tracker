@@ -1,14 +1,14 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,amounts} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,amounts} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',paidToJepo:'',paidToBranch:'',
-  destination:'',service:'',commodity:''
+  destination:'',service:'',commodity:'',trackingNo:'',status:'PENDING'
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
@@ -17,7 +17,7 @@ const fmt=(v)=>v===null?'—':'₹'+money(v);
 const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
 
 function FieldChoice({name,list,value,onChange}){
-  const selected=list.includes(value)?value:value?'__other__':'';
+  const selected=list.includes(value)&&value!=='Other'?value:value?'__other__':'';
   return <div className={styles.choice}>
     <select aria-label={name} required value={selected} onChange={e=>onChange(e.target.value==='__other__'?'__other__':e.target.value)}>
       <option value="">Select {name.toLowerCase()}</option>
@@ -36,7 +36,9 @@ export default function BranchLoadsDashboard({currentUser}){
   const [loaded,setLoaded]=useState(false);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
-  const [editing,setEditing]=useState('');
+  const [editing,setEditing]=useState('new');
+  const [sheet,setSheet]=useState('ACTIVE');
+  const [dayFilter,setDayFilter]=useState(()=>todayIST());
   const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
   const [search,setSearch]=useState('');
   const [month,setMonth]=useState('');
@@ -64,9 +66,18 @@ export default function BranchLoadsDashboard({currentUser}){
 
   const shown=useMemo(()=>rows.filter(r=>
     (filter==='ALL'||r.branch===filter)&&
+    (sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED'))&&
+    (!dayFilter||r.date===dayFilter)&&
     (!month||String(r.date||'').startsWith(month))&&
-    (!search||[r.destination,r.service,r.commodity,r.branch,r.date].join(' ').toLowerCase().includes(search.toLowerCase()))
-  ),[rows,filter,month,search]);
+    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date].join(' ').toLowerCase().includes(search.toLowerCase()))
+  ),[rows,filter,sheet,dayFilter,month,search]);
+  const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
+  const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
+  function switchSheet(next){
+    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'?todayIST():'');setMonth('');setSearch('');
+    setEditing(next==='ACTIVE'?'new':'');
+    setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
+  }
   const totals=useMemo(()=>shown.reduce((t,r)=>({
     weight:t.weight+Number(r.weight||0),
     amount:t.amount+Number(r.amount||0),
@@ -79,7 +90,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
   function add(){
-    setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
+    setSheet('ACTIVE');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});
     setEditing('new');setMessage('');
   }
   function edit(row){
@@ -87,11 +98,12 @@ export default function BranchLoadsDashboard({currentUser}){
     setDraft({
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
       received:row.received||'',paidToJepo:row.paidToJepo||'',paidToBranch:row.paidToBranch||'',
-      destination:row.destination||'',service:row.service||'',commodity:row.commodity||''
+      destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
+      trackingNo:row.trackingNo||'',status:row.status||'PENDING'
     });
     setMessage('');
   }
-  function cancel(){setEditing('');setMessage('');}
+  function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});setMessage('');}
   async function save(event){
     event.preventDefault();
     if(busy||!editing)return;
@@ -109,8 +121,13 @@ export default function BranchLoadsDashboard({currentUser}){
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
       setRows(prev=>currentId==='new'?[data.row,...prev]:prev.map(r=>r.id===currentId?data.row:r));
-      setEditing('');setDraft(fresh(userBranch||'JIND'));
-      setMessage('Entry saved. Amount and Balance calculated automatically.');
+      // Every dated load is independent; next entry stays open on Active.
+      setEditing(sheet==='ACTIVE'?'new':'');
+      setDraft({...fresh(data.row.branch),date:data.row.date});
+      if(sheet==='ACTIVE'){setDayFilter(data.row.date);setMonth('');setSearch('');}
+      setMessage(data.row.status==='DELIVERED'
+        ?'Delivered load saved and moved to Delivered Sheet.'
+        :'Entry saved. Add the next load in the same row.');
     }catch(e){setMessage(e?.message||'Could not save entry.');}
     finally{setBusy(false);}
   }
@@ -122,19 +139,33 @@ export default function BranchLoadsDashboard({currentUser}){
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data.error||'Delete failed.');
       setRows(p=>p.filter(r=>r.id!==row.id));
-      if(editing===row.id)setEditing('');
+      if(editing===row.id)setEditing(sheet==='ACTIVE'?'new':'');
       setMessage('Entry deleted.');
     }catch(e){setMessage(e?.message||'Unable to delete.');}
     finally{setBusy(false);}
   }
+  async function changeStatus(row,status){
+    if(busy||status===row.status)return;
+    setBusy(true);setMessage('');
+    try{
+      const response=await fetch(API,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({...row,status})});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw new Error(data.error||'Status change failed.');
+      setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
+      setMessage(status==='DELIVERED'
+        ?'Delivered — the entry has moved to Delivered Sheet.'
+        :'Status updated. The entry is in Active Register.');
+    }catch(e){setMessage(e?.message||'Unable to update status.');}
+    finally{setBusy(false);}
+  }
   function downloadCsv(){
-    const labels=['Branch','Date','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity'];
-    const data=shown.map(r=>[r.branch,r.date,r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity]);
-    data.push(['TOTAL','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','']);
+    const labels=['Branch','Date','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status'];
+    const data=shown.map(r=>[r.branch,r.date,r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',r.status||'PENDING']);
+    data.push(['TOTAL','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','']);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
-    anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-loads'+(month?'-'+month:'')+'.csv';
+    anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-'+sheet.toLowerCase()+'-loads'+(dayFilter?'-'+dayFilter:month?'-'+month:'')+'.csv';
     anchor.click();URL.revokeObjectURL(url);
   }
   const input={type:'number',min:'0',step:'any',inputMode:'decimal'};
