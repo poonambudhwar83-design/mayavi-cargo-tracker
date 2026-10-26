@@ -99,6 +99,9 @@ export async function POST(request){
 
     let firstSetup=false;
     if(!user.password_hash){
+      // These finance-only branch accounts require the admin to assign the
+      // first password. A public first-claim login must not own their ledger.
+      if(['jind','karnal'].includes(user.username))return json({ok:false,error:'Admin must assign the first Jind/Karnal password in Manage User Passwords.'},403);
       const {salt,hash}=hashPassword(password);
       await sql`UPDATE mayavi_users SET password_salt=${salt},password_hash=${hash},updated_at=now() WHERE username=${user.username}`;
       firstSetup=true;

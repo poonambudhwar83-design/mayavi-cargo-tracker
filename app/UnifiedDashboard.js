@@ -57,7 +57,8 @@ export default function UnifiedDashboard(){
   const [manageNote,setManageNote]=useState('');
 
   const selected=useMemo(()=>users.find(u=>u.username===username),[users,username]);
-  const firstLogin=Boolean(selected&&!selected.passwordSet);
+  const branchNeedsAdminPassword=Boolean(selected&&!selected.passwordSet&&['jind','karnal'].includes(String(selected.username).toLowerCase()));
+  const firstLogin=Boolean(selected&&!selected.passwordSet&&!branchNeedsAdminPassword);
   const employeeUsers=useMemo(()=>users.filter(u=>u.role!=='admin'),[users]);
 
   async function loadUsers(){
@@ -154,7 +155,7 @@ export default function UnifiedDashboard(){
 
   if(session)return <>
     <div style={topAccountBar}>
-      <SaudiaAssist/>
+      {!branchLogin&&<SaudiaAssist/>}
       {!branchLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
@@ -227,6 +228,7 @@ export default function UnifiedDashboard(){
         <button type="button" onClick={()=>setShowPassword(v=>!v)} style={{width:84,padding:'0 10px'}}>{showPassword?'HIDE':'SHOW'}</button>
       </div>
       {firstLogin&&<div className="firstLogin">First login: this password will become your permanent Mayavi password.</div>}
+      {branchNeedsAdminPassword&&<div className="firstLogin">For Jind/Karnal, Admin must set your first password from Manage User Passwords.</div>}
       {note&&<div className="loginNote">{note}</div>}
       <button disabled={busy} onClick={login}>{busy?'CHECKING…':firstLogin?'SET PASSWORD & LOGIN':'LOGIN'}</button>
       {!firstLogin&&<button type="button" onClick={forgotPassword} style={{marginTop:8,background:'transparent',color:'#174f96',border:'none',textDecoration:'underline',cursor:'pointer'}}>FORGOT PASSWORD?</button>}
