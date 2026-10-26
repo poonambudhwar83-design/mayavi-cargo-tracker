@@ -278,3 +278,9 @@
    that is off-screen when employees scroll horizontally to the row button. */
 .table .editRow .actions .inlineSaveError{display:block;white-space:normal;overflow-wrap:anywhere;max-width:190px;line-height:1.35;font-size:11px;font-weight:800;color:#991b1b;background:#fff1f2;border:1px solid #fca5a5;border-radius:7px;padding:7px 8px;margin:7px 0 0;box-sizing:border-box}
 
+
+/* Optional editable remarks shared by Jind/Karnal: keep notes readable
+   in both Active and Delivered ledgers without making every row tall. */
+.table .remarksCell{white-space:normal;overflow-wrap:anywhere;vertical-align:middle;line-height:1.4;color:#334155}
+.table .remarksCell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
+.table .editRow .remarksCell textarea{display:block;box-sizing:border-box;resize:vertical;min-height:52px;max-height:140px;width:100%;border:1px solid #a5b4fc;border-radius:7px;background:#fff;padding:7px 8px;color:#1e293b;font-size:12px;line-height:1.35;font-family:inherit}
