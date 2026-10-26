@@ -277,3 +277,5 @@
 /* Save failures appear inside the exact load entry, not only in the top banner
    that is off-screen when employees scroll horizontally to the row button. */
 .table .editRow .actions .inlineSaveError{display:block;white-space:normal;overflow-wrap:anywhere;max-width:190px;line-height:1.35;font-size:11px;font-weight:800;color:#991b1b;background:#fff1f2;border:1px solid #fca5a5;border-radius:7px;padding:7px 8px;margin:7px 0 0;box-sizing:border-box}
+
+.table .editRow .actions .inlineSaveSuccess{display:block;white-space:normal;overflow-wrap:anywhere;max-width:190px;line-height:1.35;font-size:11px;font-weight:800;color:#065f46;background:#ecfdf5;border:1px solid #86efac;border-radius:7px;padding:7px 8px;margin:7px 0 0;box-sizing:border-box}
