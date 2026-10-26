@@ -12,7 +12,8 @@ const fresh=(branch='JIND')=>({
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
-const showDate=value=>value?String(value).split('-').reverse().join('/'):'—';
+const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'short',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
+const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
 const fmt=(v)=>v===null?'—':'₹'+money(v);
 const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
 
@@ -159,9 +160,9 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   function downloadCsv(){
-    const labels=['Branch','Date','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status'];
-    const data=shown.map(r=>[r.branch,r.date,r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',r.status||'PENDING']);
-    data.push(['TOTAL','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','']);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',r.status||'PENDING']);
+    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','']);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
@@ -172,7 +173,7 @@ export default function BranchLoadsDashboard({currentUser}){
   function entryRow(){
     return <tr className={styles.editRow}>
       <td>{isAdmin?<select aria-label="Branch" value={draft.branch} onChange={e=>set('branch',e.target.value)}>{BRANCHES.map(x=><option key={x}>{x}</option>)}</select>:<b>{userBranch}</b>}</td>
-      <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/></td>
+      <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/>{draft.date&&<small className={styles.dateDay}>{weekday(draft.date)}</small>}</td>
       <td><input aria-label="Load received kilograms" {...input} required value={draft.weight} placeholder="Weight kg" onChange={e=>set('weight',e.target.value)}/></td>
       <td><input aria-label="Rate per kg" {...input} required value={draft.rate} placeholder="₹/kg" onChange={e=>set('rate',e.target.value)}/></td>
       <td className={styles.computed}>{fmt(preview?.amount??null)}</td>
