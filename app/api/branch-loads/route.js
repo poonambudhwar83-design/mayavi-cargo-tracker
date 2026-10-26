@@ -42,6 +42,7 @@ async function ensure(sql){
     commodity TEXT NOT NULL DEFAULT '',
     bottle_count INTEGER CHECK(bottle_count BETWEEN 1 AND 10000),
     tracking_no TEXT NOT NULL DEFAULT '',
+    remarks TEXT NOT NULL DEFAULT '',
     delivery_status TEXT NOT NULL DEFAULT 'PENDING',
     amount_confirmation_no TEXT NOT NULL DEFAULT '',
     amount_confirmation_name TEXT NOT NULL DEFAULT '',
@@ -57,6 +58,8 @@ async function ensure(sql){
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS tracking_no TEXT NOT NULL DEFAULT ''`;
+  // Existing rows retain every field and get an empty optional Remarks value.
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS remarks TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'PENDING'`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(18,2) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS bottle_count INTEGER`;
@@ -91,6 +94,7 @@ function parse(body,auth){
   const paidToBranch=basePaidToBranch===null||extraAllocation===null?null:
     Math.round((basePaidToBranch+extraAllocation.toBranch+Number.EPSILON)*100)/100;
   const trackingNo=textField(body.trackingNo,100);
+  const remarks=textField(body.remarks,500);
   const confirmationNo=textField(body.confirmationNo,120);
   // Branch staff choose UTR, Cash or Pending. UTR and Cash are optional, so
   // an entry is ALWAYS allowed to save without a transaction reference.
@@ -116,7 +120,7 @@ function parse(body,auth){
   if(!commodity)return {error:'Select or enter commodity.'};
   if(extraCost===null)return {error:'Extra Cost must be a valid non-negative amount (up to 2 decimals).'};
   if(!LOAD_STATUSES.includes(status))return {error:'Select a valid shipment status.'};
-  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,bottleCount,trackingNo,confirmationNo:confirmationMode==='CASH'?'':confirmationNo,confirmationName,confirmationMode,status}};
+  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,bottleCount,trackingNo,remarks,confirmationNo:confirmationMode==='CASH'?'':confirmationNo,confirmationName,confirmationMode,status}};
 }
 function display(r){return {
   id:r.id,branch:r.branch,date:r.record_date,
@@ -139,12 +143,12 @@ function display(r){return {
   confirmationDecision:r.amount_confirmation_decision==='PENDING'&&r.amount_confirmation_approved_at?'YES':r.amount_confirmation_decision||'PENDING',
   confirmationDecidedAt:r.amount_confirmation_decided_at||null,confirmationDecidedBy:r.amount_confirmation_decided_by||'',
   confirmationApprovedAt:r.amount_confirmation_approved_at||null,confirmationApprovedBy:r.amount_confirmation_approved_by||'',
-  trackingNo:r.tracking_no||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
+  trackingNo:r.tracking_no||'',remarks:r.remarks||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
 };}
 async function one(sql,id){
   const rows=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
     FROM mayavi_branch_loads WHERE id=${id} LIMIT 1`;
   return rows[0]?display(rows[0]):null;
 }
@@ -155,10 +159,10 @@ export async function GET(request){
     await ensure(sql);
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads ORDER BY record_date DESC, created_at DESC LIMIT 10000`
       :await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads WHERE branch=${auth.branch} ORDER BY record_date DESC, created_at DESC LIMIT 10000`;
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
@@ -177,9 +181,9 @@ export async function POST(request){
     const providedId=String(body.clientRequestId||'').trim();
     const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providedId)?providedId:randomUUID();
     await sql`INSERT INTO mayavi_branch_loads
-      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
+      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
       VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode})
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.remarks},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode})
       ON CONFLICT (id) DO NOTHING`;
     const saved=await one(sql,id);
     if(!saved||saved.branch!==entry.branch)
@@ -240,7 +244,7 @@ export async function PATCH(request){
     const updated=auth.admin
       ?await sql`UPDATE mayavi_branch_loads SET branch=${entry.branch},record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},delivery_status=${entry.status},
           amount_confirmation_decision=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
             OR amount_confirmation_mode IS DISTINCT FROM ${entry.confirmationMode}
             OR received IS DISTINCT FROM ${entry.received}
@@ -280,7 +284,7 @@ export async function PATCH(request){
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
       :await sql`UPDATE mayavi_branch_loads SET record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},delivery_status=${entry.status},
           amount_confirmation_decision=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
             OR amount_confirmation_mode IS DISTINCT FROM ${entry.confirmationMode}
             OR received IS DISTINCT FROM ${entry.received}
