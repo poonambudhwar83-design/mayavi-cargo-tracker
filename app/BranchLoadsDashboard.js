@@ -160,7 +160,7 @@ export default function BranchLoadsDashboard({currentUser}){
     if(branchBasePreview===null||branchBasePreview<0){
       setMessage('Save nahi hua: JEPO Rate cannot exceed the selling Rate.');return;
     }
-    if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){
+    if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){
       setMessage('Save nahi hua: enter the No. of Bottles (1–10000).');return;
     }
     if(requiresExtraCost(draft.commodity)&&decimal(draft.extraCost,2)===null){
