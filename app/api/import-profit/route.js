@@ -1,7 +1,8 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
-import { selectedProfitMonth, profitMonths, importProfitArrivalDate } from '../../../lib/profitPeriod.js';
+import { selectedProfitMonth, profitMonths, currentProfitMonth } from '../../../lib/profitPeriod.js';
+import { selectImportProfitRows } from '../../../lib/importProfitPhysicalRows.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -115,26 +116,16 @@ export async function GET(request){
       if(!awb||seen.has(awb))continue;
       seen.add(awb);
       const data=shipment.data||{};
-      const arrivalDate=importProfitArrivalDate(data,month);
-      if(!arrivalDate)continue; // Actual arrival only, not booked/manifested/estimated.
+      // The Import tracker expands real physical parts before dividing them
+      // between Active and Customs Cleared. Use the same physical-row counts
+      // here; one master MAWB may legitimately occupy several profit rows.
+      const physicalRows=selectImportProfitRows(data,awb,month,currentProfitMonth());
+      if(!physicalRows.length)continue;
       const financial=saved.get(awb)||{};
-      // Use the same Customs Cleared state that controls the Import Active Masters
-      // view; a true split MAWB remains active while at least one physical
-      // part has not been customs-cleared.
-      const parts=Array.isArray(data.partShipments)?data.partShipments.filter(Boolean):[];
-      const splitLoad=data.isPartLoad===true||data.partLoad===true||
-        /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(data.status||''));
-      const isActiveMaster=splitLoad&&parts.length
-        ?parts.some(part=>part.customsCleared!==true)
-        :data.customsCleared!==true;
-      rows.push({
+      const base={
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         clientName:data.clientName||data.client||'',
-        isActiveMaster,
-        // Read the master shipment's origin (not an intermediate via/hub).
         origin:String(data.origin||''),
-        bags:totalBags(data),
-        weight:totalWeight(data),
         totalDuty:financial.total_duty===null||financial.total_duty===undefined?'':String(financial.total_duty),
         rate:financial.rate===null||financial.rate===undefined?'':String(financial.rate),
         goodsChargeOverride:financial.goods_charge_override===null||financial.goods_charge_override===undefined?'':String(financial.goods_charge_override),
@@ -143,9 +134,16 @@ export async function GET(request){
         goodsCategory:financial.goods_category===null||financial.goods_category===undefined
           ?inferGoods(data.goodsDescription||data.goods_description||'')
           :normalizeGoods(financial.goods_category),
-        enteredAt:data.enteredAt||'',
-        arrivalDate
-      });
+        enteredAt:data.enteredAt||''
+      };
+      for(const physical of physicalRows){
+        rows.push({...base,...physical,
+          // Full master weight/bags are used only for unsplit rows; a true
+          // split row carries its own physical quantities and allocated cost.
+          weight:physical.partCount===1?totalWeight(data):physical.weight,
+          bags:physical.partCount===1?totalBags(data):physical.bags
+        });
+      }
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
   }catch(error){
