@@ -159,7 +159,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
-      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>
+      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
       {(branchLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
