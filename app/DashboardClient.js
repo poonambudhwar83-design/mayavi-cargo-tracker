@@ -553,7 +553,23 @@ function expandPartRows(list=[]){
         String(p.weight||'').replace(/,/g,'').trim()
       ].join('|');
       if(!identity||identity==='|||')continue;
-      if(seen.has(identity))continue;
+      if(seen.has(identity)){
+        // An older DEP card and the later confirmed ARR may share the same
+        // physical part ID. Preserve the ARR whichever order SAL returned.
+        if(prefix==='065'&&p.arrivalIsActual===true){
+          const at=parts.findIndex(old=>String(old.partKey||old.partId||'')===identity);
+          if(at>=0&&parts[at].arrivalIsActual!==true){
+            const previous=parts[at];
+            parts[at]={...p,
+              mailSent:p.mailSent??previous.mailSent,
+              mailUpdatedAt:p.mailUpdatedAt||previous.mailUpdatedAt||'',
+              customsCleared:p.customsCleared??previous.customsCleared,
+              customsClearedAt:p.customsClearedAt||previous.customsClearedAt||'',
+              customsClearedBy:p.customsClearedBy||previous.customsClearedBy||''};
+          }
+        }
+        continue;
+      }
       seen.add(identity);
       parts.push(p);
     }
@@ -564,7 +580,7 @@ function expandPartRows(list=[]){
     // The record is VIEW ONLY: never invent a flight, ETA, DEP, ARR or Mail YES.
     // For example 065-11493661 must show 49/99 ARRIVED and 50/99 PENDING.
     if(prefix==='065'){
-      const masterTotal=Number(row.totalPieces||row.masterPieces||0);
+      const masterTotal=Number(row.totalPieces||row.masterPieces||String(row.bags||row.pieces||'').split('/').at(-1)||0);
       const recordedArrived=Number(row.arrivedPieces??0);
       const confirmedArrived=parts
         .filter(p=>p.arrivalIsActual===true)
