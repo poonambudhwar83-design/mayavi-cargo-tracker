@@ -105,6 +105,10 @@ assert.ok(route.includes("if(body.statusOnly===true){"));
 assert.ok(route.includes('UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
 const ui=readFileSync('app/BranchLoadsDashboard.js','utf8');
 assert.ok(ui.includes('if(!isAdmin)return;'));
+// The row-level Save is a direct action: it must not depend on the distant top form submit button.
+assert.ok(ui.includes('<button type="button" onClick={save} disabled={busy}>{busy?\'Saving…\':\'Save\'}</button>'));
+assert.ok(!ui.includes('<button type="submit" disabled={busy}>{busy?\'Saving…\':\'Save\'}</button>'));
+
 assert.ok(ui.includes('{isAdmin&&<button type="button" onClick={()=>remove(record)}'));
 assert.ok(ui.includes('<button type="button" onClick={()=>edit(record)}'));
 assert.ok(ui.includes('requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>'));
