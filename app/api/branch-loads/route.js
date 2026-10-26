@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {allowedBranch,dateValid,decimal,LOAD_STATUSES} from '../../../lib/branchLoads.js';
+import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus} from '../../../lib/branchLoads.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -60,7 +60,7 @@ function parse(body,auth){
   const destination=textField(body.destination,100);
   const service=textField(body.service,120),commodity=textField(body.commodity,120);
   const trackingNo=textField(body.trackingNo,100);
-  const status=textField(body.status||'PENDING',20).toUpperCase();
+  const status=textField(body.status||initialBranchStatus(branch),30).toUpperCase();
   if(!branch)return {error:'Select Jind or Karnal.'};
   if(!dateValid(date))return {error:'Enter a valid date.'};
   if(weight===null||weight<=0)return {error:'Load received must be greater than 0 kg (up to 3 decimals).'};
@@ -78,7 +78,7 @@ function display(r){return {
   received:String(r.received),balance:String(r.balance),
   paidToJepo:String(r.paid_to_jepo),paidToBranch:String(r.paid_to_branch),
   destination:r.destination,service:r.service,commodity:r.commodity,
-  trackingNo:r.tracking_no||'',status:r.delivery_status||'PENDING',
+  trackingNo:r.tracking_no||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
 };}
 async function one(sql,id){

@@ -1,14 +1,14 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,amounts} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',paidToJepo:'',paidToBranch:'',
-  destination:'',service:'',commodity:'',trackingNo:'',status:'PENDING'
+  destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
@@ -100,7 +100,7 @@ export default function BranchLoadsDashboard({currentUser}){
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
       received:row.received||'',paidToJepo:row.paidToJepo||'',paidToBranch:row.paidToBranch||'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
-      trackingNo:row.trackingNo||'',status:row.status||'PENDING'
+      trackingNo:row.trackingNo||'',status:row.status||initialBranchStatus(row.branch)
     });
     setMessage('');
   }
@@ -172,7 +172,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const input={type:'number',min:'0',step:'any',inputMode:'decimal'};
   function entryRow(){
     return <tr className={styles.editRow}>
-      <td>{isAdmin?<select aria-label="Branch" value={draft.branch} onChange={e=>set('branch',e.target.value)}>{BRANCHES.map(x=><option key={x}>{x}</option>)}</select>:<b>{userBranch}</b>}</td>
+      <td>{isAdmin?<select aria-label="Branch" value={draft.branch} onChange={e=>setDraft(d=>({...d,branch:e.target.value,status:initialBranchStatus(e.target.value)}))}>{BRANCHES.map(x=><option key={x}>{x}</option>)}</select>:<b>{userBranch}</b>}</td>
       <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/>{draft.date&&<small className={styles.dateDay}>{weekday(draft.date)}</small>}</td>
       <td><input aria-label="Load received kilograms" {...input} required value={draft.weight} placeholder="Weight kg" onChange={e=>set('weight',e.target.value)}/></td>
       <td><input aria-label="Rate per kg" {...input} required value={draft.rate} placeholder="₹/kg" onChange={e=>set('rate',e.target.value)}/></td>
@@ -185,7 +185,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>set('commodity',v)}/></td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
-      <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{x.replace(/_/g,' ')}</option>)}</select></td>
+      <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
     </tr>;
   }
@@ -207,8 +207,8 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}</td>,
     <td key="tracking"><b>{record.trackingNo||'—'}</b></td>,
-    <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||'PENDING'} onChange={e=>changeStatus(record,e.target.value)}>
-      {LOAD_STATUSES.map(x=><option key={x} value={x}>{x.replace(/_/g,' ')}</option>)}
+    <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
+      {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button><button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button></td>
   ];
