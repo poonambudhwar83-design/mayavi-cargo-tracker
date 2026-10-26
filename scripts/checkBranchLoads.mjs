@@ -250,6 +250,27 @@ assert.equal(totalJepoForLoad(5000,'Household and Electronics',500,null),5500);
 assert.equal(allocateExtraCost('Clothes',0,null).toJepo,0);
 assert.equal(totalJepoForLoad(5000,'Clothes',0,null),5000);
 
+// Remarks are optional, editable after Save and visible to employees only in
+// their own branch. Preserve them in Active, Delivered and CSV exports.
+assert.ok(route.includes("remarks TEXT NOT NULL DEFAULT ''"));
+assert.ok(route.includes("ADD COLUMN IF NOT EXISTS remarks TEXT NOT NULL DEFAULT ''"));
+assert.ok(route.includes('const remarks=textField(body.remarks,500);'));
+assert.ok(route.includes('trackingNo,remarks,confirmationNo:'));
+assert.ok(route.includes("remarks:r.remarks||''"));
+assert.equal((route.match(/tracking_no,remarks,delivery_status/g)||[]).length,4);
+assert.ok(route.includes('${entry.trackingNo},${entry.remarks},${entry.status}'));
+assert.equal((route.match(/remarks=\$\{entry\.remarks\}/g)||[]).length,2);
+assert.ok(ui.includes("remarks:''"));
+assert.ok(ui.includes("remarks:row.remarks||''"));
+assert.ok(ui.includes('aria-label="Remarks" rows={2} maxLength={500}'));
+assert.ok(ui.includes('key="remarks" className={styles.remarksCell}'));
+assert.ok(ui.includes("r.remarks||'',confirmationModeFor(r)"));
+assert.ok(ui.includes("'Last Edited By','Remarks','Payment Mode'"));
+assert.ok(ui.includes('<th>Remarks</th>'));
+assert.ok(ui.includes('REMARKS_WIDTH'));
+assert.ok(ui.includes('<td colSpan={10}>—</td>'));
+assert.ok(stylesheet.includes('.remarksCell'));
+
 // Reconcile the already-live direct row Save requirement as well.
 assert.ok(ui.includes('onClick={save} disabled={busy} aria-label="Save this load row"'));
 assert.ok(!ui.includes('<button type="submit" disabled={busy}>{busy?'));
