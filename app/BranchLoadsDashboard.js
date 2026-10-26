@@ -281,7 +281,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
-    <p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>
+    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>}
       <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
