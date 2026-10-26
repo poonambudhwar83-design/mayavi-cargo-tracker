@@ -14,11 +14,11 @@ function connection(){
 async function authenticate(request,sql){
   const session=readSession(request);
   if(!session)return {error:'Please sign in to Mayavi.',status:401};
-  const users=await sql`SELECT username,role,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
+  const users=await sql`SELECT username,role,is_active,branch_scope,session_version FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
   const u=users[0];
-  if(!u||!u.is_active)return {error:'Account disabled or unavailable.',status:403};
+  if(!u||!u.is_active||Number(u.session_version)!==Number(session.sessionVersion||0))return {error:'Session revoked. Please log in again.',status:401};
   if(u.role==='admin'&&session.role==='admin')return {admin:true,username:u.username,branch:null};
-  const branch=allowedBranch(u.username);
+  const branch=allowedBranch(u.branch_scope)||allowedBranch(u.username);
   if(!branch||u.role!=='employee'||session.role!=='employee')
     return {error:'Jind / Karnal page access is restricted.',status:403};
   return {admin:false,username:u.username,branch};
