@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {amounts,allowedBranch,dateValid,decimal,DESTINATIONS,COMMODITIES} from '../lib/branchLoads.js';
+import {amounts,allowedBranch,dateValid,decimal,DESTINATIONS,COMMODITIES,SERVICES,LOAD_STATUSES} from '../lib/branchLoads.js';
 assert.equal(allowedBranch('jind'),'JIND');
 assert.equal(allowedBranch('Karnal'),'KARNAL');
 assert.equal(allowedBranch('sonu'),'');
@@ -12,4 +12,6 @@ assert.equal(decimal('-1'),null);
 assert.equal(decimal('1.234',2),null);
 assert.ok(DESTINATIONS.includes('UK')&&DESTINATIONS.includes('USA')&&DESTINATIONS.includes('Australia'));
 assert.ok(COMMODITIES.includes('Protein')&&COMMODITIES.includes('Clothes'));
-console.log('Jind/Karnal load & payment validation passed.');
+assert.ok(SERVICES.includes('FedEx')&&SERVICES.includes('Aramex')&&SERVICES.includes('DHL')&&SERVICES.includes('Self'));
+assert.deepEqual(LOAD_STATUSES,['PENDING','IN_TRANSIT','DISPATCHED','DELIVERED']);
+console.log('Jind/Karnal daily load, courier services, and delivery status validation passed.');
