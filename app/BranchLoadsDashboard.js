@@ -1,13 +1,16 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,jepoAmount,branchPayment,totalJepoPayment} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,allocateExtraCost,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
+// One shared width blueprint keeps saved values exactly beneath their respective headings.
+const LEDGER_WIDTHS=[92,184,126,110,138,136,132,125,160,165,145,120,202,161,176,133,132,151];
+const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS,...(extra?[142]:[]),192].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
-  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',
+  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',
   destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -87,16 +90,18 @@ export default function BranchLoadsDashboard({currentUser}){
     balance:t.balance+Number(r.balance||0),
     paidToJepo:t.paidToJepo+Number(r.paidToJepo||0),
     paidToBranch:t.paidToBranch+Number(r.paidToBranch||0),
+    totalJepo:t.totalJepo+Number(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
     extraCost:t.extraCost+(requiresExtraCost(r.commodity)?Number(r.extraCost||0):0)
-  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0}),[shown]);
+  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0}),[shown]);
   // Extra Cost appears only for mixed-household entries; the derived Total JEPO
   // payment is always the very last column, whether Extra Cost exists or not.
   const hasExtraCostColumn=shown.some(r=>requiresExtraCost(r.commodity))||
     (editing!==''&&editing!=='new'&&requiresExtraCost(draft.commodity));
   const preview=amounts(draft.weight,draft.rate,draft.received);
   const jepoPreview=jepoAmount(draft.weight,draft.jepoRate);
-  const branchPreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
-  const totalJepoPreview=jepoPreview===null?null:totalJepoPayment(jepoPreview,requiresExtraCost(draft.commodity)?draft.extraCost:0);
+  const branchBasePreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
+  const branchPreview=branchBasePreview===null?null:totalBranchForLoad(preview?.amount,jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
+  const totalJepoPreview=jepoPreview===null?null:totalJepoForLoad(jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
   function add(){
@@ -109,6 +114,7 @@ export default function BranchLoadsDashboard({currentUser}){
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
       received:row.received||'',jepoRate:row.jepoRate??'',
       extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
+      bottleCount:row.bottleCount??'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',status:row.status||initialBranchStatus(row.branch)
     });
@@ -123,7 +129,10 @@ export default function BranchLoadsDashboard({currentUser}){
     }
     if(preview===null){setMessage('Enter a positive Load Weight and valid Rate / Received amounts.');return;}
     if(jepoPreview===null){setMessage('Please enter a valid JEPO Rate per kg.');return;}
-    if(branchPreview===null||branchPreview<0){setMessage('JEPO Rate must not exceed the selling Rate.');return;}
+    if(branchBasePreview===null||branchBasePreview<0){setMessage('JEPO Rate must not exceed the selling Rate.');return;}
+    if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){setMessage('Enter No. of Bottles (1–10000).');return;}
+    if(requiresBottleCount(draft.commodity)&&Number(draft.extraCost||0)<Number(draft.bottleCount)*250){setMessage('Ghee Extra Cost must be at least ₹250 × No. of Bottles. The remainder goes to Branch.');return;}
+    if(branchPreview===null||branchPreview<0){setMessage('Check Extra Cost and payment amounts.');return;}
     const currentId=editing;
     setBusy(true);setMessage('');
     try{
@@ -173,9 +182,9 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   function downloadCsv(){
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status','Entered By','Last Edited By',...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoPayment(r.paidToJepo,requiresExtraCost(r.commodity)?r.extraCost:0)]);
-    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,'',totals.paidToJepo,totals.paidToBranch,'','','','','','','',...(hasExtraCostColumn?[totals.extraCost]:[]),totalJepoPayment(totals.paidToJepo,totals.extraCost)]);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By',...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,'',totals.paidToJepo,totals.paidToBranch,'','','','','','','','',...(hasExtraCostColumn?[totals.extraCost]:[]),totals.totalJepo]);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
@@ -197,7 +206,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.computed}>{fmt(branchPreview)}</td>
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
-      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:''}))}/></td>
+      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:'',bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>set('bottleCount',e.target.value)}/></label>}</td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
@@ -225,7 +234,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="branchpaid" className={styles.number}>{money(record.paidToBranch)}</td>,
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
-    <td key="commodity">{record.commodity}</td>,
+    <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
     <td key="tracking"><b>{record.trackingNo||'—'}</b></td>,
     <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
@@ -234,7 +243,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
-    <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}>{fmt(totalJepoPayment(record.paidToJepo,requiresExtraCost(record.commodity)?record.extraCost:0))}</td>
+    <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}>{fmt(totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true}))}</td>
   ];
   return <main className={styles.page}>
     <header className={styles.heading}>
@@ -256,6 +265,7 @@ export default function BranchLoadsDashboard({currentUser}){
           <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
         </div>
         <div className={styles.scroller}><table className={styles.table}>
+          {ledgerColumns(requiresExtraCost(draft.commodity))}
           <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
@@ -265,8 +275,9 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
-    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch = Amount − Amount Paid to JEPO (auto-calculated). Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics. Total Amount Paid to JEPO = Amount Paid to JEPO + Extra Cost.</p>
+    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch = Amount − Amount Paid to JEPO (auto-calculated). Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics. For Ghee, JEPO Extra Cost = No. of Bottles × ₹250, and the remainder goes to Branch; for other mixed-household commodities the full Extra Cost goes to JEPO.</p>
       <div className={styles.scroller}><table className={styles.table}>
+        {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
@@ -278,7 +289,7 @@ export default function BranchLoadsDashboard({currentUser}){
           {!loaded&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}>{fmt(totalJepoPayment(totals.paidToJepo,totals.extraCost))}</td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}>{fmt(totals.totalJepo)}</td></tr></tfoot>
       </table></div>
     </form>
     <footer className={styles.foot}>
