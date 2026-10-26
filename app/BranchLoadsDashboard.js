@@ -11,7 +11,7 @@ const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID
 // profiles makes the ledger compact without crowding Date, Rate or the selects.
 // Every header and row within its table still uses the same colgroup.
 const ENTRY_WIDTHS=[108,160,118,108,118,122,110,116,138,144,152,148,192,146,166,120,122,130];
-const SAVED_WIDTHS=[100,156,106,88,121,121,105,112,133,134,122,112,172,143,148,108,114,134];
+const SAVED_WIDTHS=[104,158,90,88,110,109,98,98,117,119,112,102,155,123,142,100,106,120];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=174;
 const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
