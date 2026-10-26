@@ -105,7 +105,9 @@ assert.ok(route.includes("if(body.statusOnly===true){"));
 assert.ok(route.includes('UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
 const ui=readFileSync('app/BranchLoadsDashboard.js','utf8');
 assert.ok(ui.includes('if(!isAdmin)return;'));
-assert.ok(ui.includes('{isAdmin&&<button type="button" onClick={()=>remove(record)}'));
+assert.ok(ui.includes("{isAdmin&&<button type=\"button\" aria-label={'Delete '+record.branch+' entry '"));
+assert.ok(ui.includes('className={styles.quickDelete} disabled={busy} onClick={()=>remove(record)}>Delete</button>'));
+assert.ok(!ui.includes('{isAdmin&&<button type="button" onClick={()=>remove(record)}'));
 assert.ok(ui.includes('<button type="button" onClick={()=>edit(record)}'));
 assert.ok(ui.includes('requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>'));
 assert.ok(ui.includes('Extra Cost (INR)'));
@@ -135,10 +137,22 @@ assert.ok(COMMODITIES.includes('Household and Hookah')&&COMMODITIES.includes('Ho
 // Saving must always reach application-level validation. The native browser
 // required validator previously blocked the wide, horizontally scrolled form.
 assert.ok(ui.includes('<form noValidate onSubmit={save}>'));
-assert.ok(ui.includes('Save Load'));
+assert.ok(ui.includes('aria-label="Save this load row"'));
+assert.ok(ui.includes('<button type="button" onClick={save} disabled={busy} aria-label="Save this load row">'));
+assert.ok(!ui.includes('Save Load</button>'));
+assert.ok(!ui.includes('Save Edited Load</button>'));
 assert.ok(ui.includes('Saving to Mayavi database…'));
 assert.ok(ui.includes('Save nahi hua:'));
-assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState('');"));
+assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());"));
+assert.ok(ui.includes("setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');"));
+assert.ok(ui.includes("(sheet==='ACTIVE'&&!isAdmin?r.date===(dayFilter||todayIST()):(!dayFilter||r.date===dayFilter))"));
+assert.ok(ui.includes("isAdmin&&<button type=\"button\" className={styles.headerLink}"));
+assert.ok(ui.includes('className={styles.branchDailyNotice}'));
+assert.ok(ui.includes('const writeRevision=useRef(0);'));
+assert.ok(ui.includes('const latestRead=useRef(0);'));
+assert.ok(ui.includes('const recordWrite=()=>{writeRevision.current+=1;latestRead.current+=1;};'));
+assert.ok(ui.includes('recordWrite();'));
+assert.ok(ui.includes("if(!current())return;"));
 assert.ok(ui.includes('setDayFilter(saved.status===\'DELIVERED\'?\'\':saved.date);'));
 assert.ok(ui.includes('clientRequestId:saveRequestId'));
 assert.ok(route.includes('ON CONFLICT (id) DO NOTHING'));
