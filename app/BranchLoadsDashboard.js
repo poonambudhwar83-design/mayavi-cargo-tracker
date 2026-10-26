@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
@@ -120,6 +120,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const branchBasePreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
   const branchPreview=branchBasePreview===null?null:totalBranchForLoad(preview?.amount,jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
   const totalJepoPreview=jepoPreview===null?null:totalJepoForLoad(jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
+  const extraJepoMinimum=minimumJepoExtraCost(draft.commodity,draft.bottleCount);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
   function add(){
@@ -175,8 +176,8 @@ export default function BranchLoadsDashboard({currentUser}){
     if(requiresExtraCost(draft.commodity)&&decimal(draft.extraCost,2)===null){
       setMessage('Save nahi hua: Extra Cost must be a valid amount.');return;
     }
-    if(requiresBottleCount(draft.commodity)&&Number(draft.extraCost||0)<Number(draft.bottleCount)*250){
-      setMessage('Save nahi hua: Ghee Extra Cost must cover ₹250 × bottles; the remainder goes to Branch.');return;
+    if(requiresExtraCost(draft.commodity)&&extraJepoMinimum!==null&&Number(draft.extraCost||0)<extraJepoMinimum){
+      setMessage('Save nahi hua: '+draft.commodity+' requires Extra Cost of at least ₹'+extraJepoMinimum+'. JEPO gets ₹'+extraJepoMinimum+' and the rest goes to Branch.');return;
     }
     if(branchPreview===null||branchPreview<0){
       setMessage('Save nahi hua: check Extra Cost and payment amounts.');return;
@@ -313,7 +314,7 @@ export default function BranchLoadsDashboard({currentUser}){
       </div><small className={styles.confirmHelp}>Both details go to Admin for approval</small></td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
-        <input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/>:'—'}</td>}
+        <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
       <td className={styles.totalJepoCell}>{fmt(totalJepoPreview)}</td>
     </tr>;
   }
@@ -401,7 +402,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {editing!==''&&editing!=='new'&&<button type="submit" className={styles.saveLoadTopButton} disabled={busy}>{busy?'Saving…':'Save Edited Load'}</button>}
-    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>}
+    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee ₹250 per bottle to JEPO, Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah Extra Cost goes to JEPO.</p>}
       <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
