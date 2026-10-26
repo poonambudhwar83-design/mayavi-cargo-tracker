@@ -1,13 +1,13 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,jepoAmount} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,jepoAmount,branchPayment} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
-  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',paidToBranch:'',extraCost:'',
+  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',
   destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -95,6 +95,7 @@ export default function BranchLoadsDashboard({currentUser}){
     (editing!==''&&editing!=='new'&&requiresExtraCost(draft.commodity));
   const preview=amounts(draft.weight,draft.rate,draft.received);
   const jepoPreview=jepoAmount(draft.weight,draft.jepoRate);
+  const branchPreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
   function add(){
@@ -105,7 +106,7 @@ export default function BranchLoadsDashboard({currentUser}){
     setEditing(row.id);
     setDraft({
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
-      received:row.received||'',jepoRate:row.jepoRate??'',paidToBranch:row.paidToBranch||'',
+      received:row.received||'',jepoRate:row.jepoRate??'',
       extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',status:row.status||initialBranchStatus(row.branch)
@@ -121,6 +122,7 @@ export default function BranchLoadsDashboard({currentUser}){
     }
     if(preview===null){setMessage('Enter a positive Load Weight and valid Rate / Received amounts.');return;}
     if(jepoPreview===null){setMessage('Please enter a valid JEPO Rate per kg.');return;}
+    if(branchPreview===null||branchPreview<0){setMessage('JEPO Rate must not exceed the selling Rate.');return;}
     const currentId=editing;
     setBusy(true);setMessage('');
     try{
@@ -159,7 +161,7 @@ export default function BranchLoadsDashboard({currentUser}){
     if(busy||status===row.status)return;
     setBusy(true);setMessage('');
     try{
-      const response=await fetch(API,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({...row,status})});
+      const response=await fetch(API,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:row.id,status,statusOnly:true})});
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'Status change failed.');
       setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
@@ -191,7 +193,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.computed}>{fmt(preview?.balance??null)}</td>
       <td><input aria-label="JEPO Rate per kg" {...input} required value={draft.jepoRate} placeholder="₹/kg JEPO" onChange={e=>set('jepoRate',e.target.value)}/></td>
       <td className={styles.computed}>{fmt(jepoPreview)}</td>
-      <td><input aria-label="Amount paid to Branch" {...input} value={draft.paidToBranch} placeholder="₹ Branch" onChange={e=>set('paidToBranch',e.target.value)}/></td>
+      <td className={styles.computed}>{fmt(branchPreview)}</td>
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:''}))}/></td>
@@ -251,7 +253,7 @@ export default function BranchLoadsDashboard({currentUser}){
           <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
         </div>
         <div className={styles.scroller}><table className={styles.table}>
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}</tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}</tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
       </section>}
@@ -260,12 +262,12 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
-    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch is tracked separately. Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics.</p>
+    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch = Amount − Amount Paid to JEPO (auto-calculated). Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics.</p>
       <div className={styles.scroller}><table className={styles.table}>
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}

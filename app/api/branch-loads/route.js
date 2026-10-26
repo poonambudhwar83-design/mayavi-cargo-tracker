@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,jepoAmount} from '../../../lib/branchLoads.js';
+import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,jepoAmount,branchPayment} from '../../../lib/branchLoads.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -63,7 +63,7 @@ function parse(body,auth){
   const received=decimal(body.received,2);
   const jepoRate=decimal(body.jepoRate,4,true);
   const paidToJepo=jepoAmount(weight,body.jepoRate);
-  const paidToBranch=decimal(body.paidToBranch,2);
+  const paidToBranch=branchPayment(weight,rate,body.jepoRate);
   const destination=textField(body.destination,100);
   const service=textField(body.service,120),commodity=textField(body.commodity,120);
   const extraCost=requiresExtraCost(commodity)?decimal(body.extraCost,2):0;
@@ -74,7 +74,8 @@ function parse(body,auth){
   if(weight===null||weight<=0)return {error:'Load received must be greater than 0 kg (up to 3 decimals).'};
   if(rate===null)return {error:'Enter a valid rate (up to 4 decimals).'};
   if(jepoRate===null)return {error:'Enter a valid JEPO Rate per kg (up to 4 decimals).'};
-  if([received,paidToJepo,paidToBranch].some(v=>v===null))return {error:'Payments must be valid non-negative amounts (up to 2 decimals).'};
+  if([received,paidToJepo,paidToBranch].some(v=>v===null))return {error:'Payments must be valid amounts (up to 2 decimals).'};
+  if(paidToBranch<0)return {error:'JEPO Rate is higher than the selling Rate; Paid to Branch cannot be negative.'};
   if(!destination)return {error:'Select or enter destination country.'};
   if(!service)return {error:'Select or enter service.'};
   if(!commodity)return {error:'Select or enter commodity.'};
@@ -139,6 +140,17 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const id=textField(body.id,80);
     if(!/^[0-9a-f-]{36}$/i.test(id))return json({ok:false,error:'Invalid entry.'},400);
+    // Pure status changes must not silently rewrite historic payout values.
+    // The branch scope is enforced in SQL for both operation types.
+    if(body.statusOnly===true){
+      const status=textField(body.status,30).toUpperCase();
+      if(!LOAD_STATUSES.includes(status))return json({ok:false,error:'Invalid shipment status.'},400);
+      await ensure(sql);
+      const statusRows=auth.admin
+        ?await sql`UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
+        :await sql`UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
+      return statusRows.length?json({ok:true,row:await one(sql,id)}):json({ok:false,error:'Entry not found or access denied.'},404);
+    }
     const {entry,error}=parse(body,auth);
     if(error)return json({ok:false,error},400);
     await ensure(sql);
