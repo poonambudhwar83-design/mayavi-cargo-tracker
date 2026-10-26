@@ -187,3 +187,20 @@
 }
 .savedLedger .statusChip{min-width:0;width:100%;max-width:100%}
 .entryLedger .choice,.entryLedger .bottleControl{min-width:0;max-width:100%}
+
+
+/* Save control stays visible at the beginning of the wide branch form.
+   Employees receive immediate validation/success feedback above the form. */
+.loadEntryActions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.saveLoadTopButton{display:inline-flex;align-items:center;justify-content:center;padding:9px 16px;border-radius:8px;border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;font-size:13px;font-weight:900;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(29,78,216,.17)}
+.saveLoadTopButton:hover{background:#1e40af}
+.saveLoadTopButton:disabled{opacity:.55;cursor:wait}
+.message{position:sticky;top:6px;z-index:6;border:1px solid #93c5fd;box-shadow:0 4px 12px rgba(17,24,39,.12);margin:12px 0}
+@media(max-width:900px){.loadEntryActions{justify-content:flex-start;width:100%}.saveLoadTopButton{min-width:120px}}
+/* Compact actual saved rows; fixed colgroup below prevents text shifting. */
+.savedLedger thead th{padding:6px 4px!important}
+.savedLedger tbody td,.savedLedger tfoot td{padding:6px 4px!important}
+.savedLedger thead th{font-size:10px!important}
+.savedLedger tbody td{font-size:11px!important}
+.savedLedger .branchTag{padding:4px 5px}
+.savedLedger .statusChip{font-size:10px;padding:5px 5px}
