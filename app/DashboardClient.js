@@ -705,7 +705,7 @@ function expandPartRows(list=[]){
       arrivalEstimate:p.arrivalEstimate===true||Boolean(saudiaEta),
       arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?'Matching Saudia flight/date planned ETA; IST, not actual arrival':''),
       status:p.status||row.status,
-      saudiaRcfFollowUp:prefix==='065'&&p.arrivalIsActual!==true&&row.saudiaRcfFollowUp===true&&
+      saudiaRcfFollowUp:prefix==='065'&&row.saudiaRcfFollowUp===true&&p._saudiaPendingVirtual!==true&&
         (!Number(row.saudiaRcfPieces)||Number(row.saudiaRcfPieces)===Number(p.pieces)),
       saudiaRcfStation:row.saudiaRcfStation||'',
       saudiaRcfDate:row.saudiaRcfDate||'',

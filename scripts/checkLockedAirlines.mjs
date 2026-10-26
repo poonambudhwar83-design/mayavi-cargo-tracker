@@ -7,22 +7,10 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
-// Saudia (065) TEMPORARILY RELOCKED by user on 25 Oct 2026.
-// Stable base: commit 33b75eec16698221b55a6ea1957788734a49f243
-// Baseline branch: lock/saudia-working-baseline-20261025
-// For a future SAL edge case: explicitly unlock the affected parser, write
-// dated AWB regression tests, verify a READY deployment, then update the
-// expected blob hash and relock. Do NOT disable other airline locks.
-// Saudia functional regression is checked by checkSaudiaTransitArrival.mjs.
+// Saudia (065) temporary blob-hash protection was removed at the owner's
+// request. Preserve the working SAL parsing/arrival-evidence regression checks.
+// Other airlines retain their existing locks, unchanged.
 const locked = Object.freeze({
-  // Saudia (065) temporary verified baseline. All 6 actively used SAL
-  // modules are protected by exact Git blob hashes to prevent silent drift.
-  'lib/saudiaStrong.js':'7cdd23ed97b6bcbf24f2b0fe5572ade431b45473',
-  'lib/saudiaDirect.js':'cb39b401c2634dac681021299a328f36cdf6dbb5',
-  'lib/saudiaTransitGuard.js':'1a370687ad36bb80bebad085e7ae600fb8ff90f1',
-  'lib/saudiaSalPublic.js':'9c55a2fc495706ab8fc799800a0d29b48a1b316c',
-  'lib/saudiaSal.js':'3e6ee3646ae3b67833d3c379af2b85ffab999fda',
-  'lib/saudia.js':'db7739b0860ad49ac762fded8b82654e6c05ff31',
   // Air India (098) official Activity View parser, FOW and movement tracking.
   'lib/airIndia.js':'8345dc7ebd4fcf0f178d2214b2e272703340a5bf',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
@@ -275,4 +263,4 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   changed=true;
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Saudia (065) temporarily LOCKED at 2026-10-25 working baseline; Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229) remain LOCKED.');
+console.log('Airline lock check passed: Saudia (065) temporary hash lock removed; SAL regression and arrival-evidence checks remain. Air India (098), IndiGo (312), Ethiopian (071), Cathay (160), Emirates (176), and Kuwait (229) remain LOCKED.');
