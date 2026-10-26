@@ -66,6 +66,8 @@ export default function BranchLoadsDashboard({currentUser}){
   const [loaded,setLoaded]=useState(false);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
+  // Keep save failures visible beside the row button even on a wide scrolling table.
+  const [saveError,setSaveError]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());
@@ -121,7 +123,7 @@ export default function BranchLoadsDashboard({currentUser}){
   // Pending Yes/No actions are displayed beside their own transaction row;
   // no separate approval queue that detaches a decision from the saved load.
   function switchSheet(next){
-    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');setMonth('');setSearch('');
+    setSheet(next);setMessage('');setSaveError('');setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
@@ -148,10 +150,15 @@ export default function BranchLoadsDashboard({currentUser}){
   const cashJepoPreview=totalJepoPreview===null?null:jepoCashPart(draft.commodity,draft.extraCost,draft.bottleCount);
   const extraJepoMinimum=minimumJepoExtraCost(draft.commodity,draft.bottleCount);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
+  function showSaveFailure(reason){
+    const message='Save nahi hua: '+String(reason||'Please check the entry.');
+    setMessage(message);
+    setSaveError(message);
+  }
 
   function add(){
     setSheet('ACTIVE');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});
-    setEditing('new');setSaveRequestId(newSaveRequestId());setMessage('');
+    setEditing('new');setSaveRequestId(newSaveRequestId());setMessage('');setSaveError('');
   }
   function edit(row){
     setEditing(row.id);
@@ -163,50 +170,51 @@ export default function BranchLoadsDashboard({currentUser}){
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',confirmationMode:confirmationModeFor(row),status:row.status||initialBranchStatus(row.branch)
     });
-    setMessage('');
+    setMessage('');setSaveError('');
   }
-  function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setSaveRequestId(newSaveRequestId());setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});setMessage('');}
+  function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setSaveRequestId(newSaveRequestId());setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});setMessage('');setSaveError('');}
   async function save(event){
-    event.preventDefault();
+    event?.preventDefault?.();
     if(busy||!editing)return;
+    setSaveError('');
     // Native HTML form validation silently blocks submit for far-right fields
     // inside the horizontally-scrolling ledger. Validate here and show feedback.
-    if(!dateValid(draft.date)){setMessage('Save nahi hua: select a valid Entry Date.');return;}
+    if(!dateValid(draft.date)){showSaveFailure('select a valid Entry Date.');return;}
     if(decimal(draft.weight,3,true)===null||Number(draft.weight)<=0){
-      setMessage('Save nahi hua: enter Load Received in kg (greater than 0).');return;
+      showSaveFailure('enter Load Received in kg (greater than 0).');return;
     }
     if(decimal(draft.rate,4,true)===null){
-      setMessage('Save nahi hua: enter a valid Rate per kg.');return;
+      showSaveFailure('enter a valid Rate per kg.');return;
     }
     if(decimal(draft.received,2)===null){
-      setMessage('Save nahi hua: Received must be a valid amount. Leave blank if unpaid.');return;
+      showSaveFailure('Received must be a valid amount. Leave blank if unpaid.');return;
     }
     if(!draft.destination||draft.destination==='__other__'){
-      setMessage('Save nahi hua: select or type Destination.');return;
+      showSaveFailure('select or type Destination.');return;
     }
     if(!draft.service||draft.service==='__other__'){
-      setMessage('Save nahi hua: select or type Service.');return;
+      showSaveFailure('select or type Service.');return;
     }
     if(!draft.commodity||draft.commodity==='__other__'){
-      setMessage('Save nahi hua: select or type Commodity.');return;
+      showSaveFailure('select or type Commodity.');return;
     }
     if(jepoPreview===null){
-      setMessage('Save nahi hua: enter JEPO Rate per kg (use 0 only if the rate really is zero).');return;
+      showSaveFailure('enter JEPO Rate per kg (use 0 only if the rate really is zero).');return;
     }
     if(branchBasePreview===null||branchBasePreview<0){
-      setMessage('Save nahi hua: JEPO Rate cannot exceed the selling Rate.');return;
+      showSaveFailure('JEPO Rate cannot exceed the selling Rate.');return;
     }
     if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){
-      setMessage('Save nahi hua: enter the No. of Bottles (1–10000).');return;
+      showSaveFailure('enter the No. of Bottles (1–10000).');return;
     }
     if(requiresExtraCost(draft.commodity)&&decimal(draft.extraCost,2)===null){
-      setMessage('Save nahi hua: Extra Cost must be a valid amount.');return;
+      showSaveFailure('Extra Cost must be a valid amount.');return;
     }
     if(requiresExtraCost(draft.commodity)&&extraJepoMinimum!==null&&Number(draft.extraCost||0)<extraJepoMinimum){
-      setMessage('Save nahi hua: '+draft.commodity+' requires Extra Cost of at least ₹'+extraJepoMinimum+'. JEPO gets ₹'+extraJepoMinimum+' and the rest goes to Branch.');return;
+      showSaveFailure(''+draft.commodity+' requires Extra Cost of at least ₹'+extraJepoMinimum+'. JEPO gets ₹'+extraJepoMinimum+' and the rest goes to Branch.');return;
     }
     if(branchPreview===null||branchPreview<0){
-      setMessage('Save nahi hua: check Extra Cost and payment amounts.');return;
+      showSaveFailure('check Extra Cost and payment amounts.');return;
     }
     const currentId=editing;
     const expectedBranch=isAdmin?draft.branch:userBranch;
@@ -247,9 +255,10 @@ export default function BranchLoadsDashboard({currentUser}){
       setSheet(saved.status==='DELIVERED'?'DELIVERED':'ACTIVE');
       setDayFilter(saved.status==='DELIVERED'?'':saved.date);
       setMonth('');setSearch('');
+      setSaveError('');
       setMessage('✓ '+saved.branch+' entry SAVED in database ('+showDate(saved.date)+'). '+(saved.status==='DELIVERED'?'See Delivered Sheet.':'Entry is in Active Loads. You can add the next load.'));
     }catch(e){
-      setMessage('Save nahi hua: '+(e?.message||'Please try again. Your entered details are still here.'));
+      showSaveFailure(''+(e?.message||'Please try again. Your entered details are still here.'));
     }finally{setBusy(false);}
   }
   async function remove(row){
@@ -347,7 +356,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </select>
         {draft.confirmationMode==='UTR'&&<input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Enter UTR if available" value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>}
       </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
-      <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
+      <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button>{saveError&&<p role="alert" className={styles.inlineSaveError}>{saveError}</p>}</td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
       <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
