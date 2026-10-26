@@ -7,6 +7,7 @@ import styles from './BranchLoadsDashboard.module.css';
 const API='/api/branch-loads';
 // One shared width blueprint keeps saved values exactly beneath their respective headings.
 const LEDGER_WIDTHS=[92,184,126,110,138,136,132,125,160,165,145,120,202,161,176,133,132,151];
+const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,192)+(extra?142:0);
 const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS,...(extra?[142]:[]),192].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
@@ -264,7 +265,7 @@ export default function BranchLoadsDashboard({currentUser}){
           <div><h2>Load Entry</h2><p>Enter today's load here. Change date for an earlier entry. Day appears automatically.</p></div>
           <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
         </div>
-        <div className={styles.scroller}><table className={styles.table}>
+        <div className={styles.scroller}><table className={styles.table} style={{width:ledgerWidth(requiresExtraCost(draft.commodity))+'px',minWidth:'100%'}}>
           {ledgerColumns(requiresExtraCost(draft.commodity))}
           <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
@@ -276,7 +277,7 @@ export default function BranchLoadsDashboard({currentUser}){
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
     <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch = Amount − Amount Paid to JEPO (auto-calculated). Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics. For Ghee, JEPO Extra Cost = No. of Bottles × ₹250, and the remainder goes to Branch; for other mixed-household commodities the full Extra Cost goes to JEPO.</p>
-      <div className={styles.scroller}><table className={styles.table}>
+      <div className={styles.scroller}><table className={styles.table} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
