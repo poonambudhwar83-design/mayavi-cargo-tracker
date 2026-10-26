@@ -9,6 +9,7 @@ import { refreshScope } from '../lib/autoRefreshScope.js';
 import { notifyProfitSourceChanged } from '../lib/profitSync.js';
 import { matchSaudiaRcfParts } from '../lib/saudiaRcfParts.js';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
+import { guardCathayFinalArrival } from '../lib/cathayFinalArrival.js';
 import { guardSaudiaConnectingFlightWithoutSal, enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
 
 const KEY='mayavi_v3_shipments';
@@ -216,6 +217,9 @@ function decorateTiming(existing={},incoming={}){
     departureTimeZone:departureChanged?(incoming.departureTimeZone||''):(raw.departureTimeZone||''),
     scheduledArrivalTimeZone:scheduledChanged?(incoming.scheduledArrivalTimeZone||''):(raw.scheduledArrivalTimeZone||'')
   });
+  if(normalize(incoming.mawb||existing.mawb||existing.awb||'').startsWith('160-')){
+    Object.assign(merged,guardCathayFinalArrival(merged));
+  }
   const via=viaForRow(merged);
 
   const rowMawb=normalize(incoming.mawb||existing.mawb||existing.awb||'');

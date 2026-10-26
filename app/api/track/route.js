@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { trackCathay } from '../../../lib/cathay.js';
 import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
+import { guardCathayFinalArrival } from '../../../lib/cathayFinalArrival.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
 import { guardSaudiaFromLatestSal, enforceSaudiaArrivalEvidence } from '../../../lib/saudiaTransitGuard.js';
@@ -130,6 +131,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   if(mawb.startsWith('160-')){
     const existingCx=await sql`SELECT data FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
     tracked=preserveCathayFlight(existingCx?.[0]?.data||{},tracked,mawb);
+    tracked=guardCathayFinalArrival(tracked);
   }
   const clearStaleArrival=tracked.arrivalVerifiedAbsent===true;
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
@@ -1461,6 +1463,7 @@ async function handle(mawb,fallback={}){
     // Return previously verified fields to the dashboard as well as protect DB writes.
     const previousCx=await loadStoredTrackingFallback(mawb);
     shipment=preserveCathayFlight(previousCx,shipment,mawb);
+    shipment=guardCathayFinalArrival(shipment);
   }
   // ET only: a passed final ETA plus no verified final-leg departure needs rescheduling.
   if(ethiopianFastPath&&direct)shipment=markEthiopianReschedulePending(shipment);

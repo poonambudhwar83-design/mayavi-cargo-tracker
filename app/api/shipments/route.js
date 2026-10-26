@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../../../lib/partMail.js';
 import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
+import { guardCathayFinalArrival } from '../../../lib/cathayFinalArrival.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -169,6 +170,7 @@ export async function POST(request){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
       if(incomingAwb.startsWith('160-'))rowForSave=preserveCathayFlight(existingRow?.data||{},rowForSave,incomingAwb);
+      if(incomingAwb.startsWith('160-'))rowForSave=guardCathayFinalArrival(rowForSave);
       // Import part-load decisions belong to each physical movement; tracking
       // refreshes must never copy the first part's flags to all other parts.
       const supportsPartCustoms=['065','098','176','312'].some(p=>incomingAwb.startsWith(p));
