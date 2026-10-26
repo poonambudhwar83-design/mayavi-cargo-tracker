@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,requiresBottleCount,parseBottleCount,allocateExtraCost,jepoAmount,branchPayment,totalBranchForLoad} from '../../../lib/branchLoads.js';
+import {allowedBranch,dateValid,decimal,LOAD_STATUSES,initialBranchStatus,requiresExtraCost,requiresBottleCount,parseBottleCount,minimumJepoExtraCost,allocateExtraCost,jepoAmount,branchPayment,totalBranchForLoad} from '../../../lib/branchLoads.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -93,8 +93,9 @@ function parse(body,auth){
   if(jepoRate===null)return {error:'Enter a valid JEPO Rate per kg (up to 4 decimals).'};
   if(requiresBottleCount(commodity)&&bottleCount===null)return {error:'Enter No. of Bottles (whole number 1–10000) for Household and Ghee.'};
   if(extraCost===null)return {error:'Extra Cost must be a valid non-negative amount (up to 2 decimals).'};
-  if(requiresBottleCount(commodity)&&extraCost<bottleCount*250)
-    return {error:'For Ghee, Extra Cost must cover bottles × ₹250; the remaining Extra Cost goes to the branch.'};
+  const jepoExtraMinimum=minimumJepoExtraCost(commodity,bottleCount);
+  if(requiresExtraCost(commodity)&&jepoExtraMinimum!==null&&extraCost<jepoExtraMinimum)
+    return {error:'Extra Cost must be at least ₹'+jepoExtraMinimum+' for '+commodity+'; the remaining Extra Cost goes to Branch.'};
   if([received,paidToJepo,paidToBranch].some(v=>v===null))return {error:'Payments must be valid amounts (up to 2 decimals).'};
   if(paidToBranch<0)return {error:'JEPO Rate is higher than the selling Rate; Paid to Branch cannot be negative.'};
   if(!destination)return {error:'Select or enter destination country.'};
