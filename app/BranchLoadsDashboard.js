@@ -183,6 +183,8 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>set('commodity',v)}/></td>
+      <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
+      <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{x.replace(/_/g,' ')}</option>)}</select></td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
     </tr>;
   }
@@ -203,23 +205,17 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}</td>,
+    <td key="tracking"><b>{record.trackingNo||'—'}</b></td>,
+    <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||'PENDING'} onChange={e=>changeStatus(record,e.target.value)}>
+      {LOAD_STATUSES.map(x=><option key={x} value={x}>{x.replace(/_/g,' ')}</option>)}
+    </select></td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button><button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button></td>
   ];
   return <main className={styles.page}>
     <header className={styles.heading}>
-      <div><small>MAYAVI CARGO • BRANCH REGISTER</small><h1>Jind &amp; Karnal — Load &amp; Payments</h1>
-        <p>{isAdmin?'Admin can view and manage both branches.':'Your branch entries are private to your login.'} All entries are stored in shared Mayavi.</p></div>
-      <button type="button" className={styles.refresh} onClick={()=>void load()}>Refresh Data</button>
+      <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
+        <p>Daily entries directly in the columns • Automatically calculated totals • Separate Delivered sheet</p></div>
     </header>
-    <section className={styles.controls}>
-      <div><label>Branch</label><select disabled={!isAdmin} value={filter} onChange={e=>setFilter(e.target.value)}>
-        {isAdmin&&<option value="ALL">All Branches</option>}
-        {(isAdmin?BRANCHES:[userBranch]).map(x=><option key={x}>{x}</option>)}</select></div>
-      <div><label>Month (optional)</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
-      <div><label>Search</label><input placeholder="Destination, commodity, service…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      <button type="button" className={styles.primary} onClick={add} disabled={busy||editing==='new'}>+ Add Load Entry</button>
-      <button type="button" className={styles.secondary} disabled={!shown.length} onClick={downloadCsv}>Download Excel CSV</button>
-    </section>
     <div className={styles.metrics}>
       <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>
       <div><span>Amount</span><strong>{fmt(totals.amount)}</strong></div>
@@ -228,20 +224,35 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
-    {message&&<div className={styles.message} role="status">{message}</div>}
+    <nav className={styles.sheetTabs} aria-label="Load sheet">
+      <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
+      <button type="button" className={sheet==='DELIVERED'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
+    </nav>
+    {message&&<div className={styles.message} role="status">{message}</div>
     <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields.</p>
     <form onSubmit={save}>
       <div className={styles.scroller}><table className={styles.table}>
-        <thead><tr><th>Branch</th><th>Date</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>Actions</th></tr></thead>
+        <thead><tr>
+          <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
+          <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Actions</th>
+        </tr></thead>
         <tbody>
-          {editing==='new'&&entryRow()}
-          {shown.map(row=>editing===row.id?<tr key={row.id}>{entryRowCells()}</tr>:<tr key={row.id}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={13}>Loading branch entries…</td></tr>}
-          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={13} className={styles.empty}>No entries yet. Select “Add Load Entry” to begin.</td></tr>}
+          {sheet==='ACTIVE'&&editing==='new'&&entryRow()}
+          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
+          {!loaded&&<tr><td colSpan={15}>Loading branch entries…</td></tr>}
+          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={15} className={styles.empty}>No saved loads in this sheet. Enter a new load in the Active table.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={4}>—</td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={6}>—</td></tr></tfoot>
       </table></div>
     </form>
-    <footer className={styles.foot}>Only the selected branch can view its entries. Admin can see both. {lastUpdated&&'Last synced: '+lastUpdated}</footer>
+    <footer className={styles.foot}>
+      <span>Daily loads are saved securely. {lastUpdated&&'Last synced: '+lastUpdated}</span>
+      <span className={styles.footerActions}>
+        {sheet==='ACTIVE'&&<button type="button" onClick={add} disabled={busy}>+ Daily Entry</button>}
+        <button type="button" onClick={()=>void load()}>Refresh</button>
+        <button type="button" onClick={downloadCsv} disabled={!shown.length}>Download CSV</button>
+      </span>
+    </footer>
   </main>;
 }
