@@ -58,7 +58,7 @@ export async function POST(request){
       const currentPassword=String(body?.currentPassword||'');
       const newPassword=String(body?.newPassword||'');
       if(currentPassword.length<4)return json({ok:false,error:'Enter your current password.'},400);
-      if(newPassword.length<4)return json({ok:false,error:'New password must be at least 4 characters.'},400);
+      if(newPassword.length<(session.branchScope?8:4))return json({ok:false,error:'New password must have at least '+(session.branchScope?8:4)+' characters.'},400);
       if(currentPassword===newPassword)return json({ok:false,error:'New password must be different from the current password.'},400);
       const [user]=await sql`SELECT username,display_name,role,password_salt,password_hash,is_active,branch_scope,session_version FROM mayavi_users WHERE lower(username)=lower(${session.username}) LIMIT 1`;
       if(!user||!user.is_active)return json({ok:false,error:'This user is not enabled for Mayavi Cargo.'},403);
@@ -105,7 +105,7 @@ export async function POST(request){
         return json({ok:true,message:target.display_name+': password reset. '+instruction,passwordSet:false});
       }
       const newPassword=String(body?.newPassword||'');
-      if(newPassword.length<4)return json({ok:false,error:'New password must be at least 4 characters.'},400);
+      if(newPassword.length<(target.branch_scope?8:4))return json({ok:false,error:'New password must have at least '+(target.branch_scope?8:4)+' characters.'},400);
       const {salt,hash}=hashPassword(newPassword);
       await sql`UPDATE mayavi_users SET password_salt=${salt},password_hash=${hash},session_version=session_version+1,updated_at=now() WHERE username=${target.username}`;
       return json({ok:true,message:`Password updated for ${target.display_name}. Previous sessions logged out.`,passwordSet:true});
