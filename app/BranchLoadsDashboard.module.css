@@ -109,3 +109,8 @@
 .table .statusChip[data-status="IN_TRANSIT"]{background:#fef3c7!important;color:#92400e!important;border-color:#fcd34d!important}
 .table tbody tr .audit{font-size:11px;color:#1e3a8a}
 @media(max-width:900px){.loadEntryTitle{padding:11px}.loadEntryTitle h2{font-size:15px}.actorName{padding:5px 8px}}
+
+/* Conditional mixed-household charge: always the final ledger column. */
+.table thead .extraCostHeader{background:#fff1cb!important;color:#92400e!important;min-width:126px}
+.table tbody .extraCostCell,.table tfoot .extraCostCell{background:#fffbeb!important;color:#92400e;font-weight:800;min-width:126px}
+.table .extraCostCell input{background:#fff;border-color:#f59e0b;width:112px}
