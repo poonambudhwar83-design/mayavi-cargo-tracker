@@ -150,6 +150,10 @@ assert.ok(ui.includes('role="alert"'));
 assert.ok(ui.includes("event?.preventDefault?.();"));
 const stylesheet=readFileSync('app/BranchLoadsDashboard.module.css','utf8');
 assert.ok(stylesheet.includes('.inlineSaveError'));
+assert.ok(ui.includes('const [saveNotice,setSaveNotice]=useState(\'\');'));
+assert.ok(ui.includes('className={styles.inlineSaveSuccess}'));
+assert.ok(ui.includes('setSaveNotice(\'✓ SAVED in \''));
+assert.ok(stylesheet.includes('.inlineSaveSuccess'));
 
 assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());"));
 assert.ok(ui.includes("setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');"));
