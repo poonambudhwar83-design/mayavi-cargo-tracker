@@ -14,11 +14,17 @@ const ENTRY_WIDTHS=[108,160,118,108,118,122,110,116,138,144,152,148,192,146,166,
 const SAVED_WIDTHS=[104,158,90,88,110,109,98,98,117,119,112,102,155,123,142,100,106,120];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=174;
-const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
-const ledgerColumns=(extra,editable=false)=><colgroup>{[...(editable?ENTRY_WIDTHS:SAVED_WIDTHS),...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
+const CONFIRMATION_WIDTH=230;
+const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
+const ledgerColumns=(extra,editable=false)=>{
+  const widths=editable?ENTRY_WIDTHS:SAVED_WIDTHS;
+  // Confirmation sits immediately before the Save/Actions column in both
+  // headers and rows. Keep Total JEPO as the last column.
+  return <colgroup>{[...widths.slice(0,-1),CONFIRMATION_WIDTH,widths[widths.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
+};
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
-  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',
+  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',confirmationNo:'',confirmationName:'',
   destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -83,10 +89,13 @@ export default function BranchLoadsDashboard({currentUser}){
     (sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED'))&&
     (!dayFilter||r.date===dayFilter)&&
     (!month||String(r.date||'').startsWith(month))&&
-    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date].join(' ').toLowerCase().includes(search.toLowerCase()))
+    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,sheet,dayFilter,month,search]);
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
+  // The Admin sees all pending confirmations regardless of selected branch,
+  // date filter, or whether a shipment has moved to Delivered Sheet.
+  const pendingConfirmations=useMemo(()=>isAdmin?rows.filter(r=>r.confirmationNo?.trim()&&r.confirmationName?.trim()&&!r.confirmationApprovedAt):[],[rows,isAdmin]);
   function switchSheet(next){
     setSheet(next);setMessage('');setDayFilter('');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
@@ -125,7 +134,7 @@ export default function BranchLoadsDashboard({currentUser}){
       extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
       bottleCount:row.bottleCount??'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
-      trackingNo:row.trackingNo||'',status:row.status||initialBranchStatus(row.branch)
+      trackingNo:row.trackingNo||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',status:row.status||initialBranchStatus(row.branch)
     });
     setMessage('');
   }
@@ -243,10 +252,35 @@ export default function BranchLoadsDashboard({currentUser}){
     }catch(e){setMessage(e?.message||'Unable to update status.');}
     finally{setBusy(false);}
   }
+  async function approveTransaction(row){
+    if(!isAdmin||busy||!row.confirmationNo?.trim()||!row.confirmationName?.trim()||row.confirmationApprovedAt)return;
+    const approvalLabel=row.branch+' • '+row.confirmationNo+' • '+row.confirmationName+' • Received '+fmt(row.received);
+    if(!window.confirm('Approve this transaction confirmation?\\n'+approvalLabel))return;
+    setBusy(true);setMessage('Verifying transaction reference with the database…');
+    try{
+      const response=await fetch(API,{method:'PATCH',credentials:'include',cache:'no-store',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({id:row.id,approveConfirmation:true,
+          confirmationNo:row.confirmationNo,confirmationName:row.confirmationName,expectedReceived:row.received})
+      });
+      const data=await response.json().catch(()=>({ok:false,error:'Could not read approval response.'}));
+      if(!response.ok||!data.ok||!data.row?.confirmationApprovedAt)
+        throw new Error(data.error||'Approval was not saved. Refresh and try again.');
+      setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
+      setMessage('✓ '+row.branch+' transaction '+row.confirmationNo+' approved by Admin.');
+    }catch(e){setMessage('Approval pending: '+(e?.message||'Please retry.'));}
+    finally{setBusy(false);}
+  }
   function downloadCsv(){
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By',...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
-    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,'',totals.paidToJepo,totals.paidToBranch,'','','','','','','','',...(hasExtraCostColumn?[totals.extraCost]:[]),totals.totalJepo]);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Amount Confirmation No.','Confirmation Name','Confirmation Status','Approved By','Approved At',...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.confirmationNo||'',r.confirmationName||'',r.confirmationApprovedAt?'Approved':r.confirmationNo&&r.confirmationName?'Pending Approval':r.confirmationNo||r.confirmationName?'Incomplete':'Not provided',r.confirmationApprovedBy||'',r.confirmationApprovedAt||'',...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    // Keep export totals precisely under the same labels after adding fields.
+    const totalsRow=Array(labels.length).fill('');
+    totalsRow[0]='TOTAL';totalsRow[3]=totals.weight;totalsRow[5]=totals.amount;
+    totalsRow[6]=totals.received;totalsRow[7]=totals.balance;
+    totalsRow[9]=totals.paidToJepo;totalsRow[10]=totals.paidToBranch;
+    if(hasExtraCostColumn)totalsRow[labels.indexOf('Extra Cost (INR)')]=totals.extraCost;
+    totalsRow[labels.length-1]=totals.totalJepo;data.push(totalsRow);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
@@ -273,6 +307,10 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
       <td className={styles.audit}>{editing==='new'?'—':currentUser?.displayName||employeeName(currentUser?.username)}</td>
+      <td className={styles.confirmCell}><div className={styles.confirmInputs}>
+        <input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Confirmation No." value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>
+        <input aria-label="Amount confirmation name" autoComplete="off" maxLength={120} placeholder="Name" value={draft.confirmationName} onChange={e=>set('confirmationName',e.target.value)}/>
+      </div><small className={styles.confirmHelp}>Both details go to Admin for approval</small></td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/>:'—'}</td>}
@@ -303,6 +341,19 @@ export default function BranchLoadsDashboard({currentUser}){
     </select></td>,
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
+    <td key="confirmation" className={styles.confirmCell}>
+      {(record.confirmationNo||record.confirmationName)?<>
+        <strong className={styles.confirmNumber}>{record.confirmationNo||'No. missing'}</strong>
+        <small className={styles.confirmName}>{record.confirmationName||'Name missing'}</small>
+        {record.confirmationApprovedAt
+          ?<span className={styles.confirmApproved}>Approved{record.confirmationApprovedBy?' • '+employeeName(record.confirmationApprovedBy):''}</span>
+          :record.confirmationNo&&record.confirmationName
+            ?<span className={isAdmin?styles.confirmPendingBlink:styles.confirmPending}>Pending Admin Approval</span>
+            :<span className={styles.confirmIncomplete}>Complete both details</span>}
+        {isAdmin&&!record.confirmationApprovedAt&&record.confirmationNo&&record.confirmationName&&
+          <button type="button" className={styles.approveButton} disabled={busy} onClick={()=>approveTransaction(record)}>Approve Transaction</button>}
+      </>:<span className={styles.confirmEmpty}>—</span>}
+    </td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
     <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}>{fmt(totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true}))}</td>
@@ -320,6 +371,18 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
+    {isAdmin&&pendingConfirmations.length>0&&<section className={styles.adminApprovals} aria-label="Pending transaction confirmations">
+      <div className={styles.approvalHeading}><strong className={styles.confirmPendingBlink}>Approve the Transaction No. — {pendingConfirmations.length} Pending</strong><span>Jind &amp; Karnal • Both Active and Delivered</span></div>
+      <div className={styles.approvalQueue}>
+        {pendingConfirmations.map(record=><div className={styles.approvalCard} key={record.id}>
+          <span className={styles.confirmBranch}>{record.branch}</span>
+          <strong>{record.confirmationNo}</strong>
+          <span>{record.confirmationName}</span>
+          <span>{showDate(record.date)} • Received {fmt(record.received)}</span>
+          <button type="button" disabled={busy} onClick={()=>approveTransaction(record)}>Approve Transaction</button>
+        </div>)}
+      </div>
+    </section>}
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
     <form noValidate onSubmit={save}>
       {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
@@ -329,7 +392,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
           {ledgerColumns(requiresExtraCost(draft.commodity),true)}
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Amount Confirmation (No. &amp; Name)</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
       </section>}
@@ -344,15 +407,15 @@ export default function BranchLoadsDashboard({currentUser}){
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Amount Confirmation (No. &amp; Name)</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
+          {!loaded&&<tr><td colSpan={20+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}>{fmt(totals.totalJepo)}</td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={9}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}>{fmt(totals.totalJepo)}</td></tr></tfoot>
       </table></div>
     </form>
     <footer className={styles.foot}>
