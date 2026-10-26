@@ -187,4 +187,28 @@ assert.ok(!ui.includes("approveTransaction(record)"));
 assert.ok(ui.includes("const extraJepoMinimum=minimumJepoExtraCost(draft.commodity,draft.bottleCount);"));
 assert.ok(ui.includes("extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch'"));
 
+// The last JEPO column is a DISPLAY split, not a change to stored amounts:
+// Total = Account (base weight × JEPO rate) + Cash (JEPO part of Extra Cost).
+assert.ok(ui.includes('function JepoPaymentSplit({total,account,cash})'));
+assert.ok(ui.includes('const cashJepoPreview=totalJepoPreview===null?null:jepoCashPart('));
+assert.ok(ui.includes('account={jepoPreview} cash={cashJepoPreview}'));
+assert.ok(ui.includes('account={Number(record.paidToJepo||0)}'));
+assert.ok(ui.includes('cash={jepoCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}'));
+assert.ok(ui.includes('account={totals.paidToJepo} cash={totals.cashJepo}'));
+assert.ok(ui.includes('cashJepo:t.cashJepo+Number(jepoCashPart('));
+assert.ok(ui.includes('total={totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true})}'));
+assert.ok(ui.includes('total={totals.totalJepo}'));
+assert.equal(jepoAmount(10,500),5000);
+assert.equal(allocateExtraCost('Household and Medicine',1000,null).toJepo,700);
+assert.equal(totalJepoForLoad(5000,'Household and Medicine',1000,null),5700);
+assert.equal(allocateExtraCost('Household and Medicine',1000,null).toBranch,300);
+assert.equal(allocateExtraCost('Household and Nutrition',400,null).toJepo,150);
+assert.equal(totalJepoForLoad(5000,'Household and Nutrition',400,null),5150);
+assert.equal(allocateExtraCost('Household and Ghee',1100,4).toJepo,1000);
+assert.equal(totalJepoForLoad(5000,'Household and Ghee',1100,4),6000);
+assert.equal(allocateExtraCost('Household and Electronics',500,null).toJepo,500);
+assert.equal(totalJepoForLoad(5000,'Household and Electronics',500,null),5500);
+assert.equal(allocateExtraCost('Clothes',0,null).toJepo,0);
+assert.equal(totalJepoForLoad(5000,'Clothes',0,null),5000);
+
 console.log('Jind/Karnal daily loads, ghee surcharge split, and data isolation checks passed.');
