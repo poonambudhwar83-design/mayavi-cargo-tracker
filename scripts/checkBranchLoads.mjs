@@ -143,6 +143,14 @@ assert.ok(!ui.includes('Save Load</button>'));
 assert.ok(!ui.includes('Save Edited Load</button>'));
 assert.ok(ui.includes('Saving to Mayavi database…'));
 assert.ok(ui.includes('Save nahi hua:'));
+assert.ok(ui.includes('const [saveError,setSaveError]=useState(\'\');'));
+assert.ok(ui.includes('function showSaveFailure(reason)'));
+assert.ok(ui.includes('className={styles.inlineSaveError}'));
+assert.ok(ui.includes('role="alert"'));
+assert.ok(ui.includes("event?.preventDefault?.();"));
+const stylesheet=readFileSync('app/BranchLoadsDashboard.module.css','utf8');
+assert.ok(stylesheet.includes('.inlineSaveError'));
+
 assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());"));
 assert.ok(ui.includes("setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');"));
 assert.ok(ui.includes("(sheet==='ACTIVE'&&!isAdmin?r.date===(dayFilter||todayIST()):(!dayFilter||r.date===dayFilter))"));
