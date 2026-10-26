@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {amounts,allowedBranch,dateValid,decimal,DESTINATIONS,COMMODITIES} from '../lib/branchLoads.js';
+assert.equal(allowedBranch('jind'),'JIND');
+assert.equal(allowedBranch('Karnal'),'KARNAL');
+assert.equal(allowedBranch('sonu'),'');
+assert.equal(dateValid('2026-10-26'),true);
+assert.equal(dateValid('2026-02-30'),false);
+assert.deepEqual(amounts('125.5','150','3500'),{amount:18825,balance:15325});
+assert.deepEqual(amounts('10','100','1100'),{amount:1000,balance:-100});
+assert.equal(amounts('0','100','0'),null);
+assert.equal(decimal('-1'),null);
+assert.equal(decimal('1.234',2),null);
+assert.ok(DESTINATIONS.includes('UK')&&DESTINATIONS.includes('USA')&&DESTINATIONS.includes('Australia'));
+assert.ok(COMMODITIES.includes('Protein')&&COMMODITIES.includes('Clothes'));
+console.log('Jind/Karnal load & payment validation passed.');
