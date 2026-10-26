@@ -266,7 +266,8 @@ for(const [label,fragment] of cathayDashboardContract){
   }
 }
 // Cathay 160 automatic refresh remains every five minutes, even with the app closed.
-if(!Array.isArray(config.crons)||!config.crons.some(item=>
+const cathayCronConfig=JSON.parse(readFileSync('vercel.json','utf8'));
+if(!Array.isArray(cathayCronConfig.crons)||!cathayCronConfig.crons.some(item=>
   item.path==='/api/cron/cathay'&&item.schedule==='*/5 * * * *')){
   console.error('TEMPORARILY LOCKED CATHAY 5-MINUTE BACKGROUND REFRESH CHANGED.');
   changed=true;
