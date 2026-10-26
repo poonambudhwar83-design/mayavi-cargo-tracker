@@ -97,3 +97,129 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
   max-width:160px;
   box-shadow:0 1px 3px rgba(91,33,182,.22);
 }
+
+/* Cargo tracking only — denser, calmer table without changing any tracking or
+   status calculation. Mobile stays horizontally scrollable and headers frozen. */
+.cargoTrackTable{
+  border:1px solid #e1e9f3;
+  border-radius:13px;
+  box-shadow:0 4px 15px rgba(25,51,91,.06);
+}
+.cargoTrackTable thead th{
+  padding:7px 6px;
+  font-size:10px;
+  font-weight:800;
+  line-height:1.2;
+  color:#475569;
+  background:#edf3fa;
+  border-bottom:1px solid #cbd9eb;
+}
+.cargoTrackTable tbody td{
+  padding:5px 6px;
+  font-size:11px;
+  line-height:1.25;
+  vertical-align:middle;
+  border-bottom:1px solid #e7edf5;
+}
+.cargoTrackTable tbody tr:hover > td:not([style*="sticky"]){
+  background:#f5f8ff;
+}
+.cargoTrackTable .badge{
+  padding:3px 7px;
+  font-size:10px;
+  line-height:1.2;
+  border-radius:6px;
+  white-space:nowrap;
+}
+.cargoTrackTable .clientChip,
+.cargoTrackTable .employeeChip{
+  padding:3px 7px;
+  font-size:10px;
+  line-height:1.16;
+  border-radius:7px;
+}
+.cargoTrackTable .actions{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  gap:4px;
+}
+.cargoTrackTable .actions button,
+.cargoTrackTable .trackLink{
+  height:28px;
+  min-height:28px;
+  padding:0 7px;
+  font-size:9px;
+  border-radius:6px;
+  white-space:nowrap;
+}
+.cargoTrackTable .mailChoice{gap:3px}
+.cargoTrackTable .mailBtn{
+  height:27px;
+  min-width:38px;
+  border-radius:6px;
+  font-size:9px;
+}
+.cargoTrackTable .customsToggle{
+  height:27px;
+  padding:0 6px;
+  gap:4px;
+  border-radius:6px;
+  font-size:9px;
+}
+.cargoTrackTable .customsToggle input[type="checkbox"]{
+  width:13px;
+  height:13px;
+}
+.cargoTrackTable tbody td input:not([type="checkbox"]),
+.cargoTrackTable tbody td select{
+  height:28px!important;
+  min-height:28px;
+  padding-top:0!important;
+  padding-bottom:0!important;
+  font-size:11px;
+}
+.cargoTrackTable thead th select,
+.cargoTrackTable thead th input{
+  height:27px!important;
+  min-height:27px!important;
+  padding-top:0!important;
+  padding-bottom:0!important;
+  font-size:10px!important;
+}
+.cargoTrackTable .mailTime{font-size:11px}
+.cargoTrackTable .err{font-size:10px;line-height:1.15;margin-top:2px}
+.cargoTrackTable td small{line-height:1.13}
+.cargoTrackTable .saudiaRcfPill{
+  display:block;
+  width:max-content;
+  max-width:145px;
+  padding:3px 6px;
+  margin-top:3px;
+  border-radius:5px;
+  font-size:9px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.cargoTrackTable .cargoRemarks{
+  max-height:35px;
+  min-height:27px!important;
+  overflow:hidden!important;
+  font-size:10px;
+  line-height:1.2;
+  padding:4px 6px!important;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow-wrap:anywhere;
+}
+@media(max-width:640px){
+  .cargoTrackTable thead th{padding:6px 5px;font-size:9px}
+  .cargoTrackTable tbody td{padding:4px 5px;font-size:10px}
+  .cargoTrackTable .actions{display:flex;gap:3px}
+  .cargoTrackTable .actions button,
+  .cargoTrackTable .trackLink{height:27px;min-height:27px;padding:0 6px}
+  .cargoTrackTable .cargoRemarks{max-height:31px}
+}
