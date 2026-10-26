@@ -65,10 +65,10 @@ function figures(row={}){
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','Protein Deduction (50 x kg)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Clothes SIIB (30 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)'];
+  const columns=['MAWB','Arrival Date','Client','Goods','Origin','Total Bags','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Protein Deduction (50 x kg)','Clothes SIIB (30 x kg)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.proteinDeduction,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.siibDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:''];
+    return [row.mawb,row.arrivalDate||'',row.clientName,row.goodsCategory||'',row.origin||'',row.bags,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&n.kg!==null?n.proteinDeduction:'',String(row.goodsCategory||'').toUpperCase()==='CLOTHES'&&n.kg!==null?n.siibDeduction:''];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -147,7 +147,7 @@ export default function ImportProfitSheet(){
     return results;
   },[rows,drafts,search,clientFilter,goodsFilter,rateSort]);
   const totals=useMemo(()=>{
-    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,goodsCharge15Percent=0,cost=0,driverExpense=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
+    let bags=0,weight=0,duty=0,eici=0,goodsCharge=0,goodsCharge15Percent=0,proteinDeduction=0,clothesDeduction=0,cost=0,driverExpense=0,profit=0,completed=0,dutyKnown=0,rateSum=0,rateKnown=0,dutyPerKgSum=0,dutyPerKgKnown=0,completedWeight=0;
     for(const row of filtered){
       const n=figures(row);
       bags+=Number(row.bags)||0;
@@ -155,6 +155,8 @@ export default function ImportProfitSheet(){
       if(n.eici!==null)eici+=n.eici;
       if(n.goodsCharge!==null)goodsCharge+=n.goodsCharge;
       if(n.goodsCharge15Percent!==null)goodsCharge15Percent+=n.goodsCharge15Percent;
+      proteinDeduction+=n.proteinDeduction;
+      clothesDeduction+=n.siibDeduction;
       if(n.duty!==null){duty+=n.duty;dutyKnown++}
       if(n.dutyPerKg!==null){dutyPerKgSum+=n.dutyPerKg;dutyPerKgKnown++}
       if(n.rate!==null){rateSum+=n.rate;rateKnown++}
@@ -162,7 +164,7 @@ export default function ImportProfitSheet(){
       driverExpense+=n.driverExpense;
       if(n.profitPerKg!==null){profit+=n.profit;completedWeight+=n.kg;completed++}
     }
-    return {bags,weight,duty,eici,goodsCharge,goodsCharge15Percent,cost,driverExpense,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
+    return {bags,weight,duty,eici,goodsCharge,goodsCharge15Percent,proteinDeduction,clothesDeduction,cost,driverExpense,profit,completed,dutyKnown,rateSum,rateKnown,dutyPerKgSum,dutyPerKgKnown,completedWeight};
   },[filtered]);
   return <main style={{padding:'20px clamp(12px,3vw,32px)',background:'#f5f8fc',minHeight:'75vh',color:'#122139'}}>
     <div style={{maxWidth:1650,margin:'auto'}}>
@@ -213,7 +215,7 @@ export default function ImportProfitSheet(){
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
           <thead><tr>
-            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Profit (₹)','Total Cost (₹)','Driver Expense (₹)','Profit per kg (₹/kg)','15% Goods Charge (₹)'].map(label=><th key={label} style={header}>
+            {['S.No.','MAWB','Arrival Date','Client','Goods','Bags (Total)','Weight (kg)','Total Duty (₹)','Duty/kg (₹)','Rate (₹/kg)','EICI 15 × kg','Goods Charge (₹)','Profit (₹)','Total Cost (₹)','Driver Expense (₹)','Profit per kg (₹/kg)','15% Goods Charge (₹)','Protein ₹50 × Weight','Clothes ₹30 × Weight'].map(label=><th key={label} style={header}>
               {label==='Rate (₹/kg)'?<button type="button" aria-label="Sort by rate ascending or descending" title="Tap to sort rate (ascending / descending / original)" onClick={()=>setRateSort(current=>current===''?'asc':current==='asc'?'desc':'')} style={{border:0,padding:0,font:'inherit',fontWeight:800,color:'inherit',background:'transparent',cursor:'pointer',whiteSpace:'nowrap'}}>Rate (₹/kg) {rateSort==='asc'?'▲':rateSort==='desc'?'▼':'↕'}</button>:label}
             </th>)}
           </tr></thead>
@@ -284,9 +286,11 @@ export default function ImportProfitSheet(){
                 </td>
                 <td style={{...cell,fontWeight:800,color:n.profitPerKg===null?'#64748b':n.profitPerKg<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profitPerKg)}</td>
                 <td style={{...cell,fontWeight:800,color:'#9a3412'}} title={n.goodsCharge15Eligible?'15% of applicable goods charge, deducted from Profit':'Not applicable'}>{n.goodsCharge15Eligible?displayMoney(n.goodsCharge15Percent):'—'}</td>
+                <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Existing Protein deduction: ₹50 × total master weight, already included in Profit">{String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&n.kg!==null?displayMoney(n.proteinDeduction):'—'}</td>
+                <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Existing Clothes deduction: ₹30 × total master weight, already included in Profit">{String(row.goodsCategory||'').toUpperCase()==='CLOTHES'&&n.kg!==null?displayMoney(n.siibDeduction):'—'}</td>
               </tr>
             })}
-            {!filtered.length&&<tr><td colSpan={17} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={19} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading existing Import shipments…':'No Import MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
             <td colSpan={5} style={cell}>TOTAL • {filtered.length} MAWBs</td>
@@ -302,6 +306,8 @@ export default function ImportProfitSheet(){
             <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.driverExpense)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
             <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.goodsCharge15Percent)}</td>
+            <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.proteinDeduction)}</td>
+            <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.clothesDeduction)}</td>
           </tr></tfoot>}
         </table>
       </div>
