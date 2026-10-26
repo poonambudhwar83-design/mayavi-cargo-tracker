@@ -150,10 +150,10 @@ assert.ok(ui.includes('role="alert"'));
 assert.ok(ui.includes("event?.preventDefault?.();"));
 const stylesheet=readFileSync('app/BranchLoadsDashboard.module.css','utf8');
 assert.ok(stylesheet.includes('.inlineSaveError'));
-assert.ok(ui.includes('const [saveNotice,setSaveNotice]=useState(\'\');'));
-assert.ok(ui.includes('className={styles.inlineSaveSuccess}'));
-assert.ok(ui.includes('setSaveNotice(\'✓ SAVED in \''));
-assert.ok(stylesheet.includes('.inlineSaveSuccess'));
+// A completed Save clears the form rather than leaving a sticky green saved
+// banner in the empty next-entry row. The top status remains available.
+assert.ok(!ui.includes('inlineSaveSuccess'));
+assert.ok(!ui.includes('saveNotice'));
 
 // Active register aggregates all undelivered entries across every date,
  // without any employee/admin date filter; the entry-date input remains.
