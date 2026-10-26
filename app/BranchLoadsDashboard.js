@@ -1,10 +1,12 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,allocateExtraCost,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
+// The same request ID is reused if a save must be retried, preventing duplicate entries.
+const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():null;
 // Saved entries can be denser than the editable form.  Keeping two width
 // profiles makes the ledger compact without crowding Date, Rate or the selects.
 // Every header and row within its table still uses the same colgroup.
@@ -49,7 +51,8 @@ export default function BranchLoadsDashboard({currentUser}){
   const [message,setMessage]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
-  const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());
+  const [dayFilter,setDayFilter]=useState('');
+  const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
   const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
   const [search,setSearch]=useState('');
   const [month,setMonth]=useState('');
@@ -85,7 +88,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
   function switchSheet(next){
-    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');setMonth('');setSearch('');
+    setSheet(next);setMessage('');setDayFilter('');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
@@ -112,7 +115,7 @@ export default function BranchLoadsDashboard({currentUser}){
 
   function add(){
     setSheet('ACTIVE');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});
-    setEditing('new');setMessage('');
+    setEditing('new');setSaveRequestId(newSaveRequestId());setMessage('');
   }
   function edit(row){
     setEditing(row.id);
@@ -126,38 +129,91 @@ export default function BranchLoadsDashboard({currentUser}){
     });
     setMessage('');
   }
-  function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});setMessage('');}
+  function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setSaveRequestId(newSaveRequestId());setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:dayFilter||todayIST()});setMessage('');}
   async function save(event){
     event.preventDefault();
     if(busy||!editing)return;
-    if(['destination','service','commodity'].some(k=>!draft[k]||draft[k]==='__other__')){
-      setMessage('Please select or type Destination, Service and Commodity.');return;
+    // Native HTML form validation silently blocks submit for far-right fields
+    // inside the horizontally-scrolling ledger. Validate here and show feedback.
+    if(!dateValid(draft.date)){setMessage('Save nahi hua: select a valid Entry Date.');return;}
+    if(decimal(draft.weight,3,true)===null||Number(draft.weight)<=0){
+      setMessage('Save nahi hua: enter Load Received in kg (greater than 0).');return;
     }
-    if(preview===null){setMessage('Enter a positive Load Weight and valid Rate / Received amounts.');return;}
-    if(jepoPreview===null){setMessage('Please enter a valid JEPO Rate per kg.');return;}
-    if(branchBasePreview===null||branchBasePreview<0){setMessage('JEPO Rate must not exceed the selling Rate.');return;}
-    if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){setMessage('Enter No. of Bottles (1–10000).');return;}
-    if(requiresBottleCount(draft.commodity)&&Number(draft.extraCost||0)<Number(draft.bottleCount)*250){setMessage('Ghee Extra Cost must be at least ₹250 × No. of Bottles. The remainder goes to Branch.');return;}
-    if(branchPreview===null||branchPreview<0){setMessage('Check Extra Cost and payment amounts.');return;}
+    if(decimal(draft.rate,4,true)===null){
+      setMessage('Save nahi hua: enter a valid Rate per kg.');return;
+    }
+    if(decimal(draft.received,2)===null){
+      setMessage('Save nahi hua: Received must be a valid amount. Leave blank if unpaid.');return;
+    }
+    if(!draft.destination||draft.destination==='__other__'){
+      setMessage('Save nahi hua: select or type Destination.');return;
+    }
+    if(!draft.service||draft.service==='__other__'){
+      setMessage('Save nahi hua: select or type Service.');return;
+    }
+    if(!draft.commodity||draft.commodity==='__other__'){
+      setMessage('Save nahi hua: select or type Commodity.');return;
+    }
+    if(jepoPreview===null){
+      setMessage('Save nahi hua: enter JEPO Rate per kg (use 0 only if the rate really is zero).');return;
+    }
+    if(branchBasePreview===null||branchBasePreview<0){
+      setMessage('Save nahi hua: JEPO Rate cannot exceed the selling Rate.');return;
+    }
+    if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){
+      setMessage('Save nahi hua: enter the No. of Bottles (1–10000).');return;
+    }
+    if(requiresExtraCost(draft.commodity)&&decimal(draft.extraCost,2)===null){
+      setMessage('Save nahi hua: Extra Cost must be a valid amount.');return;
+    }
+    if(requiresBottleCount(draft.commodity)&&Number(draft.extraCost||0)<Number(draft.bottleCount)*250){
+      setMessage('Save nahi hua: Ghee Extra Cost must cover ₹250 × bottles; the remainder goes to Branch.');return;
+    }
+    if(branchPreview===null||branchPreview<0){
+      setMessage('Save nahi hua: check Extra Cost and payment amounts.');return;
+    }
     const currentId=editing;
-    setBusy(true);setMessage('');
+    const expectedBranch=isAdmin?draft.branch:userBranch;
+    // Retry only transient network/server failures; the server deduplicates POST
+    // with clientRequestId, so a successful first attempt cannot be entered twice.
+    const payload={...draft,...(currentId==='new'?{clientRequestId:saveRequestId}:{id:currentId})};
+    setBusy(true);setMessage('Saving to Mayavi database…');
     try{
-      const res=await fetch(API,{method:currentId==='new'?'POST':'PATCH',
-        headers:{'content-type':'application/json'},credentials:'include',
-        body:JSON.stringify({...draft,...(currentId==='new'?{}:{id:currentId})})
-      });
-      const data=await res.json();
-      if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
-      setRows(prev=>currentId==='new'?[data.row,...prev]:prev.map(r=>r.id===currentId?data.row:r));
-      // Every dated load is independent; next entry stays open on Active.
-      setEditing(sheet==='ACTIVE'?'new':'');
-      setDraft({...fresh(data.row.branch),date:data.row.date});
-      if(sheet==='ACTIVE'){if(!isAdmin)setDayFilter(data.row.date);setMonth('');setSearch('');}
-      setMessage(data.row.status==='DELIVERED'
-        ?'Delivered load saved and moved to Delivered Sheet.'
-        :'Entry saved in shared Mayavi database. Admin can see it under JIND / KARNAL LOADS. Add the next load.');
-    }catch(e){setMessage(e?.message||'Could not save entry.');}
-    finally{setBusy(false);}
+      let saved=null;
+      for(let attempt=0;attempt<2;attempt++){
+        try{
+          const res=await fetch(API,{method:currentId==='new'?'POST':'PATCH',
+            headers:{'content-type':'application/json'},credentials:'include',
+            cache:'no-store',body:JSON.stringify(payload)
+          });
+          const data=await res.json().catch(()=>({ok:false,error:'Server did not return a valid save confirmation.'}));
+          if(!res.ok||!data.ok){
+            if(res.status===401)throw new Error('Session expired. Please sign in again; your entry has not been cleared.');
+            if(res.status===403)throw new Error('Account access denied. Please contact Admin; your entry has not been cleared.');
+            if(res.status>=500&&attempt===0)continue;
+            throw new Error(data.error||'Save failed. Please check all fields.');
+          }
+          if(!data.row?.id||data.row.branch!==expectedBranch)throw new Error('Save confirmation did not match the branch. Please refresh the register before trying again.');
+          saved=data.row;
+          break;
+        }catch(e){
+          // A browser network error is safe to retry with the same request ID.
+          if(e instanceof TypeError&&attempt===0)continue;
+          throw e;
+        }
+      }
+      if(!saved)throw new Error('Could not confirm save after retry. Your typed entry is still here.');
+      setRows(prev=>currentId==='new'?[saved,...prev.filter(r=>r.id!==saved.id)]:prev.map(r=>r.id===currentId?saved:r));
+      setSaveRequestId(newSaveRequestId());
+      setEditing(saved.status==='DELIVERED'?'': 'new');
+      setDraft({...fresh(saved.branch),date:saved.date});
+      setSheet(saved.status==='DELIVERED'?'DELIVERED':'ACTIVE');
+      setDayFilter(saved.status==='DELIVERED'?'':saved.date);
+      setMonth('');setSearch('');
+      setMessage('✓ '+saved.branch+' entry SAVED in database ('+showDate(saved.date)+'). '+(saved.status==='DELIVERED'?'See Delivered Sheet.':'Entry is in Active Loads. You can add the next load.'));
+    }catch(e){
+      setMessage('Save nahi hua: '+(e?.message||'Please try again. Your entered details are still here.'));
+    }finally{setBusy(false);}
   }
   async function remove(row){
     if(!isAdmin)return;
@@ -212,7 +268,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.computed}>{fmt(branchPreview)}</td>
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
-      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:'',bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>set('bottleCount',e.target.value)}/></label>}</td>
+      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:'',bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=Number(count||0)*250;return {...d,bottleCount:count,extraCost:count&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
@@ -264,11 +320,12 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
-    <form onSubmit={save}>
+    {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
+    <form noValidate onSubmit={save}>
       {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
         <div className={styles.loadEntryTitle}>
           <div><h2>Load Entry</h2><p>Enter today's load here. Change date for an earlier entry. Day appears automatically.</p></div>
-          <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
+          <div className={styles.loadEntryActions}><span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span><button type="submit" className={styles.saveLoadTopButton} disabled={busy}>{busy?'Saving…':'Save Load'}</button></div>
         </div>
         <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
           {ledgerColumns(requiresExtraCost(draft.commodity),true)}
@@ -280,7 +337,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
-    {message&&<div className={styles.message} role="status">{message}</div>}
+    {editing!==''&&editing!=='new'&&<button type="submit" className={styles.saveLoadTopButton} disabled={busy}>{busy?'Saving…':'Save Edited Load'}</button>}
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • Balance = Amount − Received • JEPO = Weight × JEPO Rate • Ghee: JEPO Extra = Bottles × ₹250, remaining Extra Cost to Branch • Other mixed-household Extra Cost to JEPO.</p>}
       <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
