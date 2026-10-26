@@ -119,4 +119,17 @@ assert.ok(ui.includes('aria-label="No. of Bottles"'));
 assert.ok(ui.includes('totalJepoForLoad('));
 assert.ok(ui.includes('totalBranchForLoad('));
 assert.ok(COMMODITIES.includes('Household and Hookah')&&COMMODITIES.includes('Household and Nutrition'));
+// Saving must always reach application-level validation. The native browser
+// required validator previously blocked the wide, horizontally scrolled form.
+assert.ok(ui.includes('<form noValidate onSubmit={save}>'));
+assert.ok(ui.includes('Save Load'));
+assert.ok(ui.includes('Saving to Mayavi database…'));
+assert.ok(ui.includes('Save nahi hua:'));
+assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState('');"));
+assert.ok(ui.includes('setDayFilter(saved.status===\'DELIVERED\'?\'\':saved.date);'));
+assert.ok(ui.includes('clientRequestId:saveRequestId'));
+assert.ok(route.includes('ON CONFLICT (id) DO NOTHING'));
+assert.ok(route.includes("const providedId=String(body.clientRequestId||'').trim();"));
+assert.ok(route.includes('const saved=await one(sql,id);'));
+
 console.log('Jind/Karnal daily loads, ghee surcharge split, and data isolation checks passed.');
