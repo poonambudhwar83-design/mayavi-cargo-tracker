@@ -43,6 +43,10 @@ async function ensure(sql){
     bottle_count INTEGER CHECK(bottle_count BETWEEN 1 AND 10000),
     tracking_no TEXT NOT NULL DEFAULT '',
     delivery_status TEXT NOT NULL DEFAULT 'PENDING',
+    amount_confirmation_no TEXT NOT NULL DEFAULT '',
+    amount_confirmation_name TEXT NOT NULL DEFAULT '',
+    amount_confirmation_approved_at TIMESTAMPTZ,
+    amount_confirmation_approved_by TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL DEFAULT '',
     updated_by TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -52,6 +56,11 @@ async function ensure(sql){
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'PENDING'`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(18,2) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS bottle_count INTEGER`;
+  // Optional confirmation details preserve older entries; only Admin approves.
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS amount_confirmation_no TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS amount_confirmation_name TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS amount_confirmation_approved_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS amount_confirmation_approved_by TEXT NOT NULL DEFAULT ''`;
   // NULL denotes older financial records: show an inferred rate while retaining
   // their original JEPO amount until explicitly edited and saved.
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_rate NUMERIC(15,4)`;
@@ -74,6 +83,8 @@ function parse(body,auth){
   const paidToBranch=basePaidToBranch===null||extraAllocation===null?null:
     Math.round((basePaidToBranch+extraAllocation.toBranch+Number.EPSILON)*100)/100;
   const trackingNo=textField(body.trackingNo,100);
+  const confirmationNo=textField(body.confirmationNo,120);
+  const confirmationName=textField(body.confirmationName,120);
   const status=textField(body.status||initialBranchStatus(branch),30).toUpperCase();
   if(!branch)return {error:'Select Jind or Karnal.'};
   if(!dateValid(date))return {error:'Enter a valid date.'};
@@ -91,7 +102,7 @@ function parse(body,auth){
   if(!commodity)return {error:'Select or enter commodity.'};
   if(extraCost===null)return {error:'Extra Cost must be a valid non-negative amount (up to 2 decimals).'};
   if(!LOAD_STATUSES.includes(status))return {error:'Select a valid shipment status.'};
-  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,bottleCount,trackingNo,status}};
+  return {entry:{branch,date,weight,rate,received,jepoRate,paidToJepo,paidToBranch,extraCost,destination,service,commodity,bottleCount,trackingNo,confirmationNo,confirmationName,status}};
 }
 function display(r){return {
   id:r.id,branch:r.branch,date:r.record_date,
@@ -109,12 +120,14 @@ function display(r){return {
   extraCost:String(r.extra_cost||0),
   destination:r.destination,service:r.service,commodity:r.commodity,
   bottleCount:r.bottle_count===null||r.bottle_count===undefined?null:Number(r.bottle_count),
+  confirmationNo:r.amount_confirmation_no||'',confirmationName:r.amount_confirmation_name||'',
+  confirmationApprovedAt:r.amount_confirmation_approved_at||null,confirmationApprovedBy:r.amount_confirmation_approved_by||'',
   trackingNo:r.tracking_no||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
 };}
 async function one(sql,id){
   const rows=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
+    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
     FROM mayavi_branch_loads WHERE id=${id} LIMIT 1`;
   return rows[0]?display(rows[0]):null;
 }
@@ -125,10 +138,10 @@ export async function GET(request){
     await ensure(sql);
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads ORDER BY record_date DESC, created_at DESC LIMIT 10000`
       :await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads WHERE branch=${auth.branch} ORDER BY record_date DESC, created_at DESC LIMIT 10000`;
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
@@ -147,9 +160,9 @@ export async function POST(request){
     const providedId=String(body.clientRequestId||'').trim();
     const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providedId)?providedId:randomUUID();
     await sql`INSERT INTO mayavi_branch_loads
-      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by)
+      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name)
       VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username})
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName})
       ON CONFLICT (id) DO NOTHING`;
     const saved=await one(sql,id);
     if(!saved||saved.branch!==entry.branch)
@@ -164,6 +177,26 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const id=textField(body.id,80);
     if(!/^[0-9a-f-]{36}$/i.test(id))return json({ok:false,error:'Invalid entry.'},400);
+    // Never trust client-side role flags. Even a forged employee request to
+    // approve must be rejected at the API boundary.
+    if(body.approveConfirmation===true){
+      if(!auth.admin)return json({ok:false,error:'Only Admin can approve transaction confirmations.'},403);
+      const expectedNo=textField(body.confirmationNo,120);
+      const expectedName=textField(body.confirmationName,120);
+      const expectedReceived=decimal(body.expectedReceived,2,true);
+      if(!expectedNo||!expectedName||expectedReceived===null)
+        return json({ok:false,error:'Open the latest transaction details before approving.'},400);
+      await ensure(sql);
+      // An edited reference, name, or payment amount invalidates the review.
+      // The compare-and-set WHERE ensures Admin approves exactly what they saw.
+      const approvals=await sql`UPDATE mayavi_branch_loads
+        SET amount_confirmation_approved_at=NOW(),amount_confirmation_approved_by=${auth.username}
+        WHERE id=${id} AND amount_confirmation_no=${expectedNo} AND amount_confirmation_name=${expectedName}
+        AND received=${expectedReceived} AND btrim(amount_confirmation_no)<>'' AND btrim(amount_confirmation_name)<>''
+        AND amount_confirmation_approved_at IS NULL RETURNING id`;
+      if(!approvals.length)return json({ok:false,error:'Confirmation changed or was already approved. Refresh to review latest details.'},409);
+      return json({ok:true,row:await one(sql,id)});
+    }
     // Pure status changes must not silently rewrite historic payout values.
     // The branch scope is enforced in SQL for both operation types.
     if(body.statusOnly===true){
@@ -182,10 +215,40 @@ export async function PATCH(request){
       ?await sql`UPDATE mayavi_branch_loads SET branch=${entry.branch},record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
           destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          amount_confirmation_approved_at=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
+            OR amount_confirmation_name IS DISTINCT FROM ${entry.confirmationName}
+            OR received IS DISTINCT FROM ${entry.received}
+            OR load_kg IS DISTINCT FROM ${entry.weight} OR rate IS DISTINCT FROM ${entry.rate}
+            OR jepo_rate IS DISTINCT FROM ${entry.jepoRate}
+            OR extra_cost IS DISTINCT FROM ${entry.extraCost} OR bottle_count IS DISTINCT FROM ${entry.bottleCount}
+            THEN NULL ELSE amount_confirmation_approved_at END,
+          amount_confirmation_approved_by=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
+            OR amount_confirmation_name IS DISTINCT FROM ${entry.confirmationName}
+            OR received IS DISTINCT FROM ${entry.received}
+            OR load_kg IS DISTINCT FROM ${entry.weight} OR rate IS DISTINCT FROM ${entry.rate}
+            OR jepo_rate IS DISTINCT FROM ${entry.jepoRate}
+            OR extra_cost IS DISTINCT FROM ${entry.extraCost} OR bottle_count IS DISTINCT FROM ${entry.bottleCount}
+            THEN '' ELSE amount_confirmation_approved_by END,
+          amount_confirmation_no=${entry.confirmationNo},amount_confirmation_name=${entry.confirmationName},
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
       :await sql`UPDATE mayavi_branch_loads SET record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
           destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},delivery_status=${entry.status},
+          amount_confirmation_approved_at=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
+            OR amount_confirmation_name IS DISTINCT FROM ${entry.confirmationName}
+            OR received IS DISTINCT FROM ${entry.received}
+            OR load_kg IS DISTINCT FROM ${entry.weight} OR rate IS DISTINCT FROM ${entry.rate}
+            OR jepo_rate IS DISTINCT FROM ${entry.jepoRate}
+            OR extra_cost IS DISTINCT FROM ${entry.extraCost} OR bottle_count IS DISTINCT FROM ${entry.bottleCount}
+            THEN NULL ELSE amount_confirmation_approved_at END,
+          amount_confirmation_approved_by=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
+            OR amount_confirmation_name IS DISTINCT FROM ${entry.confirmationName}
+            OR received IS DISTINCT FROM ${entry.received}
+            OR load_kg IS DISTINCT FROM ${entry.weight} OR rate IS DISTINCT FROM ${entry.rate}
+            OR jepo_rate IS DISTINCT FROM ${entry.jepoRate}
+            OR extra_cost IS DISTINCT FROM ${entry.extraCost} OR bottle_count IS DISTINCT FROM ${entry.bottleCount}
+            THEN '' ELSE amount_confirmation_approved_by END,
+          amount_confirmation_no=${entry.confirmationNo},amount_confirmation_name=${entry.confirmationName},
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
     if(!updated.length)return json({ok:false,error:'Entry not found or access denied.'},404);
     return json({ok:true,row:await one(sql,id)});
