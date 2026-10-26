@@ -251,3 +251,12 @@
 .jepoSplitLine span{font-weight:700}
 .jepoSplitLine b{color:#1f3854;font-size:11px;font-weight:850}
 .jepoSplitLine:last-child b{color:#986305}
+
+
+/* Pair each saved UTR/Cash value with the Admin Yes/No buttons in the same
+   transaction row and cell. A long UTR wraps without pushing adjacent columns. */
+.transactionInline{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.transactionDetails{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.transactionInline .confirmName{margin-top:2px;overflow-wrap:anywhere}
+.transactionInline .adminDecisionButtons{flex:0 0 auto;display:flex;gap:3px;margin:0;flex-wrap:nowrap;align-items:center}
+.transactionInline .adminDecisionButtons button{min-width:32px!important;padding:5px 5px!important;line-height:1.15;font-size:10px}
