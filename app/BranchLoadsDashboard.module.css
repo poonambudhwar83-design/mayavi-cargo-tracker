@@ -130,3 +130,41 @@
 .table .bottleControl{display:grid;gap:4px;margin-top:7px;color:#1e40af;font-size:11px;font-weight:800;}
 .table .bottleControl input{width:170px;max-width:100%;}
 .table .bottleNote{display:block;margin-top:4px;color:#1e40af;font-size:10px;font-weight:700;white-space:normal;}
+
+
+/* Keep each input inside its own table cell. The old fixed input widths
+   overflowed narrow cells (especially Branch, Rate and Service) and made
+   neighbouring fields appear to sit on top of each other at laptop zoom. */
+.table thead th,.table tbody td,.table tfoot td{box-sizing:border-box}
+.table .editRow td{min-width:0;vertical-align:middle}
+.table .editRow input,.table .editRow select{
+  display:block;
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+.table .editRow input[type=date],
+.table .editRow input[type=number]{
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+.table .editRow .choice{width:100%;max-width:100%;min-width:0}
+.table .editRow .choice select,
+.table .editRow .choice input,
+.table .editRow .bottleControl input{width:100%;max-width:100%;min-width:0}
+.table .editRow .computed{min-width:0;white-space:normal;overflow-wrap:anywhere}
+.table .editRow .actions{min-width:0;white-space:normal}
+.table .editRow .actions button{box-sizing:border-box;max-width:100%;padding:7px 9px;margin:2px 4px 2px 0}
+.loadEntrySection .table thead th:nth-child(n+3):nth-child(-n+10){
+  text-align:left;
+}
+.table .statusChip{box-sizing:border-box;max-width:100%}
+.table .headerFilter,.table .headerDate{box-sizing:border-box;max-width:100%!important}
+.page{box-sizing:border-box;min-width:0}
+.heading>div{min-width:0}
+.heading h1{overflow-wrap:break-word}
+.hint{white-space:normal;max-width:100%;line-height:1.5;overflow-wrap:break-word}
+.loadEntrySection{margin-bottom:20px}
