@@ -1,13 +1,13 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,jepoAmount} from '../lib/branchLoads.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
-  branch,date:todayIST(),weight:'',rate:'',received:'',paidToJepo:'',paidToBranch:'',extraCost:'',
+  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',paidToBranch:'',extraCost:'',
   destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -94,6 +94,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const hasExtraCostColumn=shown.some(r=>requiresExtraCost(r.commodity))||
     (editing!==''&&editing!=='new'&&requiresExtraCost(draft.commodity));
   const preview=amounts(draft.weight,draft.rate,draft.received);
+  const jepoPreview=jepoAmount(draft.weight,draft.jepoRate);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
   function add(){
@@ -104,7 +105,7 @@ export default function BranchLoadsDashboard({currentUser}){
     setEditing(row.id);
     setDraft({
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
-      received:row.received||'',paidToJepo:row.paidToJepo||'',paidToBranch:row.paidToBranch||'',
+      received:row.received||'',jepoRate:row.jepoRate??'',paidToBranch:row.paidToBranch||'',
       extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',status:row.status||initialBranchStatus(row.branch)
@@ -119,6 +120,7 @@ export default function BranchLoadsDashboard({currentUser}){
       setMessage('Please select or type Destination, Service and Commodity.');return;
     }
     if(preview===null){setMessage('Enter a positive Load Weight and valid Rate / Received amounts.');return;}
+    if(jepoPreview===null){setMessage('Please enter a valid JEPO Rate per kg.');return;}
     const currentId=editing;
     setBusy(true);setMessage('');
     try{
@@ -168,9 +170,9 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   function downloadCsv(){
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status','Entered By','Last Edited By',...(hasExtraCostColumn?['Extra Cost (INR)']:[])];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[])]);
-    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,totals.paidToJepo,totals.paidToBranch,'','','','','','','',...(hasExtraCostColumn?[totals.extraCost]:[])]);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','JEPO Tracking No.','Status','Entered By','Last Edited By',...(hasExtraCostColumn?['Extra Cost (INR)']:[])];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[])]);
+    data.push(['TOTAL','','',totals.weight,'',totals.amount,totals.received,totals.balance,'',totals.paidToJepo,totals.paidToBranch,'','','','','','','',...(hasExtraCostColumn?[totals.extraCost]:[])]);
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const anchor=document.createElement('a');
@@ -187,7 +189,8 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.computed}>{fmt(preview?.amount??null)}</td>
       <td><input aria-label="Received payment" {...input} value={draft.received} placeholder="₹ received" onChange={e=>set('received',e.target.value)}/></td>
       <td className={styles.computed}>{fmt(preview?.balance??null)}</td>
-      <td><input aria-label="Amount paid to JEPO" {...input} value={draft.paidToJepo} placeholder="₹ JEPO" onChange={e=>set('paidToJepo',e.target.value)}/></td>
+      <td><input aria-label="JEPO Rate per kg" {...input} required value={draft.jepoRate} placeholder="₹/kg JEPO" onChange={e=>set('jepoRate',e.target.value)}/></td>
+      <td className={styles.computed}>{fmt(jepoPreview)}</td>
       <td><input aria-label="Amount paid to Branch" {...input} value={draft.paidToBranch} placeholder="₹ Branch" onChange={e=>set('paidToBranch',e.target.value)}/></td>
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
@@ -213,6 +216,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="amount" className={styles.number}><b>{money(record.amount)}</b></td>,
     <td key="received" className={styles.number}>{money(record.received)}</td>,
     <td key="balance" className={styles.number}><strong className={Number(record.balance)>0?styles.due:styles.clear}>{money(record.balance)}</strong></td>,
+    <td key="jepoRate" className={styles.number}>{money(record.jepoRate)}</td>,
     <td key="jepo" className={styles.number}>{money(record.paidToJepo)}</td>,
     <td key="branchpaid" className={styles.number}>{money(record.paidToBranch)}</td>,
     <td key="destination">{record.destination}</td>,
@@ -247,7 +251,7 @@ export default function BranchLoadsDashboard({currentUser}){
           <span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span>
         </div>
         <div className={styles.scroller}><table className={styles.table}>
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>Paid to JEPO (₹)</th><th>Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}</tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}</tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
       </section>}
@@ -256,20 +260,20 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
     {message&&<div className={styles.message} role="status">{message}</div>}
-    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Paid to JEPO and Paid to Branch are separate tracking fields. Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics.</p>
+    <p className={styles.hint}>Amount = Load Received (kg) × Rate; Balance = Amount − Received. Amount Paid to JEPO = Load Received (kg) × JEPO Rate (₹/kg). Paid to Branch is tracked separately. Extra Cost is recorded separately for Household and Medicine / Ghee / Electronics.</p>
       <div className={styles.scroller}><table className={styles.table}>
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>Amount Paid to JEPO (₹)</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={17+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
-          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={17+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
+          {!loaded&&<tr><td colSpan={18+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
+          {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={18+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}</tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={8}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}</tr></tfoot>
       </table></div>
     </form>
     <footer className={styles.foot}>
