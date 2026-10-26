@@ -66,3 +66,34 @@ th[style*="min-width: 76px"]{font-size:0;white-space:normal}th[style*="min-width
   .loginCard{padding:18px;border-radius:18px}
   .loginCard h1{font-size:25px}
 }
+
+/* Saudia SAL RCF: bold purple indicates follow-up on the matching physical
+   shipment part, not an automatic customs clearance. RCS stays unhighlighted. */
+.tableWrap tbody tr.saudiaRcfAttention > td{
+  background:#eee9ff!important;
+  border-top:1px solid #a78bfa!important;
+  border-bottom:1px solid #a78bfa!important;
+}
+.tableWrap tbody tr.saudiaRcfAttention > td:first-child{
+  box-shadow:inset 6px 0 #6d28d9!important;
+}
+.tableWrap tbody tr.saudiaRcfAttention > td:nth-child(2){
+  color:#4c1d95;
+}
+.saudiaRcfPill{
+  display:inline-block;
+  vertical-align:middle;
+  margin-top:4px;
+  padding:6px 10px;
+  border-radius:6px;
+  background:#5b21b6;
+  border:1px solid #4c1d95;
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.2;
+  letter-spacing:.3px;
+  white-space:normal;
+  max-width:160px;
+  box-shadow:0 1px 3px rgba(91,33,182,.22);
+}

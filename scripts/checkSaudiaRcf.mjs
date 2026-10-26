@@ -53,5 +53,42 @@ try{
     event('DLV','DEL','10/25/2026 15:00',99,2565,'SV760')
   ]);
   assert.equal(closed.saudiaRcfFollowUp,false);
+
+  // Each physical SAL part is flagged independently, including an unresolved
+  // receipt on an unassigned/virtual pending balance. Other parts stay plain.
+  const {matchSaudiaRcfParts}=await import('../lib/saudiaRcfParts.js');
+  const splitRows=[
+    {partId:'arrived49',pieces:49,weight:1147,arrivalIsActual:true,flightNo:'SV760'},
+    {_saudiaPendingVirtual:true,partId:'pending50',pieces:50,weight:1418,arrivalIsActual:false}
+  ];
+  const matched=matchSaudiaRcfParts(flagged,splitRows);
+  assert.equal(matched[0],null);
+  assert.equal(matched[1]?.station,'JED');
+  assert.equal(matched[1]?.pieces,50);
+  // Different simultaneous RCF events on different physical parts both show.
+  const both=await check([...cases,event('RCF','DEL','10/25/2026 11:00',49,1147,'SV760')]);
+  const splitMatched=matchSaudiaRcfParts(both,splitRows);
+  assert.equal(splitMatched[0]?.station,'DEL');
+  assert.equal(splitMatched[1]?.station,'JED');
+  // RCS never highlights a physical part.
+  assert.deepEqual(matchSaudiaRcfParts(rcs,splitRows),[null,null]);
+  // A later FOW must clear only its own 50-bag RCF, not an independent 49.
+  const later=await check([...cases,event('RCF','DEL','10/25/2026 11:00',49,1147,'SV760'),
+    event('FOW','JED','10/25/2026 12:00',50,1418,'SV760')]);
+  const laterFlags=matchSaudiaRcfParts(later,splitRows);
+  assert.equal(laterFlags[0]?.station,'DEL');
+  assert.equal(laterFlags[1],null);
+  // Two equal bag-count parts have distinguishable weights, avoid false RCF.
+  const sameCountParts=[{pieces:50,weight:900},{pieces:50,weight:1100}];
+  const weightSpecific=matchSaudiaRcfParts({mawb:'065-12345678',
+    saudiaRcfMilestones:[{pieces:50,weight:1100,station:'JED'}]},sameCountParts);
+  assert.equal(weightSpecific[0],null);
+  assert.equal(weightSpecific[1]?.station,'JED');
+  // Identical bag and weight parts without reliable flight/part identity must
+  // not both be falsely highlighted.
+  const ambiguous=matchSaudiaRcfParts({mawb:'065-12345678',
+    saudiaRcfMilestones:[{pieces:50,weight:1100,station:'JED'}]},
+    [{pieces:50,weight:1100},{pieces:50,weight:1100}]);
+  assert.deepEqual(ambiguous,[null,null]);
   console.log('Saudia SAL RCF alert regressions passed (RCS normal, RCF flagged, later movement clears).');
 }finally{globalThis.fetch=originalFetch;}
