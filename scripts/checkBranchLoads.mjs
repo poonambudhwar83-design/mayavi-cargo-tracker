@@ -32,11 +32,20 @@ const route=readFileSync('app/api/branch-loads/route.js','utf8');
 assert.ok(route.includes('WHERE branch=${auth.branch} ORDER BY record_date DESC'));
 assert.ok(route.includes("const branch=auth.admin?allowedBranch(body.branch):auth.branch;"));
 assert.ok(route.includes('WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
-assert.ok(route.includes('DELETE FROM mayavi_branch_loads WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
+// Delete is Admin-only across both Jind and Karnal. Even a forged employee
+// HTTP DELETE request must receive 403 before a database DELETE can execute.
+const deleteHandler=route.split('export async function DELETE(request)')[1]||'';
+assert.ok(deleteHandler.includes("if(!auth.admin)return json({ok:false,error:'Only Admin can delete Jind / Karnal entries.'},403);"));
+assert.ok(deleteHandler.indexOf("if(!auth.admin)return")<deleteHandler.indexOf("DELETE FROM mayavi_branch_loads"));
+assert.ok(deleteHandler.includes('DELETE FROM mayavi_branch_loads WHERE id=${id} RETURNING id'));
+assert.ok(!deleteHandler.includes('DELETE FROM mayavi_branch_loads WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
 assert.ok(route.includes('ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(18,2) NOT NULL DEFAULT 0'));
 assert.ok(route.includes('requiresExtraCost(commodity)?decimal(body.extraCost,2):0'));
 assert.ok(route.includes('extra_cost=${entry.extraCost}'));
 const ui=readFileSync('app/BranchLoadsDashboard.js','utf8');
+assert.ok(ui.includes('if(!isAdmin)return;'));
+assert.ok(ui.includes('{isAdmin&&<button type="button" onClick={()=>remove(record)}'));
+assert.ok(ui.includes('<button type="button" onClick={()=>edit(record)}'));
 assert.ok(ui.includes('requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>'));
 assert.ok(ui.includes('Extra Cost (INR)'));
 assert.ok(ui.includes('...(hasExtraCostColumn?[<td key="extraCost"'));

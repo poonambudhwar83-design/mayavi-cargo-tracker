@@ -140,6 +140,7 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   async function remove(row){
+    if(!isAdmin)return;
     if(!window.confirm('Delete '+row.branch+' entry dated '+showDate(row.date)+'?'))return;
     setBusy(true);setMessage('');
     try{
@@ -223,7 +224,7 @@ export default function BranchLoadsDashboard({currentUser}){
     </select></td>,
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
-    <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button><button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button></td>,
+    <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[])
   ];
   return <main className={styles.page}>

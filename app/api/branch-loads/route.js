@@ -148,12 +148,13 @@ export async function DELETE(request){
   try{
     const sql=connection(),auth=await authenticate(request,sql);
     if(auth.error)return json({ok:false,error:auth.error},auth.status);
+    // Employees may add, edit, and change status, but only Admin may delete.
+    // Enforce this on the server: hiding the UI button alone is not sufficient.
+    if(!auth.admin)return json({ok:false,error:'Only Admin can delete Jind / Karnal entries.'},403);
     const id=new URL(request.url).searchParams.get('id')||'';
     if(!/^[0-9a-f-]{36}$/i.test(id))return json({ok:false,error:'Invalid entry.'},400);
     await ensure(sql);
-    const deleted=auth.admin
-      ?await sql`DELETE FROM mayavi_branch_loads WHERE id=${id} RETURNING id`
-      :await sql`DELETE FROM mayavi_branch_loads WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
+    const deleted=await sql`DELETE FROM mayavi_branch_loads WHERE id=${id} RETURNING id`;
     return deleted.length?json({ok:true}):json({ok:false,error:'Entry not found or access denied.'},404);
   }catch(e){return json({ok:false,error:e?.message||'Delete failed.'},503);}
 }
