@@ -48,7 +48,9 @@ assert.equal(totalJepoForLoad(11685,'Household and Nutrition',500,null),11835);
 assert.equal(totalBranchForLoad(12000,11685,'Household and Nutrition',500,null),665);
 assert.equal(totalBranchForLoad(12000,11685,'Household and Electronics',1400,null),1715);
 assert.deepEqual(allocateExtraCost('Household and Ghee',900,null,{legacy:true}),{toJepo:900,toBranch:0});
-assert.equal(requiresExtraCost('Medicine'),false);
+assert.equal(requiresExtraCost('Medicine'),true);
+assert.equal(requiresExtraCost('Nutrition'),true);
+assert.equal(requiresExtraCost('Ghee'),true);
 assert.equal(requiresExtraCost('Household and Electronics + other'),false);
 assert.equal(decimal('120.25',2),120.25);
 assert.equal(decimal('-10',2),null);
@@ -92,7 +94,7 @@ assert.ok(deleteHandler.indexOf("if(!auth.admin)return")<deleteHandler.indexOf("
 assert.ok(deleteHandler.includes('DELETE FROM mayavi_branch_loads WHERE id=${id} RETURNING id'));
 assert.ok(!deleteHandler.includes('DELETE FROM mayavi_branch_loads WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
 assert.ok(route.includes('ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(18,2) NOT NULL DEFAULT 0'));
-assert.ok(route.includes('requiresExtraCost(commodity)?decimal(body.extraCost,2):0'));
+assert.ok(route.includes('const extraCost=decimal(body.extraCost,2);'));
 assert.ok(route.includes('extra_cost=${entry.extraCost}'));
 assert.ok(route.includes('ADD COLUMN IF NOT EXISTS jepo_rate NUMERIC(15,4)'));
 assert.ok(route.includes('const paidToJepo=jepoAmount(weight,body.jepoRate);'));
@@ -109,7 +111,7 @@ assert.ok(ui.includes("{isAdmin&&<button type=\"button\" aria-label={'Delete '+r
 assert.ok(ui.includes('className={styles.quickDelete} disabled={busy} onClick={()=>remove(record)}>Delete</button>'));
 assert.ok(!ui.includes('{isAdmin&&<button type="button" onClick={()=>remove(record)}'));
 assert.ok(ui.includes('<button type="button" onClick={()=>edit(record)}'));
-assert.ok(ui.includes('requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>'));
+assert.ok(ui.includes('<th className={styles.extraCostHeader}>Extra Cost (₹)</th>'));
 assert.ok(ui.includes('Extra Cost (INR)'));
 assert.ok(ui.includes('aria-label="JEPO Rate per kg"'));
 assert.ok(ui.includes('fmt(jepoPreview)'));
@@ -249,6 +251,25 @@ assert.equal(allocateExtraCost('Household and Electronics',500,null).toJepo,0);
 assert.equal(totalJepoForLoad(5000,'Household and Electronics',500,null),5000);
 assert.equal(allocateExtraCost('Clothes',0,null).toJepo,0);
 assert.equal(totalJepoForLoad(5000,'Clothes',0,null),5000);
+// Every non-fixed commodity sends ALL Extra Cost to Branch, including "Other"
+// and custom commodity labels. The entire entered cost is saved and exported.
+assert.deepEqual(allocateExtraCost('Clothes',450,null),{toJepo:0,toBranch:450});
+assert.deepEqual(allocateExtraCost('Other',275,null),{toJepo:0,toBranch:275});
+assert.deepEqual(allocateExtraCost('Household and Electronics + other',330,null),{toJepo:0,toBranch:330});
+assert.deepEqual(allocateExtraCost('Household and Hookah',1200,null),{toJepo:0,toBranch:1200});
+assert.equal(totalJepoForLoad(5000,'Clothes',450,null),5000);
+assert.equal(totalBranchForLoad(12000,11685,'Other',275,null),590);
+assert.deepEqual(allocateExtraCost('Medicine',1000,null),{toJepo:700,toBranch:300});
+assert.deepEqual(allocateExtraCost('Nutrition',500,null),{toJepo:150,toBranch:350});
+assert.deepEqual(allocateExtraCost('Ghee',1400,4),{toJepo:1000,toBranch:400});
+assert.equal(requiresBottleCount('Ghee'),true);
+assert.ok(COMMODITIES.includes('Nutrition'));
+assert.ok(ui.includes('const hasExtraCostColumn=true;'));
+assert.ok(ui.includes('entryRow(true)'));
+assert.ok(ui.includes('extraCost:t.extraCost+Number(r.extraCost||0)'));
+assert.ok(ui.includes('r.extraCost||0'));
+assert.ok(!ui.includes('Electronics / Hookah Extra Cost goes to JEPO.'));
+assert.ok(route.includes('const extraCost=decimal(body.extraCost,2);'));
 
 // Hookah / Electronics surcharge stays entirely with the branch in saved and
 // on-screen calculations, while established JEPO fees are unchanged.

@@ -133,12 +133,11 @@ export default function BranchLoadsDashboard({currentUser}){
     paidToBranch:t.paidToBranch+Number(r.paidToBranch||0),
     totalJepo:t.totalJepo+Number(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
     cashJepo:t.cashJepo+Number(jepoCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
-    extraCost:t.extraCost+(requiresExtraCost(r.commodity)?Number(r.extraCost||0):0)
+    extraCost:t.extraCost+Number(r.extraCost||0)
   }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0,cashJepo:0}),[shown]);
-  // Extra Cost appears only for mixed-household entries; the derived Total JEPO
-  // payment is always the very last column, whether Extra Cost exists or not.
-  const hasExtraCostColumn=shown.some(r=>requiresExtraCost(r.commodity))||
-    (editing!==''&&editing!=='new'&&requiresExtraCost(draft.commodity));
+  // Every commodity may have an optional Extra Cost. Keep this column visible
+  // and keep Total JEPO last, for consistent branch and CSV accounting.
+  const hasExtraCostColumn=true;
   const preview=amounts(draft.weight,draft.rate,draft.received);
   const jepoPreview=jepoAmount(draft.weight,draft.jepoRate);
   const branchBasePreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
@@ -162,7 +161,7 @@ export default function BranchLoadsDashboard({currentUser}){
     setDraft({
       branch:row.branch,date:row.date||todayIST(),weight:row.weight||'',rate:row.rate||'',
       received:row.received||'',jepoRate:row.jepoRate??'',
-      extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
+      extraCost:Number(row.extraCost||0)?row.extraCost:'',
       bottleCount:row.bottleCount??'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',remarks:row.remarks||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',confirmationMode:confirmationModeFor(row),status:row.status||initialBranchStatus(row.branch)
@@ -204,7 +203,7 @@ export default function BranchLoadsDashboard({currentUser}){
     if(requiresBottleCount(draft.commodity)&&(!/^[1-9]\d{0,4}$/.test(String(draft.bottleCount))||Number(draft.bottleCount)>10000)){
       showSaveFailure('enter the No. of Bottles (1–10000).');return;
     }
-    if(requiresExtraCost(draft.commodity)&&decimal(draft.extraCost,2)===null){
+    if(decimal(draft.extraCost,2)===null){
       showSaveFailure('Extra Cost must be a valid amount.');return;
     }
     if(requiresExtraCost(draft.commodity)&&extraJepoMinimum!==null&&Number(draft.extraCost||0)<extraJepoMinimum){
@@ -310,7 +309,7 @@ export default function BranchLoadsDashboard({currentUser}){
   }
   function downloadCsv(){
     const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     // Keep export totals precisely under the same labels after adding fields.
     const totalsRow=Array(labels.length).fill('');
     totalsRow[0]='TOTAL';totalsRow[3]=totals.weight;totalsRow[5]=totals.amount;
@@ -339,7 +338,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.computed}>{fmt(branchPreview)}</td>
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
-      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,extraCost:requiresExtraCost(v)?d.extraCost:'',bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=Number(count||0)*250;return {...d,bottleCount:count,extraCost:count&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
+      <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=Number(count||0)*250;return {...d,bottleCount:count,extraCost:count&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
@@ -354,8 +353,8 @@ export default function BranchLoadsDashboard({currentUser}){
         {draft.confirmationMode==='UTR'&&<input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Enter UTR if available" value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>}
       </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
       <td className={styles.actions}><button type="button" onClick={save} disabled={busy} aria-label="Save this load row">{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button>{saveError&&<p role="alert" className={styles.inlineSaveError}>{saveError}</p>}</td>
-      {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
-        <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to Branch'}</small></>:'—'}</td>}
+      {showExtraColumn&&<td className={styles.extraCostCell}>
+        <input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to Branch'}</small></td>}
       <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
     </tr>;
   }
@@ -404,7 +403,7 @@ export default function BranchLoadsDashboard({currentUser}){
             ?<span className={styles.confirmPendingBlink}>Pending Admin Decision</span>:null)}
     </td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button></td>,
-    ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
+    ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{'₹'+money(record.extraCost)}</td>]:[]),
     <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit
       total={totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true})}
       account={Number(record.paidToJepo||0)}
@@ -431,10 +430,10 @@ export default function BranchLoadsDashboard({currentUser}){
           <div><h2>Load Entry</h2><p>Enter load details, then click Save in the same row. Day appears automatically.</p></div>
           <div className={styles.loadEntryActions}><span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span></div>
         </div>
-        <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
-          {ledgerColumns(requiresExtraCost(draft.commodity),true)}
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
-          <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
+        <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(true,true)+'px',minWidth:'100%'}}>
+          {ledgerColumns(true,true)}
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
+          <tbody>{entryRow(true)}</tbody>
         </table></div>
       </section>}
     <nav className={styles.sheetTabs} aria-label="Load sheet">
@@ -442,7 +441,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
     </nav>
 
-    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee ₹250 per bottle to JEPO, Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah Extra Cost goes to JEPO.</p>}
+    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee ₹250 per bottle to JEPO, Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
       <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>

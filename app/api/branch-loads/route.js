@@ -88,7 +88,8 @@ function parse(body,auth){
   const basePaidToBranch=branchPayment(weight,rate,body.jepoRate);
   const destination=textField(body.destination,100);
   const service=textField(body.service,120),commodity=textField(body.commodity,120);
-  const extraCost=requiresExtraCost(commodity)?decimal(body.extraCost,2):0;
+  // Extra Cost is optional for every commodity, but must never be dropped when supplied.
+  const extraCost=decimal(body.extraCost,2);
   const bottleCount=requiresBottleCount(commodity)?parseBottleCount(body.bottleCount):null;
   const extraAllocation=extraCost===null?null:allocateExtraCost(commodity,extraCost,bottleCount);
   const paidToBranch=basePaidToBranch===null||extraAllocation===null?null:
