@@ -109,7 +109,8 @@ export default function BranchLoadsDashboard({currentUser}){
   const confirmationModeFor=row=>row.confirmationMode==='PENDING'&&row.confirmationNo?'UTR':(row.confirmationMode||'PENDING');
   const awaitingAdminDecision=row=>(confirmationModeFor(row)==='CASH'||(confirmationModeFor(row)==='UTR'&&Boolean(row.confirmationNo?.trim())))&&
     row.confirmationDecision!=='YES'&&row.confirmationDecision!=='NO'&&!row.confirmationApprovedAt;
-  const pendingConfirmations=useMemo(()=>isAdmin?rows.filter(awaitingAdminDecision):[],[rows,isAdmin]);
+  // Pending Yes/No actions are displayed beside their own transaction row;
+  // no separate approval queue that detaches a decision from the saved load.
   function switchSheet(next){
     setSheet(next);setMessage('');setDayFilter('');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
@@ -400,21 +401,6 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
-    {isAdmin&&pendingConfirmations.length>0&&<section className={styles.adminApprovals} aria-label="Pending transaction confirmations">
-      <div className={styles.approvalHeading}><strong className={styles.confirmPendingBlink}>Transaction Confirmation — {pendingConfirmations.length} Pending</strong><span>Admin Yes / No • Jind &amp; Karnal • Active and Delivered</span></div>
-      <div className={styles.approvalQueue}>
-        {pendingConfirmations.map(record=><div className={styles.approvalCard} key={record.id}>
-          <span className={styles.confirmBranch}>{record.branch}</span>
-          <strong>{confirmationModeFor(record)==='CASH'?'Cash':'UTR: '+record.confirmationNo}</strong>
-          {record.confirmationName&&<span>{record.confirmationName}</span>}
-          <span>{showDate(record.date)} • Received {fmt(record.received)}</span>
-          <div className={styles.adminDecisionButtons}>
-            <button type="button" disabled={busy} onClick={()=>decideTransaction(record,'YES')}>Yes</button>
-            <button type="button" className={styles.rejectButton} disabled={busy} onClick={()=>decideTransaction(record,'NO')}>No</button>
-          </div>
-        </div>)}
-      </div>
-    </section>}
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
     <form noValidate onSubmit={save}>
       {sheet==='ACTIVE'&&editing==='new'&&<section className={styles.loadEntrySection}>
@@ -439,7 +425,7 @@ export default function BranchLoadsDashboard({currentUser}){
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>UTR / Cash</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
