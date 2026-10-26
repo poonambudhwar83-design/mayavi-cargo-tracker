@@ -115,7 +115,7 @@ assert.ok(ui.includes('JEPO Rate (INR/kg)'));
 assert.ok(!ui.includes('set(\'paidToJepo\''));
 assert.ok(ui.includes('const branchPreview=branchBasePreview===null?null:totalBranchForLoad(preview?.amount,jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);'));
 assert.ok(ui.includes('fmt(branchPreview)'));
-assert.ok(ui.includes('fmt(totalJepoPreview)'));
+assert.ok(ui.includes('<JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/>'));
 assert.ok(ui.includes('Total Amount Paid to JEPO (INR)'));
 assert.ok(ui.includes('totals.totalJepo'));
 assert.ok(ui.includes('totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true})'));
