@@ -13,7 +13,7 @@ const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID
 const ENTRY_WIDTHS=[108,160,118,108,118,122,110,116,138,144,152,148,192,146,166,120,122,130];
 const SAVED_WIDTHS=[104,158,90,88,110,109,98,98,117,119,112,102,155,123,142,100,106,120];
 const EXTRA_COST_WIDTH=132;
-const TOTAL_JEPO_WIDTH=174;
+const TOTAL_JEPO_WIDTH=194;
 const CONFIRMATION_WIDTH=230;
 const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
 const ledgerColumns=(extra,editable=false)=>{
@@ -33,6 +33,17 @@ const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.Date
 const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
 const employeeName=value=>String(value||'').split(/[._-]/).map(v=>v? v[0].toUpperCase()+v.slice(1):'').join(' ')||'—';
 const fmt=(v)=>v===null?'—':'₹'+money(v);
+// Only the JEPO portion of Extra Cost goes under Cash; any remainder still
+// belongs to the branch. No payment figures are modified by this display.
+const jepoCashPart=(commodity,extraCost,bottleCount,{legacy=false}={})=>
+  allocateExtraCost(commodity,extraCost,bottleCount,{legacy})?.toJepo??null;
+function JepoPaymentSplit({total,account,cash}){
+  return <div className={styles.jepoSplit}>
+    <strong className={styles.jepoSplitTotal}>Total <span>{fmt(total)}</span></strong>
+    <div className={styles.jepoSplitLine}><span>Account</span><b>{fmt(account)}</b></div>
+    <div className={styles.jepoSplitLine}><span>Cash</span><b>{fmt(cash)}</b></div>
+  </div>;
+}
 const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
 
 function FieldChoice({name,list,value,onChange}){
@@ -112,8 +123,9 @@ export default function BranchLoadsDashboard({currentUser}){
     paidToJepo:t.paidToJepo+Number(r.paidToJepo||0),
     paidToBranch:t.paidToBranch+Number(r.paidToBranch||0),
     totalJepo:t.totalJepo+Number(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
+    cashJepo:t.cashJepo+Number(jepoCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
     extraCost:t.extraCost+(requiresExtraCost(r.commodity)?Number(r.extraCost||0):0)
-  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0}),[shown]);
+  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0,cashJepo:0}),[shown]);
   // Extra Cost appears only for mixed-household entries; the derived Total JEPO
   // payment is always the very last column, whether Extra Cost exists or not.
   const hasExtraCostColumn=shown.some(r=>requiresExtraCost(r.commodity))||
@@ -123,6 +135,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const branchBasePreview=branchPayment(draft.weight,draft.rate,draft.jepoRate);
   const branchPreview=branchBasePreview===null?null:totalBranchForLoad(preview?.amount,jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
   const totalJepoPreview=jepoPreview===null?null:totalJepoForLoad(jepoPreview,draft.commodity,draft.extraCost,draft.bottleCount);
+  const cashJepoPreview=totalJepoPreview===null?null:jepoCashPart(draft.commodity,draft.extraCost,draft.bottleCount);
   const extraJepoMinimum=minimumJepoExtraCost(draft.commodity,draft.bottleCount);
   const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
 
@@ -323,7 +336,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
-      <td className={styles.totalJepoCell}>{fmt(totalJepoPreview)}</td>
+      <td className={styles.totalJepoCell}><JepoPaymentSplit total={totalJepoPreview} account={jepoPreview} cash={cashJepoPreview}/></td>
     </tr>;
   }
   function entryRowCells(){
@@ -368,7 +381,11 @@ export default function BranchLoadsDashboard({currentUser}){
     </td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
-    <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}>{fmt(totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true}))}</td>
+    <td key="totalPaidToJepo" className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit
+      total={totalJepoForLoad(record.paidToJepo,record.commodity,record.extraCost,record.bottleCount,{legacy:true})}
+      account={Number(record.paidToJepo||0)}
+      cash={jepoCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}
+    /></td>
   ];
   return <main className={styles.page}>
     <header className={styles.heading}>
@@ -430,7 +447,7 @@ export default function BranchLoadsDashboard({currentUser}){
           {!loaded&&<tr><td colSpan={20+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&editing!=='new'&&<tr><td colSpan={19+(hasExtraCostColumn?1:0)} className={styles.empty}>No saved loads in this sheet. Use Load Entry above for new loads.</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={9}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}>{fmt(totals.totalJepo)}</td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={9}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
       </table></div>
     </form>
     <footer className={styles.foot}>
