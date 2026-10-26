@@ -17,8 +17,10 @@ const FALLBACK_USERS=[
   {username:'parvesh',displayName:'Parvesh',role:'employee',passwordSet:false},
   {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false},
   {username:'sonu',displayName:'Sonu',role:'employee',passwordSet:false},
-  {username:'jind',displayName:'Jind',role:'employee',passwordSet:false},
-  {username:'karnal',displayName:'Karnal',role:'employee',passwordSet:false}
+  {username:'jind',displayName:'Jind',role:'employee',branchScope:'JIND',passwordSet:false},
+  {username:'ravi',displayName:'Ravi',role:'employee',branchScope:'JIND',passwordSet:false},
+  {username:'anuradha',displayName:'Anuradha',role:'employee',branchScope:'JIND',passwordSet:false},
+  {username:'karnal',displayName:'Karnal',role:'employee',branchScope:'KARNAL',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
 
@@ -55,9 +57,13 @@ export default function UnifiedDashboard(){
   const [showAdminPassword,setShowAdminPassword]=useState(false);
   const [manageBusy,setManageBusy]=useState(false);
   const [manageNote,setManageNote]=useState('');
+  const [newEmployeeBranch,setNewEmployeeBranch]=useState('KARNAL');
+  const [newEmployeeName,setNewEmployeeName]=useState('');
+  const [newEmployeeUsername,setNewEmployeeUsername]=useState('');
+  const [newEmployeePassword,setNewEmployeePassword]=useState('');
 
   const selected=useMemo(()=>users.find(u=>u.username===username),[users,username]);
-  const branchNeedsAdminPassword=Boolean(selected&&!selected.passwordSet&&['jind','karnal'].includes(String(selected.username).toLowerCase()));
+  const branchNeedsAdminPassword=Boolean(selected&&!selected.passwordSet&&selected.branchScope);
   const firstLogin=Boolean(selected&&!selected.passwordSet&&!branchNeedsAdminPassword);
   const employeeUsers=useMemo(()=>users.filter(u=>u.role!=='admin'),[users]);
 
@@ -79,13 +85,36 @@ export default function UnifiedDashboard(){
           // DashboardClient paints it immediately while the server list loads.
           // An explicit new login still clears any previous user's local cache.
           setSession(data.session);
-          if(['jind','karnal'].includes(String(data.session.username||'').toLowerCase()))setSelectedDashboard('BRANCH_LOADS');
+          if(data.session.branchScope)setSelectedDashboard('BRANCH_LOADS');
         }
         if(!data.ok&&data.error)setNote(data.error);
       }catch{if(active)setNote('Login service is temporarily unavailable.')}finally{if(active)setLoading(false)}
     })();
     return()=>{active=false};
   },[]);
+
+  // Security poll: an Admin Force Logout invalidates the signed token on the
+  // server. Drop the live page once auth reports revocation, even on an idle tab.
+  useEffect(()=>{
+    if(!session)return;
+    let active=true;
+    async function verify(){
+      try{
+        const res=await fetch('/api/auth',{credentials:'include',cache:'no-store'});
+        const data=await res.json();
+        if(!active)return;
+        if(res.ok&&data.ok&&!data.authenticated){
+          setSession(null);setSelectedDashboard('AIR_CARGO');setNote('Your session was ended by Admin. Please log in again.');
+          setPassword('');setUsername('');
+        }
+      }catch{}
+    }
+    const check=()=>{if(document.visibilityState!=='hidden')void verify();};
+    const timer=setInterval(check,15000);
+    window.addEventListener('focus',check);
+    document.addEventListener('visibilitychange',check);
+    return()=>{active=false;clearInterval(timer);window.removeEventListener('focus',check);document.removeEventListener('visibilitychange',check)};
+  },[session?.username,session?.sessionVersion]);
 
   async function login(){
     if(!username){setNote('Please select your name.');return}
@@ -95,7 +124,7 @@ export default function UnifiedDashboard(){
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
       const data=await res.json();
       if(!data.ok)throw new Error(data.error||'Login failed.');
-      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(['jind','karnal'].includes(String(data.session.username||'').toLowerCase())?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
+      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(data.session.branchScope?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
       await loadUsers().catch(()=>{});
     }catch(e){setNote(e.message||'Login failed.')}finally{setBusy(false)}
   }
@@ -138,7 +167,7 @@ export default function UnifiedDashboard(){
 
   async function adminPasswordAction(action){
     if(!targetUsername){setManageNote('Select an employee first.');return}
-    if(action==='admin_set_password'&&adminNewPassword.length<4){setManageNote('New password must be at least 4 characters.');return}
+    if(action==='admin_set_password'&&adminNewPassword.length<(employeeUsers.find(u=>u.username===targetUsername)?.branchScope?8:4)){setManageNote('New password must be at least 4 characters.');return}
     setManageBusy(true);setManageNote('');
     try{
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,targetUsername,newPassword:adminNewPassword})});
@@ -149,8 +178,24 @@ export default function UnifiedDashboard(){
     }catch(e){setManageNote(e.message||'Password update failed.')}finally{setManageBusy(false)}
   }
 
+  async function createBranchEmployee(){
+    const displayName=newEmployeeName.trim(), employeeUsername=newEmployeeUsername.trim().toLowerCase();
+    if(!displayName||!employeeUsername){setManageNote('Enter employee name and a unique username.');return}
+    if(newEmployeePassword.length<8){setManageNote('Use a personal password of at least 8 characters.');return}
+    setManageBusy(true);setManageNote('');
+    try{
+      const res=await fetch('/api/auth',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},
+        body:JSON.stringify({action:'admin_create_branch_user',branchScope:newEmployeeBranch,employeeUsername,displayName,newPassword:newEmployeePassword})});
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||'Could not add branch employee.');
+      setManageNote(data.message||'Employee account created.');
+      setNewEmployeeName('');setNewEmployeeUsername('');setNewEmployeePassword('');
+      await loadUsers();
+    }catch(e){setManageNote(e.message||'Could not create employee.')}finally{setManageBusy(false)}
+  }
+
   const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
-  const branchLogin=Boolean(session&&session.role!=='admin'&&['jind','karnal'].includes(String(session.username||'').toLowerCase()));
+  const branchLogin=Boolean(session&&session.role!=='admin'&&session.branchScope);
   // Keep the view switch separate from the account-bar JSX. Each branch
   // employee gets only its own dedicated page; Admin can switch back freely.
   const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));
@@ -211,7 +256,7 @@ export default function UnifiedDashboard(){
         <label>EMPLOYEE</label>
         <select style={fullInput} value={targetUsername} onChange={e=>{setTargetUsername(e.target.value);setAdminNewPassword('');setManageNote('')}}>
           <option value="">Select employee</option>
-          {employeeUsers.map(u=><option key={u.username} value={u.username}>{u.displayName} {u.passwordSet?'• Password set':'• First login pending'}</option>)}
+          {employeeUsers.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.branchScope?' ('+u.branchScope+')':''} {u.passwordSet?'• Password set':'• First login pending'}</option>)}
         </select>
         <label>NEW PASSWORD</label>
         <div style={{display:'flex',gap:8,alignItems:'stretch'}}>
@@ -221,10 +266,24 @@ export default function UnifiedDashboard(){
         {manageNote&&<div className="loginNote" style={{marginTop:12}}>{manageNote}</div>}
         <div style={{display:'grid',gap:10,marginTop:16}}>
           <button disabled={manageBusy} onClick={()=>adminPasswordAction('admin_set_password')}>{manageBusy?'WORKING…':'SET NEW PASSWORD'}</button>
-          <button disabled={manageBusy} onClick={()=>adminPasswordAction('admin_reset_password')}>RESET FOR FIRST LOGIN</button>
+          <button disabled={manageBusy} onClick={()=>adminPasswordAction('admin_reset_password')}>RESET EMPLOYEE PASSWORD</button>
+          <button disabled={manageBusy||!targetUsername} style={{background:'#7f1d1d',color:'#fff'}} onClick={()=>{if(window.confirm('Force logout this employee on all devices?'))void adminPasswordAction('admin_force_logout')}}>FORCE LOGOUT EMPLOYEE</button>
           <button disabled={manageBusy} onClick={closeManage}>CLOSE</button>
         </div>
-        <small style={{display:'block',marginTop:12}}>Reset for First Login removes the old password securely; the employee then chooses a fresh password on their next login.</small>
+        <small style={{display:'block',marginTop:12}}>Branch employees need an Admin-assigned personal password. Reset or change password invalidates their existing sessions.</small>
+        <hr style={{margin:'18px 0',border:'0',borderTop:'1px solid #cbd5e1'}}/>
+        <h3 style={{margin:'4px 0 12px'}}>Add Jind / Karnal Employee</h3>
+        <label>BRANCH</label>
+        <select style={fullInput} value={newEmployeeBranch} onChange={e=>setNewEmployeeBranch(e.target.value)}>
+          <option value="JIND">Jind</option><option value="KARNAL">Karnal</option>
+        </select>
+        <label>EMPLOYEE NAME</label>
+        <input style={fullInput} placeholder="e.g. Ravi" value={newEmployeeName} onChange={e=>setNewEmployeeName(e.target.value)}/>
+        <label>UNIQUE LOGIN USERNAME</label>
+        <input style={fullInput} placeholder="e.g. karnal.ravi" value={newEmployeeUsername} onChange={e=>setNewEmployeeUsername(e.target.value)}/>
+        <label>PERSONAL PASSWORD</label>
+        <input style={fullInput} type="password" autoComplete="new-password" placeholder="Minimum 8 characters" value={newEmployeePassword} onChange={e=>setNewEmployeePassword(e.target.value)}/>
+        <button disabled={manageBusy} onClick={createBranchEmployee}>ADD BRANCH EMPLOYEE</button>
       </section>
     </div>}
   </>;
@@ -245,7 +304,7 @@ export default function UnifiedDashboard(){
         <button type="button" onClick={()=>setShowPassword(v=>!v)} style={{width:84,padding:'0 10px'}}>{showPassword?'HIDE':'SHOW'}</button>
       </div>
       {firstLogin&&<div className="firstLogin">First login: this password will become your permanent Mayavi password.</div>}
-      {branchNeedsAdminPassword&&<div className="firstLogin">For Jind/Karnal, Admin must set your first password from Manage User Passwords.</div>}
+      {branchNeedsAdminPassword&&<div className="firstLogin">For branch employees, Admin must assign a personal password in Manage User Passwords.</div>}
       {note&&<div className="loginNote">{note}</div>}
       <button disabled={busy} onClick={login}>{busy?'CHECKING…':firstLogin?'SET PASSWORD & LOGIN':'LOGIN'}</button>
       {!firstLogin&&<button type="button" onClick={forgotPassword} style={{marginTop:8,background:'transparent',color:'#174f96',border:'none',textDecoration:'underline',cursor:'pointer'}}>FORGOT PASSWORD?</button>}
