@@ -137,15 +137,24 @@ export async function POST(request){
   try{
     const sql=connection(),auth=await authenticate(request,sql);
     if(auth.error)return json({ok:false,error:auth.error},auth.status);
-    const {entry,error}=parse(await request.json().catch(()=>({})),auth);
+    const body=await request.json().catch(()=>({}));
+    const {entry,error}=parse(body,auth);
     if(error)return json({ok:false,error},400);
     await ensure(sql);
-    const id=randomUUID();
+    // A browser may retry after a dropped response even when the first INSERT
+    // succeeded. Reusing the client-generated UUID makes POST idempotent.
+    // The branch scope is checked again before confirming the saved row.
+    const providedId=String(body.clientRequestId||'').trim();
+    const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providedId)?providedId:randomUUID();
     await sql`INSERT INTO mayavi_branch_loads
       (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,delivery_status,created_by,updated_by)
       VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username})`;
-    return json({ok:true,row:await one(sql,id)},201);
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.status},${auth.username},${auth.username})
+      ON CONFLICT (id) DO NOTHING`;
+    const saved=await one(sql,id);
+    if(!saved||saved.branch!==entry.branch)
+      return json({ok:false,error:'Unable to verify the saved branch entry. Please contact Admin.'},409);
+    return json({ok:true,row:saved},201);
   }catch(e){return json({ok:false,error:e?.message||'Save failed.'},503);}
 }
 export async function PATCH(request){
