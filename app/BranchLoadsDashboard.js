@@ -40,7 +40,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const [message,setMessage]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
-  const [dayFilter,setDayFilter]=useState(()=>todayIST());
+  const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());
   const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
   const [search,setSearch]=useState('');
   const [month,setMonth]=useState('');
@@ -60,7 +60,7 @@ export default function BranchLoadsDashboard({currentUser}){
   useEffect(()=>{
     void load();
     const onFocus=()=>{if(document.visibilityState==='visible')void load()};
-    const timer=setInterval(onFocus,60000);
+    const timer=setInterval(onFocus,30000);
     document.addEventListener('visibilitychange',onFocus);
     window.addEventListener('focus',onFocus);
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onFocus);window.removeEventListener('focus',onFocus);};
@@ -76,7 +76,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
   function switchSheet(next){
-    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'?todayIST():'');setMonth('');setSearch('');
+    setSheet(next);setMessage('');setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
@@ -126,10 +126,10 @@ export default function BranchLoadsDashboard({currentUser}){
       // Every dated load is independent; next entry stays open on Active.
       setEditing(sheet==='ACTIVE'?'new':'');
       setDraft({...fresh(data.row.branch),date:data.row.date});
-      if(sheet==='ACTIVE'){setDayFilter(data.row.date);setMonth('');setSearch('');}
+      if(sheet==='ACTIVE'){if(!isAdmin)setDayFilter(data.row.date);setMonth('');setSearch('');}
       setMessage(data.row.status==='DELIVERED'
         ?'Delivered load saved and moved to Delivered Sheet.'
-        :'Entry saved. Add the next load in the same row.');
+        :'Entry saved in shared Mayavi database. Admin can see it under JIND / KARNAL LOADS. Add the next load.');
     }catch(e){setMessage(e?.message||'Could not save entry.');}
     finally{setBusy(false);}
   }
@@ -220,7 +220,7 @@ export default function BranchLoadsDashboard({currentUser}){
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
-        <p>Daily Load Entry above • Employee attribution • Automatically calculated totals • Separate Delivered sheet</p></div>
+        <p>Daily Load Entry above • Shared saved Jind and Karnal records • Admin sees both branches • Separate Delivered sheet</p></div>
     </header>
     <div className={styles.metrics}>
       <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>

@@ -10,8 +10,8 @@ export const maxDuration=260;
 // Reuse the unchanged AWB-verified Cathay parser and its guarded DB saver.
 const PREFIX=/^160\d{8}$/;
 const MIN_GAP_MS=4*60*1000;
-const MAX_PER_TICK=1; // One CX AWB per tick leaves time for a controlled retry.
-const BATCH_SIZE=1;
+const MAX_PER_TICK=4; // Check multiple unresolved CX AWBs so one carrier-blocked AWB cannot starve others.
+const BATCH_SIZE=4;
 const ATTEMPT_TIMEOUT_MS=105000;
 const MAX_ATTEMPTS=2;
 const digits=value=>String(value||'').replace(/\D/g,'');
