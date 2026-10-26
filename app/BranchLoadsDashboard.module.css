@@ -114,3 +114,7 @@
 .table thead .extraCostHeader{background:#fff1cb!important;color:#92400e!important;min-width:126px}
 .table tbody .extraCostCell,.table tfoot .extraCostCell{background:#fffbeb!important;color:#92400e;font-weight:800;min-width:126px}
 .table .extraCostCell input{background:#fff;border-color:#f59e0b;width:112px}
+
+/* Total JEPO payout is a calculated, read-only column, always far right. */
+.table thead .totalJepoHeader{background:#d7f2e6!important;color:#065f46!important;min-width:152px}
+.table tbody .totalJepoCell,.table tfoot .totalJepoCell{background:#e8f8ee!important;color:#065f46;font-weight:900;min-width:152px}
