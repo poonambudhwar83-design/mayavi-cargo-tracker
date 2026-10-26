@@ -155,11 +155,16 @@ assert.ok(ui.includes('className={styles.inlineSaveSuccess}'));
 assert.ok(ui.includes('setSaveNotice(\'✓ SAVED in \''));
 assert.ok(stylesheet.includes('.inlineSaveSuccess'));
 
-assert.ok(ui.includes("const [dayFilter,setDayFilter]=useState(()=>isAdmin?'':todayIST());"));
-assert.ok(ui.includes("setDayFilter(next==='ACTIVE'&&!isAdmin?todayIST():'');"));
-assert.ok(ui.includes("(sheet==='ACTIVE'&&!isAdmin?r.date===(dayFilter||todayIST()):(!dayFilter||r.date===dayFilter))"));
-assert.ok(ui.includes("isAdmin&&<button type=\"button\" className={styles.headerLink}"));
-assert.ok(ui.includes('className={styles.branchDailyNotice}'));
+// Active register aggregates all undelivered entries across every date,
+ // without any employee/admin date filter; the entry-date input remains.
+assert.ok(ui.includes("r.status!=='DELIVERED'"));
+assert.ok(ui.includes("const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);"));
+assert.ok(ui.includes("<th>Date</th>"));
+assert.ok(ui.includes('aria-label="Date" required type="date"'));
+assert.ok(ui.includes("sheet==='ACTIVE'?'No active loads yet."));
+assert.ok(!ui.includes('Filter by date'));
+assert.ok(!ui.includes('dayFilter'));
+assert.ok(!ui.includes('Older entries are hidden by default'));
 assert.ok(ui.includes('const writeRevision=useRef(0);'));
 assert.ok(ui.includes('const latestRead=useRef(0);'));
 assert.ok(ui.includes('const recordWrite=()=>{writeRevision.current+=1;latestRead.current+=1;};'));
