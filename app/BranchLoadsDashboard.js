@@ -24,7 +24,7 @@ const ledgerColumns=(extra,editable=false)=>{
 };
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
-  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',confirmationNo:'',confirmationName:'',
+  branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',confirmationNo:'',confirmationName:'',confirmationMode:'PENDING',
   destination:'',service:'',commodity:'',trackingNo:'',status:initialBranchStatus(branch)
 });
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -89,13 +89,16 @@ export default function BranchLoadsDashboard({currentUser}){
     (sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED'))&&
     (!dayFilter||r.date===dayFilter)&&
     (!month||String(r.date||'').startsWith(month))&&
-    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName].join(' ').toLowerCase().includes(search.toLowerCase()))
+    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,sheet,dayFilter,month,search]);
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
   // The Admin sees all pending confirmations regardless of selected branch,
   // date filter, or whether a shipment has moved to Delivered Sheet.
-  const pendingConfirmations=useMemo(()=>isAdmin?rows.filter(r=>r.confirmationNo?.trim()&&r.confirmationName?.trim()&&!r.confirmationApprovedAt):[],[rows,isAdmin]);
+  const confirmationModeFor=row=>row.confirmationMode==='PENDING'&&row.confirmationNo?'UTR':(row.confirmationMode||'PENDING');
+  const awaitingAdminDecision=row=>(confirmationModeFor(row)==='CASH'||(confirmationModeFor(row)==='UTR'&&Boolean(row.confirmationNo?.trim())))&&
+    row.confirmationDecision!=='YES'&&row.confirmationDecision!=='NO'&&!row.confirmationApprovedAt;
+  const pendingConfirmations=useMemo(()=>isAdmin?rows.filter(awaitingAdminDecision):[],[rows,isAdmin]);
   function switchSheet(next){
     setSheet(next);setMessage('');setDayFilter('');setMonth('');setSearch('');
     setEditing(next==='ACTIVE'?'new':'');
@@ -135,7 +138,7 @@ export default function BranchLoadsDashboard({currentUser}){
       extraCost:requiresExtraCost(row.commodity)?(Number(row.extraCost||0)?row.extraCost:''):'',
       bottleCount:row.bottleCount??'',
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
-      trackingNo:row.trackingNo||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',status:row.status||initialBranchStatus(row.branch)
+      trackingNo:row.trackingNo||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',confirmationMode:confirmationModeFor(row),status:row.status||initialBranchStatus(row.branch)
     });
     setMessage('');
   }
@@ -253,28 +256,29 @@ export default function BranchLoadsDashboard({currentUser}){
     }catch(e){setMessage(e?.message||'Unable to update status.');}
     finally{setBusy(false);}
   }
-  async function approveTransaction(row){
-    if(!isAdmin||busy||!row.confirmationNo?.trim()||!row.confirmationName?.trim()||row.confirmationApprovedAt)return;
-    const approvalLabel=row.branch+' • '+row.confirmationNo+' • '+row.confirmationName+' • Received '+fmt(row.received);
-    if(!window.confirm('Approve this transaction confirmation?\\n'+approvalLabel))return;
-    setBusy(true);setMessage('Verifying transaction reference with the database…');
+  async function decideTransaction(row,decision){
+    if(!isAdmin||busy||!['YES','NO'].includes(decision)||!awaitingAdminDecision(row))return;
+    const mode=confirmationModeFor(row);
+    const summary=row.branch+' • '+(mode==='CASH'?'Cash':'UTR: '+row.confirmationNo)+' • Received '+fmt(row.received);
+    if(!window.confirm('Mark this transaction '+decision+'?\\n'+summary))return;
+    setBusy(true);setMessage('Saving Admin '+decision+' decision…');
     try{
       const response=await fetch(API,{method:'PATCH',credentials:'include',cache:'no-store',
         headers:{'content-type':'application/json'},
-        body:JSON.stringify({id:row.id,approveConfirmation:true,
-          confirmationNo:row.confirmationNo,confirmationName:row.confirmationName,expectedReceived:row.received})
+        body:JSON.stringify({id:row.id,approveConfirmation:true,confirmationDecision:decision,
+          confirmationMode:mode,confirmationNo:row.confirmationNo||'',expectedReceived:row.received})
       });
-      const data=await response.json().catch(()=>({ok:false,error:'Could not read approval response.'}));
-      if(!response.ok||!data.ok||!data.row?.confirmationApprovedAt)
-        throw new Error(data.error||'Approval was not saved. Refresh and try again.');
+      const data=await response.json().catch(()=>({ok:false,error:'Could not read Admin decision confirmation.'}));
+      if(!response.ok||!data.ok||!data.row||data.row.confirmationDecision!==decision)
+        throw new Error(data.error||'Decision could not be saved. Refresh and try again.');
       setRows(prev=>prev.map(r=>r.id===row.id?data.row:r));
-      setMessage('✓ '+row.branch+' transaction '+row.confirmationNo+' approved by Admin.');
-    }catch(e){setMessage('Approval pending: '+(e?.message||'Please retry.'));}
+      setMessage('✓ '+row.branch+' '+(mode==='CASH'?'Cash':row.confirmationNo)+' marked '+decision+' by Admin.');
+    }catch(e){setMessage('Admin decision not saved: '+(e?.message||'Please try again.'));}
     finally{setBusy(false);}
   }
   function downloadCsv(){
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Amount Confirmation No.','Confirmation Name','Confirmation Status','Approved By','Approved At',...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.confirmationNo||'',r.confirmationName||'',r.confirmationApprovedAt?'Approved':r.confirmationNo&&r.confirmationName?'Pending Approval':r.confirmationNo||r.confirmationName?'Incomplete':'Not provided',r.confirmationApprovedBy||'',r.confirmationApprovedAt||'',...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[requiresExtraCost(r.commodity)?r.extraCost||0:'']:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     // Keep export totals precisely under the same labels after adding fields.
     const totalsRow=Array(labels.length).fill('');
     totalsRow[0]='TOTAL';totalsRow[3]=totals.weight;totalsRow[5]=totals.amount;
@@ -309,9 +313,13 @@ export default function BranchLoadsDashboard({currentUser}){
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
       <td className={styles.audit}>{editing==='new'?'—':currentUser?.displayName||employeeName(currentUser?.username)}</td>
       <td className={styles.confirmCell}><div className={styles.confirmInputs}>
-        <input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Confirmation No." value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>
-        <input aria-label="Amount confirmation name" autoComplete="off" maxLength={120} placeholder="Name" value={draft.confirmationName} onChange={e=>set('confirmationName',e.target.value)}/>
-      </div><small className={styles.confirmHelp}>Both details go to Admin for approval</small></td>
+        <select aria-label="Payment confirmation mode" value={draft.confirmationMode||'PENDING'} onChange={e=>setDraft(d=>({...d,confirmationMode:e.target.value,confirmationNo:e.target.value==='UTR'?d.confirmationNo:''}))}>
+          <option value="PENDING">Pending / Not available</option>
+          <option value="UTR">UTR / Transaction No.</option>
+          <option value="CASH">Cash</option>
+        </select>
+        {draft.confirmationMode==='UTR'&&<input aria-label="Amount confirmation number" autoComplete="off" maxLength={120} placeholder="Enter UTR if available" value={draft.confirmationNo} onChange={e=>set('confirmationNo',e.target.value)}/>}
+      </div><small className={styles.confirmHelp}>UTR optional. Cash / Pending also saves.</small></td>
       <td className={styles.actions}><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" className={styles.secondary} disabled={busy} onClick={cancel}>Cancel</button></td>
       {showExtraColumn&&<td className={styles.extraCostCell}>{requiresExtraCost(draft.commodity)?
         <><input aria-label="Extra Cost in rupees" {...input} placeholder="₹ Extra Cost" value={draft.extraCost} onChange={e=>set('extraCost',e.target.value)}/><small className={styles.extraSplitHint}>{extraJepoMinimum===null?'Enter bottles to calculate JEPO share':extraJepoMinimum>0?'₹'+extraJepoMinimum+' to JEPO; remaining to Branch':'Full Extra Cost to JEPO'}</small></>:'—'}</td>}
@@ -343,17 +351,20 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
     <td key="confirmation" className={styles.confirmCell}>
-      {(record.confirmationNo||record.confirmationName)?<>
-        <strong className={styles.confirmNumber}>{record.confirmationNo||'No. missing'}</strong>
-        <small className={styles.confirmName}>{record.confirmationName||'Name missing'}</small>
-        {record.confirmationApprovedAt
-          ?<span className={styles.confirmApproved}>Approved{record.confirmationApprovedBy?' • '+employeeName(record.confirmationApprovedBy):''}</span>
-          :record.confirmationNo&&record.confirmationName
-            ?<span className={isAdmin?styles.confirmPendingBlink:styles.confirmPending}>Pending Admin Approval</span>
-            :<span className={styles.confirmIncomplete}>Complete both details</span>}
-        {isAdmin&&!record.confirmationApprovedAt&&record.confirmationNo&&record.confirmationName&&
-          <button type="button" className={styles.approveButton} disabled={busy} onClick={()=>approveTransaction(record)}>Approve Transaction</button>}
-      </>:<span className={styles.confirmEmpty}>—</span>}
+      <strong className={styles.confirmNumber}>{confirmationModeFor(record)==='CASH'?'Cash':confirmationModeFor(record)==='UTR'?'UTR':'Pending'}</strong>
+      {confirmationModeFor(record)==='UTR'&&<small className={styles.confirmName}>{record.confirmationNo||'UTR not entered'}</small>}
+      {isAdmin&&<>
+        {record.confirmationDecision==='YES'||record.confirmationApprovedAt
+          ?<span className={styles.confirmApproved}>Yes • Confirmed</span>
+          :record.confirmationDecision==='NO'
+            ?<span className={styles.confirmIncomplete}>No • Not confirmed</span>
+            :awaitingAdminDecision(record)
+              ?<span className={styles.confirmPendingBlink}>Pending Admin Decision</span>:null}
+        {awaitingAdminDecision(record)&&<div className={styles.adminDecisionButtons}>
+          <button type="button" className={styles.approveButton} disabled={busy} onClick={()=>decideTransaction(record,'YES')}>Yes</button>
+          <button type="button" className={styles.rejectButton} disabled={busy} onClick={()=>decideTransaction(record,'NO')}>No</button>
+        </div>}
+      </>}
     </td>,
     <td key="actions" className={styles.actions}><button type="button" onClick={()=>edit(record)} disabled={busy}>Edit</button>{isAdmin&&<button type="button" onClick={()=>remove(record)} disabled={busy} className={styles.danger}>Delete</button>}</td>,
     ...(hasExtraCostColumn?[<td key="extraCost" className={styles.extraCostCell+' '+styles.number}>{requiresExtraCost(record.commodity)?'₹'+money(record.extraCost):'—'}</td>]:[]),
@@ -373,14 +384,17 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
     </div>
     {isAdmin&&pendingConfirmations.length>0&&<section className={styles.adminApprovals} aria-label="Pending transaction confirmations">
-      <div className={styles.approvalHeading}><strong className={styles.confirmPendingBlink}>Approve the Transaction No. — {pendingConfirmations.length} Pending</strong><span>Jind &amp; Karnal • Both Active and Delivered</span></div>
+      <div className={styles.approvalHeading}><strong className={styles.confirmPendingBlink}>Transaction Confirmation — {pendingConfirmations.length} Pending</strong><span>Admin Yes / No • Jind &amp; Karnal • Active and Delivered</span></div>
       <div className={styles.approvalQueue}>
         {pendingConfirmations.map(record=><div className={styles.approvalCard} key={record.id}>
           <span className={styles.confirmBranch}>{record.branch}</span>
-          <strong>{record.confirmationNo}</strong>
-          <span>{record.confirmationName}</span>
+          <strong>{confirmationModeFor(record)==='CASH'?'Cash':'UTR: '+record.confirmationNo}</strong>
+          {record.confirmationName&&<span>{record.confirmationName}</span>}
           <span>{showDate(record.date)} • Received {fmt(record.received)}</span>
-          <button type="button" disabled={busy} onClick={()=>approveTransaction(record)}>Approve Transaction</button>
+          <div className={styles.adminDecisionButtons}>
+            <button type="button" disabled={busy} onClick={()=>decideTransaction(record,'YES')}>Yes</button>
+            <button type="button" className={styles.rejectButton} disabled={busy} onClick={()=>decideTransaction(record,'NO')}>No</button>
+          </div>
         </div>)}
       </div>
     </section>}
@@ -393,7 +407,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(requiresExtraCost(draft.commodity),true)+'px',minWidth:'100%'}}>
           {ledgerColumns(requiresExtraCost(draft.commodity),true)}
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Amount Confirmation (No. &amp; Name)</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>UTR / Cash</th><th>Save</th>{requiresExtraCost(draft.commodity)&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(requiresExtraCost(draft.commodity))}</tbody>
         </table></div>
       </section>}
@@ -408,7 +422,7 @@ export default function BranchLoadsDashboard({currentUser}){
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date{sheet==='ACTIVE'&&<><input aria-label="Filter by date" className={styles.headerDate} type="date" value={dayFilter} onChange={e=>{setDayFilter(e.target.value);setMonth('')}}/><button type="button" className={styles.headerLink} onClick={()=>{setDayFilter('');setMonth('')}}>All dates</button></>}</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Amount Confirmation (No. &amp; Name)</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>UTR / Cash</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
