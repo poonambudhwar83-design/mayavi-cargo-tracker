@@ -168,3 +168,22 @@
 .heading h1{overflow-wrap:break-word}
 .hint{white-space:normal;max-width:100%;line-height:1.5;overflow-wrap:break-word}
 .loadEntrySection{margin-bottom:20px}
+
+
+/* Compact register: 5px side padding vs 7px, precise widths via colgroup.
+   Load-entry inputs remain in their own cells, so small screens scroll instead
+   of letting controls overlap the next heading or amount. */
+.savedLedger thead th{padding:7px 5px;font-size:10px;line-height:1.25}
+.savedLedger tbody td,.savedLedger tfoot td{padding:7px 5px}
+.entryLedger thead th,.entryLedger tbody td{padding-left:5px;padding-right:5px}
+.savedLedger .headerFilter,.savedLedger .headerDate{
+  width:100%!important;
+  max-width:100%!important;
+  margin-top:5px;
+}
+.savedLedger tbody .number,.savedLedger tfoot .number{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.savedLedger .statusChip{min-width:0;width:100%;max-width:100%}
+.entryLedger .choice,.entryLedger .bottleControl{min-width:0;max-width:100%}
