@@ -260,3 +260,16 @@
 .transactionInline .confirmName{margin-top:2px;overflow-wrap:anywhere}
 .transactionInline .adminDecisionButtons{flex:0 0 auto;display:flex;gap:3px;margin:0;flex-wrap:nowrap;align-items:center}
 .transactionInline .adminDecisionButtons button{min-width:32px!important;padding:5px 5px!important;line-height:1.15;font-size:10px}
+
+
+/* Employee saves by clicking the Save button in that very load row; the
+   button is visually primary even though it directly calls save on click. */
+.table .editRow .actions button[aria-label="Save this load row"]{background:#1d4ed8;color:#fff;border:1px solid #1d4ed8;font-weight:900}
+.table .editRow .actions button[aria-label="Save this load row"]:hover{background:#1e40af}
+.table .editRow .actions button[aria-label="Save this load row"]:disabled{opacity:.55}
+/* Admin may delete from the immediately visible left side of the saved row.
+   Delete is not mounted at all for non-Admin branch employees. */
+.quickDelete{display:block;box-sizing:border-box;margin-top:5px;padding:4px 7px;border:1px solid #fca5a5;background:#fff1f2;border-radius:6px;color:#b91c1c;font-size:10px;font-weight:900;cursor:pointer}
+.quickDelete:hover{background:#fee2e2}
+.quickDelete:disabled{cursor:wait;opacity:.5}
+.branchDailyNotice{border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:700;color:#1e40af;margin:10px 0}
