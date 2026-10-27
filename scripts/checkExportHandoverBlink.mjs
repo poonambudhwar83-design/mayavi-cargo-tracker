@@ -84,3 +84,24 @@ assertExportCharge.ok(exportChargeUi.includes('DHL clients earn ₹11/kg'));
 assertExportCharge.ok(!exportChargeUi.includes('₹19/kg'));
 assertExportCharge.equal(Math.round((400*exportRateForCompany('DHL')-EXPORT_SHIPMENT_CHARGE)*100)/100,1400);
 console.log('Export master-MAWB shipment charge INR 3,000 regression passed.');
+
+// Export Profit MAWBs must match Export Active + Master Copy Received (never Import).
+import { includeExportMasterInProfit, exportProfitRegister } from '../lib/exportProfitSource.js';
+const currentExportMonth='2026-10', oldExportMonth='2026-09';
+const activeExport={shipmentType:'EXPORT',masterCopyReceived:false,handoverDone:false,departureDate:''};
+const completeExport={shipmentType:'EXPORT',masterCopyReceived:true,handoverDone:true,departureDate:'2026-10-26'};
+const oldComplete={...completeExport,departureDate:'2026-09-26'};
+assertExportCharge.equal(includeExportMasterInProfit(activeExport,currentExportMonth,currentExportMonth),true);
+assertExportCharge.equal(includeExportMasterInProfit(completeExport,currentExportMonth,currentExportMonth),true);
+assertExportCharge.equal(includeExportMasterInProfit(oldComplete,currentExportMonth,currentExportMonth),false);
+assertExportCharge.equal(includeExportMasterInProfit(oldComplete,oldExportMonth,currentExportMonth),true);
+assertExportCharge.equal(includeExportMasterInProfit({...activeExport,departureDate:'2026-09-20'},oldExportMonth,currentExportMonth),false);
+assertExportCharge.equal(exportProfitRegister(completeExport),'MASTER COPY RECEIVED');
+assertExportCharge.equal(exportProfitRegister(activeExport),'ACTIVE');
+assertExportCharge.ok(exportChargeApi.includes("WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'"));
+assertExportCharge.ok(exportChargeApi.includes('includeExportMasterInProfit(data,month,currentProfitMonth())'));
+assertExportCharge.ok(exportChargeApi.includes('register:exportProfitRegister(data)'));
+assertExportCharge.ok(exportChargeUi.includes('Active + {syncedRegisters.completed} Master Copy Received'));
+assertExportCharge.ok(exportChargeUi.includes('row.register==='));
+assertExportCharge.ok(!exportChargeUi.includes('By handover month'));
+console.log('Export Active and Master Copy Received profit sync parity passed.');

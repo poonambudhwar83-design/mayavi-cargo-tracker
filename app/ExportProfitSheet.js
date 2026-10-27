@@ -25,8 +25,8 @@ function profitFor(row={}){
   return row.weight===null||row.weight===''||!Number.isFinite(value)||value<=0?null:Math.round((value*rate-SHIPMENT_CHARGE)*100)/100;
 }
 function exportCsv(rows,month=''){
-  const columns=['MAWB No.','Client Name','Weight (kg)','Rate (INR/kg)','Shipment Charge (INR per MAWB)','Profit (INR)'];
-  const data=rows.map(r=>[r.mawb,r.clientName||'',r.weight??'',r.rate??6,SHIPMENT_CHARGE,profitFor(r)??'']);
+  const columns=['MAWB No.','Register','Client Name','Weight (kg)','Rate (INR/kg)','Shipment Charge (INR per MAWB)','Profit (INR)'];
+  const data=rows.map(r=>[r.mawb,r.register==='MASTER COPY RECEIVED'?'Master Copy Received':'Active',r.clientName||'',r.weight??'',r.rate??6,SHIPMENT_CHARGE,profitFor(r)??'']);
   const csv=[columns,...data].map(items=>items.map(v=>{
     const raw=String(v??'');
     const safe=/^[=+@\-]/.test(raw)?"'"+raw:raw;
@@ -75,6 +75,10 @@ export default function ExportProfitSheet(){
     (!clientFilter||row.clientName===clientFilter)&&
     (!search||[row.mawb,row.clientName].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
   ),[rows,clientFilter,search]);
+  const syncedRegisters=useMemo(()=>({
+    active:rows.filter(r=>r.register==='ACTIVE').length,
+    completed:rows.filter(r=>r.register==='MASTER COPY RECEIVED').length
+  }),[rows]);
   const totals=useMemo(()=>filtered.reduce((acc,r)=>{
     const p=profitFor(r);
     acc.count++;
@@ -89,12 +93,12 @@ export default function ExportProfitSheet(){
         <div>
           <div style={{fontSize:12,letterSpacing:1.5,fontWeight:900,color:'#3464ae'}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{margin:'5px 0',fontSize:27}}>Export Profit Sheet</h1>
-          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • By handover month • DHL client ₹11/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹3,000 per MAWB</p>
+          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • Export Active + current-month Master Copy Received • DHL client ₹11/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹3,000 per MAWB</p>
         </div>
         <button type="button" disabled={!filtered.length} onClick={()=>exportCsv(filtered,period||periodOptions.at(-1)||'')} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
       </div>
       <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:16}}>
-        <div style={summary}><small>EXPORT MAWBs</small><div style={{fontSize:23,fontWeight:900}}>{number.format(totals.count)}</div></div>
+        <div style={summary}><small>EXPORT MAWBs</small><div style={{fontSize:23,fontWeight:900}}>{number.format(totals.count)}</div><small>Synced: {syncedRegisters.active} Active + {syncedRegisters.completed} Master Copy Received</small></div>
         <div style={summary}><small>TOTAL WEIGHT (KNOWN)</small><div style={{fontSize:23,fontWeight:900}}>{showWeight(totals.weight)} kg</div></div>
         <div style={summary}><small>SHIPMENT CHARGES ({totals.count} × ₹3,000)</small><div style={{fontSize:23,fontWeight:900}}>{showMoney(totals.shipmentCharges)}</div></div>
         <div style={summary}><small>TOTAL PROFIT (CALCULATED)</small><div style={{fontSize:23,fontWeight:900,color:totals.profit<0?'#b91c1c':'#14804b'}}>{showMoney(totals.profit)}</div><small>{totals.valid} of {totals.count} MAWBs calculated</small></div>
@@ -116,21 +120,26 @@ export default function ExportProfitSheet(){
       {message&&<p role="status" style={{background:'#eaf0fa',color:'#173e6f',padding:10,borderRadius:8}}>{message}</p>}
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
-          <thead><tr>{['S.No.','MAWB No.','Client Name','Weight (kg)','Rate (₹/kg)','Shipment Charge (₹)','Profit (₹)'].map(label=><th key={label} style={header}>{label}</th>)}</tr></thead>
+          <thead><tr>{['S.No.','MAWB No.','Register','Client Name','Weight (kg)','Rate (₹/kg)','Shipment Charge (₹)','Profit (₹)'].map(label=><th key={label} style={header}>{label}</th>)}</tr></thead>
           <tbody>
             {filtered.map((row,index)=><tr key={row.mawb}>
               <td style={cell}>{index+1}</td>
               <td style={{...cell,fontWeight:800}}>{row.mawb}</td>
+              <td style={cell}><span style={{padding:'4px 8px',fontSize:11,fontWeight:800,borderRadius:7,
+                background:row.register==='MASTER COPY RECEIVED'?'#ecfdf5':'#fef9e9',
+                color:row.register==='MASTER COPY RECEIVED'?'#047857':'#8b5e13'}}>
+                {row.register==='MASTER COPY RECEIVED'?'Master Copy Received':'Active'}
+              </span></td>
               <td style={cell}><span style={clientBadgeStyle(row.clientName)}>{row.clientName||'—'}</span></td>
               <td style={cell}>{showWeight(row.weight)}</td>
               <td style={cell}>{showMoney(Number(row.rate)||6)}</td>
               <td style={{...cell,fontWeight:800}}>{showMoney(SHIPMENT_CHARGE)}</td>
               <td style={{...cell,fontWeight:900,color:profitFor(row)!==null&&profitFor(row)<0?'#b91c1c':'#14804b'}}>{showMoney(profitFor(row))}</td>
             </tr>)}
-            {!filtered.length&&<tr><td colSpan={7} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading Export shipments…':'No Export MAWB found.'}</td></tr>}
+            {!filtered.length&&<tr><td colSpan={8} style={{padding:28,textAlign:'center',color:'#64748b'}}>{loading?'Loading Export shipments…':'No Export MAWB found.'}</td></tr>}
           </tbody>
           {filtered.length>0&&<tfoot><tr style={{background:'#eaf1fd',fontWeight:900}}>
-            <td colSpan={3} style={cell}>TOTAL • {filtered.length} MAWBs</td>
+            <td colSpan={4} style={cell}>TOTAL • {filtered.length} MAWBs</td>
             <td style={cell}>{showWeight(totals.weight)}</td>
             <td style={cell} title="Sum of rates (not average)">{showMoney(totals.rateSum)}</td>
             <td style={cell}>{showMoney(totals.shipmentCharges)}</td>
@@ -138,7 +147,7 @@ export default function ExportProfitSheet(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹11/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹3,000. Every distinct Export MAWB has a fixed ₹3,000 shipment charge deducted once even for part shipments. October 2026 is the first month; the sheet is organized by the handover deadline (5 hours before departure), or by recorded handover time if the deadline is unavailable. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
+      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹11/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹3,000. Every distinct Export MAWB has a fixed ₹3,000 shipment charge deducted once even for part shipments. October 2026 is the first month. The current sheet syncs all Export Active masters (even when flight or handover timing is pending) and Export Master Copy Received masters departing this month. Past months include completed Export masters by departure month. Import MAWBs never enter this sheet. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
     </div>
   </main>;
 }

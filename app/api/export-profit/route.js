@@ -1,14 +1,16 @@
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
-import { selectedProfitMonth, profitMonths, exportProfitHandoverDate, exportProfitHandoverMonth, exportRateForCompany } from '../../../lib/profitPeriod.js';
+import { selectedProfitMonth, profitMonths, currentProfitMonth, exportProfitHandoverDate, exportRateForCompany } from '../../../lib/profitPeriod.js';
+import { includeExportMasterInProfit, exportProfitRegister } from '../../../lib/exportProfitSource.js';
 import { EXPORT_SHIPMENT_CHARGE } from '../../../lib/exportShipmentCharge.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Read-only calculation based on the export MAWB masters. No airline tracking
-// or financial-entry fields are changed by this endpoint.
+// Read-only calculation based ONLY on Export MAWB masters. Includes the same
+// Active + completed-source registers as the Export dashboard. No Import rows,
+// airline tracking, or financial-entry fields are changed by this endpoint.
 function sqlClient(){
   const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||
     process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
@@ -54,13 +56,14 @@ export async function GET(request){
       if(!awb||seen.has(awb))continue;
       seen.add(awb);
       const data=shipment.data||{};
-      if(exportProfitHandoverMonth(data)!==month)continue;
+      if(!includeExportMasterInProfit(data,month,currentProfitMonth()))continue;
       const weight=totalWeight(data);
       const client=clientName(data);
       const rate=exportRateForCompany(client);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         handoverDate:exportProfitHandoverDate(data),
+        register:exportProfitRegister(data),
         weight,
         clientName:client,
         rate,
