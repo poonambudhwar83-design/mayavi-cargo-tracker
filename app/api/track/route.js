@@ -674,7 +674,13 @@ async function handle(mawb,fallback={}){
       cx.weight||cx.pieces||cx.bags||(cx.origin&&cx.destination)
     );
     if(!matches||!verified){
-      console.warn('cathay_empty_response_rejected',mawb);
+      console.warn('cathay_empty_response_rejected',mawb,JSON.stringify({
+        adapterOk:Boolean(directResult.ok),
+        terminalFlightCount:directResult?.debug?.terminalFlights?.length??null,
+        browserReason:typeof directResult?.debug?.browser==='string'?directResult.debug.browser:directResult?.debug?.browser?.reason||'',
+        browserPrefixFilled:Boolean(directResult?.debug?.browser?.prefixEntry?.ok),
+        browserAwbFilled:Boolean(directResult?.debug?.browser?.awbEntry?.ok)
+      }));
       return Response.json({
         ok:false,mawb,trackingError:'CATHAY_NO_VERIFIED_AWB_DETAILS',
         manualHint:'Cathay official data not available; previous shipment values remain unchanged.',

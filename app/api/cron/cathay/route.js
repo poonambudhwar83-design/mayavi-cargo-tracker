@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { refreshScope } from '../../../../lib/autoRefreshScope.js';
+import { cathayRefreshDecision } from '../../../../lib/cathayRefreshPolicy.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -9,13 +10,11 @@ export const maxDuration=260;
 // Server-side 5-minute CX refresh, independent of open browser tabs.
 // Reuse the unchanged AWB-verified Cathay parser and its guarded DB saver.
 const PREFIX=/^160\d{8}$/;
-const MIN_GAP_MS=4*60*1000;
 const MAX_PER_TICK=4; // Check multiple unresolved CX AWBs so one carrier-blocked AWB cannot starve others.
 const BATCH_SIZE=4;
-const ATTEMPT_TIMEOUT_MS=105000;
-const MAX_ATTEMPTS=2;
+const ATTEMPT_TIMEOUT_MS=85000;
+const MAX_ATTEMPTS=1; // Upstream empty pages cannot be fixed by immediate duplicate requests; retry next cycle.
 const digits=value=>String(value||'').replace(/\D/g,'');
-const timestamp=value=>{const n=Date.parse(value||'');return Number.isFinite(n)?n:0;};
 
 function internalKey(){
   const configured=process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||'';
@@ -80,19 +79,14 @@ export async function GET(request){
       "SELECT awb,data,tracking_checked_at,updated_at FROM mayavi_shipments WHERE regexp_replace(awb,'[^0-9]','','g') LIKE '160%' ORDER BY updated_at DESC LIMIT 120",[]);
     const now=Date.now();
     const candidate=rows.map(row=>{
-      const data=row.data||{};
-      const unresolved=data.arrivalIsActual!==true||
-        !data.flightNo||!data.arrivalDate||!data.arrivalTime;
-      const scope=refreshScope(data,new Date(now));
-      const active=scope!=='SKIP';
-      const checkedAt=timestamp(data.lastChecked||row.tracking_checked_at||
-        data.enteredAt||row.updated_at);
-      const missing=!data.flightNo||!data.arrivalDate||!data.arrivalTime;
-      const recent=timestamp(data.enteredAt||row.updated_at)>=now-48*60*60*1000;
-      return {row,checkedAt,missing,recent,unresolved,active,scope};
-    }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.unresolved&&x.active&&
-      (x.missing||now-x.checkedAt>=MIN_GAP_MS))
+      const data=row.data||{},scope=refreshScope(data,new Date(now));
+      const decision=cathayRefreshDecision(data,scope,now,
+        row.tracking_checked_at||row.updated_at);
+      const recent=Date.parse(data.enteredAt||row.updated_at||'')>=now-48*60*60*1000;
+      return {row,scope,recent,...decision};
+    }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.due)
       .sort((a,b)=>Number(b.missing)-Number(a.missing)||
+        Number(b.unresolved)-Number(a.unresolved)||
         Number(b.recent)-Number(a.recent)||a.checkedAt-b.checkedAt)
       .slice(0,MAX_PER_TICK);
     const results=[];
