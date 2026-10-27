@@ -1,6 +1,6 @@
 // Air India (098) official Activity View integration locked 2026-10-17.
 // Working-carrier freeze requested 2026-10-08.
-// Cathay Pacific (160): user-approved exact ZIP restore on 2026-10-26.
+// Cathay Pacific (160): ZIP baseline retained; on 2026-10-27 the owner requested\n// correction of recurring CX failures. Revised Booking Status/cron sources are re-locked.
 // Restore the original ZIP Booking Status/browser fallback and lock its exact source hashes.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
@@ -27,12 +27,12 @@ const locked = Object.freeze({
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
   'lib/cathay.js':'c7a87ebde14d5c7ca184f5b0e6bfdeb95da63f1b',
-  'lib/cathay-browser-fallback.js':'262b552e22ef44b425a8a7668ab7147059536458',
+  'lib/cathay-browser-fallback.js':'176d0e1ba54f29666c697f05af36c0608eada6e1',
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
   'lib/cathayFinalArrival.js':'dd5df361b50618a6788e0768fffb3dc0b1d19831',
   // Keep the production 5-minute Cathay-only auto-refresh implementation stable.
-  'app/api/cron/cathay/route.js':'51eacdcf506445e205f00e8a1556ca694df56595',
+  'app/api/cron/cathay/route.js':'2350ade0b4830e8a147d0420672e07826ab223ce',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
