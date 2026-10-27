@@ -284,3 +284,18 @@
 .table .remarksCell{white-space:normal;overflow-wrap:anywhere;vertical-align:middle;line-height:1.4;color:#334155}
 .table .remarksCell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
 .table .editRow .remarksCell textarea{display:block;box-sizing:border-box;resize:vertical;min-height:52px;max-height:140px;width:100%;border:1px solid #a5b4fc;border-radius:7px;background:#fff;padding:7px 8px;color:#1e293b;font-size:12px;line-height:1.35;font-family:inherit}
+
+/* Compact Daily Summary: one branch per booking date, with active and delivered loads combined. */
+.summaryTab{background:#8a5e1e!important;color:#fff!important;border-color:#8a5e1e!important;box-shadow:0 3px 10px rgba(138,94,30,.18)}
+.summarySection{border:1px solid #e8d6b6;border-radius:12px;overflow:hidden;background:#fff;margin:10px 0 15px}
+.summaryHeader{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:16px 18px;background:#fcf8f1}
+.summaryHeader h2{margin:0 0 5px;font-size:18px;color:#533914}
+.summaryHeader p{margin:0;font-size:12px;color:#6b5c48}
+.summaryHeader > strong{font-size:12px;color:#715025}
+.summaryTable{width:100%;min-width:650px}
+.summaryTable thead th{background:#f6ead2!important;text-align:left;white-space:nowrap}
+.summaryTable th,.summaryTable td{padding:11px 13px!important}
+.summaryTable .number{text-align:right!important;font-variant-numeric:tabular-nums}
+.summaryEarnings{text-align:right;font-weight:900;color:#7a541f;white-space:nowrap;font-variant-numeric:tabular-nums}
+.summaryTable tfoot td{background:#f7ead7!important;border-top:2px solid #c7a970;font-weight:900}
+.summaryHint{font-size:11px;color:#6f6558;padding:10px 18px;margin:0;border-top:1px solid #f0e4cf}

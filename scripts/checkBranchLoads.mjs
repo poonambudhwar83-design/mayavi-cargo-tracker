@@ -303,4 +303,30 @@ assert.ok(stylesheet.includes('.remarksCell'));
 // Reconcile the already-live direct row Save requirement as well.
 assert.ok(ui.includes('onClick={save} disabled={busy} aria-label="Save this load row"'));
 assert.ok(!ui.includes('<button type="submit" disabled={busy}>{busy?'));
-console.log('Jind/Karnal daily loads, ghee surcharge split, and data isolation checks passed.');
+// Daily Summary: all entries, including Delivered, grouped by booking date + branch.
+import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+const dailySample=aggregateDailyBranchLoads([
+  {branch:'KARNAL',date:'2026-10-26',weight:'19',paidToBranch:'450',status:'AT_KARNAL_OFFICE'},
+  {branch:'KARNAL',date:'2026-10-26',weight:'8',paidToBranch:'225.50',status:'DELIVERED'},
+  {branch:'KARNAL',date:'2026-10-26',weight:'13',paidToBranch:'374.50',status:'IN_TRANSIT'},
+  {branch:'JIND',date:'2026-10-26',weight:'5',paidToBranch:'120',status:'DELIVERED'},
+  {branch:'KARNAL',date:'2026-10-25',weight:'7.5',paidToBranch:'100.25',status:'DELIVERED'}
+]);
+assert.deepEqual(dailySample,[
+ {branch:'JIND',date:'2026-10-26',loads:1,weight:5,branchAmount:120},
+ {branch:'KARNAL',date:'2026-10-26',loads:3,weight:40,branchAmount:1050},
+ {branch:'KARNAL',date:'2026-10-25',loads:1,weight:7.5,branchAmount:100.25}
+]);
+assert.equal(aggregateDailyBranchLoads(dailySample.filter(x=>x.branch==='JIND')).length,1);
+assert.ok(ui.includes("onClick={()=>switchSheet('SUMMARY')}"));
+assert.ok(ui.includes("sheet==='SUMMARY'||"));
+assert.ok(ui.includes("dailySummary.map(r=><tr key={r.branch+'|'+r.date}"));
+assert.ok(ui.includes("sheet==='SUMMARY'&&<section"));
+assert.ok(ui.includes("sheet!=='SUMMARY'&&<div className={styles.scroller}"));
+assert.ok(ui.includes("if(sheet==='SUMMARY'){"));
+assert.ok(ui.includes("Daily Summary"));
+assert.ok(ui.includes("Total Branch Amount (₹)"));
+assert.ok(ui.includes("Daily summary branch filter"));
+assert.ok(ui.includes("sheet==='ACTIVE'&&editing==='new'"));
+assert.ok(ui.includes("Delivered Sheet ({deliveredCount})"));
+console.log('Jind/Karnal daily loads, Daily Summary and branch data isolation checks passed.');

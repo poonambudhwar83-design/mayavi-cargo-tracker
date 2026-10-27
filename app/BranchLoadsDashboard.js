@@ -2,6 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
+import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
 import styles from './BranchLoadsDashboard.module.css';
 
 const API='/api/branch-loads';
@@ -106,9 +107,14 @@ export default function BranchLoadsDashboard({currentUser}){
 
   const shown=useMemo(()=>rows.filter(r=>
     (filter==='ALL'||r.branch===filter)&&
-    (sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED'))&&
+    (sheet==='SUMMARY'||(sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED')))&&
     (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode,r.remarks].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,sheet,search]);
+  // Summary combines all booked loads, regardless of current delivery status.
+  const dailySummary=useMemo(()=>aggregateDailyBranchLoads(shown),[shown]);
+  const summaryTotals=useMemo(()=>dailySummary.reduce((t,r)=>({
+    loads:t.loads+r.loads,weight:t.weight+r.weight,branchAmount:t.branchAmount+r.branchAmount
+  }),{loads:0,weight:0,branchAmount:0}),[dailySummary]);
   // Active Loads includes every undelivered load, regardless of entry date.
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
@@ -308,6 +314,17 @@ export default function BranchLoadsDashboard({currentUser}){
     finally{setBusy(false);}
   }
   function downloadCsv(){
+    if(sheet==='SUMMARY'){
+      const labels=['Date','Day','Branch','No. of Loads','Total Weight (kg)','Total Branch Amount (INR)'];
+      const data=dailySummary.map(r=>[r.date,weekday(r.date),r.branch,r.loads,r.weight.toFixed(3),r.branchAmount.toFixed(2)]);
+      data.push(['TOTAL','','',summaryTotals.loads,summaryTotals.weight.toFixed(3),summaryTotals.branchAmount.toFixed(2)]);
+      const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
+      const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+      const anchor=document.createElement('a');
+      anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-daily-summary.csv';
+      anchor.click();URL.revokeObjectURL(url);
+      return;
+    }
     const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
     const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     // Keep export totals precisely under the same labels after adding fields.
@@ -413,7 +430,7 @@ export default function BranchLoadsDashboard({currentUser}){
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
-        <p>Daily Load Entry above • Shared saved Jind and Karnal records • Admin sees both branches • Separate Delivered sheet</p></div>
+        <p>Daily Load Entry • Active, Delivered & Daily Summary • Admin sees both branches separately</p></div>
     </header>
     <div className={styles.metrics}>
       <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>
@@ -439,10 +456,49 @@ export default function BranchLoadsDashboard({currentUser}){
     <nav className={styles.sheetTabs} aria-label="Load sheet">
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
+      <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
     </nav>
 
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee ₹250 per bottle to JEPO, Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
-      <div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
+      {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
+        <div className={styles.summaryHeader}>
+          <div>
+            <h2>Daily Branch Summary</h2>
+            <p>All booked loads grouped by booking date and branch, including loads now marked Delivered.</p>
+          </div>
+          <strong>{dailySummary.length} daily records</strong>
+        </div>
+        <div className={styles.scroller}><table className={styles.table+' '+styles.summaryTable}>
+          <thead><tr>
+            <th>Date &amp; Day</th>
+            <th>Branch{isAdmin&&<select aria-label="Daily summary branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}>
+              <option value="ALL">Both</option>{BRANCHES.map(b=><option key={b} value={b}>{b}</option>)}
+            </select>}</th>
+            <th className={styles.number}>Total Loads</th>
+            <th className={styles.number}>Total Weight (kg)</th>
+            <th className={styles.number}>Total Branch Amount (₹)</th>
+          </tr></thead>
+          <tbody>
+            {dailySummary.map(r=><tr key={r.branch+'|'+r.date} data-branch={r.branch}>
+              <td><strong>{showDate(r.date)}</strong></td>
+              <td><span className={styles.branchTag} data-branch={r.branch}>{r.branch}</span></td>
+              <td className={styles.number}>{r.loads}</td>
+              <td className={styles.number}><strong>{weightFormat(r.weight)}</strong></td>
+              <td className={styles.summaryEarnings}>{fmt(r.branchAmount)}</td>
+            </tr>)}
+            {!loaded&&<tr><td colSpan={5}>Loading daily branch totals…</td></tr>}
+            {loaded&&!dailySummary.length&&<tr><td colSpan={5} className={styles.empty}>No loads booked for this branch yet.</td></tr>}
+          </tbody>
+          <tfoot><tr>
+            <td>TOTAL</td><td>{filter==='ALL'?'Both branches':filter}</td>
+            <td className={styles.number}>{summaryTotals.loads}</td>
+            <td className={styles.number}>{weightFormat(summaryTotals.weight)}</td>
+            <td className={styles.summaryEarnings}>{fmt(summaryTotals.branchAmount)}</td>
+          </tr></tfoot>
+        </table></div>
+        <p className={styles.summaryHint}>Branch Amount = Amount − Paid to JEPO + Branch share of Extra Cost. This is branch earnings before any expenses not recorded in these loads.</p>
+      </section>}
+      {sheet!=='SUMMARY'&&<div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
@@ -456,14 +512,14 @@ export default function BranchLoadsDashboard({currentUser}){
           {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
         <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}>{money(totals.paidToBranch)}</td><td colSpan={10}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
-      </table></div>
+      </table></div>}
     </form>
     <footer className={styles.foot}>
       <span>Daily loads are saved securely. {lastUpdated&&'Last synced: '+lastUpdated}</span>
       <span className={styles.footerActions}>
         {sheet==='ACTIVE'&&<button type="button" onClick={add} disabled={busy}>+ Daily Entry</button>}
         <button type="button" onClick={()=>void load()}>Refresh</button>
-        <button type="button" onClick={downloadCsv} disabled={!shown.length}>Download CSV</button>
+        <button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>
       </span>
     </footer>
   </main>;
