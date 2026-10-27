@@ -89,7 +89,7 @@ export default function ExportProfitSheet(){
         <div>
           <div style={{fontSize:12,letterSpacing:1.5,fontWeight:900,color:'#3464ae'}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{margin:'5px 0',fontSize:27}}>Export Profit Sheet</h1>
-          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • By handover month • DHL client ₹19/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹3,000 per MAWB</p>
+          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • By handover month • DHL client ₹11/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹3,000 per MAWB</p>
         </div>
         <button type="button" disabled={!filtered.length} onClick={()=>exportCsv(filtered,period||periodOptions.at(-1)||'')} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
       </div>
@@ -138,7 +138,7 @@ export default function ExportProfitSheet(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹19/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹3,000. Every distinct Export MAWB has a fixed ₹3,000 shipment charge deducted once even for part shipments. October 2026 is the first month; the sheet is organized by the handover deadline (5 hours before departure), or by recorded handover time if the deadline is unavailable. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
+      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹11/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹3,000. Every distinct Export MAWB has a fixed ₹3,000 shipment charge deducted once even for part shipments. October 2026 is the first month; the sheet is organized by the handover deadline (5 hours before departure), or by recorded handover time if the deadline is unavailable. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
     </div>
   </main>;
 }

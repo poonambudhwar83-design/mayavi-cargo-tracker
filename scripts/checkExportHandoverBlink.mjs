@@ -72,5 +72,15 @@ assertExportCharge.ok(!exportChargeUi.includes('₹1,000'));
 assertExportCharge.ok(exportChargeApi.includes('shipmentCharge:EXPORT_SHIPMENT_CHARGE'));
 assertExportCharge.ok(exportChargeApi.includes('weight*rate-EXPORT_SHIPMENT_CHARGE'));
 assertExportCharge.ok(!exportChargeApi.includes('shipmentCharge:1000'));
-assertExportCharge.equal(Math.round((400*19-EXPORT_SHIPMENT_CHARGE)*100)/100,4600);
+// DHL's rate is now ₹11/kg; the ₹3,000 shipment fee still applies only once.
+import { exportRateForCompany } from '../lib/profitPeriod.js';
+assertExportCharge.equal(exportRateForCompany('DHL'),11);
+assertExportCharge.equal(exportRateForCompany('DHL EXPRESS'),11);
+assertExportCharge.equal(exportRateForCompany('dhl'),11);
+assertExportCharge.equal(exportRateForCompany('OVERSEAS'),7);
+assertExportCharge.equal(exportRateForCompany('OTHER CLIENT'),6);
+assertExportCharge.ok(exportChargeUi.includes('DHL client ₹11/kg'));
+assertExportCharge.ok(exportChargeUi.includes('DHL clients earn ₹11/kg'));
+assertExportCharge.ok(!exportChargeUi.includes('₹19/kg'));
+assertExportCharge.equal(Math.round((400*exportRateForCompany('DHL')-EXPORT_SHIPMENT_CHARGE)*100)/100,1400);
 console.log('Export master-MAWB shipment charge INR 3,000 regression passed.');
