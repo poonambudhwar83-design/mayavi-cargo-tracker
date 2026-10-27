@@ -31,6 +31,9 @@ const locked = Object.freeze({
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
   'lib/cathayFinalArrival.js':'dd5df361b50618a6788e0768fffb3dc0b1d19831',
+  // Temporary Cathay (160) refresh policy lock, approved by operator on 27 Oct 2026.
+  // Do not alter CX retry cadence/decision without an explicit unlock request.
+  'lib/cathayRefreshPolicy.js':'0484537d9fcd69d41ec11da8a112b60af7703161',
   // Keep the production 5-minute Cathay-only auto-refresh implementation stable.
   'app/api/cron/cathay/route.js':'2350ade0b4830e8a147d0420672e07826ab223ce',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
@@ -49,7 +52,7 @@ for (const [filename,expected] of Object.entries(locked)){
     }
   }catch(err){console.error(`LOCKED AIRLINE FILE UNREADABLE: ${filename}: ${err.message}`);changed=true;}
 }
-// Cathay relies on a shared track route which also contains other airlines.
+// Temporary CX lock: preserve protected adapter/cron/policy SHA and the\n// specific CX-only integration gates in the shared multi-airline route.\n// Unlock CX only on explicit instruction from the owner. Other airline\n// changes must remain independently deployable.\n// Cathay relies on a shared track route which also contains other airlines.
  // Avoid freezing the whole shared route; guard only the Cathay integration
  // contract, so KLM/other fixes may still be deployed independently.
 const sharedRoute=readFileSync('app/api/track/route.js','utf8');
@@ -113,7 +116,16 @@ const cathayRouteContract=[
   ["Cathay verified flight/ETA retained before API response","shipment=preserveCathayFlight(previousCx,shipment,mawb);"],
   ["CX current official response must pass final-arrival status guard","shipment=guardCathayFinalArrival(shipment);"],
   ["Cathay verified flight/ETA retained during DB save","tracked=preserveCathayFlight(existingCx?.[0]?.data||{},tracked,mawb);"],
-  ["Cathay final-arrival status guarded before DB persistence","tracked=guardCathayFinalArrival(tracked);"]
+  ["Cathay final-arrival status guarded before DB persistence","tracked=guardCathayFinalArrival(tracked);"],
+  ["CX incomplete official-result fallback","if(cathayFastPath&&(!directResult?.ok||cathayIncomplete)){"],
+  ["CX empty official shell guard","if(cathayFastPath&&directResult?.ok){"],
+  ["CX preserves previous data on temporary upstream blank","cathay_empty_response_rejected"],
+  ["CX original confirmed-allotment departure preserved","const preserveCxSchedule=cathayFastPath&&Boolean(direct?.departureTime&&direct?.departureDate)&&dep.departureIsActual!==true;"],
+  ["CX HKG departure timezone preserved","if(cathayFastPath&&direct?.departureTimeZone&&"],
+  ["CX IST departure timezone restored","shipment.departureTimeZone=direct.departureTimeZone;"],
+  ["CX arrival timezone preserved","if(cathayFastPath&&direct?.arrivalTimeZone&&"],
+  ["CX IST arrival timezone restored","shipment.arrivalTimeZone=direct.arrivalTimeZone;"],
+  ["CX stale error clears after verified tracking","if(mawb.startsWith('160-')&&(key==='trackingError'||key==='manualHint')&&value==='')continue;"]
 ];
 for(const [label,fragment] of cathayRouteContract){
   if(!sharedRoute.includes(fragment)){
@@ -281,4 +293,4 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   changed=true;
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including final-arrival guard and 5-min cron), Emirates (176), and Kuwait (229) are LOCKED; Saudia (065) remains regression-guarded.');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), and Kuwait (229) are LOCKED; Saudia (065) remains regression-guarded.');
