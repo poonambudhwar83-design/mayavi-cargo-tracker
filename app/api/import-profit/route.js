@@ -2,7 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
 import { selectedProfitMonth, profitMonths, currentProfitMonth } from '../../../lib/profitPeriod.js';
-import { selectImportProfitRows } from '../../../lib/importProfitPhysicalRows.js';
+import { selectImportProfitRows, physicalImportProfitRows } from '../../../lib/importProfitPhysicalRows.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -94,6 +94,15 @@ async function ensureStore(sql){
   await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS goods_category TEXT`;
   await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS goods_charge_override NUMERIC(16,2)`;
   await sql`ALTER TABLE mayavi_import_profit ADD COLUMN IF NOT EXISTS driver_expense NUMERIC(16,2)`;
+  // Separate per-movement Duty without deleting existing master financials.
+  await sql`CREATE TABLE IF NOT EXISTS mayavi_import_profit_part_duty (
+    awb VARCHAR(11) NOT NULL,
+    part_key TEXT NOT NULL,
+    total_duty NUMERIC(16,2),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (awb,part_key)
+  )`;
 }
 export async function GET(request){
   if(!adminOnly(request))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
@@ -102,13 +111,15 @@ export async function GET(request){
   try{
     const sql=sqlClient();
     await ensureStore(sql);
-    const [shipments,profit]=await Promise.all([
+    const [shipments,profit,partDuties]=await Promise.all([
       sql`SELECT awb,data FROM mayavi_shipments
           WHERE COALESCE(data->>'shipmentType','IMPORT')='IMPORT'
           ORDER BY updated_at DESC`,
-      sql`SELECT awb,total_duty,rate,goods_category,goods_charge_override,driver_expense FROM mayavi_import_profit`
+      sql`SELECT awb,total_duty,rate,goods_category,goods_charge_override,driver_expense FROM mayavi_import_profit`,
+      sql`SELECT awb,part_key,total_duty FROM mayavi_import_profit_part_duty`
     ]);
     const saved=new Map(profit.map(row=>[awbDigits(row.awb),row]));
+    const savedPartDuty=new Map(partDuties.map(row=>[awbDigits(row.awb)+'|'+row.part_key,row]));
     const seen=new Set();
     const rows=[];
     for(const shipment of shipments){
@@ -137,11 +148,15 @@ export async function GET(request){
         enteredAt:data.enteredAt||''
       };
       for(const physical of physicalRows){
+        const isPart=physical.rowKey!==awb;
+        const part=isPart?savedPartDuty.get(awb+'|'+physical.rowKey):null;
+        const duty=isPart?part?.total_duty:financial.total_duty;
         rows.push({...base,...physical,
-          // Full master weight/bags are used only for unsplit rows; a true
-          // split row carries its own physical quantities and allocated cost.
-          weight:physical.partCount===1?totalWeight(data):physical.weight,
-          bags:physical.partCount===1?totalBags(data):physical.bags
+          totalDuty:duty===null||duty===undefined?'':String(duty),
+          legacyMasterDuty:isPart&&financial.total_duty!=null?String(financial.total_duty):'',
+          // One currently manifested physical part is not the full master.
+          weight:isPart?physical.weight:totalWeight(data),
+          bags:isPart?physical.bags:totalBags(data)
         });
       }
     }
@@ -164,14 +179,24 @@ export async function PATCH(request){
       return Response.json({ok:false,error:'Choose HH, Protein, Clothes, or Battery.'},{status:400});
     const sql=sqlClient();
     await ensureStore(sql);
-    const [shipment]=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
+    const [shipment]=await sql`SELECT awb,data FROM mayavi_shipments WHERE awb=${awb}
       AND COALESCE(data->>'shipmentType','IMPORT')='IMPORT' LIMIT 1`;
     if(!shipment)return Response.json({ok:false,error:'Import MAWB not found. Refresh the sheet.'},{status:404});
     if(field==='totalDuty'){
-      await sql`INSERT INTO mayavi_import_profit (awb,total_duty,updated_by)
-        VALUES (${awb},${value},${admin.username})
-        ON CONFLICT (awb) DO UPDATE SET total_duty=EXCLUDED.total_duty,
-        updated_by=EXCLUDED.updated_by,updated_at=now()`;
+      const rowKey=String(body?.rowKey||'').trim();
+      if(!rowKey||!physicalImportProfitRows(shipment.data||{},awb).some(part=>part.rowKey===rowKey))
+        return Response.json({ok:false,error:'Shipment part changed or is not identified. Refresh the sheet and enter duty in the correct row.'},{status:409});
+      if(rowKey!==awb){
+        await sql`INSERT INTO mayavi_import_profit_part_duty (awb,part_key,total_duty,updated_by)
+          VALUES (${awb},${rowKey},${value},${admin.username})
+          ON CONFLICT (awb,part_key) DO UPDATE SET total_duty=EXCLUDED.total_duty,
+          updated_by=EXCLUDED.updated_by,updated_at=now()`;
+      }else{
+        await sql`INSERT INTO mayavi_import_profit (awb,total_duty,updated_by)
+          VALUES (${awb},${value},${admin.username})
+          ON CONFLICT (awb) DO UPDATE SET total_duty=EXCLUDED.total_duty,
+          updated_by=EXCLUDED.updated_by,updated_at=now()`;
+      }
     }else if(field==='rate'){
       await sql`INSERT INTO mayavi_import_profit (awb,rate,updated_by)
         VALUES (${awb},${value},${admin.username})

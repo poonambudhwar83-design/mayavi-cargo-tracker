@@ -23,9 +23,9 @@ const DRIVER_EXPENSE_PER_MAWB=2600;
 const dataNumber=value=>value===null||value===undefined||value===''?null:Number(value);
 function figures(row={}){
   const kg=dataNumber(row.weight);
-  const masterDuty=dataNumber(row.totalDuty);
+  // Duty is a per-part expense. Other master charges retain their allocation.
+  const duty=dataNumber(row.totalDuty);
   const allocation=Number.isFinite(Number(row.allocationRatio))?Number(row.allocationRatio):1;
-  const duty=masterDuty===null?null:Math.round(masterDuty*allocation*100)/100;
   const rate=dataNumber(row.rate);
   const eici=kg===null?null:15*kg;
   const bags=dataNumber(row.bags);
@@ -123,26 +123,31 @@ export default function ImportProfitSheet(){
     return()=>{active=false;requestSequence++;clearInterval(timer);unsubscribe()};
   },[period]);
   function effective(row){
-    return {...row,...(drafts[row.mawb]||{})};
+    const masterDraft=drafts[row.mawb]||{};
+    const dutyDraft=drafts[row.rowKey||row.mawb]||{};
+    return {...row,...masterDraft,...(Object.prototype.hasOwnProperty.call(dutyDraft,'totalDuty')?{totalDuty:dutyDraft.totalDuty}:{})};
   }
-  async function save(mawb,field,value){
-    const key=mawb+':'+field;
+  async function save(mawb,field,value,rowKey=''){
+    const perPart=field==='totalDuty';
+    const draftKey=perPart?rowKey:mawb;
+    if(!draftKey){setMessage('Refresh the sheet to enter duty for this part.');return;}
+    const key=draftKey+':'+field;
     if(saving[key])return;
-    const current=rows.find(row=>row.mawb===mawb);
+    const current=rows.find(row=>perPart?row.rowKey===rowKey:row.mawb===mawb);
     if(current&&String(current[field]??'')===String(value??'')){
-      setDrafts(previous=>{const next={...previous},fields={...(next[mawb]||{})};delete fields[field];if(Object.keys(fields).length)next[mawb]=fields;else delete next[mawb];return next});
+      setDrafts(previous=>{const next={...previous},fields={...(next[draftKey]||{})};delete fields[field];if(Object.keys(fields).length)next[draftKey]=fields;else delete next[draftKey];return next});
       return;
     }
     setSaving(previous=>({...previous,[key]:true}));
     setMessage('');
     try{
-      const response=await fetch('/api/import-profit',{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb,field,value})});
+      const response=await fetch('/api/import-profit',{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb,field,value,...(perPart?{rowKey}:{})})});
       const data=await response.json();
       if(!data.ok)throw new Error(data.error||'Save failed');
-      setRows(previous=>previous.map(row=>row.mawb===mawb?{...row,[field]:data.value}:row));
-      setDrafts(previous=>{const next={...previous},fields={...(next[mawb]||{})};if(String(fields[field]??'')===String(value??''))delete fields[field];if(Object.keys(fields).length)next[mawb]=fields;else delete next[mawb];return next});
-      setMessage(mawb+' • '+({totalDuty:'Total Duty',rate:'Rate',goodsCategory:'Goods',goodsChargeOverride:'Battery Goods Charge',driverExpense:'Driver Expense'}[field]||field)+' saved.');
-    }catch(error){setMessage('Not saved for '+mawb+': '+(error?.message||error))}
+      setRows(previous=>previous.map(row=>(perPart?row.rowKey===rowKey:row.mawb===mawb)?{...row,[field]:data.value}:row));
+      setDrafts(previous=>{const next={...previous},fields={...(next[draftKey]||{})};if(String(fields[field]??'')===String(value??''))delete fields[field];if(Object.keys(fields).length)next[draftKey]=fields;else delete next[draftKey];return next});
+      setMessage(mawb+(perPart&&current?.partLabel?' • '+current.partLabel:'')+' • '+({totalDuty:'Total Duty',rate:'Rate',goodsCategory:'Goods',goodsChargeOverride:'Battery Goods Charge',driverExpense:'Driver Expense'}[field]||field)+' saved.');
+    }catch(error){setMessage('Not saved for '+mawb+(perPart&&current?.partLabel?' • '+current.partLabel:'')+': '+(error?.message||error))}
     finally{setSaving(previous=>({...previous,[key]:false}))}
   }
   const clientOptions=useMemo(()=>[...new Set(rows.map(r=>String(r.clientName||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
@@ -187,7 +192,7 @@ export default function ImportProfitSheet(){
         <div>
           <div style={{fontSize:12,letterSpacing:1.5,fontWeight:900,color:'#3464ae'}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{margin:'5px 0',fontSize:27}}>Import Profit Sheet</h1>
-          <p style={{margin:'6px 0',color:'#52657f'}}>Current month matches Import Active + this month's Customs Cleared register. Split shipments appear as separate physical rows with the same MAWB; master-level duty, battery goods charges and driver expense are allocated across parts, not double-counted.</p>
+          <p style={{margin:'6px 0',color:'#52657f'}}>Current month matches Import Active + this month's Customs Cleared register. Split shipments appear as separate physical rows with the same MAWB. Duty is entered independently for each physical part; Battery Goods Charge and Driver Expense remain master-level and are allocated.</p>
         </div>
         <button onClick={()=>downloadCsv(filtered,period||periodOptions.at(-1)||'')} disabled={!filtered.length} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
       </div>
@@ -226,6 +231,7 @@ export default function ImportProfitSheet(){
         <small style={{fontWeight:800,color:'#52657f'}}>OTHER ROWS / GOODS COLOURS:</small>
         {Object.entries(goodsColors).map(([type,style])=><span key={type} style={{background:style.badge,color:style.text,fontSize:12,fontWeight:800,padding:'4px 9px',borderRadius:6}}>{type==='HH'?'HH':type==='PROTEIN'?'Protein':type==='BATTERY'?'Battery':'Clothes'}</span>)}
       </div>
+      {rows.some(row=>row.legacyMasterDuty!==''&&row.totalDuty==='')&&<p role="note" style={{padding:'9px 12px',background:'#fff7ed',color:'#92400e',border:'1px solid #fed7aa',borderRadius:8}}>Previously entered master Duty is preserved but not copied to split shipments. Please enter the actual Duty separately for each physical part.</p>}
       {message&&<p role="status" style={{padding:'9px 12px',background:'#eaf0fa',borderRadius:8,color:'#173e6f'}}>{message}</p>}
       <div style={{overflowX:'auto',background:'#fff',border:'1px solid #dae4f0',borderRadius:12}}>
         <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0}}>
@@ -261,7 +267,7 @@ export default function ImportProfitSheet(){
                 <td style={cell}>{displayAmount(dataNumber(row.bags))}</td>
                 <td style={{...cell,fontWeight:800}} title="Total weight divided by total master bags; also shown in the final column">{displayAmount(n.averageWeightPerBag)}</td>
                 <td style={{...cell,fontWeight:700}}>{displayAmount(n.kg)}</td>
-                {['totalDuty'].map(field=><td key={field} style={cell}><input title="Enter master MAWB Total Duty; allocated by part weight in calculations" aria-label={'Total Duty for '+row.mawb} type="number" min="0" step="any" value={row[field]??''} onChange={e=>setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),[field]:e.target.value}}))} onBlur={e=>save(row.mawb,field,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} disabled={Boolean(saving[row.mawb+':'+field])} placeholder="Enter duty" style={inputStyle}/></td>)}
+                {['totalDuty'].map(field=><td key={field} style={cell}><input title="Duty for this physical part only; other parts of the same MAWB are independent" aria-label={'Total Duty for '+row.mawb+(row.partLabel?' '+row.partLabel:'')} type="number" min="0" step="any" value={row[field]??''} onChange={e=>setDrafts(previous=>({...previous,[row.rowKey]:{...(previous[row.rowKey]||{}),[field]:e.target.value}}))} onBlur={e=>save(row.mawb,field,e.target.value,row.rowKey)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} disabled={Boolean(saving[row.rowKey+':'+field])} placeholder="Part duty" style={inputStyle}/></td>)}
                 <td style={cell}>{n.dutyPerKg===null?'—':money.format(n.dutyPerKg)}</td>
                 {['rate'].map(field=><td key={field} style={cell}>
                   <div style={{display:'flex',alignItems:'center',gap:2}}>
@@ -328,7 +334,7 @@ export default function ImportProfitSheet(){
         </table>
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
-        MAWB may appear multiple times when Import tracking shows separate physical parts. The current month's Profit Sheet includes the live Active register and only Customs Cleared parts arriving this month. Older monthly periods show confirmed parts dated to that month. Each row uses its own bags and weight. Duty, editable Battery Goods Charge and Driver Expense remain master-level entries in Neon and are allocated to physical rows by shipment weight, so splitting MAWBs does not multiply financial expenses. <strong>Total Duty</strong> and <strong>Driver Expense</strong> input boxes edit the master amount (the calculations show each part's allocated share).{' '}
+        MAWB may appear multiple times when Import tracking shows separate physical parts. The current month's Profit Sheet includes the live Active register and only Customs Cleared parts arriving this month. Older monthly periods show confirmed parts dated to that month. Each row uses its own bags and weight. Duty is stored separately for every physical part and changes only that part's Profit and Duty/kg. Previous master-level duty records are preserved, but not duplicated across split rows. Battery Goods Charge and Driver Expense remain master-level and are allocated to the physical parts by shipment weight. <strong>Driver Expense</strong> inputs still edit the master amount (the calculations show each part's allocated share).{' '}
         Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH originating from HKG (Hong Kong) ₹1,500/bag, HH from other origins ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag; Battery Goods Charge is entered manually • 15% Goods Charge applies only to Protein, Clothes, Battery, or client whose name is exactly Sonu (case insensitive), and is counted only once if more than one condition matches • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹80 × Total Weight for Protein originating from Canada/Germany/USA, including JFK; ₹50 × Total Weight for Protein from DXB and other origins) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB) − Driver Expense (default ₹2,600, editable and saved individually per master MAWB; counted once even for part shipments) − 15% of Goods Charge for eligible Protein, Clothes, Battery or exact-client-name Sonu MAWBs. DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions, Driver Expense and 15% Goods Charge apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Import Active rows are highlighted with a light green row and green left border. Customs Cleared rows retain their goods-based colours. Profit rows mirror the same MAWB and physical-part row count as the source registers; each part retains its own weight and bags. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
