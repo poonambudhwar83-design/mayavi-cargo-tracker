@@ -106,7 +106,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -483,7 +483,7 @@ async function handle(mawb,fallback={}){
   const airline=airlineForMawb(mawb);
   if(!airline)return Response.json({ok:false,error:`Airline prefix ${mawb.slice(0,3)} is not mapped yet.`},{status:422});
 
-  if(mawb.startsWith('807-')){
+  if(mawb.startsWith('807-')||mawb.startsWith('900-')){
     // AirAsia is isolated from the multi-carrier extraction/merge chain.
     // Never convert the mere existence of an AWB input form into verified
     // tracking, nor persist guessed booking, flight or arrival values.
@@ -576,7 +576,7 @@ async function handle(mawb,fallback={}){
     catch(e){console.warn('airasia_db_save_failed',mawb,String(e?.message||e));}
     console.log('airasia_tracking_result',mawb,shipment.status||'TRACKING',
       shipment.flightNo||'',shipment.arrivalDate||'',shipment.arrivalTime||'','saved',serverSaved);
-    return Response.json({ok:true,version:VERSION,provider:'AirAsia Cargo / Teleport official SmartKargo',
+    return Response.json({ok:true,version:VERSION,provider:mawb.startsWith('900-')?'Thai AirAsia Cargo / Teleport official SmartKargo':'AirAsia Cargo / Teleport official SmartKargo',
       shipment,serverSaved,verification:{officialPage:airline.url||'',liveVerified:true},
       screenshotCaptured:false,screenshotVerified:false,screenshotOcrUsed:false});
   }
@@ -1543,7 +1543,7 @@ export async function POST(request){
 
 export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
-  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['141 flydubai Mercator SkyChain','020 Lufthansa','074 KLM AFKLM Track & Trace','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','232 Malaysia Airlines MASkargo','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
+  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['141 flydubai Mercator SkyChain','020 Lufthansa','074 KLM AFKLM Track & Trace','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','232 Malaysia Airlines MASkargo','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','807 AirAsia Cargo SmartKargo','900 Thai AirAsia Cargo SmartKargo','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
   return handle(mawb);
