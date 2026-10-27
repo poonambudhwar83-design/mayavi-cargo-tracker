@@ -111,5 +111,14 @@ assert.ok(profitUi.includes('row.rowKey===rowKey'));
 assert.ok(profitUi.includes('const jfkFreightDeduction='));
 assert.ok(profitUi.includes('const canadaFreightDeduction='));
 assert.ok(profitUi.includes('const germanyFreightDeduction='));
+// Battery Goods Charge = physical part bags × ₹1,500, with no manual override.
+// Other eligible goods still use the existing tariff and deduction rules.
+assert.ok(profitUi.includes("category==='CLOTHES'||category==='BATTERY'?1500:"));
+assert.ok(profitUi.includes("const goodsCharge=bags===null||chargePerBag===null?null:bags*chargePerBag;"));
+assert.ok(!profitUi.includes("batteryMasterCharge"));
+assert.ok(!profitUi.includes("Battery charge\" value="));
+assert.ok(profitUi.includes("category==='PROTEIN'?(origin?(isDxbOrigin||isJfkOrigin?3000:1500):null):null;"));
+assert.ok(profitUi.includes("const goodsCharge15Eligible=['PROTEIN','CLOTHES','BATTERY'].includes(category)"));
+
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
