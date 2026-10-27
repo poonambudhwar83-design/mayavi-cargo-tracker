@@ -137,7 +137,12 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
   for(const key of Object.keys(patch)){
     const value=patch[key];
-    if(value===''||value===null||value===undefined)delete patch[key];
+    // A successful, verified CX lookup must clear a previous failed lookup.
+    // Keep deliberate empty strings for these two CX-only operational fields.
+    if(value===''||value===null||value===undefined){
+      if(mawb.startsWith('160-')&&(key==='trackingError'||key==='manualHint')&&value==='')continue;
+      delete patch[key];
+    }
   }
   // Flydubai: do not retain an old, unverified gross weight after successful
   // AWB-matched live tracking. Await Show Details or complete RCF master kg.
@@ -1021,12 +1026,19 @@ async function handle(mawb,fallback={}){
     if(departureDate){
       const dep=await trackFlightStatusSnapshot({flightNo:departureFlightNo,origin:departureOrigin,destination:departureDestination,date:departureDate,departureOnly:true}).catch(()=>null);
       if(dep?.ok&&dep.departureTime&&(!turkishFastPath||String(dep.departureOrigin||'').toUpperCase()===String(shipment.origin||'').toUpperCase())){
-        shipment.departureDate=dep.departureDate||departureDate;
-        shipment.departureTime=dep.departureTime;
-        shipment.departureIsActual=dep.departureIsActual===true;
-        if(dep.departureOrigin)shipment.departureOrigin=dep.departureOrigin;
-        if(dep.departureDestination)shipment.departureDestination=dep.departureDestination;
-        shipment.departureTimeSource=dep.source||'flight status';
+        // CX: the AWB's official booking allotment is the source for scheduled
+        // departure. A separate passenger-flight schedule must not overwrite
+        // it with a different clock (or cause a second local->IST conversion).
+        const preserveCxSchedule=cathayFastPath&&Boolean(direct?.departureTime&&direct?.departureDate)&&dep.departureIsActual!==true;
+        if(!preserveCxSchedule){
+          shipment.departureDate=dep.departureDate||departureDate;
+          shipment.departureTime=dep.departureTime;
+          shipment.departureIsActual=dep.departureIsActual===true;
+          if(dep.departureOrigin)shipment.departureOrigin=dep.departureOrigin;
+          if(dep.departureDestination)shipment.departureDestination=dep.departureDestination;
+          if(dep.departureTimeZone)shipment.departureTimeZone=dep.departureTimeZone;
+          shipment.departureTimeSource=dep.source||'flight status';
+        }
       }
     }
   }
@@ -1455,6 +1467,16 @@ async function handle(mawb,fallback={}){
   }
 
   shipment.source=[direct?.source,api?.source,browser?.source,ocr?.source].filter(Boolean).join(' + ')||'Official tracking verification';
+  // Keep the Cathay AWB reader's local/IST declaration with its flight clock.
+  // Without the zone the generic normalizer converts an already-IST time again.
+  if(cathayFastPath&&direct?.departureTimeZone&&
+     shipment.departureTime===direct.departureTime){
+    shipment.departureTimeZone=direct.departureTimeZone;
+  }
+  if(cathayFastPath&&direct?.arrivalTimeZone&&
+     shipment.arrivalTime===direct.arrivalTime){
+    shipment.arrivalTimeZone=direct.arrivalTimeZone;
+  }
   shipment=normalizeShipmentTimesToIst(shipment);
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final

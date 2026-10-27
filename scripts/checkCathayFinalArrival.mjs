@@ -55,4 +55,9 @@ assert.equal(photo.arrivalDate,'2026-10-28');assert.equal(photo.arrivalTime,'00:
 assert.equal(photo.arrivalIsActual,false);assert.equal(photo.arrivalEstimate,true);
 assert.equal(photo.status,'BOOKED');
 assert.equal(parseCathayBookingStatus(cathayPhotoText.replace('160-18865044','160-18865045'),'160-18865044'),null);
-console.log('Cathay future-arrival, user-photo allotment and recurring refresh tests passed.');
+import { readFileSync } from 'node:fs';
+const trackApi=readFileSync('app/api/track/route.js','utf8');
+assert.ok(trackApi.includes('const preserveCxSchedule=cathayFastPath'));
+assert.ok(trackApi.includes('shipment.departureTimeZone=direct.departureTimeZone'));
+assert.ok(trackApi.includes("key==='trackingError'||key==='manualHint'"));
+console.log('Cathay future-arrival, allotment, timezone and recurring refresh tests passed.');
