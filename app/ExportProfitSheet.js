@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import { subscribeProfitSourceChanges } from '../lib/profitSync.js';
+import { EXPORT_SHIPMENT_CHARGE } from '../lib/exportShipmentCharge.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const number=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
@@ -15,7 +16,7 @@ function clientBadgeStyle(name=''){
   for(let i=0;i<label.length;i++)hash=(hash*31+label.toUpperCase().charCodeAt(i))%360;
   return {display:'inline-block',backgroundColor:`hsl(${hash} 76% 91%)`,color:`hsl(${hash} 65% 26%)`,border:`1px solid hsl(${hash} 55% 78%)`,borderRadius:7,padding:'5px 9px',fontWeight:850,whiteSpace:'nowrap'};
 }
-const SHIPMENT_CHARGE=1000; // Fixed once per master Export MAWB, not once per part shipment.
+const SHIPMENT_CHARGE=EXPORT_SHIPMENT_CHARGE; // Once per master Export MAWB, including part shipments.
 function showMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
 function showWeight(value){return value===null||!Number.isFinite(value)?'—':number.format(value)}
 function profitFor(row={}){
@@ -88,14 +89,14 @@ export default function ExportProfitSheet(){
         <div>
           <div style={{fontSize:12,letterSpacing:1.5,fontWeight:900,color:'#3464ae'}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{margin:'5px 0',fontSize:27}}>Export Profit Sheet</h1>
-          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • By handover month • DHL client ₹19/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹1,000 per MAWB</p>
+          <p style={{margin:'6px 0',color:'#52657f'}}>October 2026 onward • By handover month • DHL client ₹19/kg • Overseas client ₹7/kg • Others ₹6/kg • Less ₹3,000 per MAWB</p>
         </div>
         <button type="button" disabled={!filtered.length} onClick={()=>exportCsv(filtered,period||periodOptions.at(-1)||'')} style={{background:'#1952a5',color:'#fff',border:0,borderRadius:9,padding:'11px 15px',fontWeight:800,cursor:'pointer'}}>DOWNLOAD CSV</button>
       </div>
       <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:16}}>
         <div style={summary}><small>EXPORT MAWBs</small><div style={{fontSize:23,fontWeight:900}}>{number.format(totals.count)}</div></div>
         <div style={summary}><small>TOTAL WEIGHT (KNOWN)</small><div style={{fontSize:23,fontWeight:900}}>{showWeight(totals.weight)} kg</div></div>
-        <div style={summary}><small>SHIPMENT CHARGES ({totals.count} × ₹1,000)</small><div style={{fontSize:23,fontWeight:900}}>{showMoney(totals.shipmentCharges)}</div></div>
+        <div style={summary}><small>SHIPMENT CHARGES ({totals.count} × ₹3,000)</small><div style={{fontSize:23,fontWeight:900}}>{showMoney(totals.shipmentCharges)}</div></div>
         <div style={summary}><small>TOTAL PROFIT (CALCULATED)</small><div style={{fontSize:23,fontWeight:900,color:totals.profit<0?'#b91c1c':'#14804b'}}>{showMoney(totals.profit)}</div><small>{totals.valid} of {totals.count} MAWBs calculated</small></div>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',margin:'18px 0 12px'}}>
@@ -137,7 +138,7 @@ export default function ExportProfitSheet(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹19/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹1,000. Every distinct Export MAWB has a fixed ₹1,000 shipment charge deducted once even for part shipments. October 2026 is the first month; the sheet is organized by the handover deadline (5 hours before departure), or by recorded handover time if the deadline is unavailable. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
+      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>DHL clients earn ₹19/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Profit = (Weight × client rate) − ₹3,000. Every distinct Export MAWB has a fixed ₹3,000 shipment charge deducted once even for part shipments. October 2026 is the first month; the sheet is organized by the handover deadline (5 hours before departure), or by recorded handover time if the deadline is unavailable. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
     </div>
   </main>;
 }

@@ -54,3 +54,23 @@ assert.equal(exportHandoverOverdue({handoverTime:'2026-10-24 15:00',handoverDone
 assert.equal(exportHandoverOverdue({departureDate:'2026-10-25',departureTime:'02:00',handoverDone:false},asUtc('2026-10-24T15:30:00Z')),true,'Previous-day deadline must blink.');
 assert.equal(exportHandoverOverdue({handoverDone:false},asUtc('2026-10-24T15:30:00Z')),false,'Missing date/time must not blink.');
 console.log('LOCKED Export Handover blink regression passed: -5h IST, NO deadline, YES stop, date rollover, CSS and live clock.');
+
+// Export shipment fee is identical in API, browser, table, totals and CSV.
+// A part shipment still pays only one flat fee for its master MAWB.
+import { EXPORT_SHIPMENT_CHARGE } from '../lib/exportShipmentCharge.js';
+import { readFileSync as readExportChargeSource } from 'node:fs';
+import assertExportCharge from 'node:assert/strict';
+const exportChargeUi=readExportChargeSource('app/ExportProfitSheet.js','utf8');
+const exportChargeApi=readExportChargeSource('app/api/export-profit/route.js','utf8');
+assertExportCharge.equal(EXPORT_SHIPMENT_CHARGE,3000);
+assertExportCharge.ok(exportChargeUi.includes('const SHIPMENT_CHARGE=EXPORT_SHIPMENT_CHARGE;'));
+assertExportCharge.ok(exportChargeUi.includes('value*rate-SHIPMENT_CHARGE'));
+assertExportCharge.ok(exportChargeUi.includes('acc.shipmentCharges+=SHIPMENT_CHARGE;'));
+assertExportCharge.ok(exportChargeUi.includes('SHIPMENT CHARGES ({totals.count} × ₹3,000)'));
+assertExportCharge.ok(exportChargeUi.includes('Profit = (Weight × client rate) − ₹3,000'));
+assertExportCharge.ok(!exportChargeUi.includes('₹1,000'));
+assertExportCharge.ok(exportChargeApi.includes('shipmentCharge:EXPORT_SHIPMENT_CHARGE'));
+assertExportCharge.ok(exportChargeApi.includes('weight*rate-EXPORT_SHIPMENT_CHARGE'));
+assertExportCharge.ok(!exportChargeApi.includes('shipmentCharge:1000'));
+assertExportCharge.equal(Math.round((400*19-EXPORT_SHIPMENT_CHARGE)*100)/100,4600);
+console.log('Export master-MAWB shipment charge INR 3,000 regression passed.');

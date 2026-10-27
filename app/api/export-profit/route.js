@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
 import { selectedProfitMonth, profitMonths, exportProfitHandoverDate, exportProfitHandoverMonth, exportRateForCompany } from '../../../lib/profitPeriod.js';
+import { EXPORT_SHIPMENT_CHARGE } from '../../../lib/exportShipmentCharge.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,8 +64,8 @@ export async function GET(request){
         weight,
         clientName:client,
         rate,
-        shipmentCharge:1000, // Deduct once per master MAWB.
-        profit:weight===null?null:Math.round((weight*rate-1000)*100)/100
+        shipmentCharge:EXPORT_SHIPMENT_CHARGE, // Deduct once per master MAWB.
+        profit:weight===null?null:Math.round((weight*rate-EXPORT_SHIPMENT_CHARGE)*100)/100
       });
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
