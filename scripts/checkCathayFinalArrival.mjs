@@ -18,7 +18,7 @@ assert.equal(guardCathayFinalArrival({...base,mawb:'065-11493775'},now).status,'
 
 import { parseCathayBookingStatus } from '../lib/cathay-browser-fallback.js';
 import { cathayRefreshDecision } from '../lib/cathayRefreshPolicy.js';
-const booking='Booking Status HKG to DEL CX679 12 pc(s) | 312.50 kg HKG 27 OCT 2026 09:20 Actual DEL 27 OCT 2026 15:35 Estimated Shipment History';
+const booking='AWB 160-18865044 Booking Status HKG to DEL CX679 12 pc(s) | 312.50 kg HKG 27 OCT 2026 09:20 Actual DEL 27 OCT 2026 15:35 Estimated Shipment History';
 const planned=parseCathayBookingStatus(booking,'160-18865044');
 assert.equal(planned.flightNo,'CX679');
 assert.equal(planned.weight,'312.50');
