@@ -41,4 +41,18 @@ assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:new Date(tick-6*
 assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:freshCheck},'ACTIVE',tick).due,false);
 assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:oldCheck},'SKIP',tick).due,false);
 
-console.log('Cathay future-arrival, booking estimates and recurring refresh tests passed.');
+// Official photo (27 Oct 2026): one piece, 60kg, CX679 on 27 Oct,
+// HKG Local 20:15 (IST 17:45), DEL Local 28 Oct 00:10; not arrived.
+const cathayPhotoText='AWB 160-18865044 Modify HKG to DEL | 1 pc(s) | 60 kg Current status: Booking Received 1pc(s) | 60kg Booking Status HKG to DEL Confirmed (allotment) CX679 27 Oct 2026 1pc(s) | 60kg HKG 27 Oct 20:15 Scheduled DEL 28 Oct 00:10 Scheduled Shipment History Shipment has not been accepted yet';
+const photo=parseCathayBookingStatus(cathayPhotoText,'160-18865044');
+assert.ok(photo);
+assert.equal(photo.origin,'HKG');assert.equal(photo.destination,'DEL');
+assert.equal(photo.pieces,'1');assert.equal(photo.weight,'60');
+assert.equal(photo.flightNo,'CX679');assert.equal(photo.flightDate,'2026-10-27');
+assert.equal(photo.departureDate,'2026-10-27');assert.equal(photo.departureTime,'17:45');
+assert.equal(photo.departureLocalTime,'20:15');
+assert.equal(photo.arrivalDate,'2026-10-28');assert.equal(photo.arrivalTime,'00:10');
+assert.equal(photo.arrivalIsActual,false);assert.equal(photo.arrivalEstimate,true);
+assert.equal(photo.status,'BOOKED');
+assert.equal(parseCathayBookingStatus(cathayPhotoText.replace('160-18865044','160-18865045'),'160-18865044'),null);
+console.log('Cathay future-arrival, user-photo allotment and recurring refresh tests passed.');
