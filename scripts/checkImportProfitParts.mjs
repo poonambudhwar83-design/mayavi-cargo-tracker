@@ -96,7 +96,18 @@ assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
 assert.ok(apiSource.includes('selectImportProfitRows(data,awb,month,currentProfitMonth())'));
 assert.ok(apiSource.includes('for(const physical of physicalRows)'));
-assert.ok(apiSource.includes('weight:physical.partCount===1?totalWeight(data):physical.weight'));
+// Each split row, including the only currently manifested part, retains its
+// own real weight and independently saved duty.
+assert.ok(apiSource.includes('weight:isPart?physical.weight:totalWeight(data)'));
+assert.ok(apiSource.includes('bags:isPart?physical.bags:totalBags(data)'));
+assert.ok(apiSource.includes('mayavi_import_profit_part_duty'));
+assert.ok(apiSource.includes('PRIMARY KEY (awb,part_key)'));
+assert.ok(apiSource.includes('physicalImportProfitRows(shipment.data||{},awb)'));
+assert.ok(apiSource.includes('totalDuty:duty===null||duty===undefined'));
+assert.ok(profitUi.includes('const duty=dataNumber(row.totalDuty);'));
+assert.ok(!profitUi.includes('masterDuty*allocation'));
+assert.ok(profitUi.includes('save(row.mawb,field,e.target.value,row.rowKey)'));
+assert.ok(profitUi.includes('row.rowKey===rowKey'));
 assert.ok(profitUi.includes('const jfkFreightDeduction='));
 assert.ok(profitUi.includes('const canadaFreightDeduction='));
 assert.ok(profitUi.includes('const germanyFreightDeduction='));
