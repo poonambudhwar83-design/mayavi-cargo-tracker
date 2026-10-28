@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/checkThaiAirAsia900.mjs && node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs && node scripts/checkSpeedPostPendingPdf.mjs && node scripts/checkSpeedPostCostReports.mjs && node scripts/checkAutoRefreshScope.mjs && node scripts/checkAirIndiaActivity.mjs && node scripts/checkFlydubaiAccelya.mjs && node scripts/checkExportHandoverBlink.mjs && node scripts/checkSaudiaTransitArrival.mjs && node scripts/checkSaudiaRcf.mjs && node scripts/checkAverageBagWeight.mjs && node scripts/checkBranchLoads.mjs && node scripts/checkCathayFinalArrival.mjs && node scripts/checkImportProfitParts.mjs && node scripts/checkImportClientLedger.mjs",
+    "prebuild": "node scripts/checkGulfAir.mjs && node scripts/checkThaiAirAsia900.mjs && node scripts/checkLockedAirlines.mjs && node scripts/checkSpeedPostOcr.mjs && node scripts/checkSpeedPostPendingPdf.mjs && node scripts/checkSpeedPostCostReports.mjs && node scripts/checkAutoRefreshScope.mjs && node scripts/checkAirIndiaActivity.mjs && node scripts/checkFlydubaiAccelya.mjs && node scripts/checkExportHandoverBlink.mjs && node scripts/checkSaudiaTransitArrival.mjs && node scripts/checkSaudiaRcf.mjs && node scripts/checkAverageBagWeight.mjs && node scripts/checkBranchLoads.mjs && node scripts/checkCathayFinalArrival.mjs && node scripts/checkImportProfitParts.mjs && node scripts/checkImportClientLedger.mjs",
     "build": "next build",
     "start": "next start"
   },
