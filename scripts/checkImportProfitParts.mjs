@@ -97,16 +97,20 @@ for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ',
 const dx={duty:5000,eici:1500,driverExpense:2600,goodsCharge:6000,
   freightCharge:17300,proteinDeduction:5000,siibDeduction:0,goodsCharge15Percent:900};
 const dxbTotal=importTotalCost(dx);
-assert.equal(dxbTotal,38300);
+assert.equal(dxbTotal,37400);
+// Legacy 15% Goods Charge input MUST NOT be used anywhere in Import Total
+// Cost, so removing a surcharge reduces cost and increases profit.
+assert.equal(importTotalCost({...dx,goodsCharge15Percent:99999}),37400);
+assert.equal(importNetProfit(500,100,37400),12600);
 // The otherwise-identical Clothes cargo includes existing expenses but NO
 // origin freight or protein handling; clothes SIIB is retained.
 const clothesTotal=importTotalCost({...dx,freightCharge:importFreightRate('DXB','CLOTHES')*100,proteinDeduction:0,siibDeduction:3000});
-assert.equal(clothesTotal,19000);
-assert.equal(importNetProfit(500,100,clothesTotal),31000);
+assert.equal(clothesTotal,18100);
+assert.equal(importNetProfit(500,100,clothesTotal),31900);
 assert.equal(importFreightRate('JFK','CLOTHES'),0);
 assert.equal(importFreightRate('YYZ','HH'),0);
 assert.equal(importFreightRate('FRA','BATTERY'),0);
-assert.equal(importNetProfit(500,100,dxbTotal),11700);
+assert.equal(importNetProfit(500,100,dxbTotal),12600);
 assert.equal(importNetProfit(null,100,dxbTotal),null);
 assert.equal(importTotalCost({...dx,duty:null}),null);
 const partA=importTotalCost({duty:1000,eici:750,driverExpense:1300,goodsCharge:3000,freightCharge:8650,proteinDeduction:2500,siibDeduction:0,goodsCharge15Percent:450});
@@ -121,7 +125,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={19}'));
+assert.ok(profitUi.includes('colSpan={18}'));
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
@@ -157,7 +161,15 @@ assert.ok(profitUi.includes("const goodsCharge=bags===null||chargePerBag===null?
 assert.ok(!profitUi.includes("batteryMasterCharge"));
 assert.ok(!profitUi.includes("Battery charge\" value="));
 assert.ok(profitUi.includes("category==='PROTEIN'?(origin?(isDxbOrigin||isJfkOrigin?3000:1500):null):null;"));
-assert.ok(profitUi.includes("const goodsCharge15Eligible=['PROTEIN','CLOTHES','BATTERY'].includes(category)"));
+// The 15% surcharge must be absent from the per-part calculation, table,
+ // total footer, CSV and all shipment/Profit tooltips and documentation.
+assert.ok(!profitUi.includes('goodsCharge15Percent'));
+assert.ok(!profitUi.includes('goodsCharge15Eligible'));
+assert.ok(!profitUi.includes('15% Goods Charge (₹)'));
+assert.ok(!profitUi.includes('15% Goods Charge: '));
+assert.ok(!profitUi.includes('existing applicable 15%'));
+assert.ok(profitUi.includes('No additional 15% Goods Charge is deducted'));
+assert.ok(profitUi.includes('const totalCost=importTotalCost({duty,eici,driverExpense,goodsCharge,freightCharge,proteinDeduction,siibDeduction});'));
 
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
