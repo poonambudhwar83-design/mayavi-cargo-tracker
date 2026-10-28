@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -84,6 +84,27 @@ assert.equal(proteinHandlingRate('FRA')*100,8000);
 
 // Expense breakdown is counted exactly once for both whole and split shipments.
 assert.deepEqual(IMPORT_FREIGHT_RATES,{DXB:173,CANADA:450,USA:410,GERMANY:322});
+// New Protein goods charge applies per physical bag, not per kg. USA
+// includes JFK (old JFK ₹3,000 rule has been retired).
+for(const [origin,expectedBagRate] of [
+  ['DXB',3000],['DUBAI',3000],
+  ['JFK',1800],['USA',1800],['LAX',1800],['EWR',1800],['NEW YORK',1800],
+  ['CANADA',1800],['YYZ',1800],['YVR',1800],['TORONTO',1800],
+  ['GERMANY',1800],['FRA',1800],['MUC',1800],['FRANKFURT',1800],
+  ['HKG',1500],['JED',1500],['DOH',1500],['SHJ',1500],['LHR',1500]
+]){
+  assert.equal(importProteinGoodsChargePerBag(origin),expectedBagRate,
+    'Protein goods bag rate for '+origin);
+}
+assert.equal(importProteinGoodsChargePerBag(''),null);
+assert.equal(importProteinGoodsChargePerBag('   '),null);
+assert.equal(importProteinGoodsChargePerBag('JFK')*4,7200);
+assert.equal(importProteinGoodsChargePerBag('DXB')*4,12000);
+assert.equal(importProteinGoodsChargePerBag('YYZ')*4,7200);
+assert.equal(importProteinGoodsChargePerBag('FRA')*4,7200);
+// Only goods charge is changed: for 4 JFK bags, Total Cost falls ₹4,800
+// relative to old ₹3,000/bag, increasing calculated Profit by ₹4,800.
+assert.equal(4*(3000-importProteinGoodsChargePerBag('JFK')),4800);
 for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ','CANADA',450],
   ['CANADA','CANADA',450],['JFK','USA',410],['USA','USA',410],['LAX','USA',410],
   ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
@@ -203,7 +224,11 @@ assert.ok(profitUi.includes("category==='CLOTHES'||category==='BATTERY'?1500:"))
 assert.ok(profitUi.includes("const goodsCharge=bags===null||chargePerBag===null?null:bags*chargePerBag;"));
 assert.ok(!profitUi.includes("batteryMasterCharge"));
 assert.ok(!profitUi.includes("Battery charge\" value="));
-assert.ok(profitUi.includes("category==='PROTEIN'?(origin?(isDxbOrigin||isJfkOrigin?3000:1500):null):null;"));
+assert.ok(profitUi.includes("category==='PROTEIN'?importProteinGoodsChargePerBag(origin):null;"));
+assert.ok(profitUi.includes("Protein from DXB ₹3,000/bag, Protein from USA (including JFK), Canada or Germany ₹1,800/bag"));
+assert.ok(profitUi.includes("Protein DXB 3000/bag; Protein USA incl JFK, Canada, Germany 1800/bag"));
+assert.ok(!profitUi.includes("Protein JFK/DXB 3000"));
+assert.ok(!profitUi.includes('isJfkOrigin?3000'));
 // The 15% surcharge must be absent from the per-part calculation, table,
  // total footer, CSV and all shipment/Profit tooltips and documentation.
 assert.ok(!profitUi.includes('goodsCharge15Percent'));
