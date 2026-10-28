@@ -151,6 +151,7 @@ assert.ok(ui.includes('aria-label="No. of Bottles"'));
 assert.ok(ui.includes("const minimum=minimumJepoExtraCost(d.commodity,count);"));
 assert.ok(ui.includes('First Ghee bottle free • all Extra Cost to Branch'));
 assert.ok(ui.includes('Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO.'));
+assert.ok(ui.includes('Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch.'));
 assert.ok(!ui.includes('Number(count||0)*250'));
 assert.ok(ui.includes('totalJepoForLoad('));
 assert.ok(ui.includes('totalBranchForLoad('));
@@ -303,7 +304,20 @@ assert.deepEqual(allocateExtraCost('Household and Electronics + other',330,null)
 assert.deepEqual(allocateExtraCost('Household and Hookah',1200,null),{toJepo:0,toBranch:1200});
 assert.equal(totalJepoForLoad(5000,'Clothes',450,null),5000);
 assert.equal(totalBranchForLoad(12000,11685,'Other',275,null),590);
-assert.deepEqual(allocateExtraCost('Medicine',1000,null),{toJepo:700,toBranch:300});
+// Commodity exactly "Medicine" sends ALL Extra Cost to Branch for Jind and Karnal.
+assert.equal(minimumJepoExtraCost('Medicine'),0);
+assert.deepEqual(allocateExtraCost('Medicine',1000,null),{toJepo:0,toBranch:1000});
+assert.deepEqual(allocateExtraCost('Medicine',500,null),{toJepo:0,toBranch:500});
+assert.deepEqual(allocateExtraCost('Medicine',0,null),{toJepo:0,toBranch:0});
+assert.deepEqual(allocateExtraCost('Medicine',500,null,{legacy:true}),{toJepo:0,toBranch:500});
+assert.equal(totalJepoForLoad(5000,'Medicine',1000,null),5000);
+assert.equal(totalBranchForLoad(12000,11685,'Medicine',1000,null),1315);
+for(const branch of ['JIND','KARNAL']){
+  assert.equal(branchPayoutForRecord({...paidCase,branch,commodity:'Medicine',extraCost:'1000',status:'DELIVERED'}),1315);
+  assert.equal(branchPayoutForRecord({...paidCase,branch,commodity:'Medicine',extraCost:'1000',status:'AT_JIND_OFFICE'}),1315);
+}
+// Household and Medicine keeps its ₹700 JEPO charge; other commodities unchanged.
+assert.deepEqual(allocateExtraCost('Household and Medicine',1000,null),{toJepo:700,toBranch:300});
 assert.deepEqual(allocateExtraCost('Nutrition',500,null),{toJepo:150,toBranch:350});
 assert.deepEqual(allocateExtraCost('Ghee',1400,4),{toJepo:750,toBranch:650});
 assert.equal(requiresBottleCount('Ghee'),true);

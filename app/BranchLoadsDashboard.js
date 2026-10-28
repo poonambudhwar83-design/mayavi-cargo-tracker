@@ -481,7 +481,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
     </nav>
 
-    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Medicine ₹700 to JEPO, Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
+    {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch. Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
       {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
         <div className={styles.summaryHeader}>
           <div>
