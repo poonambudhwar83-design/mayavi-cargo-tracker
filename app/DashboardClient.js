@@ -772,7 +772,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   async function persistRow(row,markEntry=false,allowClientUpdate=false){return persistRows([row],markEntry,allowClientUpdate)}
   useEffect(()=>{if(haryanaMode){setActiveTab('IMPORT');setAdminView('ACTIVE');return;}try{const saved=localStorage.getItem(TAB_KEY);if(saved==='IMPORT'||saved==='EXPORT'||(isAdmin&&isPrivateType(saved)))setActiveTab(saved)}catch{}},[isAdmin,haryanaMode]);
   useEffect(()=>{try{localStorage.setItem(TAB_KEY,activeTab)}catch{}},[activeTab]);
-  useEffect(()=>{let active=true;(async()=>{let local=[];try{local=dedupeRowsByMawb(JSON.parse(localStorage.getItem(KEY)||'[]').map(x=>decorateTiming({}, {...x,mawb:normalize(x?.mawb||x?.awb),shipmentType:shipmentTypeOf(x?.shipmentType)})).filter(x=>x.mawb&&(isAdmin||!isPrivateType(x.shipmentType))))}catch{}// Display this authenticated browser's last saved shipment data without waiting for network.
+  useEffect(()=>{let active=true;(async()=>{let local=[];try{local=dedupeRowsByMawb(JSON.parse(localStorage.getItem(KEY)||'[]').map(x=>decorateTiming({}, {...x,mawb:normalize(x?.mawb||x?.awb),shipmentType:shipmentTypeOf(x?.shipmentType)})).filter(x=>x.mawb&&(haryanaMode?shipmentTypeOf(x.shipmentType)==='IMPORT':isAdmin||!isPrivateType(x.shipmentType))))}catch{}// Display this authenticated browser's last saved shipment data without waiting for network.
     // The server remains authoritative and replaces this snapshot after loading.
     if(active&&local.length)setRows(local);
     try{const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});const data=await res.json();if(!data.ok)throw new Error(data.error||'Shared database unavailable');const server=dedupeRowsByMawb((data.rows||[]).map(dbToRow).filter(x=>x.mawb));const map=new Map(server.map(x=>[digits(x.mawb),x]));const migrate=[];for(const l of local){const key=digits(l.mawb),s=map.get(key);if(!s)continue;const lt=Date.parse(l.lastChecked||l._dbUpdatedAt||0)||0,st=Date.parse(s.lastChecked||s._dbUpdatedAt||0)||0;if(key.startsWith('235')){const recovered=recoverTurkishLocal(s,l);if(recovered.changed){map.set(key,recovered.row);migrate.push(recovered.row)}continue}const serverAuthoritative=key.startsWith('071')||key.startsWith('098')||key.startsWith('160')||key.startsWith('232')||key.startsWith('312')||key.startsWith('176')||key.startsWith('141');if(!serverAuthoritative&&lt>st){const mergedLocal={...l};for(const wk of ['shipmentType','clientName','client','companyType','companyName','goodsDescription','enteredBy','enteredByUsername','enteredAt','mailSent','mailUpdatedAt','customsCleared','customsClearedAt','customsClearedBy','masterCopyReceived','masterCopyReceivedAt','masterCopyReceivedBy','handoverDone','handoverUpdatedAt','handoverUpdatedBy','weightMinus','weightMinusUpdatedAt','weightMinusUpdatedBy']){if(Object.prototype.hasOwnProperty.call(s,wk))mergedLocal[wk]=s[wk];else delete mergedLocal[wk]}map.set(key,mergedLocal)}}const merged=[...map.values()].sort((a,b)=>(Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0));if(!active)return;setRows(merged);setShared(true);setLoaded(true);localStorage.setItem(KEY,JSON.stringify(merged.map(withoutMeta)));if(migrate.length)persistRows(migrate).catch(()=>{})}catch(e){if(!active)return;setRows(local);setLoaded(true);setShared(false);setNote(`Shared database unavailable — showing this browser backup only. ${e.message||''}`)}})();return()=>{active=false}},[isAdmin]);
@@ -784,7 +784,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   useEffect(()=>{if(!loaded)return;let stopped=false,running=false;const syncServer=async()=>{if(stopped||running)return;running=true;try{
     const res=await fetch('/api/shipments',{cache:'no-store',credentials:'include'});
     const data=await res.json();if(!data.ok)return;
-    const server=dedupeRowsByMawb((data.rows||[]).map(dbToRow).filter(x=>x.mawb&&(isAdmin||!isPrivateType(x.shipmentType))));
+    const server=dedupeRowsByMawb((data.rows||[]).map(dbToRow).filter(x=>x.mawb&&(haryanaMode?shipmentTypeOf(x.shipmentType)==='IMPORT':isAdmin||!isPrivateType(x.shipmentType))));
     setRows(current=>{
       const cleanCurrent=dedupeRowsByMawb(current);
       const localMap=new Map(cleanCurrent.map(x=>[digits(x.mawb),x]));
@@ -797,7 +797,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
         const lt=Math.max(Date.parse(lr._dbUpdatedAt||0)||0,Date.parse(lr.lastChecked||0)||0);
         out.push(key.startsWith('071')||key.startsWith('098')||key.startsWith('160')||key.startsWith('232')||key.startsWith('312')||key.startsWith('176')||key.startsWith('141')||st>=lt?sr:lr);
       }
-      for(const lr of localMap.values())if(isAdmin||!isPrivateType(lr.shipmentType))out.push(lr);
+      for(const lr of localMap.values())if(haryanaMode?shipmentTypeOf(lr.shipmentType)==='IMPORT':isAdmin||!isPrivateType(lr.shipmentType))out.push(lr);
       return dedupeRowsByMawb(out);
     });
     setShared(true);
