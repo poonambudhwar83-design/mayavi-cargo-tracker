@@ -242,6 +242,10 @@
 .confirmInputs input{display:block;box-sizing:border-box;width:100%;max-width:100%}
 
 
+.branchPaymentDisplay{display:grid;gap:3px;justify-items:end;min-width:0;text-align:right;font-variant-numeric:tabular-nums}
+.branchPaymentDisplay strong{font-size:12px;white-space:nowrap}
+.branchCashLabel{display:block;font-size:10px;font-weight:850;color:#986305;white-space:nowrap}
+
 /* JEPO payment total stays in ONE column. The base freight is Account and
    only JEPO's allocated share of mixed-commodity Extra Cost is Cash. */
 .jepoSplit{display:grid;gap:3px;min-width:0;line-height:1.25;font-variant-numeric:tabular-nums;text-align:left}
