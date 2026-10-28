@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {amounts,allowedBranch,dateValid,decimal,DESTINATIONS,COMMODITIES,SERVICES,LOAD_STATUSES,EXTRA_COST_COMMODITIES,requiresExtraCost,requiresBottleCount,parseBottleCount,minimumJepoExtraCost,allocateExtraCost,totalJepoForLoad,totalBranchForLoad,jepoAmount,branchPayment,branchFromSavedAmounts,totalJepoPayment} from '../lib/branchLoads.js';
+import {amounts,allowedBranch,dateValid,decimal,DESTINATIONS,COMMODITIES,SERVICES,LOAD_STATUSES,EXTRA_COST_COMMODITIES,requiresExtraCost,requiresBottleCount,parseBottleCount,minimumJepoExtraCost,allocateExtraCost,totalJepoForLoad,totalBranchForLoad,jepoAmount,branchPayment,branchFromSavedAmounts,totalJepoPayment,branchPayoutForRecord} from '../lib/branchLoads.js';
 assert.equal(allowedBranch('jind'),'JIND');
 assert.equal(allowedBranch('Karnal'),'KARNAL');
 assert.equal(allowedBranch('sonu'),'');
@@ -245,6 +245,20 @@ assert.ok(ui.includes('<small className={styles.branchCashLabel}>Cash {fmt(cash)
 assert.ok(ui.includes('cash={branchCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}'));
 assert.ok(ui.includes('cash={totals.cashBranch}'));
 assert.ok(ui.includes('cashBranch:t.cashBranch+Number(branchCashPart('));
+// Delivered cash must remain in the branch payout, including older rows whose
+// saved paidToBranch omitted the extra cash share.
+const paidCase={amount:'12000',paidToJepo:'11685',paidToBranch:'315',extraCost:'700',commodity:'Household and Ghee',bottleCount:2};
+assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED'}),515);
+assert.equal(branchPayoutForRecord({...paidCase,status:'IN_TRANSIT'}),515);
+assert.equal(branchPayoutForRecord({...paidCase,status:'AT_JIND_OFFICE'}),515);
+assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED',commodity:'Household and Medicine',extraCost:'1000',bottleCount:null}),615);
+assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED',commodity:'Household and Electronics',extraCost:'800',bottleCount:null}),1115);
+assert.ok(ui.includes('const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]);'));
+assert.ok(ui.includes('const totals=useMemo(()=>sumLedgerTotals(shown),[shown]);'));
+assert.ok(ui.includes('Cash included: {fmt(overviewTotals.cashBranch)}'));
+assert.ok(ui.includes('branchPayoutForRecord(r),r.destination'));
+assert.ok(ui.includes('total={branchPayoutForRecord(record)}'));
+assert.ok(!ui.includes('paidToBranch:t.paidToBranch+Number(r.paidToBranch||0)'));
 assert.equal(jepoAmount(10,500),5000);
 assert.deepEqual(allocateExtraCost('Household and Ghee',700,2),{toJepo:500,toBranch:200});
 assert.equal(totalJepoForLoad(5000,'Household and Ghee',700,2),5500);

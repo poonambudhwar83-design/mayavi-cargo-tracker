@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad} from '../lib/branchLoads.js';
+import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
 import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
 import styles from './BranchLoadsDashboard.module.css';
 
@@ -58,6 +58,22 @@ function JepoPaymentSplit({total,account,cash}){
 }
 const safeCsvValue=value=>{const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"';};
 
+// Each amount is calculated once from saved rows. Top totals use both statuses;
+// Active and Delivered table footers continue to show their own sheet totals.
+function sumLedgerTotals(records=[]){
+  return records.reduce((t,r)=>({
+    weight:t.weight+Number(r.weight||0),
+    amount:t.amount+Number(r.amount||0),
+    received:t.received+Number(r.received||0),
+    balance:t.balance+Number(r.balance||0),
+    paidToJepo:t.paidToJepo+Number(r.paidToJepo||0),
+    paidToBranch:t.paidToBranch+branchPayoutForRecord(r),
+    totalJepo:t.totalJepo+Number(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
+    cashJepo:t.cashJepo+Number(jepoCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
+    cashBranch:t.cashBranch+Number(branchCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
+    extraCost:t.extraCost+Number(r.extraCost||0)
+  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0,cashJepo:0,cashBranch:0});
+}
 function FieldChoice({name,list,value,onChange}){
   const selected=list.includes(value)&&value!=='Other'?value:value?'__other__':'';
   return <div className={styles.choice}>
@@ -115,11 +131,15 @@ export default function BranchLoadsDashboard({currentUser}){
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onFocus);window.removeEventListener('focus',onFocus);};
   },[]);
 
-  const shown=useMemo(()=>rows.filter(r=>
+  // Branch and search filters apply everywhere. Status affects ONLY the table,
+  // never the overview cards: Active + Delivered are always counted together.
+  const matchingRows=useMemo(()=>rows.filter(r=>
     (filter==='ALL'||r.branch===filter)&&
-    (sheet==='SUMMARY'||(sheet==='DELIVERED'?(r.status==='DELIVERED'):(r.status!=='DELIVERED')))&&
     (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode,r.remarks].join(' ').toLowerCase().includes(search.toLowerCase()))
-  ),[rows,filter,sheet,search]);
+  ),[rows,filter,search]);
+  const shown=useMemo(()=>matchingRows.filter(r=>
+    sheet==='SUMMARY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED')
+  ),[matchingRows,sheet]);
   // Summary combines all booked loads, regardless of current delivery status.
   const dailySummary=useMemo(()=>aggregateDailyBranchLoads(shown),[shown]);
   const summaryTotals=useMemo(()=>dailySummary.reduce((t,r)=>({
@@ -140,18 +160,8 @@ export default function BranchLoadsDashboard({currentUser}){
     setEditing(next==='ACTIVE'?'new':'');
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
-  const totals=useMemo(()=>shown.reduce((t,r)=>({
-    weight:t.weight+Number(r.weight||0),
-    amount:t.amount+Number(r.amount||0),
-    received:t.received+Number(r.received||0),
-    balance:t.balance+Number(r.balance||0),
-    paidToJepo:t.paidToJepo+Number(r.paidToJepo||0),
-    paidToBranch:t.paidToBranch+Number(r.paidToBranch||0),
-    totalJepo:t.totalJepo+Number(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
-    cashJepo:t.cashJepo+Number(jepoCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
-    cashBranch:t.cashBranch+Number(branchCashPart(r.commodity,r.extraCost,r.bottleCount,{legacy:true})||0),
-    extraCost:t.extraCost+Number(r.extraCost||0)
-  }),{weight:0,amount:0,received:0,balance:0,paidToJepo:0,paidToBranch:0,extraCost:0,totalJepo:0,cashJepo:0,cashBranch:0}),[shown]);
+  const totals=useMemo(()=>sumLedgerTotals(shown),[shown]); // current sheet footer / CSV
+  const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]); // Active + Delivered
   // Every commodity may have an optional Extra Cost. Keep this column visible
   // and keep Total JEPO last, for consistent branch and CSV accounting.
   const hasExtraCostColumn=true;
@@ -338,7 +348,7 @@ export default function BranchLoadsDashboard({currentUser}){
       return;
     }
     const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,r.paidToBranch,r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     // Keep export totals precisely under the same labels after adding fields.
     const totalsRow=Array(labels.length).fill('');
     totalsRow[0]='TOTAL';totalsRow[3]=totals.weight;totalsRow[5]=totals.amount;
@@ -402,7 +412,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="balance" className={styles.number}><strong className={Number(record.balance)>0?styles.due:styles.clear}>{money(record.balance)}</strong></td>,
     <td key="jepoRate" className={styles.number}>{money(record.jepoRate)}</td>,
     <td key="jepo" className={styles.number}>{money(record.paidToJepo)}</td>,
-    <td key="branchpaid" className={styles.number}><BranchPaymentDisplay total={Number(record.paidToBranch||0)} cash={branchCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}/></td>,
+    <td key="branchpaid" className={styles.number}><BranchPaymentDisplay total={branchPayoutForRecord(record)} cash={branchCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}/></td>,
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
@@ -442,15 +452,15 @@ export default function BranchLoadsDashboard({currentUser}){
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
-        <p>Daily Load Entry • Active, Delivered & Daily Summary • Admin sees both branches separately</p></div>
+        <p>Daily Load Entry • Active, Delivered & Daily Summary • Overview combines Active + Delivered</p></div>
     </header>
-    <div className={styles.metrics}>
-      <div><span>Total Load</span><strong>{weightFormat(totals.weight)} kg</strong></div>
-      <div><span>Amount</span><strong>{fmt(totals.amount)}</strong></div>
-      <div><span>Received</span><strong>{fmt(totals.received)}</strong></div>
-      <div><span>Balance</span><strong>{fmt(totals.balance)}</strong></div>
-      <div><span>Paid to JEPO</span><strong>{fmt(totals.paidToJepo)}</strong></div>
-      <div><span>Paid to Branch</span><strong>{fmt(totals.paidToBranch)}</strong></div>
+    <div className={styles.metrics} aria-label="Active and Delivered combined summary">
+      <div><span>Total Load • Active + Delivered</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
+      <div><span>Amount • Active + Delivered</span><strong>{fmt(overviewTotals.amount)}</strong></div>
+      <div><span>Received • Active + Delivered</span><strong>{fmt(overviewTotals.received)}</strong></div>
+      <div><span>Balance • Active + Delivered</span><strong>{fmt(overviewTotals.balance)}</strong></div>
+      <div><span>Paid to JEPO • Active + Delivered</span><strong>{fmt(overviewTotals.paidToJepo)}</strong></div>
+      <div><span>Paid to Branch • Active + Delivered</span><strong>{fmt(overviewTotals.paidToBranch)}</strong><small className={styles.branchCashLabel}>Cash included: {fmt(overviewTotals.cashBranch)} (Extra Cost remainder)</small></div>
     </div>
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
     <form noValidate onSubmit={save}>
