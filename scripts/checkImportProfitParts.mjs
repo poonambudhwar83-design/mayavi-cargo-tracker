@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -81,6 +82,24 @@ assert.equal(proteinHandlingRate('JFK')*100,8000);
 assert.equal(proteinHandlingRate('YYZ')*100,8000);
 assert.equal(proteinHandlingRate('FRA')*100,8000);
 
+// Expense breakdown is counted exactly once for both whole and split shipments.
+assert.deepEqual(IMPORT_FREIGHT_RATES,{DXB:173,CANADA:450,USA:410,GERMANY:322});
+for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ','CANADA',450],
+  ['CANADA','CANADA',450],['JFK','USA',410],['USA','USA',410],['LAX','USA',410],
+  ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
+  assert.equal(importFreightRegion(origin),region,origin);
+  assert.equal(importFreightRate(origin),rate,origin);
+}
+const dx={duty:5000,eici:1500,driverExpense:2600,goodsCharge:6000,
+  freightCharge:17300,proteinDeduction:5000,siibDeduction:0,goodsCharge15Percent:900};
+const dxbTotal=importTotalCost(dx);
+assert.equal(dxbTotal,38300);
+assert.equal(importNetProfit(500,100,dxbTotal),11700);
+assert.equal(importNetProfit(null,100,dxbTotal),null);
+assert.equal(importTotalCost({...dx,duty:null}),null);
+const partA=importTotalCost({duty:1000,eici:750,driverExpense:1300,goodsCharge:3000,freightCharge:8650,proteinDeduction:2500,siibDeduction:0,goodsCharge15Percent:450});
+const partB=importTotalCost({duty:4000,eici:750,driverExpense:1300,goodsCharge:3000,freightCharge:8650,proteinDeduction:2500,siibDeduction:0,goodsCharge15Percent:450});
+assert.equal(partA+partB,dxbTotal);
 const profitUi=readFileSync('app/ImportProfitSheet.js','utf8');
 const apiSource=readFileSync('app/api/import-profit/route.js','utf8');
 assert.ok(profitUi.includes("import {proteinHandlingRate} from '../lib/importProteinDeduction.js';"));
@@ -108,7 +127,13 @@ assert.ok(profitUi.includes('const duty=dataNumber(row.totalDuty);'));
 assert.ok(!profitUi.includes('masterDuty*allocation'));
 assert.ok(profitUi.includes('save(row.mawb,field,e.target.value,row.rowKey)'));
 assert.ok(profitUi.includes('row.rowKey===rowKey'));
-assert.ok(profitUi.includes('const jfkFreightDeduction='));
+assert.ok(profitUi.includes('const usaFreightDeduction='));
+assert.ok(profitUi.includes('const totalCost=importTotalCost('));
+assert.ok(profitUi.includes('const profit=importNetProfit(rate,kg,totalCost);'));
+assert.ok(profitUi.includes('title={totalCostDetails(n)}'));
+assert.ok(profitUi.includes('USA Freight (410 x kg; includes JFK)'));
+assert.ok(!profitUi.includes('185*kg'));
+assert.ok(!profitUi.includes('Total Cost (before special deductions)'));
 assert.ok(profitUi.includes('const canadaFreightDeduction='));
 assert.ok(profitUi.includes('const germanyFreightDeduction='));
 // Battery Goods Charge = physical part bags × ₹1,500, with no manual override.

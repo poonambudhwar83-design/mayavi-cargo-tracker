@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import { subscribeProfitSourceChanges } from '../lib/profitSync.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
+import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit} from '../lib/importFreightCost.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const quantity=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
@@ -49,36 +50,54 @@ function figures(row={}){
   // Charge once per master MAWB, including overlapping conditions such as Sonu + Protein.
   const goodsCharge15Eligible=['PROTEIN','CLOTHES','BATTERY'].includes(category)||String(row.clientName||'').trim().toUpperCase()==='SONU';
   const goodsCharge15Percent=goodsCharge15Eligible?(goodsCharge===null?null:Math.round(goodsCharge*15)/100):0;
-  const totalCost=kg===null||duty===null||goodsCharge===null?null:duty+eici+goodsCharge;
   const dutyPerKg=kg>0&&duty!==null?duty/kg:null;
   // Profit is earned at the manually entered selling rate per kg, never a fixed tariff.
   // Do not show a misleading profit until all the required inputs are available.
   // Canada, Germany and USA departures: ₹80/kg; DXB and all others: ₹50/kg.
   // Keep this handling deduction separate from existing airport freight costs.
   const proteinDeduction=category==='PROTEIN'&&kg!==null?proteinHandlingRate(origin)*kg:0;
-  // Dubai freight applies ONLY when the original departure airport is DXB
-  // (not when the shipment merely transits through Dubai).
-  const dxbFreightDeduction=category==='PROTEIN'&&isDxbOrigin&&kg!==null?185*kg:0;
-  // JFK-specific freight applies only to Protein whose master shipment origin is JFK.
-  const jfkFreightDeduction=category==='PROTEIN'&&isJfkOrigin&&kg!==null?450*kg:0;
-  const canadaFreightDeduction=category==='PROTEIN'&&isCanadaOrigin&&kg!==null?400*kg:0;
-  const germanyFreightDeduction=category==='PROTEIN'&&isGermanyOrigin&&kg!==null?330*kg:0;
+  // Freight applies to all goods from these origins. USA includes JFK;
+  // origin is used, not a transit stop, and no tariff can be applied twice.
+  const freightRegion=importFreightRegion(origin);
+  const freightRate=importFreightRate(origin);
+  const freightCharge=kg===null?null:Math.round(freightRate*kg*100)/100;
+  const dxbFreightDeduction=freightRegion==='DXB'?freightCharge:0;
+  const usaFreightDeduction=freightRegion==='USA'?freightCharge:0;
+  const canadaFreightDeduction=freightRegion==='CANADA'?freightCharge:0;
+  const germanyFreightDeduction=freightRegion==='GERMANY'?freightCharge:0;
   const siibDeduction=category==='CLOTHES'&&kg!==null?30*kg:0;
   // Driver expense is set ONCE for the master; distribute it proportionally
   // across physical rows to avoid charging it repeatedly for every part.
   const masterDriverExpense=dataNumber(row.driverExpense)??DRIVER_EXPENSE_PER_MAWB;
   const driverExpense=Math.round(masterDriverExpense*allocation*100)/100;
-  const profit=totalCost===null||rate===null||goodsCharge15Percent===null?null:(rate*kg)-eici-duty-goodsCharge-proteinDeduction-dxbFreightDeduction-jfkFreightDeduction-canadaFreightDeduction-germanyFreightDeduction-siibDeduction-driverExpense-goodsCharge15Percent;
+  // Every pre-existing deduction belongs in Total Cost now, not a second
+  // deduction after Total Cost has already been subtracted.
+  const totalCost=importTotalCost({duty,eici,driverExpense,goodsCharge,freightCharge,proteinDeduction,siibDeduction,goodsCharge15Percent});
+  const profit=importNetProfit(rate,kg,totalCost);
   const profitPerKg=profit===null||kg===null||kg<=0?null:profit/kg;
-  return {kg,bags,averageWeightPerBag,duty,rate,eici,goodsCharge,chargePerBag,goodsCharge15Eligible,goodsCharge15Percent,totalCost,dutyPerKg,proteinDeduction,dxbFreightDeduction,jfkFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,driverExpense,profit,profitPerKg};
+  return {kg,bags,averageWeightPerBag,duty,rate,eici,goodsCharge,chargePerBag,goodsCharge15Eligible,goodsCharge15Percent,totalCost,dutyPerKg,proteinDeduction,freightRegion,freightRate,freightCharge,dxbFreightDeduction,usaFreightDeduction,canadaFreightDeduction,germanyFreightDeduction,siibDeduction,driverExpense,profit,profitPerKg};
 }
 function displayMoney(value){return value===null||!Number.isFinite(value)?'—':money.format(value)}
+function totalCostDetails(n){
+  if(n.totalCost===null)return 'Enter Weight, Bags, Goods and Total Duty to calculate Total Cost.';
+  return [
+    'Duty: '+displayMoney(n.duty),
+    'EICI: '+displayMoney(n.eici),
+    'Driver: '+displayMoney(n.driverExpense),
+    'Goods Charge: '+displayMoney(n.goodsCharge),
+    n.freightRate>0?'Freight '+n.freightRegion+' (₹'+n.freightRate+'/kg): '+displayMoney(n.freightCharge):null,
+    n.proteinDeduction>0?'Protein Deduction: '+displayMoney(n.proteinDeduction):null,
+    n.siibDeduction>0?'Clothes Deduction: '+displayMoney(n.siibDeduction):null,
+    n.goodsCharge15Percent>0?'15% Goods Charge: '+displayMoney(n.goodsCharge15Percent):null,
+    'Total Cost: '+displayMoney(n.totalCost)
+  ].filter(Boolean).join(' • ');
+}
 function displayAmount(value){return value===null||!Number.isFinite(value)?'—':quantity.format(value)}
 function downloadCsv(rows,month=''){
-  const columns=['MAWB','Client','Goods','Origin','Total Bags','Average Weight per Bag (kg)','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag, Battery 1500 per bag)','Profit (Rate x Weight - EICI - Duty - Goods Charge - Protein Deduction - DXB Freight - JFK Freight - Canada Freight - Germany Freight - SIIB - Driver Expense - 15% Goods Charge)','DXB Protein Freight (185 x kg)','JFK Protein Freight (450 x kg)','Canada Protein Freight (400 x kg)','Germany Protein Freight (330 x kg)','Total Cost (before special deductions)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Protein / Clothes Deduction (Protein Canada Germany USA 80 x kg, other origins including DXB 50 x kg; Clothes 30 x kg)','Average Weight per Bag (kg)'];
+  const columns=['MAWB','Client','Goods','Origin','Total Bags','Average Weight per Bag (kg)','Total Weight (kg)','Total Duty','Duty per kg','Rate (INR/kg)','EICI (15 x kg)','Goods Charge (HH HKG origin 1500, HH other origins 340, Protein JFK/DXB 3000, Protein other origins 1500, Clothes 1500 per bag, Battery 1500 per bag)','Profit (Rate x Weight - Total Cost)','DXB Freight (173 x kg)','USA Freight (410 x kg; includes JFK)','Canada Freight (450 x kg)','Germany Freight (322 x kg)','Total Cost (includes all expenses)','Driver Expense (INR; editable per MAWB; default 2600)','Profit per kg (Profit / Total Weight)','15% Goods Charge (Protein/Clothes/Battery or exact client Sonu)','Protein / Clothes Deduction (Protein Canada Germany USA 80 x kg, other origins including DXB 50 x kg; Clothes 30 x kg)','Average Weight per Bag (kg)'];
   const values=rows.map(row=>{
     const n=figures(row);
-    return [row.mawb,row.clientName,row.goodsCategory||'',row.origin||'',row.bags,n.averageWeightPerBag,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.dxbFreightDeduction,n.jfkFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',['PROTEIN','CLOTHES'].includes(String(row.goodsCategory||'').toUpperCase())&&n.kg!==null?n.proteinDeduction+n.siibDeduction:'',n.averageWeightPerBag];
+    return [row.mawb,row.clientName,row.goodsCategory||'',row.origin||'',row.bags,n.averageWeightPerBag,row.weight,row.totalDuty,n.dutyPerKg,row.rate,n.eici,n.goodsCharge,n.profit,n.dxbFreightDeduction,n.usaFreightDeduction,n.canadaFreightDeduction,n.germanyFreightDeduction,n.totalCost,n.driverExpense,n.profitPerKg,n.goodsCharge15Eligible?n.goodsCharge15Percent:'',['PROTEIN','CLOTHES'].includes(String(row.goodsCategory||'').toUpperCase())&&n.kg!==null?n.proteinDeduction+n.siibDeduction:'',n.averageWeightPerBag];
   });
   const csv=[columns,...values].map(items=>items.map(item=>{
     const raw=String(item??'');
@@ -292,8 +311,8 @@ export default function ImportProfitSheet(){
                 </td>)}
                 <td style={cell}>{displayMoney(n.eici)}</td>
                 <td style={{...cell,fontWeight:800}}>{displayMoney(n.goodsCharge)}<small style={{display:'block',color:'#64748b'}}>{n.chargePerBag===null?(String(row.goodsCategory||'').toUpperCase()==='PROTEIN'&&!String(row.origin||'').trim()?'Origin needed':'Select goods to calculate'):money.format(n.chargePerBag)+'/bag'}</small></td>
-                <td title={[n.proteinDeduction>0?'Protein ₹50/kg deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'Dubai freight ₹185/kg deduction: '+displayMoney(n.dxbFreightDeduction):'',n.jfkFreightDeduction>0?'JFK freight ₹450/kg deduction: '+displayMoney(n.jfkFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹400/kg deduction: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹330/kg deduction: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):'','Driver expense: '+displayMoney(n.driverExpense),n.goodsCharge15Eligible?'15% Goods Charge: '+displayMoney(n.goodsCharge15Percent):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.jfkFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>JFK</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
-                <td style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}</td>
+                <td title={[n.proteinDeduction>0?'Protein handling deduction: '+displayMoney(n.proteinDeduction):'',n.dxbFreightDeduction>0?'DXB freight ₹173/kg: '+displayMoney(n.dxbFreightDeduction):'',n.usaFreightDeduction>0?'USA freight ₹410/kg: '+displayMoney(n.usaFreightDeduction):'',n.canadaFreightDeduction>0?'Canada freight ₹450/kg: '+displayMoney(n.canadaFreightDeduction):'',n.germanyFreightDeduction>0?'Germany freight ₹322/kg: '+displayMoney(n.germanyFreightDeduction):'',n.siibDeduction>0?'Clothes SIIB ₹30/kg deduction: '+displayMoney(n.siibDeduction):'','Driver expense: '+displayMoney(n.driverExpense),n.goodsCharge15Eligible?'15% Goods Charge: '+displayMoney(n.goodsCharge15Percent):''].filter(Boolean).join(' • ')} style={{...cell,fontWeight:900,color:n.profit===null?'#64748b':n.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(n.profit)}{n.dxbFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#7c3aed'}}>DXB</span>}{n.usaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#0369a1'}}>USA</span>}{n.canadaFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#2563eb'}}>CAN</span>}{n.germanyFreightDeduction>0&&<span style={{marginLeft:5,fontSize:10,color:'#047857'}}>GER</span>}</td>
+                <td title={totalCostDetails(n)} style={{...cell,fontWeight:800}}>{displayMoney(n.totalCost)}{n.freightRate>0&&<small style={{display:'block',color:'#64748b'}}>Freight: ₹{n.freightRate}/kg included</small>}</td>
                 <td style={{...cell,fontWeight:800,color:'#9a3412'}} title="Master MAWB Driver Expense (default ₹2,600); divided proportionately across physical part rows">
                   <input aria-label={'Driver Expense for '+row.mawb} type="number" inputMode="decimal" min="0" step="0.01" placeholder="2600" value={row.driverExpense??DRIVER_EXPENSE_PER_MAWB}
                     onChange={e=>setDrafts(previous=>({...previous,[row.mawb]:{...(previous[row.mawb]||{}),driverExpense:e.target.value}}))}
@@ -330,7 +349,7 @@ export default function ImportProfitSheet(){
       </div>
       <p style={{fontSize:12,color:'#52657f',marginTop:12}}>
         MAWB may appear multiple times when Import tracking shows separate physical parts. The current month's Profit Sheet includes the live Active register and only Customs Cleared parts arriving this month. Older monthly periods show confirmed parts dated to that month. Each row uses its own bags and weight. Duty is stored separately for every physical part and changes only that part's Profit and Duty/kg. Previous master-level duty records are preserved, but not duplicated across split rows. Battery Goods Charge is calculated automatically as ₹1,500 × the physical part's number of bags. Driver Expense remains master-level and is allocated to the physical parts by shipment weight. <strong>Driver Expense</strong> inputs still edit the master amount (the calculations show each part's allocated share).{' '}
-        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH originating from HKG (Hong Kong) ₹1,500/bag, HH from other origins ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag; Battery ₹1,500/bag (automatic) • 15% Goods Charge applies only to Protein, Clothes, Battery, or client whose name is exactly Sonu (case insensitive), and is counted only once if more than one condition matches • Total Cost = Duty + EICI + Goods Charge • Profit = (Manual Rate × Total Weight) − EICI − Total Duty − Goods Charge − (₹80 × Total Weight for Protein originating from Canada/Germany/USA, including JFK; ₹50 × Total Weight for Protein from DXB and other origins) − (₹185 × Total Weight for Protein originating from DXB/Dubai only) − (₹450 × Total Weight for Protein originating from JFK only) − (₹400 × Total Weight for Protein originating from Canada, including Canadian airports such as YYZ/YVR/YUL/YYC) − (₹330 × Total Weight for Protein originating from Germany, including German airports such as FRA/MUC/BER/DUS) − (₹30 × Total Weight for Clothes as SIIB) − Driver Expense (default ₹2,600, editable and saved individually per master MAWB; counted once even for part shipments) − 15% of Goods Charge for eligible Protein, Clothes, Battery or exact-client-name Sonu MAWBs. DXB, JFK, Canada and Germany refer to shipment Origin, not an intermediate Via stop or the destination. Total Cost remains the original Duty + EICI + Goods Charge; special deductions, Driver Expense and 15% Goods Charge apply to Profit only. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Import Active rows are highlighted with a light green row and green left border. Customs Cleared rows retain their goods-based colours. Profit rows mirror the same MAWB and physical-part row count as the source registers; each part retains its own weight and bags. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
+        Duty/kg = Total Duty ÷ Total Weight • EICI = ₹15 × Total Weight • Goods Charge = HH originating from HKG (Hong Kong) ₹1,500/bag, HH from other origins ₹340/bag, Protein originating from JFK or DXB ₹3,000/bag, Protein from other known origins ₹1,500/bag, or Clothes ₹1,500/bag; Battery ₹1,500/bag (automatic) • 15% Goods Charge applies only to Protein, Clothes, Battery, or client whose name is exactly Sonu (case insensitive), and is counted only once if more than one condition matches • Total Cost = DXB/Canada/USA/Germany origin freight (if applicable) + EICI + Driver Expense + Goods Charge + Protein/Clothes Deduction + Total Duty + existing applicable 15% Goods Charge. Freight rates per kg: DXB ₹173, Canada ₹450, USA including JFK ₹410, Germany ₹322. Freight applies to any category of imported goods for the listed origins and is charged only once. Protein handling remains ₹80/kg for Canada/Germany/USA origins and ₹50/kg for DXB/other origins, while Clothes SIIB remains ₹30/kg. Driver Expense defaults to ₹2,600 per master MAWB and is allocated across physical parts without duplication; the 15% Goods Charge applies only to eligible goods/clients, once. Origin determines freight, not transit (Via) or destination. <strong>Profit = (Rate × Weight) − Total Cost.</strong> Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Rate is the selling rate per kg. Total Cost remains blank until Duty, Goods, Weight and Bags are available; Profit additionally requires Rate. Profit per kg = Profit ÷ Total Weight (kg); the footer Profit per kg = Total calculated Profit ÷ Total Weight of entries with calculated profit (not the sum of individual per-kg figures). Rate can be entered manually with decimals (up to 4 places); the ▲/▼ controls change it by ₹0.01. The footer adds each numeric column, including the entered Rate and Duty/kg values (these are sums, not average rates). Import Active rows are highlighted with a light green row and green left border. Customs Cleared rows retain their goods-based colours. Profit rows mirror the same MAWB and physical-part row count as the source registers; each part retains its own weight and bags. Blank amounts are excluded. Totals respect the selected Arrival Month, Client, Goods and search filters. Past months before October 2026 are excluded; arrivals must be confirmed, not estimated.
       </p>
     </div>
   </main>;
