@@ -3,14 +3,13 @@ import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
 import { selectedProfitMonth, profitMonths, currentProfitMonth, exportProfitHandoverDate, exportRateForCompany } from '../../../lib/profitPeriod.js';
 import { includeExportMasterInProfit, exportProfitRegister } from '../../../lib/exportProfitSource.js';
-import { EXPORT_SHIPMENT_CHARGE } from '../../../lib/exportShipmentCharge.js';
+import { EXPORT_SHIPMENT_CHARGE, validateExportShipmentCharge } from '../../../lib/exportShipmentCharge.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Read-only calculation based ONLY on Export MAWB masters. Includes the same
-// Active + completed-source registers as the Export dashboard. No Import rows,
-// airline tracking, or financial-entry fields are changed by this endpoint.
+// Read Export master MAWBs and a separately saved per-MAWB shipment charge.
+// This endpoint never modifies Import rows, source tracking or airline adapters.
 function sqlClient(){
   const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||
     process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
@@ -40,6 +39,15 @@ function totalWeight(data={}){
 function clientName(data={}){
   return String(data.clientName||data.client||'').trim();
 }
+async function ensureCharges(sql){
+  // Per master MAWB only. CREATE IF NOT EXISTS keeps old data safe.
+  await sql`CREATE TABLE IF NOT EXISTS mayavi_export_shipment_charge (
+    awb VARCHAR(11) PRIMARY KEY,
+    charge NUMERIC(16,2) NOT NULL CHECK(charge>=0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT NOT NULL DEFAULT ''
+  )`;
+}
 export async function GET(request){
   if(readSession(request)?.role!=='admin')
     return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
@@ -47,9 +55,14 @@ export async function GET(request){
   if(!month)return Response.json({ok:false,error:'Profit sheets start from October 2026. Choose a valid month.'},{status:400});
   try{
     const sql=sqlClient();
-    const shipments=await sql`SELECT awb,data FROM mayavi_shipments
-      WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'
-      ORDER BY updated_at DESC`;
+    await ensureCharges(sql);
+    const [shipments,charges]=await Promise.all([
+      sql`SELECT awb,data FROM mayavi_shipments
+        WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'
+        ORDER BY updated_at DESC`,
+      sql`SELECT awb,charge FROM mayavi_export_shipment_charge`
+    ]);
+    const savedCharges=new Map(charges.map(row=>[awbDigits(row.awb),Number(row.charge)]));
     const seen=new Set(),rows=[];
     for(const shipment of shipments){
       const awb=awbDigits(shipment.awb);
@@ -60,6 +73,7 @@ export async function GET(request){
       const weight=totalWeight(data);
       const client=clientName(data);
       const rate=exportRateForCompany(client);
+      const shipmentCharge=savedCharges.has(awb)?savedCharges.get(awb):EXPORT_SHIPMENT_CHARGE;
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         handoverDate:exportProfitHandoverDate(data),
@@ -67,12 +81,39 @@ export async function GET(request){
         weight,
         clientName:client,
         rate,
-        shipmentCharge:EXPORT_SHIPMENT_CHARGE, // Deduct once per master MAWB.
-        profit:weight===null?null:Math.round((weight*rate-EXPORT_SHIPMENT_CHARGE)*100)/100
+        shipmentCharge, // Admin-editable; still once per master MAWB.
+        profit:weight===null?null:Math.round((weight*rate-shipmentCharge)*100)/100
       });
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
   }catch(error){
     return Response.json({ok:false,error:error?.message||'Export Profit Sheet unavailable.'},{status:503});
+  }
+}
+
+export async function PATCH(request){
+  const admin=readSession(request);
+  if(admin?.role!=='admin')
+    return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+  try{
+    const body=await request.json().catch(()=>({}));
+    const awb=awbDigits(body.mawb);
+    const charge=validateExportShipmentCharge(body.shipmentCharge);
+    if(!awb||charge===null)
+      return Response.json({ok:false,error:'Enter a valid Shipment Charge (₹0 or more, up to 2 decimals).'},{status:400});
+    const sql=sqlClient();
+    await ensureCharges(sql);
+    const matched=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
+      AND UPPER(COALESCE(data->>'shipmentType',''))='EXPORT' LIMIT 1`;
+    if(!matched.length)
+      return Response.json({ok:false,error:'Export MAWB not found. Refresh the sheet.'},{status:404});
+    await sql`INSERT INTO mayavi_export_shipment_charge(awb,charge,updated_by)
+      VALUES (${awb},${charge},${admin.username})
+      ON CONFLICT(awb) DO UPDATE SET charge=EXCLUDED.charge,
+      updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
+    return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),shipmentCharge:charge},
+      {headers:{'Cache-Control':'no-store, private'}});
+  }catch(error){
+    return Response.json({ok:false,error:error?.message||'Unable to save shipment charge.'},{status:503});
   }
 }
