@@ -59,9 +59,11 @@ export default function UnifiedDashboard(){
   const [manageNote,setManageNote]=useState('');
 
   const selected=useMemo(()=>users.find(u=>u.username===username),[users,username]);
+  const managedSelected=useMemo(()=>users.find(u=>u.username===targetUsername),[users,targetUsername]);
+  const managingMainAdmin=managedSelected?.role==='admin';
   const branchNeedsAdminPassword=Boolean(selected&&!selected.passwordSet&&selected.branchScope);
   const firstLogin=Boolean(selected&&!selected.passwordSet&&!branchNeedsAdminPassword);
-  const employeeUsers=useMemo(()=>users.filter(u=>['jind','karnal','haryanaadmin'].includes(u.username)),[users]);
+  const managedUsers=useMemo(()=>users.filter(u=>u.username).sort((a,b)=>a.displayName.localeCompare(b.displayName)),[users]);
 
   async function loadUsers(){
     const res=await fetch('/api/auth',{cache:'no-store'});
@@ -175,7 +177,8 @@ export default function UnifiedDashboard(){
   },[manageOpen,changeOpen]);
 
   async function adminPasswordAction(action){
-    if(!targetUsername){setManageNote('Select an employee first.');return}
+    if(!targetUsername){setManageNote('Select a user first.');return}
+    if(managingMainAdmin){setManageNote('Use Change My Password for the main Admin account.');return}
     if(action==='admin_set_password'&&adminNewPassword.length<8){setManageNote('Password must contain at least 8 characters.');return}
     setManageBusy(true);setManageNote('');
     try{
@@ -248,23 +251,24 @@ export default function UnifiedDashboard(){
       <section style={modalCard} role="dialog" aria-modal="true" aria-label="Branch and Haryana Admin password management" onMouseDown={e=>e.stopPropagation()}>
         <button type="button" onClick={closeManage} aria-label="Close password manager" title="Close" style={{position:'absolute',right:12,top:12,width:36,height:36,display:'grid',placeItems:'center',fontSize:25,fontWeight:700,lineHeight:1,border:'1px solid #cbd5e1',borderRadius:9,background:'#f8fafc',color:'#1e293b',cursor:'pointer',zIndex:2}}>×</button>
         <div className="eyebrow">MAYAVI CARGO • ADMIN</div>
-        <h2 style={{margin:'8px 38px 8px 0'}}>Branch / Haryana Admin Passwords</h2>
-        <p style={{marginTop:0}}>Select Jind, Karnal, or Haryana Admin to set a password or force logout.</p>
+        <h2 style={{margin:'8px 38px 8px 0'}}>Manage User Passwords</h2>
+        <p style={{marginTop:0}}>Manage passwords and sessions for all active user IDs. Main Admin uses Change My Password.</p>
         <label>ACCOUNT</label>
         <select style={fullInput} value={targetUsername} onChange={e=>{setTargetUsername(e.target.value);setAdminNewPassword('');setManageNote('')}}>
-          <option value="">Select employee</option>
-          {employeeUsers.map(u=><option key={u.username} value={u.username}>{u.displayName} {u.passwordSet?'• Password set':'• Password pending'}</option>)}
+          <option value="">Select user</option>
+          {managedUsers.map(u=><option key={u.username} value={u.username}>{u.displayName} ({u.username}) {u.passwordSet?'• Password set':'• Password pending'}</option>)}
         </select>
+        {managingMainAdmin&&<p style={{color:'#92400e',fontWeight:700}}>Main Admin: use Change My Password above. Password reset is disabled for this account.</p>}
         <label>NEW PASSWORD</label>
         <div style={{display:'flex',gap:8,alignItems:'stretch'}}>
-          <input style={{flex:1,minWidth:0}} type={showAdminPassword?'text':'password'} value={adminNewPassword} onChange={e=>setAdminNewPassword(e.target.value)} placeholder="Admin can assign a new password" autoComplete="new-password"/>
+          <input style={{flex:1,minWidth:0}} disabled={managingMainAdmin} type={showAdminPassword?'text':'password'} value={adminNewPassword} onChange={e=>setAdminNewPassword(e.target.value)} placeholder="Admin can assign a new password" autoComplete="new-password"/>
           <button type="button" onClick={()=>setShowAdminPassword(v=>!v)} style={{width:84,padding:'0 10px'}}>{showAdminPassword?'HIDE':'SHOW'}</button>
         </div>
         {manageNote&&<div className="loginNote" style={{marginTop:12}}>{manageNote}</div>}
         <div style={{display:'grid',gap:10,marginTop:16}}>
-          <button disabled={manageBusy} onClick={()=>adminPasswordAction('admin_set_password')}>{manageBusy?'WORKING…':'SET NEW PASSWORD'}</button>
-          <button disabled={manageBusy} onClick={()=>adminPasswordAction('admin_reset_password')}>RESET EMPLOYEE PASSWORD</button>
-          <button disabled={manageBusy||!targetUsername} style={{background:'#7f1d1d',color:'#fff'}} onClick={()=>{if(window.confirm('Force logout this employee on all devices?'))void adminPasswordAction('admin_force_logout')}}>FORCE LOGOUT EMPLOYEE</button>
+          <button disabled={manageBusy||!targetUsername||managingMainAdmin} onClick={()=>adminPasswordAction('admin_set_password')}>{manageBusy?'WORKING…':'SET NEW PASSWORD'}</button>
+          <button disabled={manageBusy||!targetUsername||managingMainAdmin} onClick={()=>adminPasswordAction('admin_reset_password')}>RESET USER PASSWORD</button>
+          <button disabled={manageBusy||!targetUsername||managingMainAdmin} style={{background:'#7f1d1d',color:'#fff'}} onClick={()=>{if(window.confirm('Force logout this user on all devices?'))void adminPasswordAction('admin_force_logout')}}>FORCE LOGOUT USER</button>
           <button type="button" onClick={closeManage} style={{background:'#e2e8f0',color:'#0f172a',fontWeight:800}}>CLOSE WINDOW</button>
         </div>
         <small style={{display:'block',marginTop:12}}>Changing the password also ends old sessions. This window can be closed using ×, Close Window, Esc, or by clicking outside.</small>

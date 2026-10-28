@@ -27,7 +27,7 @@ async function activeSession(request,sql){
   const session=readSession(request);
   if(!session)return null;
   const [user]=await sql`SELECT username,display_name,role,branch_scope,session_version,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
-  const effectiveRole=user.branch_scope==='HARYANA'&&user.username==='haryanaadmin'?'haryana_admin':user.role;
+  const effectiveRole=user?.branch_scope==='HARYANA'&&user?.username==='haryanaadmin'?'haryana_admin':user?.role;
   if(!user||!user.is_active||effectiveRole!==session.role||Number(user.session_version)!==Number(session.sessionVersion||0))return null;
   return {...session,displayName:user.display_name,branchScope:user.branch_scope||'',sessionVersion:Number(user.session_version)};
 }
@@ -94,7 +94,7 @@ export async function POST(request){
       if(!targetUsername)return json({ok:false,error:'Select a user.'},400);
       const [target]=await sql`SELECT username,display_name,role,is_active,branch_scope FROM mayavi_users WHERE lower(username)=lower(${targetUsername}) LIMIT 1`;
       if(!target||!target.is_active)return json({ok:false,error:'Selected user is not enabled.'},404);
-      if(target.role==='admin'&&target.username!==admin.username)return json({ok:false,error:'Another admin account cannot be changed here.'},403);
+      if(target.role==='admin')return json({ok:false,error:'Use Change My Password to manage the main Admin password.'},403);
       if(action==='admin_force_logout'){
         if(target.role==='admin')return json({ok:false,error:'Admin accounts cannot be forcibly logged out here.'},403);
         await sql`UPDATE mayavi_users SET session_version=session_version+1,updated_at=now() WHERE username=${target.username}`;
