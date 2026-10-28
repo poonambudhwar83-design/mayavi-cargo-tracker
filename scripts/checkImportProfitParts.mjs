@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -102,6 +102,24 @@ assert.equal(dxbTotal,37400);
 // Cost, so removing a surcharge reduces cost and increases profit.
 assert.equal(importTotalCost({...dx,goodsCharge15Percent:99999}),37400);
 assert.equal(importNetProfit(500,100,37400),12600);
+// Free extra kg must NEVER alter EICI, duty, freight, bags, driver or any cost.
+// Base MAWB 100 kg × ₹500 minus ₹37,400 expenses = ₹12,600.
+// An extra 10 kg earns ₹5,000 WITHOUT expenses -> final Profit ₹17,600.
+assert.equal(importExcessProfit(500,10),5000);
+assert.equal(importProfitIncludingExcess(importNetProfit(500,100,37400),importExcessProfit(500,10)),17600);
+assert.equal(importTotalCost(dx),37400);
+assert.equal(importExcessProfit('555.50','2.25'),1249.88);
+assert.equal(importExcessProfit(500,0),0);
+assert.equal(importExcessProfit(500,''),null);
+assert.equal(importExcessProfit('',10),null);
+assert.equal(importExcessProfit(500,-1),null);
+assert.equal(importProfitIncludingExcess(importNetProfit(500,100,37400),null),12600);
+assert.equal(importProfitIncludingExcess(null,5000),null);
+assert.equal(importProfitIncludingExcess(1000,0),1000);
+// Part excess kg add individually and never twice for the same MAWB.
+const partsExtra=[2.5,3.5].map(kg=>importExcessProfit(500,kg));
+assert.deepEqual(partsExtra,[1250,1750]);
+assert.equal(partsExtra.reduce((sum,n)=>sum+n,0),3000);
 // The otherwise-identical Clothes cargo includes existing expenses but NO
 // origin freight or protein handling; clothes SIIB is retained.
 const clothesTotal=importTotalCost({...dx,freightCharge:importFreightRate('DXB','CLOTHES')*100,proteinDeduction:0,siibDeduction:3000});
@@ -125,7 +143,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={18}'));
+assert.ok(profitUi.includes('colSpan={20}'));
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
@@ -145,8 +163,33 @@ assert.ok(profitUi.includes('save(row.mawb,field,e.target.value,row.rowKey)'));
 assert.ok(profitUi.includes('row.rowKey===rowKey'));
 assert.ok(profitUi.includes('const usaFreightDeduction='));
 assert.ok(profitUi.includes('const totalCost=importTotalCost('));
-assert.ok(profitUi.includes('const profit=importNetProfit(rate,kg,totalCost);'));
+assert.ok(profitUi.includes('const baseProfit=importNetProfit(rate,kg,totalCost);'));
+assert.ok(profitUi.includes('const excessProfit=importExcessProfit(rate,excessWeight);'));
+assert.ok(profitUi.includes('const profit=importProfitIncludingExcess(baseProfit,excessProfit);'));
 assert.ok(profitUi.includes('title={totalCostDetails(n)}'));
+// Per-part Excess Weight must persist independently and appear in totals/CSV.
+assert.ok(profitUi.includes("'Excess Weight (kg)'"));
+assert.ok(profitUi.includes("'Excess Profit (₹)'"));
+assert.ok(profitUi.includes("'Excess Weight (kg; no additional cost)'"));
+assert.ok(profitUi.includes("'Excess Profit (Excess Weight x Rate; no costs)'"));
+assert.ok(profitUi.includes("save(row.mawb,'excessWeight',e.target.value,row.rowKey)"));
+assert.ok(profitUi.includes("const perPart=field==='totalDuty'||field==='excessWeight';"));
+assert.ok(profitUi.includes('excessWeight+=n.excessWeight||0;'));
+assert.ok(profitUi.includes('if(n.excessProfit!==null)excessProfit+=n.excessProfit;'));
+assert.ok(profitUi.includes('n.profit,n.excessProfit'));
+assert.ok(profitUi.includes('row.weight,row.excessWeight'));
+assert.ok(profitUi.includes('displayMoney(totals.excessProfit)'));
+assert.ok(profitUi.includes('No additional cost')||profitUi.includes('without any extra cost'));
+assert.ok(apiSource.includes("['totalDuty','excessWeight','rate'"));
+assert.ok(apiSource.includes('ADD COLUMN IF NOT EXISTS excess_weight NUMERIC(16,4)'));
+assert.ok(apiSource.includes('SELECT awb,part_key,total_duty,excess_weight'));
+assert.ok(apiSource.includes("const extra=isPart?part?.excess_weight:financial.excess_weight;"));
+assert.ok(apiSource.includes("if(field==='totalDuty'||field==='excessWeight')"));
+assert.ok(apiSource.includes('INSERT INTO mayavi_import_profit_part_duty (awb,part_key,excess_weight,updated_by)'));
+assert.ok(apiSource.includes('INSERT INTO mayavi_import_profit (awb,excess_weight,updated_by)'));
+assert.ok(apiSource.includes('ON CONFLICT (awb,part_key) DO UPDATE SET excess_weight=EXCLUDED.excess_weight'));
+assert.ok(apiSource.includes('excessWeight:extra===null||extra===undefined'));
+assert.ok(apiSource.includes("physicalImportProfitRows(shipment.data||{},awb).some(part=>part.rowKey===rowKey)"));
 assert.ok(profitUi.includes('USA Protein Freight (410 x kg; includes JFK)'));
 assert.ok(profitUi.includes('importFreightRate(origin,category)'));
 assert.ok(profitUi.includes('Freight is charged ONLY when Goods is Protein'));
