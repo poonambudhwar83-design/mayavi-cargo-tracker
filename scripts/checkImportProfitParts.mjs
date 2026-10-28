@@ -87,13 +87,25 @@ assert.deepEqual(IMPORT_FREIGHT_RATES,{DXB:173,CANADA:450,USA:410,GERMANY:322});
 for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ','CANADA',450],
   ['CANADA','CANADA',450],['JFK','USA',410],['USA','USA',410],['LAX','USA',410],
   ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
-  assert.equal(importFreightRegion(origin),region,origin);
-  assert.equal(importFreightRate(origin),rate,origin);
+  assert.equal(importFreightRegion(origin,'PROTEIN'),region,origin);
+  assert.equal(importFreightRate(origin,'PROTEIN'),rate,origin);
+  for(const other of ['CLOTHES','HH','BATTERY','', 'OTHER']){
+    assert.equal(importFreightRegion(origin,other),'',origin+' '+other+' no freight');
+    assert.equal(importFreightRate(origin,other),0,origin+' '+other+' no freight');
+  }
 }
 const dx={duty:5000,eici:1500,driverExpense:2600,goodsCharge:6000,
   freightCharge:17300,proteinDeduction:5000,siibDeduction:0,goodsCharge15Percent:900};
 const dxbTotal=importTotalCost(dx);
 assert.equal(dxbTotal,38300);
+// The otherwise-identical Clothes cargo includes existing expenses but NO
+// origin freight or protein handling; clothes SIIB is retained.
+const clothesTotal=importTotalCost({...dx,freightCharge:importFreightRate('DXB','CLOTHES')*100,proteinDeduction:0,siibDeduction:3000});
+assert.equal(clothesTotal,19000);
+assert.equal(importNetProfit(500,100,clothesTotal),31000);
+assert.equal(importFreightRate('JFK','CLOTHES'),0);
+assert.equal(importFreightRate('YYZ','HH'),0);
+assert.equal(importFreightRate('FRA','BATTERY'),0);
 assert.equal(importNetProfit(500,100,dxbTotal),11700);
 assert.equal(importNetProfit(null,100,dxbTotal),null);
 assert.equal(importTotalCost({...dx,duty:null}),null);
@@ -131,7 +143,9 @@ assert.ok(profitUi.includes('const usaFreightDeduction='));
 assert.ok(profitUi.includes('const totalCost=importTotalCost('));
 assert.ok(profitUi.includes('const profit=importNetProfit(rate,kg,totalCost);'));
 assert.ok(profitUi.includes('title={totalCostDetails(n)}'));
-assert.ok(profitUi.includes('USA Freight (410 x kg; includes JFK)'));
+assert.ok(profitUi.includes('USA Protein Freight (410 x kg; includes JFK)'));
+assert.ok(profitUi.includes('importFreightRate(origin,category)'));
+assert.ok(profitUi.includes('Freight is charged ONLY when Goods is Protein'));
 assert.ok(!profitUi.includes('185*kg'));
 assert.ok(!profitUi.includes('Total Cost (before special deductions)'));
 assert.ok(profitUi.includes('const canadaFreightDeduction='));
