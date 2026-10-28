@@ -27,7 +27,8 @@ async function activeSession(request,sql){
   const session=readSession(request);
   if(!session)return null;
   const [user]=await sql`SELECT username,display_name,role,branch_scope,session_version,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
-  if(!user||!user.is_active||user.role!==session.role||Number(user.session_version)!==Number(session.sessionVersion||0))return null;
+  const effectiveRole=user.branch_scope==='HARYANA'&&user.username==='haryanaadmin'?'haryana_admin':user.role;
+  if(!user||!user.is_active||effectiveRole!==session.role||Number(user.session_version)!==Number(session.sessionVersion||0))return null;
   return {...session,displayName:user.display_name,branchScope:user.branch_scope||'',sessionVersion:Number(user.session_version)};
 }
 async function adminSession(request,sql){
@@ -42,7 +43,7 @@ export async function GET(request){
     const headers=session?{}:{'set-cookie':clearSessionCookie()};
     return json({ok:true,authenticated:Boolean(session),session,
       users:users.map(u=>({username:u.username,displayName:u.display_name,
-        role:u.role==='admin'?'admin':'employee',branchScope:u.branch_scope||'',passwordSet:u.password_set}))},200,headers);
+        role:u.branch_scope==='HARYANA'&&u.username==='haryanaadmin'?'haryana_admin':u.role==='admin'?'admin':'employee',branchScope:u.branch_scope||'',passwordSet:u.password_set}))},200,headers);
   }catch(e){return json({ok:false,authenticated:false,session:null,error:e?.message||String(e)},503);}
 }
 
@@ -132,7 +133,7 @@ export async function POST(request){
       return json({ok:false,error:'Incorrect password.'},403);
     }
 
-    const session={username:user.username,displayName:user.display_name,role:user.role==='admin'?'admin':'employee',branchScope:user.branch_scope||'',sessionVersion:Number(user.session_version||0)};
+    const session={username:user.username,displayName:user.display_name,role:user.branch_scope==='HARYANA'&&user.username==='haryanaadmin'?'haryana_admin':user.role==='admin'?'admin':'employee',branchScope:user.branch_scope||'',sessionVersion:Number(user.session_version||0)};
     const token=createSessionToken(session);
     return json({ok:true,authenticated:true,firstSetup,session},200,{'set-cookie':sessionCookie(token)});
   }catch(e){

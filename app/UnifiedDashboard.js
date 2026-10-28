@@ -7,6 +7,7 @@ import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import ExportProfitSheet from './ExportProfitSheet.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
+import HaryanaAdminDashboard from './HaryanaAdminDashboard.js';
 
 const FALLBACK_USERS=[
   {username:'admin',displayName:'Admin',role:'admin',passwordSet:false},
@@ -18,7 +19,8 @@ const FALLBACK_USERS=[
   {username:'rahul',displayName:'Rahul',role:'employee',passwordSet:false},
   {username:'sonu',displayName:'Sonu',role:'employee',passwordSet:false},
   {username:'jind',displayName:'Jind',role:'employee',branchScope:'JIND',passwordSet:false},
-  {username:'karnal',displayName:'Karnal',role:'employee',branchScope:'KARNAL',passwordSet:false}
+  {username:'karnal',displayName:'Karnal',role:'employee',branchScope:'KARNAL',passwordSet:false},
+  {username:'haryanaadmin',displayName:'Haryana Admin',role:'haryana_admin',branchScope:'HARYANA',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
 
@@ -59,7 +61,7 @@ export default function UnifiedDashboard(){
   const selected=useMemo(()=>users.find(u=>u.username===username),[users,username]);
   const branchNeedsAdminPassword=Boolean(selected&&!selected.passwordSet&&selected.branchScope);
   const firstLogin=Boolean(selected&&!selected.passwordSet&&!branchNeedsAdminPassword);
-  const employeeUsers=useMemo(()=>users.filter(u=>['jind','karnal'].includes(u.username)),[users]);
+  const employeeUsers=useMemo(()=>users.filter(u=>['jind','karnal','haryanaadmin'].includes(u.username)),[users]);
 
   async function loadUsers(){
     const res=await fetch('/api/auth',{cache:'no-store'});
@@ -79,7 +81,8 @@ export default function UnifiedDashboard(){
           // DashboardClient paints it immediately while the server list loads.
           // An explicit new login still clears any previous user's local cache.
           setSession(data.session);
-          if(data.session.branchScope)setSelectedDashboard('BRANCH_LOADS');
+          if(data.session.role==='haryana_admin')setSelectedDashboard('HARYANA');
+          else if(data.session.branchScope)setSelectedDashboard('BRANCH_LOADS');
         }
         if(!data.ok&&data.error)setNote(data.error);
       }catch{if(active)setNote('Login service is temporarily unavailable.')}finally{if(active)setLoading(false)}
@@ -118,7 +121,7 @@ export default function UnifiedDashboard(){
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
       const data=await res.json();
       if(!data.ok)throw new Error(data.error||'Login failed.');
-      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(data.session.branchScope?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
+      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(data.session.role==='haryana_admin'?'HARYANA':data.session.branchScope?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
       await loadUsers().catch(()=>{});
     }catch(e){setNote(e.message||'Login failed.')}finally{setBusy(false)}
   }
@@ -173,7 +176,7 @@ export default function UnifiedDashboard(){
 
   async function adminPasswordAction(action){
     if(!targetUsername){setManageNote('Select an employee first.');return}
-    if(action==='admin_set_password'&&adminNewPassword.length<8){setManageNote('Branch password must contain at least 8 characters.');return}
+    if(action==='admin_set_password'&&adminNewPassword.length<8){setManageNote('Password must contain at least 8 characters.');return}
     setManageBusy(true);setManageNote('');
     try{
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,targetUsername,newPassword:adminNewPassword})});
@@ -185,11 +188,14 @@ export default function UnifiedDashboard(){
   }
 
   const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
-  const branchLogin=Boolean(session&&session.role!=='admin'&&session.branchScope);
+  const branchLogin=Boolean(session?.role==='employee'&&['JIND','KARNAL'].includes(session.branchScope));
+  const haryanaLogin=Boolean(session?.role==='haryana_admin'&&session.branchScope==='HARYANA');
   // Keep the view switch separate from the account-bar JSX. Each branch
   // employee gets only its own dedicated page; Admin can switch back freely.
   const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));
-  const dashboardView=branchSelected
+  const dashboardView=haryanaLogin
+    ?<HaryanaAdminDashboard/>
+    :branchSelected
     ?<BranchLoadsDashboard currentUser={session}/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
       ?<ImportFinanceSection/>
@@ -207,14 +213,14 @@ export default function UnifiedDashboard(){
 
   if(session)return <>
     <div style={topAccountBar}>
-      {!branchLogin&&<SaudiaAssist/>}
-      {!branchLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
+      {!branchLogin&&!haryanaLogin&&<SaudiaAssist/>}
+      {!branchLogin&&!haryanaLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
-      {(branchLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
+      {(branchLogin||haryanaLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
     {dashboardView}
 
@@ -239,12 +245,12 @@ export default function UnifiedDashboard(){
     </div>}
 
     {session.role==='admin'&&manageOpen&&<div style={modalBack} role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeManage()}}>
-      <section style={modalCard} role="dialog" aria-modal="true" aria-label="Jind and Karnal password management" onMouseDown={e=>e.stopPropagation()}>
+      <section style={modalCard} role="dialog" aria-modal="true" aria-label="Branch and Haryana Admin password management" onMouseDown={e=>e.stopPropagation()}>
         <button type="button" onClick={closeManage} aria-label="Close password manager" title="Close" style={{position:'absolute',right:12,top:12,width:36,height:36,display:'grid',placeItems:'center',fontSize:25,fontWeight:700,lineHeight:1,border:'1px solid #cbd5e1',borderRadius:9,background:'#f8fafc',color:'#1e293b',cursor:'pointer',zIndex:2}}>×</button>
         <div className="eyebrow">MAYAVI CARGO • ADMIN</div>
-        <h2 style={{margin:'8px 38px 8px 0'}}>Jind / Karnal Passwords</h2>
-        <p style={{marginTop:0}}>Select Jind or Karnal to manage the branch password or force logout.</p>
-        <label>BRANCH ACCOUNT</label>
+        <h2 style={{margin:'8px 38px 8px 0'}}>Branch / Haryana Admin Passwords</h2>
+        <p style={{marginTop:0}}>Select Jind, Karnal, or Haryana Admin to set a password or force logout.</p>
+        <label>ACCOUNT</label>
         <select style={fullInput} value={targetUsername} onChange={e=>{setTargetUsername(e.target.value);setAdminNewPassword('');setManageNote('')}}>
           <option value="">Select employee</option>
           {employeeUsers.map(u=><option key={u.username} value={u.username}>{u.displayName} {u.passwordSet?'• Password set':'• Password pending'}</option>)}
@@ -275,7 +281,7 @@ export default function UnifiedDashboard(){
       <label>YOUR NAME</label>
       <select value={username} onChange={e=>{setUsername(e.target.value);setPassword('');setShowPassword(false);setNote('')}}>
         <option value="">Select name</option>
-        {users.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.role==='admin'?' (Admin)':''}</option>)}
+        {users.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.role==='admin'?' (Admin)':u.role==='haryana_admin'?' (Read-only)':''}</option>)}
       </select>
       <label>{firstLogin?'SET YOUR PASSWORD':'PASSWORD'}</label>
       <div style={{display:'flex',gap:8,alignItems:'stretch'}}>
@@ -283,7 +289,7 @@ export default function UnifiedDashboard(){
         <button type="button" onClick={()=>setShowPassword(v=>!v)} style={{width:84,padding:'0 10px'}}>{showPassword?'HIDE':'SHOW'}</button>
       </div>
       {firstLogin&&<div className="firstLogin">First login: this password will become your permanent Mayavi password.</div>}
-      {branchNeedsAdminPassword&&<div className="firstLogin">For branch employees, Admin must assign a personal password in Manage User Passwords.</div>}
+      {branchNeedsAdminPassword&&<div className="firstLogin">For branch employees, Admin must assign a password in Manage User Passwords.</div>}
       {note&&<div className="loginNote">{note}</div>}
       <button disabled={busy} onClick={login}>{busy?'CHECKING…':firstLogin?'SET PASSWORD & LOGIN':'LOGIN'}</button>
       {!firstLogin&&<button type="button" onClick={forgotPassword} style={{marginTop:8,background:'transparent',color:'#174f96',border:'none',textDecoration:'underline',cursor:'pointer'}}>FORGOT PASSWORD?</button>}
