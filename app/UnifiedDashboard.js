@@ -4,7 +4,7 @@ import DashboardClient from './DashboardClient.js';
 import SpeedPostDashboard from './SpeedPostDashboard.js';
 import AdminNotesDashboard from './AdminNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
-import ImportProfitSheet from './ImportProfitSheet.js';
+import ImportFinanceSection from './ImportFinanceSection.js';
 import ExportProfitSheet from './ExportProfitSheet.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 
@@ -192,7 +192,7 @@ export default function UnifiedDashboard(){
   const dashboardView=branchSelected
     ?<BranchLoadsDashboard currentUser={session}/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
-      ?<ImportProfitSheet/>
+      ?<ImportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
       ?<ExportProfitSheet/>
     :session?.role==='admin'&&selectedDashboard==='NOTES'
