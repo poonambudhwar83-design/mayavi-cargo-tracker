@@ -42,7 +42,7 @@ function load(row){
 function master(row){
   const d=row.data||{};
   const parts=Array.isArray(d.partShipments)?d.partShipments:[];
-  const pendingParts=parts.filter(p=>p&&p.customsCleared!==true);
+  const pendingParts=parts.filter(p=>p&&(p.customsCleared===false||(d.customsCleared!==true&&p.customsCleared!==true)));
   if(d.customsCleared===true&&!pendingParts.length)return null;
   const awb=text(d.mawb||row.awb).replace(/\D/g,'');
   return {
