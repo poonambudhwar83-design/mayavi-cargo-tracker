@@ -1521,7 +1521,7 @@ async function handle(mawb,fallback={}){
     if(mawb.startsWith('176-')){
       try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
       catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
-    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||gulfAirFastPath||mawb.startsWith('607-')||flydubaiFastPath){
+    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
