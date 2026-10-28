@@ -132,7 +132,9 @@ export async function GET(request){
   try{
     const auth=access(request);if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const sql=db();
-    const rawRows=canViewOtherCountries(auth.session,auth.internal)
+    const rawRows=auth.session?.role==='haryana_admin'
+      ? await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments WHERE COALESCE(data->>'shipmentType','IMPORT')='IMPORT' ORDER BY updated_at DESC`
+      : canViewOtherCountries(auth.session,auth.internal)
       ? await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments ORDER BY updated_at DESC`
       : await sql`SELECT awb,data,version,updated_at,tracking_checked_at FROM mayavi_shipments WHERE COALESCE(data->>'shipmentType','IMPORT') NOT IN ('OTHER_COUNTRIES','OTHER_COUNTRIES_IMPORT') ORDER BY updated_at DESC`;
     const newestByAwb=new Map();
@@ -157,7 +159,7 @@ export async function POST(request){
     // Client ownership is operator-entered master data. Normal tracking refreshes,
     // company/goods edits and stale browser saves must never overwrite it.
     // Only an explicit authenticated client-edit request may change clientName/client.
-    const allowClientUpdate=body?.allowClientUpdate===true&&Boolean(auth.internal||auth.session?.role==='admin'||auth.session?.role==='employee');
+    const allowClientUpdate=body?.allowClientUpdate===true&&Boolean(auth.internal||auth.session?.role==='admin'||auth.session?.role==='employee'||auth.session?.role==='haryana_admin');
     const sql=db();
     const saved=[];
     const weightMinusAllowed=canManageWeightMinus(auth.session,auth.internal);
@@ -166,6 +168,11 @@ export async function POST(request){
       if(!incomingAwb)throw new Error('Invalid MAWB.');
       let rowForSave={...row};
       const [existingRow]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${incomingAwb} LIMIT 1`;
+      if(auth.session?.role==='haryana_admin'&&(
+        shipmentType(rowForSave.shipmentType)!=='IMPORT'||
+        (existingRow&&shipmentType(existingRow.data?.shipmentType)!=='IMPORT'))){
+        return Response.json({ok:false,error:'Haryana Admin can manage Import masters only.'},{status:403});
+      }
       if((isOtherCountries(rowForSave)||isOtherCountries(existingRow?.data||{}))&&!canViewOtherCountries(auth.session,auth.internal)){
         return Response.json({ok:false,error:'Admin authorization required for Other Countries.'},{status:403});
       }
@@ -257,11 +264,14 @@ export async function POST(request){
 export async function DELETE(request){
   try{
     const session=readSession(request);
-    if(!session||session.role!=='admin')return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+    if(!session||!['admin','haryana_admin'].includes(session.role))return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
     const awb=normalize(new URL(request.url).searchParams.get('awb')||'');
     if(!awb)return Response.json({ok:false,error:'Invalid MAWB.'},{status:400});
     const sql=db();
-    await sql`DELETE FROM mayavi_shipments WHERE awb=${awb}`;
+    const deleted=session.role==='haryana_admin'
+      ?await sql`DELETE FROM mayavi_shipments WHERE awb=${awb} AND COALESCE(data->>'shipmentType','IMPORT')='IMPORT' RETURNING awb`
+      :await sql`DELETE FROM mayavi_shipments WHERE awb=${awb} RETURNING awb`;
+    if(!deleted.length)return Response.json({ok:false,error:'Import master not found or access denied.'},{status:404});
     return Response.json({ok:true,shared:true,awb});
   }catch(e){
     return Response.json({ok:false,shared:false,error:e?.message||String(e)},{status:503});
@@ -289,6 +299,7 @@ export async function PATCH(request){
     for(let attempt=0;attempt<5;attempt++){
       const [previous]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
       if(!previous)return Response.json({ok:false,error:'Shipment not found. Refresh the dashboard.'},{status:404});
+      if(auth.session?.role==='haryana_admin'&&shipmentType(previous.data?.shipmentType)!=='IMPORT')return Response.json({ok:false,error:'Import masters only.'},{status:403});
       if(!['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType(previous.data?.shipmentType))){
         return Response.json({ok:false,error:'Mail is only available for Import.'},{status:400});
       }

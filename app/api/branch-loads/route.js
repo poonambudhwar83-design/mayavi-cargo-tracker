@@ -18,6 +18,7 @@ async function authenticate(request,sql){
   const u=users[0];
   if(!u||!u.is_active||Number(u.session_version)!==Number(session.sessionVersion||0))return {error:'Session revoked. Please log in again.',status:401};
   if(u.role==='admin'&&session.role==='admin')return {admin:true,username:u.username,branch:null};
+  if(u.username==='haryanaadmin'&&u.role==='employee'&&u.branch_scope==='HARYANA'&&session.role==='haryana_admin'&&session.branchScope==='HARYANA')return {admin:true,username:u.username,branch:null};
   const branch=allowedBranch(u.branch_scope)||allowedBranch(u.username);
   if(!branch||u.role!=='employee'||session.role!=='employee')
     return {error:'Jind / Karnal page access is restricted.',status:403};

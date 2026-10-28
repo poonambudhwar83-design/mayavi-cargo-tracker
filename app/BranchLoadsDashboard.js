@@ -87,7 +87,7 @@ function FieldChoice({name,list,value,onChange}){
 }
 
 export default function BranchLoadsDashboard({currentUser}){
-  const isAdmin=currentUser?.role==='admin';
+  const isAdmin=currentUser?.role==='admin'||currentUser?.role==='haryana_admin';
   const userBranch=isAdmin?'':String(currentUser?.branchScope||currentUser?.username||'').toUpperCase();
   const [filter,setFilter]=useState(isAdmin?'ALL':userBranch);
   const [rows,setRows]=useState([]);

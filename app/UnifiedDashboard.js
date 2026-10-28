@@ -197,7 +197,7 @@ export default function UnifiedDashboard(){
   // employee gets only its own dedicated page; Admin can switch back freely.
   const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));
   const dashboardView=haryanaLogin
-    ?<HaryanaAdminDashboard/>
+    ?<HaryanaAdminDashboard currentUser={session} onLogout={logout}/>
     :branchSelected
     ?<BranchLoadsDashboard currentUser={session}/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
@@ -285,7 +285,7 @@ export default function UnifiedDashboard(){
       <label>YOUR NAME</label>
       <select value={username} onChange={e=>{setUsername(e.target.value);setPassword('');setShowPassword(false);setNote('')}}>
         <option value="">Select name</option>
-        {users.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.role==='admin'?' (Admin)':u.role==='haryana_admin'?' (Read-only)':''}</option>)}
+        {users.map(u=><option key={u.username} value={u.username}>{u.displayName}{u.role==='admin'?' (Admin)':u.role==='haryana_admin'?' (Haryana Admin)':''}</option>)}
       </select>
       <label>{firstLogin?'SET YOUR PASSWORD':'PASSWORD'}</label>
       <div style={{display:'flex',gap:8,alignItems:'stretch'}}>

@@ -92,8 +92,10 @@ async function privateTrackingBlocked(request,mawb=''){
   try{
     const sql=neon(url);
     const rows=await sql`SELECT data->>'shipmentType' AS shipment_type FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
-    if(String(rows?.[0]?.shipment_type||'').toUpperCase()!=='OTHER_COUNTRIES')return false;
     const session=readSession(request);
+    const type=String(rows?.[0]?.shipment_type||'IMPORT').toUpperCase();
+    if(session?.role==='haryana_admin')return Boolean(rows?.length&&type!=='IMPORT');
+    if(type!=='OTHER_COUNTRIES')return false;
     return !(session?.role==='admin'||trackInternalAllowed(request));
   }catch{return false}
 }
