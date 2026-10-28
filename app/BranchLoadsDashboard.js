@@ -460,14 +460,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><span>Received • Active + Delivered</span><strong>{fmt(overviewTotals.received)}</strong></div>
       <div><span>Balance • Active + Delivered</span><strong>{fmt(overviewTotals.balance)}</strong></div>
       <div><span>Paid to JEPO • Active + Delivered</span><strong>{fmt(overviewTotals.paidToJepo)}</strong></div>
-      <div><span>Paid to Branch • Active + Delivered</span><strong>{fmt(overviewTotals.paidToBranch)}</strong>
-        <small className={styles.branchCashLabel}>Cash included: {fmt(overviewTotals.cashBranch)} (Extra Cost remainder)</small>
-        <small className={styles.branchDisplayedSum} title="Display-only sum: Paid to Branch already includes the cash shown here.">
-          Displayed addition: {fmt(overviewTotals.paidToBranch)} + {fmt(overviewTotals.cashBranch)}
-          <b>{fmt(overviewTotals.paidToBranch+overviewTotals.cashBranch)}</b>
-        </small>
-        <small className={styles.branchDisplayNote}>Display only — cash is already included in Paid to Branch.</small>
-      </div>
+      <div><span>Paid to Branch • Active + Delivered</span><strong>{fmt(overviewTotals.paidToBranch)}</strong><small className={styles.branchCashLabel}>Cash included: {fmt(overviewTotals.cashBranch)} (Extra Cost remainder)</small></div>
     </div>
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
     <form noValidate onSubmit={save}>

@@ -275,12 +275,6 @@ assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED',commodity:'Ho
 assert.ok(ui.includes('const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]);'));
 assert.ok(ui.includes('const totals=useMemo(()=>sumLedgerTotals(shown),[shown]);'));
 assert.ok(ui.includes('Cash included: {fmt(overviewTotals.cashBranch)}'));
-assert.ok(ui.includes('Displayed addition: {fmt(overviewTotals.paidToBranch)} + {fmt(overviewTotals.cashBranch)}'));
-assert.ok(ui.includes('<b>{fmt(overviewTotals.paidToBranch+overviewTotals.cashBranch)}</b>'));
-assert.ok(ui.includes('Display only — cash is already included in Paid to Branch.'));
-assert.equal(10402+1375,11777); // Screenshot's requested display-only addition
-assert.equal(9027+1375,10402); // Actual Jind branch payout: do not double count Cash
-assert.ok(stylesheet.includes('.metrics .branchDisplayedSum'));
 assert.ok(ui.includes('branchPayoutForRecord(r),r.destination'));
 assert.ok(ui.includes('total={branchPayoutForRecord(record)}'));
 assert.ok(!ui.includes('paidToBranch:t.paidToBranch+Number(r.paidToBranch||0)'));
