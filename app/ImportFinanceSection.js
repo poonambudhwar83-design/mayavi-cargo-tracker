@@ -14,7 +14,7 @@ export default function ImportFinanceSection(){
       try{
         const response=await fetch('/api/import-client-receivables',{cache:'no-store',credentials:'include'});
         const data=await response.json();
-        if(active&&response.ok&&data.ok)setNewLedgerAlerts(Number(data.unread)||0);
+        if(active&&response.ok&&data.ok)setNewLedgerAlerts((Number(data.unread)||0)+(Number(data.reconciliation?.openIssues)||0));
       }catch{} // Existing finance tab should never fail because notifications are unavailable.
     }
     void checkClearedAlerts();

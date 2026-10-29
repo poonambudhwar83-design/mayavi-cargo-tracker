@@ -4,6 +4,7 @@ import {readSession} from '../../../lib/mayaviAuth.js';
 import {ledgerAwb,validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
 import {clientKey,clientLabel,istDate,masterCustomsClearance,masterReceivable,settleClientReceivables} from '../../../lib/importClientReceivables.js';
 import {clearedMasterInImportProfit} from '../../../lib/importReceivablesProfitSource.js';
+import {reconcileClientLedger,getReconciliationSummary} from '../../../lib/clientLedgerReconcile.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store, private'}});
@@ -95,7 +96,7 @@ export async function GET(request){
   try{
     const sql=db();await ensure(sql);
     const {masters,accounts,opened}=await inputs(sql),added=await sync(sql,masters,opened);
-    const [rawInvoices,rawReceipts,oldReceipts,voided]=await Promise.all([
+    const [rawInvoices,rawReceipts,oldReceipts,voided,reconciliation]=await Promise.all([
       sql`SELECT awb,client_key,source,cleared_at,recognized_at,weight,excess_weight,
         rate,amount,acknowledged_at FROM mayavi_import_client_invoices ORDER BY recognized_at,awb`,
       sql`SELECT id,client_key,to_char(payment_date,'YYYY-MM-DD') AS payment_date,
@@ -103,7 +104,8 @@ export async function GET(request){
         ORDER BY payment_date,created_at,id`,
       sql`SELECT awb,to_char(payment_date,'YYYY-MM-DD') AS date,mode,amount,remarks
         FROM mayavi_import_client_receipts ORDER BY payment_date DESC LIMIT 100`,
-      sql`SELECT awb,client_key,voided_at FROM mayavi_import_client_voided_invoices`
+      sql`SELECT awb,client_key,voided_at FROM mayavi_import_client_voided_invoices`,
+      getReconciliationSummary(sql)
     ]);
     const invoices=rawInvoices.map(invoice),receipts=rawReceipts.map(payment);
     const names=new Map(masters.map(m=>[m.clientKey,m.clientName]));
@@ -128,7 +130,7 @@ export async function GET(request){
         deletedInvoiceCount:voided.filter(v=>v.client_key===key).length,
         unread:invoiceRows.filter(i=>i.source==='AUTO'&&!i.acknowledged).length};
     }).sort((a,b)=>a.name.localeCompare(b.name));
-    return reply({ok:true,clients,newClearedMasters:added,
+    return reply({ok:true,clients,reconciliation,newClearedMasters:added,
       unread:clients.reduce((n,c)=>n+c.unread,0),
       legacyReceipts:oldReceipts.map(x=>({...x,amount:Number(x.amount)})),
       lastUpdated:new Date().toISOString()});
@@ -140,6 +142,10 @@ export async function POST(request){
   try{
     const body=await request.json().catch(()=>({})),action=String(body.action||'').toUpperCase(),sql=db();
     await ensure(sql);
+    if(action==='RECONCILE'){
+      const result=await reconcileClientLedger(sql);
+      return reply({ok:true,...result});
+    }
     if(action==='OPENING'){
       const key=clientKey(body.client),value=String(body.amount??'').trim(),
         amount=/^\d{1,12}(?:\.\d{1,2})?$/.test(value)?Number(value):NaN;

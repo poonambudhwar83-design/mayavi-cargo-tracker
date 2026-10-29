@@ -2,7 +2,37 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {clientKey,istDate,masterCustomsClearance,masterReceivable,settleClientReceivables} from '../lib/importClientReceivables.js';
 import {clearedMasterInImportProfit} from '../lib/importReceivablesProfitSource.js';
+import {inspectClientLedger,MONITOR_START_IST} from '../lib/clientLedgerReconcile.js';
 assert.equal(clientKey('  Sonu   cargo '),'SONU CARGO');
+
+assert.equal(MONITOR_START_IST,'2026-10-29');
+const checkRow={awb:'09832251645',data:{
+  clientName:'DXB',shipmentType:'IMPORT',customsCleared:true,
+  customsClearedAt:'2026-10-29T01:53:51.249Z',arrivalDate:'2026-10-29',
+  arrivalIsActual:true,weight:100,pieces:4}};
+const inputs={shipments:[checkRow],financials:[{awb:checkRow.awb,rate:58}],
+  accounts:[],invoices:[],voided:[]};
+const noOpening=inspectClientLedger(inputs);
+assert.equal(noOpening.clearedSinceStart,1);
+assert.equal(noOpening.issues[0].code,'OPENING_NOT_SET');
+assert.equal(noOpening.missing.length,0);
+const opened=[{client_key:'DXB',started_at:'2026-10-29T00:00:00Z'}];
+const ready=inspectClientLedger({...inputs,accounts:opened});
+assert.equal(ready.missing.length,1);
+assert.equal(ready.missing[0].amount,5800);
+const settled=inspectClientLedger({...inputs,accounts:opened,
+  invoices:[{awb:checkRow.awb,client_key:'DXB',amount:5800}]});
+assert.equal(settled.missing.length,0);
+assert.equal(settled.issues.length,0);
+assert.equal(inspectClientLedger({...inputs,voided:[{awb:checkRow.awb}]}).issues.length,0);
+assert.equal(inspectClientLedger({...inputs,invoices:[{
+  awb:checkRow.awb,client_key:'ABS',amount:5800}]}).issues[0].code,'WRONG_CLIENT');
+assert.equal(inspectClientLedger({...inputs,accounts:opened,financials:[]}).issues[0].code,
+  'RATE_OR_WEIGHT_MISSING');
+assert.equal(inspectClientLedger({...inputs,shipments:[{...checkRow,data:{
+  ...checkRow.data,arrivalDate:'2026-10-27',customsClearedAt:'2026-10-27T01:53:51.249Z'
+}}]}).clearedSinceStart,0);
+
 
 const clearedProfit=clearedMasterInImportProfit(
   {customsCleared:true,customsClearedAt:'2026-10-26T00:00:00Z',arrivalDate:'2026-10-25',
@@ -97,6 +127,10 @@ const files=['app/api/import-client-receivables/route.js','app/ImportClientRecei
 for(const f of files)assert.ok(readFileSync(f,'utf8').length>100);
 const api=readFileSync(files[0],'utf8'),ui=readFileSync(files[1],'utf8'),old=readFileSync(files[2],'utf8');
 assert.ok(api.includes('mayavi_import_client_bulk_receipts'));
+assert.ok(api.includes("action==='RECONCILE'"));
+assert.ok(api.includes('getReconciliationSummary(sql)'));
+assert.ok(ui.includes('Compare Missing Masters Now'));
+assert.ok(ui.includes('client ledger reconciliation'));
 assert.ok(api.includes('mayavi_import_client_voided_invoices'));
 assert.ok(api.includes("action==='DELETE_INVOICE'"));
 assert.ok(api.includes("v.awb=${s.awb}"));

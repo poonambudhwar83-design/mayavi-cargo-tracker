@@ -39,6 +39,9 @@
     },
     "app/api/cron/saudia/route.js": {
       "maxDuration": 300
+    },
+    "app/api/cron/client-ledger/route.js": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -65,6 +68,10 @@
     {
       "path": "/api/cron/saudia",
       "schedule": "*/15 8-9 * * *"
+    },
+    {
+      "path": "/api/cron/client-ledger",
+      "schedule": "12 */2 * * *"
     }
   ]
 }

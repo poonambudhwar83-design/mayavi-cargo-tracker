@@ -33,6 +33,7 @@ export default function ImportClientReceivables({onOpenProfit}){
   const [manualAwb,setManualAwb]=useState(''),[lookup,setLookup]=useState('');
   const [payment,setPayment]=useState({date:today(),mode:'ACCOUNT',amount:'',remarks:''});
   const [paymentId,setPaymentId]=useState(newId),[legacy,setLegacy]=useState([]);
+  const [reconciliation,setReconciliation]=useState(null);
   const [paymentFeedback,setPaymentFeedback]=useState({type:'',message:''});
   const refresh=useCallback(async()=>{
     try{
@@ -40,6 +41,7 @@ export default function ImportClientReceivables({onOpenProfit}){
       const data=await response.json();
       if(!response.ok||!data.ok)throw Error(data.error||'Unable to load receivables.');
       setClients(data.clients||[]);setLegacy(data.legacyReceipts||[]);
+      setReconciliation(data.reconciliation||null);
       setLastLoaded(new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'}));
       setError('');
     }catch(e){setError('Receivables refresh failed: '+String(e.message||e));}
@@ -53,6 +55,7 @@ export default function ImportClientReceivables({onOpenProfit}){
     return()=>{clearInterval(t);document.removeEventListener('visibilitychange',onShow);};
   },[refresh]);
   const selected=clients.find(x=>x.key===client)||null;
+  const selectedIssues=(reconciliation?.issues||[]).filter(i=>!selected||i.clientKey===selected.key);
   const recentPayments=useMemo(()=>clients.filter(c=>c.key===client).flatMap(c=>c.receipts.map(p=>({
     ...p,clientName:c.name,clientKey:c.key
   }))).sort((a,b)=>String(b.date).localeCompare(String(a.date))||
@@ -115,6 +118,7 @@ export default function ImportClientReceivables({onOpenProfit}){
       const visible=clientAfter?.receipts?.some(p=>p.id===savedId);
       setClients(snapshot.clients||[]);
       setLegacy(snapshot.legacyReceipts||[]);
+      setReconciliation(snapshot.reconciliation||null);
       setLastLoaded(new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'}));
       if(!visible){
         setPaymentFeedback({type:'warning',message:'Payment saved, reference '+savedId.slice(0,8)+', but not yet visible in the ledger. Refresh; do not save it twice.'});
@@ -182,6 +186,28 @@ export default function ImportClientReceivables({onOpenProfit}){
     </section>
     {error&&<p className={styles.error} role="alert">{error}</p>}
     {notice&&<p className={styles.notice} role="status">{notice}</p>}
+    <section className={styles.section} aria-label="client ledger reconciliation">
+      <h2>Import Profit Sheet ↔ Client Ledger • Automatic Reconciliation</h2>
+      <p className={styles.hint}>Since 29 October 2026, Mayavi checks Import Profit Sheet's cleared masters against client ledgers every 2 hours, even when the portal is closed. Missing eligible masters are added once. Missing opening balances, rates, weights and client mismatches are flagged. Manually deleted invoices stay excluded.</p>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+        <span style={{...card,minWidth:180}}><small>Last server check</small><strong style={{display:'block'}}>{reconciliation?.lastCheckedAt?new Date(reconciliation.lastCheckedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Not checked yet'}</strong></span>
+        <span style={{...card,minWidth:120}}><small>Masters scanned</small><strong style={{display:'block'}}>{reconciliation?.scanned??'—'}</strong></span>
+        <span style={{...card,minWidth:120}}><small>Open exceptions</small><strong style={{display:'block',color:(reconciliation?.openIssues||0)>0?'#b45309':'#087851'}}>{reconciliation?.openIssues??'—'}</strong></span>
+        <button style={lightBtn} type="button" disabled={busy} onClick={()=>void saveAction({action:'RECONCILE'},data=>
+          'Reconciliation complete: '+data.checkedMasters+' masters compared, '+data.autoAdded+
+          ' added automatically, '+data.openIssues+' exceptions. Refresh displays current issues.')}>
+          {busy?'Checking…':'Compare Missing Masters Now'}
+        </button>
+      </div>
+      {(reconciliation?.issues||[]).length>0&&<div className={styles.scroller}>
+        <table><thead><tr><th>Client</th><th>MAWB</th><th>Exception</th><th>Action Needed</th></tr></thead><tbody>
+          {selectedIssues.map(i=><tr key={i.awb+'|'+i.code}>
+            <td>{i.clientKey}</td><td style={mono}>{i.mawb}</td>
+            <td>{i.code.replaceAll('_',' ')}</td><td>{i.message}</td></tr>)}
+          {!selectedIssues.length&&<tr><td colSpan={4}>No exceptions for the selected client.</td></tr>}
+        </tbody></table></div>}
+      {reconciliation?.lastCheckedAt&&!(reconciliation?.openIssues>0)&&<p className={styles.hint} style={{color:'#087851',fontWeight:800}}>No unresolved missing masters detected in the latest scan.</p>}
+    </section>
     <section className={styles.section}>
       <h2>Client-wise Running Balances</h2>
       <div className={styles.scroller}><table><thead><tr>
