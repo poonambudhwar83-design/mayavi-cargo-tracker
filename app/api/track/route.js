@@ -1105,7 +1105,12 @@ async function handle(mawb,fallback={}){
   // If a successful current official response gives a definite pre-arrival status
   // but no current arrival at all, old database arrival values are stale and must
   // not survive another refresh. Blank is safer than a false old ETA/ATA.
-  if(officialSourceSucceeded&&freshStatus!=='TRACKING'&&statusRank(freshStatus)<5&&!freshArrival&&shipment.arrivalEstimate!==true){
+  // A Cathay terminal-only BOOKED row does not prove that a previous
+  // AWB-matched booking flight/ETA has been cancelled. The Booking Status page
+  // may be blocked/empty; keep the last verified date/time until a new dated
+  // official movement replaces it. Never fabricate an ETA for an unassigned MAWB.
+  const cxBookingCardUnavailable=cathayFastPath&&!direct?.flightNo&&!direct?.arrivalDate&&!direct?.arrivalTime;
+  if(officialSourceSucceeded&&freshStatus!=='TRACKING'&&statusRank(freshStatus)<5&&!freshArrival&&shipment.arrivalEstimate!==true&&!cxBookingCardUnavailable){
     shipment.arrivalDate='';
     shipment.arrivalTime='';
     shipment.arrivalIsActual=false;
@@ -1114,6 +1119,10 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeSource='Official refresh returned no current arrival; stale value cleared';
   }else{
     shipment.arrivalVerifiedAbsent=false;
+    if(cxBookingCardUnavailable&&!shipment.arrivalDate&&!shipment.arrivalTime){
+      shipment.arrivalTimeSource='Cathay Booking Status flight/ETA awaiting verified publication';
+      shipment.cxBookingDetailsPending=true;
+    }
   }
 
   // Malaysia resilience: MASkargo currently blocks some cloud/Vercel IP requests
