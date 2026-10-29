@@ -131,6 +131,9 @@ export async function POST(request){
     if(action==='RECEIPT'){
       const key=clientKey(body.client),mode=String(body.mode||'').toUpperCase(),
         sum=validReceiptAmount(body.amount),date=String(body.date||''),remarks=String(body.remarks||'').trim().slice(0,500);
+      console.info('import_client_receipt_attempt',JSON.stringify({
+        client:key,mode,dateValid:validLedgerDate(date),amountValid:sum!==null
+      }));
       if(!key||sum===null||!validLedgerDate(date)||!['CASH','ACCOUNT'].includes(mode))
         return reply({ok:false,error:'Enter client, valid date, mode and positive received amount.'},400);
       const [a]=await sql`SELECT started_at FROM mayavi_import_client_accounts WHERE client_key=${key} LIMIT 1`;

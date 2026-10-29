@@ -33,6 +33,7 @@ export default function ImportClientReceivables({onOpenProfit}){
   const [manualAwb,setManualAwb]=useState(''),[lookup,setLookup]=useState('');
   const [payment,setPayment]=useState({date:today(),mode:'ACCOUNT',amount:'',remarks:''});
   const [paymentId,setPaymentId]=useState(newId),[legacy,setLegacy]=useState([]);
+  const [paymentFeedback,setPaymentFeedback]=useState({type:'',message:''});
   const refresh=useCallback(async()=>{
     try{
       const response=await fetch(API,{credentials:'include',cache:'no-store'});
@@ -52,6 +53,10 @@ export default function ImportClientReceivables({onOpenProfit}){
     return()=>{clearInterval(t);document.removeEventListener('visibilitychange',onShow);};
   },[refresh]);
   const selected=clients.find(x=>x.key===client)||null;
+  const recentPayments=useMemo(()=>clients.flatMap(c=>c.receipts.map(p=>({
+    ...p,clientName:c.name,clientKey:c.key
+  }))).sort((a,b)=>String(b.date).localeCompare(String(a.date))||
+    new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,30),[clients]);
   const totals=useMemo(()=>clients.reduce((s,c)=>{
     if(c.hasOpening){s.opening+=c.totals.openingPending;s.invoiced+=c.totals.newReceivables;
       s.received+=c.totals.receipts;s.due+=c.totals.netBalance;s.credit+=c.totals.credit;}
@@ -62,6 +67,7 @@ export default function ImportClientReceivables({onOpenProfit}){
     setClient(key);setOpeningAmount(c?.hasOpening?String(c.opening.amount):'');
     setPayment({date:today(),mode:'ACCOUNT',amount:'',remarks:''});
     setPaymentId(newId());setManualAwb('');setLookup('');setError('');setNotice('');
+    setPaymentFeedback({type:'',message:''});
   }
   async function saveAction(payload,success){
     if(busy)return;
@@ -82,14 +88,53 @@ export default function ImportClientReceivables({onOpenProfit}){
       'Opening balance saved for '+selected.name+'. Starting date is preserved on later edits.');
   }
   async function savePayment(event){
-    event.preventDefault();if(!selected?.hasOpening)return;
-    const ok=await saveAction({action:'RECEIPT',client:selected.key,
-      date:payment.date,mode:payment.mode,amount:payment.amount,
-      remarks:payment.remarks,clientRequestId:paymentId},data=>
-        'Payment saved in shared database: '+rupee(data.receipt.amount)+' ('+data.receipt.mode+
-        ') for '+selected.name+'. Remaining opening balance: '+rupee(data.openingPending)+
-        '. Payment Reference: '+data.receipt.id.slice(0,8)+'.');
-    if(ok){setPayment(p=>({...p,amount:'',remarks:''}));setPaymentId(newId());}
+    event.preventDefault();
+    if(!selected?.hasOpening||busy)return;
+    const key=selected.key,requestId=paymentId;
+    const submitted={...payment};
+    setBusy(true);setError('');setNotice('');
+    setPaymentFeedback({type:'pending',message:'Saving amount received and checking shared database…'});
+    try{
+      const response=await fetch(API,{method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'RECEIPT',client:key,date:submitted.date,
+          mode:submitted.mode,amount:submitted.amount,remarks:submitted.remarks,
+          clientRequestId:requestId})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||!data.ok)throw Error(data.error||'Server rejected payment (HTTP '+response.status+').');
+      const savedId=String(data.receipt?.id||'');
+      if(!savedId||data.verifiedInDatabase!==true)
+        throw Error('Receipt was not confirmed by the database. Retry with the same entry.');
+      // Re-read the shared ledger; do not tell the user payment is visible
+      // until its exact receipt ID is present on the GET response.
+      const verification=await fetch(API,{credentials:'include',cache:'no-store'});
+      const snapshot=await verification.json().catch(()=>({}));
+      if(!verification.ok||!snapshot.ok)
+        throw Error('Payment was saved ('+savedId.slice(0,8)+'), but ledger refresh failed. Use Refresh Ledger; do not re-enter it.');
+      const clientAfter=(snapshot.clients||[]).find(x=>x.key===key);
+      const visible=clientAfter?.receipts?.some(p=>p.id===savedId);
+      setClients(snapshot.clients||[]);
+      setLegacy(snapshot.legacyReceipts||[]);
+      setLastLoaded(new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'}));
+      if(!visible){
+        setPaymentFeedback({type:'warning',message:'Payment saved, reference '+savedId.slice(0,8)+', but not yet visible in the ledger. Refresh; do not save it twice.'});
+        return;
+      }
+      const message=rupee(data.receipt.amount)+' '+data.receipt.mode+
+        ' payment saved and verified. Receipt '+savedId.slice(0,8)+
+        '. Remaining opening due: '+rupee(clientAfter.opening.balance)+'.';
+      setPaymentFeedback({type:'success',message});
+      setNotice(message);
+      setPayment(p=>({...p,amount:'',remarks:''}));
+      setPaymentId(newId());
+    }catch(e){
+      const msg=String(e?.message||e);
+      setPaymentFeedback({type:'error',message:msg});
+      setError('Payment save issue: '+msg);
+      // Keep the same amount, date and request ID for a safe retry.
+    }finally{
+      setBusy(false);
+    }
   }
   async function manual(event){
     event.preventDefault();
@@ -145,6 +190,20 @@ export default function ImportClientReceivables({onOpenProfit}){
         {!clients.length&&<tr><td colSpan={8}>{loading?'Loading…':'No import clients yet.'}</td></tr>}
       </tbody></table></div>
     </section>
+    <section className={styles.section} aria-label="Recent client payments">
+      <h2>Recent Amount Received • All Clients</h2>
+      <p className={styles.hint}>Every successfully saved Cash / Account payment appears here, even without selecting a client. A failed or unsaved payment will not appear.</p>
+      <div className={styles.scroller}><table><thead><tr>
+        <th>Client</th><th>Date</th><th>Mode</th><th>Amount Received</th><th>Receipt Reference</th><th>Remarks</th>
+      </tr></thead><tbody>
+        {recentPayments.map(p=><tr key={p.id}>
+          <td><button type="button" className={styles.clientLink} onClick={()=>select(p.clientKey)}>{p.clientName}</button></td>
+          <td>{p.date}</td><td>{p.mode}</td><td style={{fontWeight:900,color:'#087851'}}>{rupee(p.amount)}</td>
+          <td style={mono}>{p.id.slice(0,8)}</td><td>{p.remarks||'—'}</td>
+        </tr>)}
+        {!recentPayments.length&&<tr><td colSpan={6}>{loading?'Loading saved receipts…':'No new client-level receipts saved yet.'}</td></tr>}
+      </tbody></table></div>
+    </section>
     {selected&&<>
       <section className={styles.section}>
         <h2>{selected.name} • Opening Balance</h2>
@@ -180,8 +239,18 @@ export default function ImportClientReceivables({onOpenProfit}){
             <label style={field}>Mode<select style={input} value={payment.mode} onChange={e=>setPayment(p=>({...p,mode:e.target.value}))}><option value="ACCOUNT">Account / Bank</option><option value="CASH">Cash</option></select></label>
             <label style={field}>Amount Received (₹)<input style={input} type="number" min="0.01" step="0.01" required placeholder="E.g. 2000000" value={payment.amount} onChange={e=>setPayment(p=>({...p,amount:e.target.value}))}/></label>
             <label style={field}>Remarks<input style={input} maxLength={500} placeholder="Reference / UTR (optional)" value={payment.remarks} onChange={e=>setPayment(p=>({...p,remarks:e.target.value}))}/></label>
-            <button style={btn} type="submit" disabled={busy}>{busy?'Saving…':'Save Amount Received'}</button>
+            <button style={btn} type="submit" disabled={busy||!payment.amount}>{busy?'Saving…':'Save Amount Received'}</button>
           </form>
+          {paymentFeedback.message&&<p role={paymentFeedback.type==='error'?'alert':'status'}
+             style={{margin:'12px 0',padding:'12px 14px',borderRadius:9,fontWeight:800,fontSize:13,
+               border:'1px solid '+(paymentFeedback.type==='error'?'#fca5a5':paymentFeedback.type==='success'?'#86efac':'#fcd34d'),
+               background:paymentFeedback.type==='error'?'#fef2f2':paymentFeedback.type==='success'?'#f0fdf4':'#fffbeb',
+               color:paymentFeedback.type==='error'?'#991b1b':paymentFeedback.type==='success'?'#166534':'#92400e'}}>
+             {paymentFeedback.message}</p>}
+          <div style={{margin:'8px 0',fontSize:12,fontWeight:700,color:'#415e79'}}>
+            Saved receipts for {selected.name}: <strong>{selected.receipts.length}</strong>
+            {selected.receipts.length>0&&<span> • Latest: {rupee(selected.receipts[selected.receipts.length-1].amount)} on {selected.receipts[selected.receipts.length-1].date} ({selected.receipts[selected.receipts.length-1].mode})</span>}
+          </div>
           <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:15}}>
             {[['Opening Pending',selected.totals.openingPending],['Cleared MAWBs Due',selected.invoices.reduce((n,x)=>n+x.balance,0)],['Unallocated Credit',selected.totals.credit],['Net Balance',selected.totals.netBalance]].map(([label,value])=>
               <div style={card} key={label}><small style={{display:'block',color:'#55708d',fontWeight:800}}>{label}</small><b style={{color:'#173f71',fontSize:18}}>{rupee(value)}</b></div>)}
