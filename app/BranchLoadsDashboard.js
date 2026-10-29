@@ -10,7 +10,7 @@ const API='/api/branch-loads';
 const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():null;
 // Use one compact column profile for both Daily Load Entry and saved loads.
 // Identical colgroups plus synchronized scroll keep headings and values lined up.
-const LEDGER_WIDTHS=[104,146,112,104,120,118,106,114,138,152,154,148,184,146,166,120,120,124];
+const LEDGER_WIDTHS=[98,140,92,90,116,110,100,108,134,146,156,148,184,146,166,120,120,124];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=194;
 const CONFIRMATION_WIDTH=230;
@@ -100,6 +100,13 @@ export default function BranchLoadsDashboard({currentUser}){
   // older snapshot. Every successful mutation invalidates in-flight reads.
   const writeRevision=useRef(0);
   const latestRead=useRef(0);
+  // Tabs may remount the saved table; start it at the same horizontal
+  // position as the entry row, not at a visually shifted column.
+  useEffect(()=>{
+    const entry=entryScrollRef.current;
+    const saved=savedScrollRef.current;
+    if(entry&&saved)saved.scrollLeft=entry.scrollLeft;
+  },[sheet,editing]);
   const entryScrollRef=useRef(null);
   const savedScrollRef=useRef(null);
   const syncLedgerScroll=source=>{

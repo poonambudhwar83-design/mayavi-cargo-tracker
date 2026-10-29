@@ -325,3 +325,32 @@
 .savedLedger th:nth-child(10),.savedLedger td:nth-child(10){padding-right:16px!important;}
 .entryLedger th:nth-child(11),.entryLedger td:nth-child(11),
 .savedLedger th:nth-child(11),.savedLedger td:nth-child(11){padding-left:14px!important;}
+
+/* Oct 29 correction: match the LEFT EDGES of headings, inputs and saved
+   numbers; the old right alignment made Rate appear far from Weight. */
+.entryLedger thead th:nth-child(n+3):nth-child(-n+10),
+.savedLedger thead th:nth-child(n+3):nth-child(-n+10),
+.savedLedger tbody td:nth-child(n+3):nth-child(-n+10),
+.savedLedger tfoot td:nth-child(n+3):nth-child(-n+10){
+  text-align:left!important;
+}
+.entryLedger .editRow .computed{
+  text-align:left!important;
+}
+.entryLedger .branchPaymentDisplay,
+.savedLedger .branchPaymentDisplay{
+  justify-items:start;
+  text-align:left;
+}
+.entryLedger thead th,.entryLedger tbody td,
+.savedLedger thead th,.savedLedger tbody td{
+  padding-left:5px;
+  padding-right:5px;
+}
+.entryLedger th:nth-child(3),.entryLedger td:nth-child(3),
+.entryLedger th:nth-child(4),.entryLedger td:nth-child(4),
+.savedLedger th:nth-child(3),.savedLedger td:nth-child(3),
+.savedLedger th:nth-child(4),.savedLedger td:nth-child(4){
+  padding-left:4px!important;
+  padding-right:4px!important;
+}
