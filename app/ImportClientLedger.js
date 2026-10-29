@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {summarizeImportLedger,ledgerAwb,validReceiptAmount,validLedgerDate} from '../lib/importClientLedger.js';
 import styles from './ImportClientLedger.module.css';
+import ImportClientReceivables from './ImportClientReceivables.js';
 
 const API='/api/import-client-ledger';
 const currency=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
@@ -23,7 +24,7 @@ function csv(rows){
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='mayavi-import-client-ledger.csv';a.click();URL.revokeObjectURL(url);
 }
-export default function ImportClientLedger({onOpenProfit}){
+function PreviousImportClientLedger({onOpenProfit}){
   const [rows,setRows]=useState([]);
   const [receipts,setReceipts]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -182,4 +183,10 @@ export default function ImportClientLedger({onOpenProfit}){
       </tbody></table></div>
     </section>
   </main>;
+}
+
+// Existing per-MAWB ledger implementation is retained above for audit/migration.
+// New client-wise running ledger is the active Receivables interface.
+export default function ImportClientLedger({onOpenProfit}){
+  return <ImportClientReceivables onOpenProfit={onOpenProfit}/>;
 }
