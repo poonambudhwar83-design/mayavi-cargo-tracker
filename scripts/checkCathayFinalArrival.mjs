@@ -60,4 +60,19 @@ const trackApi=readFileSync('app/api/track/route.js','utf8');
 assert.ok(trackApi.includes('const preserveCxSchedule=cathayFastPath'));
 assert.ok(trackApi.includes('shipment.departureTimeZone=direct.departureTimeZone'));
 assert.ok(trackApi.includes("key==='trackingError'||key==='manualHint'"));
+// Cathay formats AWB serials into groups. A visible booking card may still
+// contain all the arrival evidence and must not be rejected as another MAWB.
+const spacedBooking=cathayPhotoText.replace('160-18865044','160-1886 5044');
+const spaced=parseCathayBookingStatus(spacedBooking,'160-18865044');
+assert.ok(spaced,'Cathay spaced MAWB serial must remain verifiable');
+assert.equal(spaced.arrivalDate,'2026-10-28');
+assert.equal(spaced.arrivalTime,'00:10');
+// Never promote the official form shell into a fake flight/ETA.
+assert.equal(parseCathayBookingStatus('Track your shipment Airline code 160 Air Waybill number(s) 1886 3806 Booking Status','160-18863806'),null);
+assert.ok(trackApi.includes('const cxBookingCardUnavailable=cathayFastPath'));
+assert.ok(trackApi.includes('!cxBookingCardUnavailable'));
+const browserSource=readFileSync('lib/cathay-browser-fallback.js','utf8');
+assert.ok(browserSource.includes('allCathayTabText(browser)'));
+assert.ok(browserSource.includes('scrollCathayTabs(browser,i)'));
+assert.ok(browserSource.includes("await fillField(page,'awb',serial)"));
 console.log('Cathay future-arrival, allotment, timezone and recurring refresh tests passed.');
