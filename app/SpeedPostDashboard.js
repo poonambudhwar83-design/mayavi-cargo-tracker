@@ -278,7 +278,7 @@ export default function SpeedPostDashboard({currentUser}){
     setRowDrafts(old=>({...old,[id]:{...(old[id]||{}),[field]:value}}));
   }
   async function correctDeliveryStatus(row){
-    if(!window.confirm('This parcel is NOT delivered? Move '+row.trackingNo+' back to Active as Pending Verification?'))return;
+    if(!window.confirm('Correct delivery status for '+row.trackingNo+'? Continue ONLY if Delivered is incorrect. This moves the parcel to Active as Pending Verification, preserving the shipment details.'))return;
     setStatusFixing(row.trackingNo);
     try{
       const response=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},
@@ -906,10 +906,10 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}>{field(r,'lastUpdated')}<small style={{display:'block',color:'#64748b',marginTop:4}}>{r.lastChecked?'Checked '+new Date(r.lastChecked).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):''}</small></td>
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
-              {(isDelivered(r)||r.statusNeedsReview)&&<button type="button" title="Wrong Delivered? Restore to Active without losing shipment details"
-                style={{...btn,padding:'7px 9px',fontSize:11,background:'#fff7ed',color:'#9a3412',border:'1px solid #fdba74'}}
+              {(isDelivered(r)||r.statusNeedsReview)&&<button type="button" title="Correction action only: use if delivery status is wrong. Shipment details remain saved." aria-label={'Correct delivery status for '+r.trackingNo}
+                style={{...btn,padding:'7px 9px',fontSize:11,background:'#f1f5f9',color:'#475569',border:'1px solid #cbd5e1'}}
                 disabled={Boolean(statusFixing)||anythingBusy} onClick={()=>correctDeliveryStatus(r)}>
-                {statusFixing===r.trackingNo?'WAIT…':'NOT DELIVERED'}
+                {statusFixing===r.trackingNo?'WAIT…':'CORRECT STATUS'}
               </button>}
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
