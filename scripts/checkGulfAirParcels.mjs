@@ -30,4 +30,19 @@ const page=parseGulfAirParcelsPage({
 assert.equal(page.ok,true);assert.equal(page.shipment.destination,'DEL');
 assert.equal(page.shipment.origin,'LHR');assert.equal(page.shipment.weight,'442.6');
 assert.equal(parseGulfAirParcelsPage({resultText:'Enter tracking number 07295056684',timelineRows:[]},awb).ok,false);
+// Layout witnessed on ParcelsApp: From/To labels with city names and IATA in parentheses.
+// Booking flights are not actual departures or confirmed final arrival.
+const actualPage=parseGulfAirParcelsPage({
+  resultText:'Tracking number\n07295056684',
+  rightText:'Tracking number\n07295056684\nFrom\nIndira Gandhi Intl (DEL), Delhi\nTo\nDubai Intl (DXB), Dubai\nOrigin\nIndia\nDestination\nUnited Arab Emirates\nWeight\n1500.0\nPieces\n50',
+  leftText:'Tracking number\n07295056684\n28 Oct 2026 13:01 Booked (KK). Flight GF131 to Bahrain Intl (BAH). Pieces: 50, weight: 1500.0\n28 Oct 2026 13:01 Booked (KK). Flight GF512 to Dubai Intl (DXB). Pieces: 50, weight: 1500.0',
+  timelineRows:['28 Oct 2026 13:01 Booked (KK). Flight GF131 to Bahrain Intl (BAH). Pieces: 50, weight: 1500.0','28 Oct 2026 13:01 Booked (KK). Flight GF512 to Dubai Intl (DXB). Pieces: 50, weight: 1500.0']
+},awb);
+assert.equal(actualPage.ok,true);
+assert.equal(actualPage.shipment.origin,'DEL');
+assert.equal(actualPage.shipment.destination,'DXB');
+assert.equal(actualPage.shipment.pieces,'50');
+assert.equal(actualPage.shipment.weight,'1500.0');
+assert.equal(actualPage.shipment.status,'BOOKED');
+assert.equal(actualPage.shipment.arrivalDate,'');
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
