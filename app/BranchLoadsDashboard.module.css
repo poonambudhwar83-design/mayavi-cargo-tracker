@@ -303,3 +303,25 @@
 .summaryEarnings{text-align:right;font-weight:900;color:#7a541f;white-space:nowrap;font-variant-numeric:tabular-nums}
 .summaryTable tfoot td{background:#f7ead7!important;border-top:2px solid #c7a970;font-weight:900}
 .summaryHint{font-size:11px;color:#6f6558;padding:10px 18px;margin:0;border-top:1px solid #f0e4cf}
+
+/* Jind/Karnal: compact spacing and aligned Daily Entry / Active / Delivered columns. */
+.loadEntrySection{
+  border-left-width:1px;
+  box-shadow:inset 5px 0 0 #2563eb,0 3px 16px rgba(37,99,235,.08);
+}
+.entryLedger thead th,.savedLedger thead th{min-width:0;}
+/* Weight follows its date without the large right-aligned empty space. */
+.savedLedger thead th:nth-child(3),
+.savedLedger tbody td:nth-child(3),
+.savedLedger tfoot td:nth-child(3){text-align:left!important;}
+/* Auto-calculated values sit directly under their right-aligned headings. */
+.entryLedger .computed{text-align:right;font-variant-numeric:tabular-nums;}
+.entryLedger thead th:nth-child(5),
+.entryLedger thead th:nth-child(7),
+.entryLedger thead th:nth-child(9),
+.entryLedger thead th:nth-child(10){text-align:right;}
+/* Give the branch payout and Destination a readable, consistent separation. */
+.entryLedger th:nth-child(10),.entryLedger td:nth-child(10),
+.savedLedger th:nth-child(10),.savedLedger td:nth-child(10){padding-right:16px!important;}
+.entryLedger th:nth-child(11),.entryLedger td:nth-child(11),
+.savedLedger th:nth-child(11),.savedLedger td:nth-child(11){padding-left:14px!important;}

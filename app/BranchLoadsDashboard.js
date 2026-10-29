@@ -8,22 +8,15 @@ import styles from './BranchLoadsDashboard.module.css';
 const API='/api/branch-loads';
 // The same request ID is reused if a save must be retried, preventing duplicate entries.
 const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():null;
-// Saved entries can be denser than the editable form.  Keeping two width
-// profiles makes the ledger compact without crowding Date, Rate or the selects.
-// Every header and row within its table still uses the same colgroup.
-const ENTRY_WIDTHS=[108,160,118,108,118,122,110,116,138,144,152,148,192,146,166,120,122,130];
-const SAVED_WIDTHS=[104,158,90,88,110,109,98,98,117,119,112,102,155,123,142,100,106,120];
+// Use one compact column profile for both Daily Load Entry and saved loads.
+// Identical colgroups plus synchronized scroll keep headings and values lined up.
+const LEDGER_WIDTHS=[104,146,112,104,120,118,106,114,138,152,154,148,184,146,166,120,120,124];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=194;
 const CONFIRMATION_WIDTH=230;
 const REMARKS_WIDTH=196;
-const ledgerWidth=(extra,editable=false)=>(editable?ENTRY_WIDTHS:SAVED_WIDTHS).reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH+REMARKS_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
-const ledgerColumns=(extra,editable=false)=>{
-  const widths=editable?ENTRY_WIDTHS:SAVED_WIDTHS;
-  // Confirmation sits immediately before the Save/Actions column in both
-  // headers and rows. Keep Total JEPO as the last column.
-  return <colgroup>{[...widths.slice(0,-1),REMARKS_WIDTH,CONFIRMATION_WIDTH,widths[widths.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
-};
+const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH+REMARKS_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
+const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS.slice(0,-1),REMARKS_WIDTH,CONFIRMATION_WIDTH,LEDGER_WIDTHS[LEDGER_WIDTHS.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',remarks:'',confirmationNo:'',confirmationName:'',confirmationMode:'PENDING',
@@ -33,6 +26,7 @@ const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigit
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
 const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'long',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
 const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
+const compactShowDate=value=>value?weekday(value).slice(0,3)+', '+String(value).split('-').reverse().join('/'):'—';
 const employeeName=value=>String(value||'').split(/[._-]/).map(v=>v? v[0].toUpperCase()+v.slice(1):'').join(' ')||'—';
 const fmt=(v)=>v===null?'—':'₹'+money(v);
 // Only the JEPO portion of Extra Cost goes under Cash; any remainder still
@@ -106,6 +100,13 @@ export default function BranchLoadsDashboard({currentUser}){
   // older snapshot. Every successful mutation invalidates in-flight reads.
   const writeRevision=useRef(0);
   const latestRead=useRef(0);
+  const entryScrollRef=useRef(null);
+  const savedScrollRef=useRef(null);
+  const syncLedgerScroll=source=>{
+    const from=source==='entry'?entryScrollRef.current:savedScrollRef.current;
+    const to=source==='entry'?savedScrollRef.current:entryScrollRef.current;
+    if(from&&to&&Math.abs(to.scrollLeft-from.scrollLeft)>1)to.scrollLeft=from.scrollLeft;
+  };
   const recordWrite=()=>{writeRevision.current+=1;latestRead.current+=1;};
 
   async function load(){
@@ -404,7 +405,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const dataCells=record=>[
     <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span>
       {isAdmin&&<button type="button" aria-label={'Delete '+record.branch+' entry '+showDate(record.date)} className={styles.quickDelete} disabled={busy} onClick={()=>remove(record)}>Delete</button>}</td>,
-    <td key="date">{showDate(record.date)}</td>,
+    <td key="date" title={showDate(record.date)}>{compactShowDate(record.date)}</td>,
     <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
     <td key="rate" className={styles.number}>{money(record.rate)}</td>,
     <td key="amount" className={styles.number}><b>{money(record.amount)}</b></td>,
@@ -469,8 +470,8 @@ export default function BranchLoadsDashboard({currentUser}){
           <div><h2>Load Entry</h2><p>Enter load details, then click Save in the same row. Day appears automatically.</p></div>
           <div className={styles.loadEntryActions}><span className={styles.actorName}>Entering as: {currentUser?.displayName||employeeName(currentUser?.username)} • {isAdmin?draft.branch:userBranch}</span></div>
         </div>
-        <div className={styles.scroller}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(true,true)+'px',minWidth:'100%'}}>
-          {ledgerColumns(true,true)}
+        <div className={styles.scroller} ref={entryScrollRef} onScroll={()=>syncLedgerScroll('entry')}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(true)+'px',minWidth:'100%'}}>
+          {ledgerColumns(true)}
           <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(true)}</tbody>
         </table></div>
@@ -520,7 +521,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </table></div>
         <p className={styles.summaryHint}>Branch Amount = Amount − Paid to JEPO + Branch share of Extra Cost. This is branch earnings before any expenses not recorded in these loads.</p>
       </section>}
-      {sheet!=='SUMMARY'&&<div className={styles.scroller}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
+      {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
