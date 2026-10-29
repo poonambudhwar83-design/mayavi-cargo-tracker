@@ -546,7 +546,12 @@ async function handle(mawb,fallback={}){
       const matching=Boolean(schedule?.ok&&
         (!schedule.departureDate||schedule.departureDate===activeLeg.date)&&
         (!schedule.departureOrigin||schedule.departureOrigin===activeLeg.origin)&&
-        (!schedule.departureDestination||schedule.departureDestination===activeLeg.destination));
+        (!schedule.departureDestination||schedule.departureDestination===activeLeg.destination)&&
+        // 900 SmartKargo bookings have a specific onward flight date.
+        // A reused FD flight number must never populate today's DEL arrival.
+        (!mawb.startsWith('900-')||(schedule.departureDate===activeLeg.date&&
+          schedule.departureOrigin===activeLeg.origin&&
+          schedule.departureDestination===activeLeg.destination)));
       if(matching&&exportLike&&schedule.departureTime&&shipment.departureIsActual!==true){
         const converted=normalizeShipmentTimesToIst({
           departureDate:activeLeg.date,departureTime:schedule.departureTime,
@@ -565,15 +570,17 @@ async function handle(mawb,fallback={}){
       if(matching&&!exportLike&&shipment.arrivalIsActual!==true){
         const etaTime=schedule.arrivalTime||schedule.scheduledArrivalTime||'';
         const etaDate=schedule.arrivalDate||schedule.scheduledArrivalDate||'';
-        if(etaDate&&etaTime){
+        if(etaDate&&etaTime&&(!mawb.startsWith('900-')||etaDate>=activeLeg.date)){
           const converted=normalizeShipmentTimesToIst({
             destination:activeLeg.destination,arrivalDate:etaDate,arrivalTime:etaTime,
             arrivalTimeZone:schedule.arrivalTimeZone||schedule.scheduledArrivalTimeZone||'LOCAL',
             arrivalTimeSource:schedule.arrivalTimeSource||schedule.source||'Dated matching final-leg flight schedule'
           });
           if(converted.arrivalTime){
-            shipment.arrivalDate=converted.arrivalDate;
-            shipment.arrivalTime=converted.arrivalTime;
+            if(!mawb.startsWith('900-')){
+              shipment.arrivalDate=converted.arrivalDate;
+              shipment.arrivalTime=converted.arrivalTime;
+            }
             shipment.scheduledArrivalDate=converted.arrivalDate;
             shipment.scheduledArrivalTime=converted.arrivalTime;
             shipment.arrivalTimeZone='IST';
@@ -584,6 +591,22 @@ async function handle(mawb,fallback={}){
           }
         }
       }
+    }
+    // Only a DEL cargo milestone is an arrival. A scheduled DMK→DEL
+    // flight is not proof that the cargo has arrived, even on the same day.
+    if(mawb.startsWith('900-')&&shipment.arrivalIsActual!==true){
+      shipment.arrivalDate='';
+      shipment.arrivalTime='';
+      shipment.arrivalIsActual=false;
+      shipment.arrivalVerifiedAbsent=true;
+      if(!shipment.scheduledArrivalDate&&last?.date){
+        shipment.scheduledArrivalDate=last.date;
+        shipment.scheduledArrivalTime='';
+        shipment.scheduledArrivalTimeSource='SmartKargo booked final-flight date (not an arrival ETA)';
+      }
+      shipment.arrivalEstimate=Boolean(shipment.scheduledArrivalDate);
+      shipment.arrivalTimeSource='';
+      if(shipment.status==='ARRIVED')shipment.status='IN TRANSIT';
     }
     if(exportLike&&shipment.departureDate&&shipment.departureTime)
       shipment.handoverTime=persistedHandoverTime(shipment.departureDate,shipment.departureTime);
