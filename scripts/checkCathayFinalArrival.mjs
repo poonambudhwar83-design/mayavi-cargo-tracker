@@ -74,6 +74,7 @@ assert.ok(trackApi.includes('!cxBookingCardUnavailable'));
 const browserSource=readFileSync('lib/cathay-browser-fallback.js','utf8');
 assert.ok(browserSource.includes('allCathayTabText(browser)'));
 assert.ok(browserSource.includes('scrollCathayTabs(browser,i)'));
+assert.ok(browserSource.includes('typeCathayAwbAsUser(page,serial)'), 'CX AWB search must send real keyboard input');
 assert.ok(browserSource.includes("await fillField(page,'awb',serial)"));
 const bookingDetails=parseCathayBookingStatus(cathayPhotoText.replace('Booking Status','Booking Details'),'160-18865044');
 assert.ok(bookingDetails,'lower Booking Details card should be parsed');
