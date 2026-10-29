@@ -138,7 +138,10 @@ export async function POST(request){
         return reply({ok:false,error:'Enter client, valid date, mode and positive received amount.'},400);
       const [a]=await sql`SELECT started_at FROM mayavi_import_client_accounts WHERE client_key=${key} LIMIT 1`;
       if(!a)return reply({ok:false,error:'Save opening balance first.'},409);
-      if(date<istDate(a.started_at))return reply({ok:false,error:'Receipt date precedes opening date.'},400);
+      // Historical bank/cash receipts are valid even if their payment date is
+      // before the date the opening balance was first entered into Mayavi.
+      // Always preserve the operator's real payment date for the daily ledger.
+      if(date>istDate())return reply({ok:false,error:'Receipt date cannot be in the future.'},400);
       const requestId=String(body.clientRequestId||'');
       const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)
         ?requestId:randomUUID();

@@ -233,7 +233,7 @@ export default function ImportClientReceivables({onOpenProfit}){
         <section className={styles.section}>
           <h2>Record Lump-sum Amount Received • {selected.name}</h2>
           <p className={styles.hint} style={{fontWeight:800,color:'#135b44'}}>Latest saved opening due: {rupee(selected.opening.balance)} • Receipts credited against opening: {rupee(selected.opening.received)}</p>
-          <p className={styles.hint}>The entire payment is recorded once against the client—not separately against every MAWB. Opening due is cleared first; the rest settles oldest MAWB, then partial MAWB, then remains as advance credit.</p>
+          <p className={styles.hint}>The entire payment is recorded once against the client—not separately against every MAWB. Opening due is cleared first; the rest settles oldest MAWB, then partial MAWB, then remains as advance credit. <strong>Older payment dates are allowed, even before the opening-balance setup date.</strong></p>
           <form onSubmit={savePayment} style={inlineForm}>
             <label style={field}>Received Date<input style={input} type="date" max={today()} required value={payment.date} onChange={e=>setPayment(p=>({...p,date:e.target.value}))}/></label>
             <label style={field}>Mode<select style={input} value={payment.mode} onChange={e=>setPayment(p=>({...p,mode:e.target.value}))}><option value="ACCOUNT">Account / Bank</option><option value="CASH">Cash</option></select></label>
@@ -279,7 +279,7 @@ export default function ImportClientReceivables({onOpenProfit}){
         </section>
         <section className={styles.section}>
           <h2>Daily Opening & Closing Balance</h2>
-          <p className={styles.hint}>Each day's opening equals the previous day's closing. Net closing = Opening + Customs Cleared billed today − Payments received today. Negative closing is customer advance credit.</p>
+          <p className={styles.hint}>Each day's opening equals the previous day's closing. Net closing = Opening + Customs Cleared billed today − Payments received today. Negative closing is customer advance credit. Payments entered for older dates appear on their actual payment date, including dates before the opening balance was first saved.</p>
           <button style={lightBtn} type="button" onClick={()=>downloadCsv('client-'+selected.key+'-daily-balances',
             ['Date','Opening Balance','New Customs Cleared Amount','Amount Received','Closing Balance'],
             selected.daily.map(d=>[d.date,d.opening,d.newReceivables,d.amountReceived,d.closing]))}>Download Daily Balances CSV</button>

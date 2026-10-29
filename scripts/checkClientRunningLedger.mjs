@@ -39,6 +39,22 @@ assert.deepEqual(a.receipts[0].allocations.map(x=>[x.target,x.amount]),
   [['OPENING BALANCE',1500000],['065-11111111',400000],['065-22222222',100000]]);
 assert.deepEqual(a.daily.map(x=>[x.date,x.opening,x.newReceivables,x.amountReceived,x.closing]),
   [['2026-10-29',1500000,700000,2000000,200000],['2026-10-30',200000,500000,0,700000]]);
+const historical=settleClientReceivables(
+  {amount:1612180,started_at:'2026-10-29T02:52:00Z'},[],
+  [
+    {id:'cash',mode:'CASH',payment_date:'2026-10-29',amount:375000,created_at:'2026-10-29T03:01:00Z'},
+    {id:'older-account',mode:'ACCOUNT',payment_date:'2026-10-21',amount:185000,created_at:'2026-10-29T03:10:00Z'}
+  ],'2026-10-29'
+);
+assert.equal(historical.opening.startDate,'2026-10-29');
+assert.equal(historical.opening.dailyStartDate,'2026-10-21');
+assert.equal(historical.opening.received,560000);
+assert.equal(historical.opening.balance,1052180);
+assert.equal(historical.daily[0].date,'2026-10-21');
+assert.equal(historical.daily[0].amountReceived,185000);
+assert.equal(historical.daily[0].closing,1427180);
+assert.deepEqual(historical.daily.at(-1),
+  {date:'2026-10-29',opening:1427180,newReceivables:0,amountReceived:375000,closing:1052180});
 const credit=settleClientReceivables({amount:500,started_at:'2026-10-29T00:00:00Z'},[],
   [{id:'p',mode:'CASH',payment_date:'2026-10-29',amount:700}],'2026-10-29');
 assert.equal(credit.opening.balance,0);
@@ -62,6 +78,8 @@ assert.ok(ui.includes('clientAfter?.receipts?.some'));
 assert.ok(ui.includes('The entire payment is recorded once'));
 assert.ok(api.includes('openingPending'));
 assert.ok(api.includes('import_client_receipt_saved'));
+assert.ok(!api.includes('Receipt date precedes opening date.'));
+assert.ok(ui.includes('Older payment dates are allowed'));
 assert.ok(ui.includes('Record Lump-sum Amount Received'));
 assert.ok(ui.includes('Active Import Masters'));
 assert.ok(ui.includes('Manually Add an Older Customs Cleared MAWB'));
