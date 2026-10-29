@@ -8,6 +8,7 @@ const shipments=[
   mk('11100000001','Regular Client',10,[{partKey:'a',weight:4},{partKey:'b',weight:6}]),
   mk('11100000002','DHL',20),
   mk('11100000003','Special Client',7.5),
+  mk('11100000005','M5 EXPRESS',12),
   {awb:'11100000004',data:{shipmentType:'IMPORT',clientName:'Ignore',totalWeight:100}}
 ];
 const eici=[{awb:'11100000001',amount:100},{awb:'11100000002',amount:100},{awb:'11100000003',amount:0}];
@@ -17,7 +18,7 @@ const receipts=[
   {awb:'11100000001',mode:'CASH',amount:10}
 ];
 const rows=buildExportClientLedgerRows(shipments,eici,splits,receipts,'2026-10','2026-10');
-assert.equal(rows.length,3,'Import excluded, one ledger row per Export master');
+assert.equal(rows.length,4,'Import excluded, one ledger row per Export master');
 const get=client=>rows.find(r=>r.clientName===client);
 const ordinary=get('Regular Client');
 assert.equal(ordinary.weight,10,'Never add known master and parts together');
@@ -45,6 +46,10 @@ assert.equal(special.cashRate,4);
 assert.equal(special.accountCharge,15);
 assert.equal(special.cashCharge,30);
 assert.equal(special.eiciGst,0);
+const m5=get('M5 EXPRESS');
+assert.equal(m5.scheme,'2_ACCOUNT_4_CASH','M5 is fixed to 2/4 by client name');
+assert.equal(m5.accountCharge,24);
+assert.equal(m5.cashCharge,48);
 assert.equal(validEiciAmount('-4'),null);
 assert.equal(validEiciAmount('1.123'),null);
 assert.equal(validEiciAmount('123.45'),123.45);
