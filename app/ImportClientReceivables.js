@@ -53,10 +53,10 @@ export default function ImportClientReceivables({onOpenProfit}){
     return()=>{clearInterval(t);document.removeEventListener('visibilitychange',onShow);};
   },[refresh]);
   const selected=clients.find(x=>x.key===client)||null;
-  const recentPayments=useMemo(()=>clients.flatMap(c=>c.receipts.map(p=>({
+  const recentPayments=useMemo(()=>clients.filter(c=>c.key===client).flatMap(c=>c.receipts.map(p=>({
     ...p,clientName:c.name,clientKey:c.key
   }))).sort((a,b)=>String(b.date).localeCompare(String(a.date))||
-    new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,30),[clients]);
+    new Date(b.created_at||0)-new Date(a.created_at||0)),[clients,client]);
   const totals=useMemo(()=>clients.reduce((s,c)=>{
     if(c.hasOpening){s.opening+=c.totals.openingPending;s.invoiced+=c.totals.newReceivables;
       s.received+=c.totals.receipts;s.due+=c.totals.netBalance;s.credit+=c.totals.credit;}
@@ -201,8 +201,8 @@ export default function ImportClientReceivables({onOpenProfit}){
       </tbody></table></div>
     </section>
     <section className={styles.section} aria-label="Recent client payments">
-      <h2>Recent Amount Received • All Clients</h2>
-      <p className={styles.hint}>Every successfully saved Cash / Account payment appears here, even without selecting a client. A failed or unsaved payment will not appear.</p>
+      <h2>Recent Amount Received • {selected?selected.name:'Select Client'}</h2>
+      <p className={styles.hint}>Only the selected client’s saved Cash / Account payments appear here. Select a client above to view their receipt history.</p>
       <div className={styles.scroller}><table><thead><tr>
         <th>Client</th><th>Date</th><th>Mode</th><th>Amount Received</th><th>Receipt Reference</th><th>Remarks</th>
       </tr></thead><tbody>
@@ -211,7 +211,7 @@ export default function ImportClientReceivables({onOpenProfit}){
           <td>{p.date}</td><td>{p.mode}</td><td style={{fontWeight:900,color:'#087851'}}>{rupee(p.amount)}</td>
           <td style={mono}>{p.id.slice(0,8)}</td><td>{p.remarks||'—'}</td>
         </tr>)}
-        {!recentPayments.length&&<tr><td colSpan={6}>{loading?'Loading saved receipts…':'No new client-level receipts saved yet.'}</td></tr>}
+        {!recentPayments.length&&<tr><td colSpan={6}>{loading?'Loading saved receipts…':!selected?'Select a client to view payments.':'No payments saved for '+selected.name+' yet.'}</td></tr>}
       </tbody></table></div>
     </section>
     {selected&&<>
