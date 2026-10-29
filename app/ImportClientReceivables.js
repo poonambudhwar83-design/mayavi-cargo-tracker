@@ -144,6 +144,16 @@ export default function ImportClientReceivables({onOpenProfit}){
       data.mawb+' added to client receivables: '+rupee(data.amount)+'.');
     if(ok)setManualAwb('');
   }
+  async function deleteInvoice(row){
+    if(!selected?.hasOpening||busy)return;
+    const clientName=selected.name;
+    if(!window.confirm('Remove '+row.mawb+' ('+rupee(row.amount)+') from '+clientName+
+      ' receivables? Its invoice charge will be reversed. Existing Cash/Account receipts will stay saved and be reallocated.'))return;
+    const key=selected.key;
+    await saveAction({action:'DELETE_INVOICE',client:key,awb:row.awb},data=>
+      'Removed '+data.mawb+' ('+rupee(data.removedAmount)+') from '+clientName+
+      '. Payments remain saved; outstanding and advance credit have been recalculated.');
+  }
   const active=(selected?.active||[]).filter(r=>!lookup||r.mawb.includes(lookup)||r.clientName.toLowerCase().includes(lookup.toLowerCase()));
   const history=(selected?.historical||[]).filter(r=>!lookup||r.mawb.includes(lookup));
   return <main className={styles.page}>
@@ -258,7 +268,7 @@ export default function ImportClientReceivables({onOpenProfit}){
         </section>
         <section className={styles.section}>
           <h2>MAWB-wise Receivables • Cleared & Billed ({selected.invoices.length})</h2>
-          <p className={styles.hint}>Amount = Rate × (Master Weight + Excess Weight). Invoices are frozen at recognition; one MAWB is billed only once. Payment allocation is oldest-first.</p>
+          <p className={styles.hint}>Amount = Rate × (Master Weight + Excess Weight). Invoices are frozen at recognition; one MAWB is billed only once. Payment allocation is oldest-first. <strong>Delete</strong> reverses only the selected MAWB charge; it never removes client receipts or the original Customs Cleared master.</p>
           <div style={{marginBottom:12}}>
             <button style={lightBtn} type="button" onClick={()=>downloadCsv('client-'+selected.key+'-mawb-ledger',
               ['MAWB','Cleared Date','Source','Master Weight','Excess Weight','Rate','Amount','Received','Remaining','Status'],
@@ -266,15 +276,18 @@ export default function ImportClientReceivables({onOpenProfit}){
           </div>
           <div className={styles.scroller}><table><thead><tr>
             <th>MAWB</th><th>Recognition Date</th><th>Source</th><th>Weight</th><th>Extra Weight</th><th>Rate</th><th>Amount</th>
-            <th>Received / Allocated</th><th>Pending</th><th>Payment Status</th></tr></thead><tbody>
+            <th>Received / Allocated</th><th>Pending</th><th>Payment Status</th><th>Delete</th></tr></thead><tbody>
             {selected.invoices.map(i=><tr key={i.awb}>
               <td style={mono}>{i.mawb}{!i.acknowledged&&i.source==='AUTO'&&<small style={{color:'#b45309',display:'block'}}>NEW CLEARANCE</small>}</td>
               <td>{i.eventDate}</td><td>{i.source}</td><td>{kg(i.weight)}</td><td>{kg(i.extraWeight)}</td>
               <td>{rupee(i.rate)}</td><td>{rupee(i.amount)}</td><td>{rupee(i.received)}</td>
               <td className={i.balance>0?styles.due:styles.settled}>{rupee(i.balance)}</td>
               <td>{i.paymentStatus}</td>
+              <td><button type="button" disabled={busy} onClick={()=>void deleteInvoice(i)}
+                aria-label={'Delete invoice '+i.mawb}
+                style={{...lightBtn,color:'#b91c1c',borderColor:'#fca5a5',fontWeight:900}}>Delete</button></td>
             </tr>)}
-            {!selected.invoices.length&&<tr><td colSpan={10}>No MAWB billed after opening setup yet. They will appear automatically after Customs Clear.</td></tr>}
+            {!selected.invoices.length&&<tr><td colSpan={11}>No MAWB billed after opening setup yet. They will appear automatically after Customs Clear.</td></tr>}
           </tbody></table></div>
         </section>
         <section className={styles.section}>
@@ -314,8 +327,8 @@ export default function ImportClientReceivables({onOpenProfit}){
         </tbody></table></div>
       </section>
       <section className={styles.section}>
-        <h2>Manually Add an Older Customs Cleared MAWB</h2>
-        <p className={styles.hint}>For masters cleared before the client's opening date, or a missed cleared master. Weight, Excess Weight and Rate come from the existing shipment / Import Profit Sheet; they are not entered twice. Each MAWB can be added once.</p>
+        <h2>{selected.name} • Customs Cleared Masters from Import Profit Sheet</h2>
+        <p className={styles.hint}>Only <strong>{selected.name}</strong>'s fully Customs Cleared import masters appear below, using the saved Weight, Excess Weight and Rate from Import Profit Sheet. Already billed or removed invoices are excluded. A deleted invoice will not auto-return. Other clients' masters are never shown here.</p>
         <form onSubmit={manual} style={inlineForm}>
           <label style={field}>MAWB<input style={input} list="historical-mawbs" placeholder="11-digit AWB" maxLength={13} value={manualAwb} onChange={e=>setManualAwb(e.target.value)}/></label>
           <datalist id="historical-mawbs">{selected.historical.map(s=><option key={s.awb} value={s.mawb}>{rupee(s.amount)}</option>)}</datalist>
