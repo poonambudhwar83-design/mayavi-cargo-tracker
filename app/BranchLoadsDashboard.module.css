@@ -354,3 +354,19 @@
   padding-left:4px!important;
   padding-right:4px!important;
 }
+
+/* Branch entry: date weekday is shown ABOVE its date input (in the heading).
+   With no extra text below Date, all controls start on the same horizontal row. */
+.entryLedger .dayAboveDate{
+  display:block;margin-top:3px;font-size:10px;line-height:1.3;
+  color:#1d4ed8;font-weight:900;text-transform:none;white-space:nowrap;
+}
+.entryLedger thead th{vertical-align:top!important;}
+.entryLedger tbody .editRow > td{
+  vertical-align:top!important;padding-top:9px!important;
+  padding-bottom:9px!important;
+}
+.entryLedger tbody .editRow input,
+.entryLedger tbody .editRow select{margin:0;height:35px;}
+.entryLedger tbody .editRow .computed{padding-top:18px!important;}
+.entryLedger tbody .editRow .branchPaymentDisplay{justify-items:start;text-align:left;}

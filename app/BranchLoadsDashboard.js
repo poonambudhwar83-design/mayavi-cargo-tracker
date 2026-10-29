@@ -90,6 +90,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const [message,setMessage]=useState('');
   // Keep save failures visible beside the row button even on a wide scrolling table.
   const [saveError,setSaveError]=useState('');
+  const [excelBusy,setExcelBusy]=useState(false);
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -343,38 +344,85 @@ export default function BranchLoadsDashboard({currentUser}){
     }catch(e){setMessage('Admin decision not saved: '+(e?.message||'Please try again.'));}
     finally{setBusy(false);}
   }
-  function downloadCsv(){
+
+  // Shared data powers CSV and real Excel (.xlsx) without changing payment rules.
+  function exportTableData(){
+    const prefix='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase());
     if(sheet==='SUMMARY'){
       const labels=['Date','Day','Branch','No. of Loads','Total Weight (kg)','Total Branch Amount (INR)'];
-      const data=dailySummary.map(r=>[r.date,weekday(r.date),r.branch,r.loads,r.weight.toFixed(3),r.branchAmount.toFixed(2)]);
-      data.push(['TOTAL','','',summaryTotals.loads,summaryTotals.weight.toFixed(3),summaryTotals.branchAmount.toFixed(2)]);
-      const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
-      const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-      const anchor=document.createElement('a');
-      anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-daily-summary.csv';
-      anchor.click();URL.revokeObjectURL(url);
-      return;
+      const data=dailySummary.map(r=>[r.date,weekday(r.date),r.branch,r.loads,Number(r.weight.toFixed(3)),Number(r.branchAmount.toFixed(2))]);
+      data.push(['TOTAL','','',summaryTotals.loads,Number(summaryTotals.weight.toFixed(3)),Number(summaryTotals.branchAmount.toFixed(2))]);
+      return {labels,data,filename:prefix+'-daily-summary'};
     }
     const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
     const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
-    // Keep export totals precisely under the same labels after adding fields.
-    const totalsRow=Array(labels.length).fill('');
-    totalsRow[0]='TOTAL';totalsRow[3]=totals.weight;totalsRow[5]=totals.amount;
-    totalsRow[6]=totals.received;totalsRow[7]=totals.balance;
-    totalsRow[9]=totals.paidToJepo;totalsRow[10]=totals.paidToBranch;
-    if(hasExtraCostColumn)totalsRow[labels.indexOf('Extra Cost (INR)')]=totals.extraCost;
-    totalsRow[labels.length-1]=totals.totalJepo;data.push(totalsRow);
+    const total=Array(labels.length).fill('');
+    total[0]='TOTAL';total[3]=totals.weight;total[5]=totals.amount;total[6]=totals.received;
+    total[7]=totals.balance;total[9]=totals.paidToJepo;total[10]=totals.paidToBranch;
+    if(hasExtraCostColumn)total[labels.indexOf('Extra Cost (INR)')]=totals.extraCost;
+    total[labels.length-1]=totals.totalJepo;
+    data.push(total);
+    return {labels,data,filename:prefix+'-'+sheet.toLowerCase()+'-loads'};
+  }
+  function downloadCsv(){
+    const {labels,data,filename}=exportTableData();
     const csv='\uFEFF'+[labels,...data].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-    const anchor=document.createElement('a');
-    anchor.href=url;anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-'+sheet.toLowerCase()+'-loads.csv';
-    anchor.click();URL.revokeObjectURL(url);
+    const anchor=document.createElement('a');anchor.href=url;anchor.download=filename+'.csv';anchor.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  async function downloadExcel(){
+    if(excelBusy)return;
+    setExcelBusy(true);
+    try{
+      const {labels,data,filename}=exportTableData();
+      // ExcelJS is loaded only when Excel is requested, keeping regular tracking fast.
+      const ExcelJS=(await import('exceljs')).default;
+      const workbook=new ExcelJS.Workbook();
+      workbook.creator='JEPO Express / Mayavi Cargo';
+      workbook.created=new Date();
+      const worksheet=workbook.addWorksheet(sheet==='SUMMARY'?'Daily Summary':sheet==='DELIVERED'?'Delivered Loads':'Active Loads');
+      worksheet.columns=labels.map((header,i)=>({
+        header,key:'col'+i,
+        width:/Remarks/.test(header)?34:/Destination|Commodity|Confirmation|Tracking/.test(header)?25:Math.max(15,Math.min(27,header.length+2))
+      }));
+      const numericLabels=new Set(['No. of Loads','Total Weight (kg)','Total Branch Amount (INR)','Load Received (kg)',
+        'Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)',
+        'Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','No. of Bottles','Extra Cost (INR)',
+        'Total Amount Paid to JEPO (INR)']);
+      const numericIndices=new Set(labels.flatMap((label,index)=>numericLabels.has(label)?[index]:[]));
+      data.forEach(values=>{
+        const rowValues=values.map((v,index)=>numericIndices.has(index)&&v!==''&&v!==null&&v!==undefined?Number(v):(v===null||v===undefined?'':String(v)));
+        worksheet.addRow(rowValues);
+      });
+      worksheet.getRow(1).height=36;
+      worksheet.getRow(1).eachCell(cell=>{
+        cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF174A91'}};
+        cell.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
+        cell.alignment={vertical:'middle',wrapText:true};
+      });
+      worksheet.views=[{state:'frozen',xSplit:2,ySplit:1}];
+      // Do not include the final TOTAL row in column filters.
+      if(data.length>1)worksheet.autoFilter={from:{row:1,column:1},to:{row:data.length,column:labels.length}};
+      for(let i=0;i<labels.length;i++){
+        if(numericIndices.has(i))worksheet.getColumn(i+1).numFmt=/Weight/.test(labels[i])?'#,##0.000':/No\. of/.test(labels[i])?'#,##0':'#,##0.00';
+      }
+      const totalRow=worksheet.getRow(data.length+1);
+      totalRow.font={bold:true,color:{argb:'FF163B74'}};
+      totalRow.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1FC'}};
+      const buffer=await workbook.xlsx.writeBuffer();
+      const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+      const anchor=document.createElement('a');anchor.href=url;anchor.download=filename+'.xlsx';anchor.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){
+      setMessage('Excel download failed: '+(error?.message||'Please try again.'));
+    }finally{setExcelBusy(false);}
   }
   const input={type:'number',min:'0',step:'any',inputMode:'decimal'};
   function entryRow(showExtraColumn=false){
     return <tr className={styles.editRow}>
       <td>{isAdmin?<select aria-label="Branch" value={draft.branch} onChange={e=>setDraft(d=>({...d,branch:e.target.value,status:initialBranchStatus(e.target.value)}))}>{BRANCHES.map(x=><option key={x}>{x}</option>)}</select>:<b>{userBranch}</b>}</td>
-      <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/>{draft.date&&<small className={styles.dateDay}>{weekday(draft.date)}</small>}</td>
+      <td><input aria-label="Date" required type="date" value={draft.date} onChange={e=>set('date',e.target.value)}/></td>
       <td><input aria-label="Load received kilograms" {...input} required value={draft.weight} placeholder="Weight kg" onChange={e=>set('weight',e.target.value)}/></td>
       <td><input aria-label="Rate per kg" {...input} required value={draft.rate} placeholder="₹/kg" onChange={e=>set('rate',e.target.value)}/></td>
       <td className={styles.computed}>{fmt(preview?.amount??null)}</td>
@@ -479,7 +527,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <div className={styles.scroller} ref={entryScrollRef} onScroll={()=>syncLedgerScroll('entry')}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(true)+'px',minWidth:'100%'}}>
           {ledgerColumns(true)}
-          <thead><tr><th>Branch</th><th>Date &amp; Day</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day{draft.date&&<small className={styles.dayAboveDate}>{weekday(draft.date)}</small>}</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(true)}</tbody>
         </table></div>
       </section>}
@@ -550,6 +598,7 @@ export default function BranchLoadsDashboard({currentUser}){
         {sheet==='ACTIVE'&&<button type="button" onClick={add} disabled={busy}>+ Daily Entry</button>}
         <button type="button" onClick={()=>void load()}>Refresh</button>
         <button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>
+         <button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>
       </span>
     </footer>
   </main>;

@@ -17,6 +17,7 @@
     "bmp-js": "0.1.0",
     "puppeteer-core": "25.9.0",
     "@sparticuz/chromium": "149.0.0",
-    "@neondatabase/serverless": "1.1.0"
+    "@neondatabase/serverless": "1.1.0",
+    "exceljs": "4.4.0"
   }
 }
