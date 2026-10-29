@@ -3,7 +3,7 @@ import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {ledgerAwb,validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
 import {clientKey,clientLabel,istDate,masterCustomsClearance,masterReceivable,settleClientReceivables} from '../../../lib/importClientReceivables.js';
-import {physicalImportProfitRows} from '../../../lib/importProfitPhysicalRows.js';
+import {clearedMasterInImportProfit} from '../../../lib/importReceivablesProfitSource.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store, private'}});
@@ -50,13 +50,21 @@ async function inputs(sql){
   ]);
   const rates=new Map(financials.map(x=>[ledgerAwb(x.awb),x])),extras=new Map();
   for(const p of partExtras){const awb=ledgerAwb(p.awb);if(!extras.has(awb))extras.set(awb,[]);extras.get(awb).push(p);}
-  const masters=shipments.map(s=>{const awb=ledgerAwb(s.awb),d=s.data||{};return {
-    awb,mawb:awb.slice(0,3)+'-'+awb.slice(3),
-    clientName:clientLabel(d),clientKey:clientKey(clientLabel(d)),
-    clearedAt:masterCustomsClearance(d),
-    profitCustomsCleared:physicalImportProfitRows(d,awb).length>0&&
-      physicalImportProfitRows(d,awb).every(p=>p.isActiveMaster===false),
-    ...masterReceivable(s,rates.get(awb)||{},extras.get(awb)||[])}
+  const masters=shipments.map(s=>{
+    const awb=ledgerAwb(s.awb),d=s.data||{};
+    const profitSource=clearedMasterInImportProfit(d,awb);
+    return {
+      awb,mawb:awb.slice(0,3)+'-'+awb.slice(3),
+      clientName:clientLabel(d),clientKey:clientKey(clientLabel(d)),
+      clearedAt:masterCustomsClearance(d),
+      // Match actual Import Profit Sheet physical rows/months, not a separate
+      // Customs Cleared register. One master only, including split shipments.
+      profitCustomsCleared:profitSource.eligible,
+      profitArrivalDate:profitSource.profitArrivalDate,
+      profitRowCount:profitSource.profitRowCount,
+      profitSource:profitSource.source,
+      ...masterReceivable(s,rates.get(awb)||{},extras.get(awb)||[])
+    };
   }).filter(s=>s.awb);
   return {masters,accounts,opened:new Map(accounts.map(a=>[a.client_key,a]))};
 }
@@ -64,7 +72,7 @@ async function sync(sql,masters,opened){
   let count=0;
   for(const s of masters){
     const a=opened.get(s.clientKey);
-    if(!a||!s.clearedAt||new Date(s.clearedAt)<new Date(a.started_at)||s.amount===null)continue;
+    if(!a||!s.profitCustomsCleared||!s.clearedAt||new Date(s.clearedAt)<new Date(a.started_at)||s.amount===null)continue;
     const [saved]=await sql`INSERT INTO mayavi_import_client_invoices
       (awb,client_key,source,cleared_at,recognized_at,weight,excess_weight,rate,amount,created_by)
       SELECT ${s.awb},${s.clientKey},'AUTO',${s.clearedAt}::timestamptz,
@@ -108,8 +116,8 @@ export async function GET(request){
         started_at:a.started_at,displayName:a.display_name,updatedAt:a.updated_at},
         invoiceRows,receipts.filter(p=>p.clientKey===key),today):null;
       const active=masters.filter(s=>s.clientKey===key&&!s.clearedAt);
-      // Historical choices are client-specific, fully Customs Cleared in Import
-      // Profit's physical-row feed, and exclude already billed/deleted masters.
+      // The options come only from the actual monthly Import Profit Sheet rows,
+      // selected client, and fully cleared masters; exclude billed/deleted ones.
       const historical=masters.filter(s=>s.clientKey===key&&s.clearedAt&&
         s.profitCustomsCleared&&!billed.has(s.awb)&&!voidedSet.has(s.awb));
       return {key,name,hasOpening:Boolean(a),opening:account?.opening||null,

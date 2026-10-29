@@ -327,17 +327,17 @@ export default function ImportClientReceivables({onOpenProfit}){
         </tbody></table></div>
       </section>
       <section className={styles.section}>
-        <h2>{selected.name} • Customs Cleared Masters from Import Profit Sheet</h2>
-        <p className={styles.hint}>Only <strong>{selected.name}</strong>'s fully Customs Cleared import masters appear below, using the saved Weight, Excess Weight and Rate from Import Profit Sheet. Already billed or removed invoices are excluded. A deleted invoice will not auto-return. Other clients' masters are never shown here.</p>
+        <h2>{selected.name} • Cleared Masters • Import Profit Sheet</h2>
+        <p className={styles.hint}>Data comes from <strong>Import Profit Sheet</strong> (monthly cleared physical rows), not from the separate Customs Cleared Sheet. Only <strong>{selected.name}</strong>'s fully cleared MAWBs appear; Rate, Master Weight and Excess Weight are read from Import Profit data. Already billed or deleted invoices stay excluded. Other clients' masters are never shown here.</p>
         <form onSubmit={manual} style={inlineForm}>
           <label style={field}>MAWB<input style={input} list="historical-mawbs" placeholder="11-digit AWB" maxLength={13} value={manualAwb} onChange={e=>setManualAwb(e.target.value)}/></label>
           <datalist id="historical-mawbs">{selected.historical.map(s=><option key={s.awb} value={s.mawb}>{rupee(s.amount)}</option>)}</datalist>
           <button type="submit" disabled={busy||!selected.hasOpening} style={btn}>Add Cleared MAWB</button>
         </form>
         <div className={styles.scroller} style={{marginTop:12}}><table><thead><tr>
-          <th>MAWB</th><th>Cleared Date</th><th>Weight</th><th>Extra Weight</th><th>Rate</th><th>Amount</th><th>Add</th></tr></thead><tbody>
+          <th>MAWB</th><th>Profit Arrival Date</th><th>Weight</th><th>Extra Weight</th><th>Rate</th><th>Amount</th><th>Add</th></tr></thead><tbody>
           {history.slice(0,150).map(s=><tr key={s.awb}>
-            <td style={mono}>{s.mawb}</td><td>{String(s.clearedAt).slice(0,10)}</td>
+            <td style={mono}>{s.mawb}</td><td>{String(s.profitArrivalDate||'').slice(0,10)}</td>
             <td>{kg(s.weight)}</td><td>{kg(s.extraWeight)}</td><td>{s.rate===null?'—':rupee(s.rate)}</td>
             <td>{s.amount===null?'Rate/Weight needed':rupee(s.amount)}</td>
             <td><button style={lightBtn} disabled={busy||!selected.hasOpening||s.amount===null}

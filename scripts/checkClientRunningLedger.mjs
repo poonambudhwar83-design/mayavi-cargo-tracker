@@ -1,7 +1,40 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {clientKey,istDate,masterCustomsClearance,masterReceivable,settleClientReceivables} from '../lib/importClientReceivables.js';
+import {clearedMasterInImportProfit} from '../lib/importReceivablesProfitSource.js';
 assert.equal(clientKey('  Sonu   cargo '),'SONU CARGO');
+
+const clearedProfit=clearedMasterInImportProfit(
+  {customsCleared:true,customsClearedAt:'2026-10-26T00:00:00Z',arrivalDate:'2026-10-25',
+    arrivalIsActual:true,weight:2016,pieces:55},'06511493683',['2026-10'],'2026-10');
+assert.equal(clearedProfit.eligible,true);
+assert.equal(clearedProfit.profitArrivalDate,'2026-10-25');
+assert.equal(clearedProfit.profitRowCount,1);
+assert.equal(clearedProfit.source,'IMPORT_PROFIT_SHEET');
+const outsideProfit=clearedMasterInImportProfit(
+  {customsCleared:true,customsClearedAt:'2026-09-18T00:00:00Z',arrivalDate:'2026-09-17',
+    arrivalIsActual:true,weight:2620},'06511493565',['2026-10'],'2026-10');
+assert.equal(outsideProfit.eligible,false);
+const activeProfit=clearedMasterInImportProfit(
+  {customsCleared:false,arrivalDate:'2026-10-25',weight:2500},'06511493565',['2026-10'],'2026-10');
+assert.equal(activeProfit.eligible,false);
+const partialProfit=clearedMasterInImportProfit(
+  {partLoad:true,isPartLoad:true,customsCleared:false,totalWeight:2300,totalPieces:25,
+    weight:2300,partShipments:[
+    {partKey:'a',pieces:10,weight:900,arrivalDate:'2026-10-24',arrivalIsActual:true,customsCleared:true},
+    {partKey:'b',pieces:15,weight:1400,arrivalDate:'2026-10-25',arrivalIsActual:true,customsCleared:false}
+  ]},'17621775515',['2026-10'],'2026-10');
+assert.equal(partialProfit.eligible,false);
+const completeProfit=clearedMasterInImportProfit(
+  {partLoad:true,isPartLoad:true,customsCleared:false,totalWeight:2300,totalPieces:25,
+    weight:2300,partShipments:[
+    {partKey:'a',pieces:10,weight:900,arrivalDate:'2026-10-24',arrivalIsActual:true,customsCleared:true},
+    {partKey:'b',pieces:15,weight:1400,arrivalDate:'2026-10-25',arrivalIsActual:true,customsCleared:true}
+  ]},'17621775515',['2026-10'],'2026-10');
+assert.equal(completeProfit.eligible,true);
+assert.equal(completeProfit.profitRowCount,2);
+assert.equal(completeProfit.profitArrivalDate,'2026-10-25');
+
 assert.equal(masterCustomsClearance({customsCleared:false}),'');
 assert.equal(masterCustomsClearance({customsCleared:true,customsClearedAt:'2026-10-29T04:20:00Z'}),'2026-10-29T04:20:00.000Z');
 assert.equal(masterCustomsClearance({partShipments:[
@@ -91,7 +124,12 @@ assert.ok(!api.includes('Receipt date precedes opening date.'));
 assert.ok(ui.includes('Older payment dates are allowed'));
 assert.ok(ui.includes('Record Lump-sum Amount Received'));
 assert.ok(ui.includes('Active Import Masters'));
-assert.ok(ui.includes('Customs Cleared Masters from Import Profit Sheet'));
+assert.ok(ui.includes('Cleared Masters • Import Profit Sheet'));
+assert.ok(ui.includes('Profit Arrival Date'));
+assert.ok(ui.includes('not from the separate Customs Cleared Sheet'));
+assert.ok(api.includes('clearedMasterInImportProfit(d,awb)'));
+assert.ok(api.includes('!s.profitCustomsCleared'));
+assert.ok(api.includes('profitArrivalDate:profitSource.profitArrivalDate'));
 assert.ok(ui.includes('onClick={()=>void deleteInvoice(i)}'));
 assert.ok(ui.includes("action:'DELETE_INVOICE'"));
 assert.ok(ui.includes("window.confirm("));
