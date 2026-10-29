@@ -5,7 +5,7 @@ import SpeedPostDashboard from './SpeedPostDashboard.js';
 import AdminNotesDashboard from './AdminNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
-import ExportProfitSheet from './ExportProfitSheet.js';
+import ExportFinanceSection from './ExportFinanceSection.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 import HaryanaAdminDashboard from './HaryanaAdminDashboard.js';
 
@@ -203,7 +203,7 @@ export default function UnifiedDashboard(){
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
       ?<ImportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
-      ?<ExportProfitSheet/>
+      ?<ExportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='NOTES'
       ?<AdminNotesDashboard currentUser={session}/>
     :speedPostAllowed&&selectedDashboard==='SPEED_POST'
