@@ -75,4 +75,14 @@ const browserSource=readFileSync('lib/cathay-browser-fallback.js','utf8');
 assert.ok(browserSource.includes('allCathayTabText(browser)'));
 assert.ok(browserSource.includes('scrollCathayTabs(browser,i)'));
 assert.ok(browserSource.includes("await fillField(page,'awb',serial)"));
+const bookingDetails=parseCathayBookingStatus(cathayPhotoText.replace('Booking Status','Booking Details'),'160-18865044');
+assert.ok(bookingDetails,'lower Booking Details card should be parsed');
+assert.equal(bookingDetails.flightNo,'CX679');
+assert.equal(bookingDetails.arrivalDate,'2026-10-28');
+assert.equal(bookingDetails.arrivalTime,'00:10');
+const cxReader=readFileSync('lib/cathay-browser-fallback.js','utf8');
+assert.ok(cxReader.includes('revealCathayBookingDetails(browser)'), 'Booking Details must be explicitly revealed');
+assert.ok(cxReader.includes('el.scrollHeight>el.clientHeight+80'), 'Nested booking panels must scroll');
+assert.ok(cxReader.includes("if(control&&control.getAttribute('aria-expanded')==='false')control.click()"), 'Expanded details must not be collapsed');
+
 console.log('Cathay future-arrival, allotment, timezone and recurring refresh tests passed.');
