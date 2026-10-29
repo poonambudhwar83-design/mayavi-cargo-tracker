@@ -148,7 +148,15 @@ export async function POST(request){
       if(!saved||saved.client_key!==key||saved.payment_date!==date||saved.mode!==mode||
         Number(saved.amount)!==sum||saved.remarks!==remarks)
         return reply({ok:false,error:'Receipt request ID already used. Refresh first.'},409);
-      return reply({ok:true,receipt:payment(saved)},201);
+      const [balance]=await sql`SELECT a.opening_amount,
+        COALESCE(SUM(p.amount),0) AS total_received
+        FROM mayavi_import_client_accounts a
+        LEFT JOIN mayavi_import_client_bulk_receipts p ON p.client_key=a.client_key
+        WHERE a.client_key=${key} GROUP BY a.opening_amount`;
+      const openingPending=Math.max(0,Number(balance?.opening_amount||0)-Number(balance?.total_received||0));
+      console.info('import_client_receipt_saved',JSON.stringify({client:key,mode,receiptId:id}));
+      return reply({ok:true,receipt:payment(saved),openingPending,
+        verifiedInDatabase:true},201);
     }
     if(action==='MANUAL'){
       const awb=ledgerAwb(body.awb);
@@ -174,5 +182,8 @@ export async function POST(request){
       return reply({ok:true,acknowledged:saved.length});
     }
     return reply({ok:false,error:'Unknown ledger action.'},400);
-  }catch(e){return reply({ok:false,error:e?.message||'Could not save client ledger.'},503);}
+  }catch(e){
+    console.error('import_client_ledger_save_failed',e?.message||String(e));
+    return reply({ok:false,error:e?.message||'Could not save client ledger.'},503);
+  }
 }

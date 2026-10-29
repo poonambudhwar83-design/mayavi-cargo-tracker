@@ -53,7 +53,7 @@ export default function ImportClientReceivables({onOpenProfit}){
   },[refresh]);
   const selected=clients.find(x=>x.key===client)||null;
   const totals=useMemo(()=>clients.reduce((s,c)=>{
-    if(c.hasOpening){s.opening+=c.totals.opening;s.invoiced+=c.totals.newReceivables;
+    if(c.hasOpening){s.opening+=c.totals.openingPending;s.invoiced+=c.totals.newReceivables;
       s.received+=c.totals.receipts;s.due+=c.totals.netBalance;s.credit+=c.totals.credit;}
     s.pendingMasters+=c.active.length;s.notifications+=c.unread;return s;
   },{opening:0,invoiced:0,received:0,due:0,credit:0,pendingMasters:0,notifications:0}),[clients]);
@@ -85,9 +85,10 @@ export default function ImportClientReceivables({onOpenProfit}){
     event.preventDefault();if(!selected?.hasOpening)return;
     const ok=await saveAction({action:'RECEIPT',client:selected.key,
       date:payment.date,mode:payment.mode,amount:payment.amount,
-      remarks:payment.remarks,clientRequestId:paymentId},()=>
-        'Received '+rupee(payment.amount)+' for '+selected.name+
-        '. Automatically allocated to opening balance first, then oldest MAWB.');
+      remarks:payment.remarks,clientRequestId:paymentId},data=>
+        'Payment saved in shared database: '+rupee(data.receipt.amount)+' ('+data.receipt.mode+
+        ') for '+selected.name+'. Remaining opening balance: '+rupee(data.openingPending)+
+        '. Payment Reference: '+data.receipt.id.slice(0,8)+'.');
     if(ok){setPayment(p=>({...p,amount:'',remarks:''}));setPaymentId(newId());}
   }
   async function manual(event){
@@ -109,7 +110,7 @@ export default function ImportClientReceivables({onOpenProfit}){
       <button style={lightBtn} type="button" onClick={()=>void refresh()} disabled={busy}>Refresh Ledger</button>
     </header>
     <section aria-label="All client totals" className={styles.summary}>
-      <div><span>Client Opening Balances</span><b>{rupee(totals.opening)}</b></div>
+      <div><span>Remaining Opening Dues</span><b>{rupee(totals.opening)}</b></div>
       <div><span>New Cleared Receivables</span><b>{rupee(totals.invoiced)}</b></div>
       <div><span>Amount Received</span><b>{rupee(totals.received)}</b></div>
       <div><span>Net Client Balance</span><b>{rupee(totals.due)}</b></div>
@@ -129,12 +130,12 @@ export default function ImportClientReceivables({onOpenProfit}){
     <section className={styles.section}>
       <h2>Client-wise Running Balances</h2>
       <div className={styles.scroller}><table><thead><tr>
-        <th>Client</th><th>Opening</th><th>New MAWB Amount</th>
+        <th>Client</th><th>Opening Pending</th><th>New MAWB Amount</th>
         <th>Total Received</th><th>Net Balance</th><th>Credit</th>
         <th>Active Masters</th><th>New Alerts</th></tr></thead><tbody>
         {clients.map(c=><tr key={c.key} style={client===c.key?{background:'#e0f2fe'}:{}}>
           <td><button type="button" className={styles.clientLink} onClick={()=>select(c.key)}>{c.name}</button></td>
-          <td>{c.hasOpening?rupee(c.totals.opening):<span className={styles.missing}>Not set</span>}</td>
+          <td>{c.hasOpening?rupee(c.totals.openingPending):<span className={styles.missing}>Not set</span>}</td>
           <td>{c.hasOpening?rupee(c.totals.newReceivables):'—'}</td>
           <td>{c.hasOpening?rupee(c.totals.receipts):'—'}</td>
           <td className={c.totals?.netBalance>0?styles.due:styles.settled}>{c.hasOpening?rupee(c.totals.netBalance):'—'}</td>
@@ -153,7 +154,12 @@ export default function ImportClientReceivables({onOpenProfit}){
             <input style={input} type="number" min="0" step="0.01" required value={openingAmount}
               onChange={e=>setOpeningAmount(e.target.value)}/></label>
           <button style={btn} disabled={busy} type="submit">{busy?'Saving…':selected.hasOpening?'Update Opening':'Save Opening Balance'}</button>
-          {selected.hasOpening&&<strong style={{color:'#0f5132'}}>Started: {selected.opening.startDate} • Opening due: {rupee(selected.opening.balance)}</strong>}
+          {selected.hasOpening&&<div style={{display:'flex',gap:11,flexWrap:'wrap',alignItems:'center'}}>
+  <span style={{...card,background:'#fff'}}><small style={{color:'#54718e',fontWeight:800}}>Original Opening</small><strong style={{display:'block',color:'#153a65',fontSize:16}}>{rupee(selected.opening.amount)}</strong></span>
+  <span style={{...card,background:'#f0fdf4'}}><small style={{color:'#54718e',fontWeight:800}}>Receipts Adjusted Against Opening</small><strong style={{display:'block',color:'#0c7950',fontSize:16}}>{rupee(selected.opening.received)}</strong></span>
+  <span style={{...card,background:'#fff7ed'}}><small style={{color:'#87501d',fontWeight:800}}>Remaining Opening Due</small><strong style={{display:'block',color:'#9a3412',fontSize:19}}>{rupee(selected.opening.balance)}</strong></span>
+  <small style={{color:'#577087'}}>Opening started: {selected.opening.startDate}</small>
+</div>}
         </form>
       </section>
       {selected.unread>0&&<section className={styles.warning} role="status">
@@ -167,6 +173,7 @@ export default function ImportClientReceivables({onOpenProfit}){
       {selected.hasOpening&&<>
         <section className={styles.section}>
           <h2>Record Lump-sum Amount Received • {selected.name}</h2>
+          <p className={styles.hint} style={{fontWeight:800,color:'#135b44'}}>Latest saved opening due: {rupee(selected.opening.balance)} • Receipts credited against opening: {rupee(selected.opening.received)}</p>
           <p className={styles.hint}>The entire payment is recorded once against the client—not separately against every MAWB. Opening due is cleared first; the rest settles oldest MAWB, then partial MAWB, then remains as advance credit.</p>
           <form onSubmit={savePayment} style={inlineForm}>
             <label style={field}>Received Date<input style={input} type="date" max={today()} required value={payment.date} onChange={e=>setPayment(p=>({...p,date:e.target.value}))}/></label>
