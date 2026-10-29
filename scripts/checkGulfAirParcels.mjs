@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseGulfAirParcelsApi,parseGulfAirParcelsPage} from '../lib/gulfAirParcels.js';
+import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm} from '../lib/gulfAirParcels.js';
 const awb='072-95056684';
 const fixture={results:[{tracking_number:awb,shipment:{
   trackingId:awb,fromAirport:'LHR',toAirport:'DEL',pieces:17,weight:442.6,
@@ -45,4 +45,23 @@ assert.equal(actualPage.shipment.pieces,'50');
 assert.equal(actualPage.shipment.weight,'1500.0');
 assert.equal(actualPage.shipment.status,'BOOKED');
 assert.equal(actualPage.shipment.arrivalDate,'');
+// Regress the exact requested UI sequence: AWB focus, actual keyboard typing,
+// check the field value, then click ParcelsApp's Track button.
+const flow=[];
+const inputEl={value:'',async click(){flow.push('FOCUS_AWB_INPUT');}};
+const trackButton={innerText:'Track package',async click(){flow.push('PHYSICAL_TRACK_CLICK');}};
+const browserMock={
+  async $(selector){if(selector==='input[name="tracking_id"]')return inputEl;
+    if(selector==='button[data-tracking-submit="true"]')return trackButton;return null;},
+  keyboard:{
+    async press(keys){flow.push('KEYS:'+keys);},
+    async type(value){inputEl.value=value;flow.push('TYPE:'+value);}
+  },
+  async evaluate(fn,element){flow.push('READ_DOM');return fn(element);}
+};
+const submission=await submitGulfAirParcelsForm(browserMock,awb);
+assert.equal(submission.ok,true);
+assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
+assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Control+A','TYPE:07295056684','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
+
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
