@@ -41,6 +41,10 @@ const delivered=rows.filter(x=>x.delivered===true);
 assert.equal(speedPostCostSummary(delivered,{tariffOf:tariff,cashOf:cash}).packets,2,
   'compiled Delivered sheet includes different entry dates');
 const screen=readFileSync('app/SpeedPostDashboard.js','utf8');
+assert.ok(screen.includes("'CORRECT STATUS'"),'Delivered records must clearly label the optional correction action');
+assert.ok(!screen.includes("'NOT DELIVERED'"),'Do not show a contradictory NOT DELIVERED action on delivered rows');
+assert.ok(screen.includes('Correction action only:'),'Correction must be explicitly described as optional');
+assert.ok(screen.includes("if(isDelivered(row))return 'DELIVERED'"),'Delivered packet classification must remain unchanged');
 for(const piece of [
   "speedPostGroupByEntryDay(rows)","speedPostGroupByEntryMonth(rows)",
   "speedPostTab==='MONTHLY'","speedPostTab==='DELIVERED'?deliveredRows",
