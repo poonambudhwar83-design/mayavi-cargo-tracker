@@ -167,8 +167,8 @@ assert.ok(!profitUI.includes('speedPostDailySummary(rows)'),
   'The daily breakdown belongs in existing Monthly Records only.');
 assert.ok(main.includes('const monthProfit=canViewProfit?speedPostDailySummary(monthRows):null;'),
   'Only Admin may calculate daily profit within Monthly Records.');
-assert.ok(main.includes("...(canViewProfit?['Daily Profit']:[])"),
-  'Daily Profit heading in existing Monthly Records must be Admin-only.');
+assert.ok(main.includes("...(canViewProfit?['Amount Paid in Bank','Difference','Daily Profit']:[])"),
+  'Daily Profit and the added bank reconciliation columns in Monthly Records must be Admin-only.');
 assert.ok(main.includes('dailyProfitByDate.get(day)?.profitablePackets'),
   'The existing Monthly Records rows must show daily profit.');
 assert.ok(main.includes('monthProfit?.month.profitablePackets'),
