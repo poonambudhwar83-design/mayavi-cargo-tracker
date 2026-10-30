@@ -8,17 +8,17 @@ const button={border:0,borderRadius:8,padding:'10px 14px',fontWeight:800,cursor:
 const cell={padding:'8px 10px',borderBottom:'1px solid #e3eaf2',fontSize:13,whiteSpace:'nowrap'};
 // Distinct, soft pastel company colours: visible in row badges and selectors.
 const companyPastels=Object.freeze({
-  'KCC':{background:'#ede9fe',color:'#5b21b6',border:'#ddd6fe'},
-  'PV':{background:'#dcfce7',color:'#166534',border:'#bbf7d0'},
-  'PV HYD':{background:'#ffedd5',color:'#9a3412',border:'#fed7aa'},
-  'CHENNAI':{background:'#e0f2fe',color:'#075985',border:'#bae6fd'},
-  'BANGLORE':{background:'#ffe4e6',color:'#9f1239',border:'#fecdd3'},
-  'JEPO DELHI':{background:'#fef3c7',color:'#92400e',border:'#fde68a'},
-  'JEPO KARNAL':{background:'#cffafe',color:'#155e75',border:'#a5f3fc'},
-  'JEPO JIND':{background:'#f3e8ff',color:'#7e22ce',border:'#e9d5ff'},
-  'AIRPORT STAFF':{background:'#e0e7ff',color:'#3730a3',border:'#c7d2fe'}
+  'KCC':{background:'#ede9fe',color:'#5b21b6',borderColor:'#ddd6fe'},
+  'PV':{background:'#dcfce7',color:'#166534',borderColor:'#bbf7d0'},
+  'PV HYD':{background:'#ffedd5',color:'#9a3412',borderColor:'#fed7aa'},
+  'CHENNAI':{background:'#e0f2fe',color:'#075985',borderColor:'#bae6fd'},
+  'BANGLORE':{background:'#ffe4e6',color:'#9f1239',borderColor:'#fecdd3'},
+  'JEPO DELHI':{background:'#fef3c7',color:'#92400e',borderColor:'#fde68a'},
+  'JEPO KARNAL':{background:'#cffafe',color:'#155e75',borderColor:'#a5f3fc'},
+  'JEPO JIND':{background:'#f3e8ff',color:'#7e22ce',borderColor:'#e9d5ff'},
+  'AIRPORT STAFF':{background:'#e0e7ff',color:'#3730a3',borderColor:'#c7d2fe'}
 });
-const companyPastel=company=>companyPastels[company]||{background:'#f1f5f9',color:'#475569',border:'#e2e8f0'};
+const companyPastel=company=>companyPastels[company]||{background:'#f1f5f9',color:'#475569',borderColor:'#e2e8f0'};
 const show=value=>money.format(Number(value)||0);
 const currentMonth=()=>{const today=new Date();return String(today.getFullYear())+'-'+String(today.getMonth()+1).padStart(2,'0');};
 export default function SalaryDashboard(){
