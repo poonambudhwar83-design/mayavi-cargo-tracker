@@ -19,16 +19,18 @@ export default function SalaryDashboard(){
   const [editing,setEditing]=useState(null);
   const [baseSalary,setBaseSalary]=useState('');
   const [busy,setBusy]=useState({});
+  const [saved,setSaved]=useState({});
   const [adding,setAdding]=useState(false);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState('');
   const load=useCallback(async ()=>{
-    setLoading(true);setMessage('');setDrafts({});setEditing(null);
+    setLoading(true);setMessage('');setDrafts({});setEditing(null);setSaved({});
     try{
       const res=await fetch('/api/salary?month='+encodeURIComponent(month),{cache:'no-store',credentials:'include'});
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data.error||'Unable to load salary details.');
       setRows(data.rows||[]);
+      setSaved(Object.fromEntries((data.rows||[]).filter(row=>row.updatedAt).map(row=>[row.id,true])));
     }catch(error){setRows([]);setMessage(error.message||'Could not load Salary page.');}
     finally{setLoading(false);}
   },[month]);
@@ -39,9 +41,9 @@ export default function SalaryDashboard(){
     (!employeeSearch||String(row.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))
   ),[shown,companyFilter,employeeSearch]);
   const total=useMemo(()=>salaryTotals(visible),[visible]);
-  function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));}
-  function beginEdit(row){setEditing(row.id);setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
-  function cancelEdit(id){setEditing(null);setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
+  function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));setSaved(previous=>({...previous,[id]:false}));}
+  function beginEdit(row){setEditing(row.id);setSaved(previous=>({...previous,[row.id]:false}));setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
+  function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
   async function addEmployee(e){
     e.preventDefault();if(adding)return;setAdding(true);setMessage('');
     try{
@@ -61,9 +63,10 @@ export default function SalaryDashboard(){
           salaryAmount:row.salaryAmount,cashPaid:row.cashPaid,accountPaid:row.accountPaid,
           editProfile,employeeName:row.employeeName,companyName:row.companyName})});
       const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
-      setRows(previous=>previous.map(r=>r.id===row.id?{...r,...data.row}:r));
+      setRows(previous=>previous.map(r=>r.id===row.id?{...r,...data.row,updatedAt:new Date().toISOString()}:r));
       setDrafts(previous=>{const next={...previous};delete next[row.id];return next});
       if(editProfile)setEditing(null);
+      setSaved(previous=>({...previous,[row.id]:true}));
       setMessage(data.message);
     }catch(error){setMessage(row.employeeName+': '+(error.message||'Save failed.'));}
     finally{setBusy(p=>({...p,[row.id]:false}));}
@@ -157,7 +160,7 @@ export default function SalaryDashboard(){
                 <td style={{...cell,fontWeight:800,color:values&&values.balance<0?'#b91c1c':'#42566e'}}>{values?show(values.balance):'—'}</td>
                 <td style={cell}><div style={{display:'flex',gap:6,alignItems:'center'}}>
                   <button type="button" disabled={Boolean(busy[row.id])} onClick={()=>void saveRow(row)}
-                    style={{...button,background:'#0b786e',color:'#fff',padding:'8px 12px'}}>{busy[row.id]?'SAVING…':editing===row.id?'SAVE CHANGES':'SAVE'}</button>
+                    style={{...button,background:saved[row.id]&&editing!==row.id?'#15803d':'#2056a1',color:'#fff',padding:'8px 12px',minWidth:110,transition:'background .2s ease'}}>{busy[row.id]?'SAVING…':editing===row.id?'SAVE CHANGES':saved[row.id]?'✓ SAVED':'SAVE'}</button>
                   {editing===row.id
                     ?<button type="button" disabled={Boolean(busy[row.id])} onClick={()=>cancelEdit(row.id)}
                       style={{...button,background:'#e7edf4',color:'#263b56',padding:'8px 12px'}}>CANCEL</button>
