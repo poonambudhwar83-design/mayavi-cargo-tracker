@@ -5,6 +5,7 @@ import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
 import { createSpeedPostPdf, createSpeedPostXlsx } from '../lib/speedpostExports.js';
 import SpeedPostMonthlyProfit from './SpeedPostMonthlyProfit.js';
 import {speedPostProfitRow,speedPostDailySummary} from '../lib/speedpostMonthlyProfit.js';
+import {speedPostBankDifference,speedPostBankMonthTotals} from '../lib/speedpostBank.js';
 import { speedPostEntryDay, speedPostEntryMonth, speedPostCostSummary,
   speedPostGroupByEntryDay, speedPostGroupByEntryMonth } from '../lib/speedpostCostReports.js';
 
@@ -191,6 +192,14 @@ export default function SpeedPostDashboard({currentUser}){
   const [rowSaving,setRowSaving]=useState('');
   const [exportStatus,setExportStatus]=useState('SHEET');
   const [historyIncomplete,setHistoryIncomplete]=useState(false);
+  const [bankAmounts,setBankAmounts]=useState({});
+  const [bankMonth,setBankMonth]=useState('');
+  const [bankDrafts,setBankDrafts]=useState({});
+  const [bankLoading,setBankLoading]=useState(false);
+  const [bankSaving,setBankSaving]=useState('');
+  const [bankSavedDay,setBankSavedDay]=useState('');
+  const [bankError,setBankError]=useState('');
+  const [bankNotice,setBankNotice]=useState('');
   const fileRef=useRef(null);
 
   const load=useCallback(async()=>{
@@ -522,6 +531,59 @@ export default function SpeedPostDashboard({currentUser}){
   // Existing Monthly Records breakdown: only Admin can calculate or see profit.
   const monthProfit=canViewProfit?speedPostDailySummary(monthRows):null;
   const dailyProfitByDate=new Map((monthProfit?.daily||[]).map(item=>[item.date,item]));
+  const currentBank=bankMonth===effectiveMonth?bankAmounts:{};
+  const bankTotals=canViewProfit?speedPostBankMonthTotals(
+    monthDayGroups.map(([day,items])=>({
+      day,combined:speedPostCostSummary(items,reportOptions).combined
+    })),currentBank):null;
+  // The bank ledger is Admin-only, scoped to original EMS entry month.
+  useEffect(()=>{
+    if(!canViewProfit||speedPostTab!=='MONTHLY'||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(effectiveMonth))return;
+    let active=true;
+    setBankLoading(true);setBankError('');setBankNotice('');setBankDrafts({});setBankSavedDay('');
+    fetch('/api/speedpost/bank?month='+encodeURIComponent(effectiveMonth),
+      {cache:'no-store',credentials:'include'})
+      .then(async response=>{
+        const data=await response.json();
+        if(!response.ok||!data.ok)throw new Error(data.error||'Cannot load bank payments.');
+        if(active){
+          setBankAmounts(Object.fromEntries((data.rows||[]).map(row=>[row.day,row.amount])));
+          setBankMonth(effectiveMonth);
+        }
+      }).catch(error=>{if(active){setBankMonth('');setBankError(error.message||'Cannot load bank payments.');}})
+      .finally(()=>{if(active)setBankLoading(false)});
+    return()=>{active=false};
+  },[canViewProfit,speedPostTab,effectiveMonth]);
+  async function saveBankPayment(day){
+    if(!canViewProfit||bankSaving||bankLoading||bankMonth!==effectiveMonth||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))return;
+    const amount=String(bankDrafts[day]??currentBank[day]??'').trim();
+    if(!/^\\d{1,9}(?:\\.\\d{1,2})?$/.test(amount)){
+      setBankError('Enter a valid non-negative bank payment (up to 2 decimals) for '+day+'.');
+      return;
+    }
+    setBankSaving(day);setBankError('');setBankNotice('');setBankSavedDay('');
+    try{
+      const response=await fetch('/api/speedpost/bank',{
+        method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},
+        body:JSON.stringify({day,amount})
+      });
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw new Error(data.error||'Could not save bank payment.');
+      // Read the persisted amount back before confirming green SAVED status.
+      const checked=await fetch('/api/speedpost/bank?month='+encodeURIComponent(effectiveMonth),
+        {cache:'no-store',credentials:'include'});
+      const verify=await checked.json();
+      if(!checked.ok||!verify.ok)throw new Error(verify.error||'Could not verify saved bank payment.');
+      const confirmed=verify.rows?.find(row=>row.day===day);
+      if(!confirmed||Number(confirmed.amount)!==Number(data.amount))
+        throw new Error('Bank payment could not be verified in the database.');
+      setBankAmounts(Object.fromEntries((verify.rows||[]).map(row=>[row.day,row.amount])));
+      setBankDrafts(previous=>{const next={...previous};delete next[day];return next});
+      setBankSavedDay(day);
+      setBankNotice('Bank amount for '+day+' saved: '+currency(confirmed.amount));
+    }catch(error){setBankError(error.message||'Could not save bank payment.');}
+    finally{setBankSaving('');}
+  }
   const currency=n=>rupeePerKg.format(n);
   function downloadStatusFile(format){
     if(!downloadRows.length){
@@ -778,14 +840,43 @@ export default function SpeedPostDashboard({currentUser}){
         <span style={{fontSize:12,color:'#475569'}}>Delivery updates do not change the original Entry Date.</span>
       </div>
       <h3 style={{fontSize:13,margin:'14px 0 7px'}}>Entry-day breakdown • {effectiveMonth}</h3>
+      {canViewProfit&&<p style={{fontSize:12,color:'#526782',margin:'0 0 10px'}}>
+        Enter and SAVE each day's bank payment. Difference = Combined Total − Amount Paid in Bank.
+        If the bank payment is higher, the negative difference appears in red.
+        A blank bank payment is pending, not zero.
+      </p>}
+      {canViewProfit&&bankError&&<p role="alert" style={{padding:9,background:'#fff1f2',color:'#b91c1c',borderRadius:7,fontSize:12}}>{bankError}</p>}
+      {canViewProfit&&bankNotice&&<p role="status" style={{padding:9,background:'#ecfdf5',color:'#166534',borderRadius:7,fontSize:12}}>{bankNotice}</p>}
+      {canViewProfit&&bankLoading&&<p style={{fontSize:12,color:'#54718c'}}>Loading saved bank payments…</p>}
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:680,fontSize:12}}>
           <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total',
-            ...(canViewProfit?['Daily Profit']:[])].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
+            ...(canViewProfit?['Amount Paid in Bank','Difference','Daily Profit']:[])].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
           <tbody>{monthDayGroups.map(([day,items])=>{const t=speedPostCostSummary(items,reportOptions);return <tr key={day}>
             <td style={td}>{day}</td><td style={td}>{t.packets}</td>
             <td style={td}>{currency(t.tariff)}</td><td style={td}>{currency(t.cash)}</td>
             <td style={{...td,fontWeight:700}}>{currency(t.combined)}</td>
+            {canViewProfit&&<td style={{...td,minWidth:208}}>
+              {day!=='UNKNOWN'?<div style={{display:'flex',alignItems:'center',gap:5}}>
+                <input type="number" min="0" max="999999999" step=".01"
+                  aria-label={'Amount Paid in Bank for '+day}
+                  value={bankDrafts[day]??(currentBank[day]===undefined?'':String(currentBank[day]))}
+                  placeholder="Enter bank amount"
+                  disabled={bankLoading||Boolean(bankSaving)||bankMonth!==effectiveMonth}
+                  onChange={e=>{setBankDrafts(previous=>({...previous,[day]:e.target.value}));setBankSavedDay('');}}
+                  style={{...input,minWidth:118,width:125,height:31,padding:'4px 6px',fontSize:12}}/>
+                <button type="button" disabled={bankLoading||Boolean(bankSaving)||bankMonth!==effectiveMonth}
+                  onClick={()=>void saveBankPayment(day)}
+                  style={{...btn,padding:'8px 7px',fontSize:10,whiteSpace:'nowrap',background:bankSavedDay===day?'#15803d':'#2258ce'}}>
+                  {bankSaving===day?'SAVING…':bankSavedDay===day?'✓ SAVED':'SAVE'}
+                </button>
+              </div>:<span>—</span>}
+            </td>}
+            {canViewProfit&&<td style={{...td,fontWeight:900,
+              color:(speedPostBankDifference(t.combined,currentBank[day])??0)<0?'#b91c1c':'#166534'}}>
+              {bankMonth===effectiveMonth&&speedPostBankDifference(t.combined,currentBank[day])!==null
+                ?currency(speedPostBankDifference(t.combined,currentBank[day])):'—'}
+            </td>}
             {canViewProfit&&<td style={{...td,fontWeight:900,color:(dailyProfitByDate.get(day)?.profit||0)<0?'#b91c1c':'#166534'}}
               title={dailyProfitByDate.get(day)?.pendingProfit?dailyProfitByDate.get(day).pendingProfit+' packet(s) missing profit details':''}>
               {dailyProfitByDate.get(day)?.profitablePackets?currency(dailyProfitByDate.get(day).profit):'—'}
@@ -793,6 +884,11 @@ export default function SpeedPostDashboard({currentUser}){
             </td>}
           </tr>})}</tbody>
           <tfoot><tr style={{background:'#eaf2ff',fontWeight:900}}><td style={td}>MONTH TOTAL</td><td style={td}>{monthlyTotals.packets}</td><td style={td}>{currency(monthlyTotals.tariff)}</td><td style={td}>{currency(monthlyTotals.cash)}</td><td style={td}>{currency(monthlyTotals.combined)}</td>
+          {canViewProfit&&<td style={{...td,fontWeight:900}}>{bankTotals?.bankDays?currency(bankTotals.bankPaid):'—'}</td>}
+          {canViewProfit&&<td style={{...td,fontWeight:900,color:(bankTotals?.difference??0)<0?'#b91c1c':'#166534'}}>
+            {bankTotals?.difference!==null?currency(bankTotals.difference):'—'}
+            {bankTotals?.pendingDays>0&&<span style={{display:'block',fontSize:10,color:'#a16207'}}>{bankTotals.pendingDays} day(s) pending bank entry</span>}
+          </td>}
           {canViewProfit&&<td style={{...td,color:(monthProfit?.month.profit||0)<0?'#b91c1c':'#166534',fontWeight:900}}>
             {monthProfit?.month.profitablePackets?currency(monthProfit.month.profit):'—'}
             {monthProfit?.month.pendingProfit>0&&<span style={{fontSize:10,color:'#a16207'}}> • {monthProfit.month.pendingProfit} pending</span>}
