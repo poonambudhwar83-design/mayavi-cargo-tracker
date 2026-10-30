@@ -71,6 +71,19 @@ assert.ok(ui.includes('SALARY_COMPANIES.map(value=><option'),
 assert.ok(ui.includes('>SAVE CHANGES')||ui.includes("?'SAVE CHANGES'"),
   'Employee name/company edits must have a save action');
 assert.ok(ui.includes('colSpan={9}'),'Table now has nine columns');
+assert.ok(ui.includes('const [companyFilter,setCompanyFilter]=useState('),
+  'Salary company filter must be editable');
+assert.ok(ui.includes('const [employeeSearch,setEmployeeSearch]=useState('),
+  'Salary employee name search must be editable');
+assert.ok(ui.includes('(!companyFilter||row.companyName===companyFilter)'),
+  'Company filter must restrict visible salary records');
+assert.ok(ui.includes("(!employeeSearch||String(row.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))"),
+  'Employee name search must restrict visible salary records');
+assert.ok(ui.includes('salaryTotals(visible)'),'Salary totals must respect the filters');
+assert.ok(ui.includes('visible.map((row,index)=>'),'Only filtered salary rows should be rendered');
+assert.ok(ui.includes('visible.length>0&&<tfoot>'),'Footer must reflect filtered rows');
+assert.ok(ui.includes('>CLEAR FILTERS</button>'),'Admin can reset company and name filters');
+
 assert.ok(api.includes('mayavi_salary_monthly'));
 assert.ok(api.includes('PRIMARY KEY(employee_id,salary_month)'));
 assert.ok(api.includes('WHERE e.is_active=TRUE'));
