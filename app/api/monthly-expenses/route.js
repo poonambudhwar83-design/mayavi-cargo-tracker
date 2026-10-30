@@ -1,4 +1,5 @@
 import {neon} from '@neondatabase/serverless';
+import {randomUUID} from 'node:crypto';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {branchPayoutForRecord} from '../../../lib/branchLoads.js';
 import {speedPostProfitTotals} from '../../../lib/speedpostMonthlyProfit.js';
@@ -39,6 +40,18 @@ async function ensure(sql){
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS office_saved_at TIMESTAMPTZ`;
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS rooms_saved_at TIMESTAMPTZ`;
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS misc_saved_at TIMESTAMPTZ`;
+  // Itemized Misc remarks preserve a clear reason for every NEW expense.
+  // Historic mayavi_monthly_expenses.misc_expenses is not moved or reset.
+  await sql`CREATE TABLE IF NOT EXISTS mayavi_monthly_misc_entries(
+    id UUID PRIMARY KEY,
+    expense_month CHAR(7) NOT NULL,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>=0),
+    remarks VARCHAR(120) NOT NULL CHECK(length(trim(remarks))>0),
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS mayavi_monthly_misc_entries_month_idx
+    ON mayavi_monthly_misc_entries(expense_month,created_at DESC)`;
 }
 async function requireMonthlyApi(response,label){
   const data=await response.json();
@@ -59,7 +72,14 @@ export async function GET(request){
           rent_saved_at,office_saved_at,rooms_saved_at,misc_saved_at,updated_at,updated_by
         FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`;
       const row=saved[0]||{};
-      return json({ok:true,month,rent:Number(row.rent||0),office:Number(row.office_expenses||0),
+      const miscEntries=await sql`SELECT id::text AS id,remarks,amount,created_by,created_at
+        FROM mayavi_monthly_misc_entries
+        WHERE expense_month=${month}
+        ORDER BY created_at DESC,id DESC`;
+      return json({ok:true,month,miscEntries:miscEntries.map(entry=>({
+        id:entry.id,remarks:entry.remarks,amount:Number(entry.amount),
+        createdBy:entry.created_by,createdAt:entry.created_at
+      })),rent:Number(row.rent||0),office:Number(row.office_expenses||0),
         rooms:Number(row.rooms_expenses||0),misc:Number(row.misc_expenses||0),
         savedFields:{
           rent:Boolean(row.rent_saved_at||(!row.rent_saved_at&&row.updated_at&&Number(row.rent||0)!==0)),
@@ -163,12 +183,35 @@ export async function PATCH(request){
         ON CONFLICT(expense_month) DO UPDATE
           SET rooms_expenses=mayavi_monthly_expenses.rooms_expenses+EXCLUDED.rooms_expenses,rooms_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING rooms_expenses AS amount`;
-      else saved=await sql`INSERT INTO mayavi_monthly_expenses
-        (expense_month,misc_expenses,misc_saved_at,updated_by)
-        VALUES(${month},${amount},now(),${session.username})
-        ON CONFLICT(expense_month) DO UPDATE
-          SET misc_expenses=mayavi_monthly_expenses.misc_expenses+EXCLUDED.misc_expenses,misc_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
-        RETURNING misc_expenses AS amount`;
+      else {
+        const remarks=String(body.remarks??'').trim().replace(/\s+/g,' ');
+        if(!remarks||remarks.length>120)
+          return json({ok:false,error:'Enter Miscellaneous Remarks (1–120 characters), e.g. SIIB Monthly.'},400);
+        // ONE atomic SQL statement: either the itemized remark AND its amount
+        // are saved together, or neither is committed. Other expense heads
+        // and historic monthly Misc totals remain untouched.
+        const id=randomUUID();
+        const result=await sql`WITH added AS (
+          INSERT INTO mayavi_monthly_misc_entries(id,expense_month,amount,remarks,created_by)
+          VALUES(${id}::uuid,${month},${amount},${remarks},${session.username})
+          RETURNING id,remarks,amount,created_at
+        ), updated AS (
+          INSERT INTO mayavi_monthly_expenses
+            (expense_month,misc_expenses,misc_saved_at,updated_by)
+          SELECT ${month},added.amount,now(),${session.username}
+            FROM added WHERE TRUE
+          ON CONFLICT(expense_month) DO UPDATE
+            SET misc_expenses=mayavi_monthly_expenses.misc_expenses+EXCLUDED.misc_expenses,misc_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+          RETURNING misc_expenses
+        )
+        SELECT updated.misc_expenses AS amount,added.id::text AS id,
+          added.remarks,added.amount AS added,added.created_at
+        FROM updated CROSS JOIN added`;
+        return json({ok:true,month,field,value:Number(result[0].amount),
+          added:amount,entry:{id:result[0].id,remarks:result[0].remarks,
+            amount:Number(result[0].added),createdAt:result[0].created_at},
+          message:'Miscellaneous expense saved for '+month+'.'});
+      }
       return json({ok:true,month,field,value:Number(saved[0].amount),added:amount,
         message:field.toUpperCase()+' expense added for '+month+'.'});
     }

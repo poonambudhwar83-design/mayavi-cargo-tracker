@@ -41,6 +41,8 @@ export default function MonthlyExpensesDashboard(){
   const [record,setRecord]=useState(null);
   const [drafts,setDrafts]=useState(initialExpenses);
   const [savedTotals,setSavedTotals]=useState(initialSavedTotals);
+  const [miscRemark,setMiscRemark]=useState('');
+  const [miscEntries,setMiscEntries]=useState([]);
   const [dirty,setDirty]=useState({});
   const [saved,setSaved]=useState({});
   const [loading,setLoading]=useState(true);
@@ -55,7 +57,8 @@ export default function MonthlyExpensesDashboard(){
       const values=await res.json();
       if(!res.ok||!values.ok)throw new Error(values.error||'Unable to load saved monthly expenses.');
       // Previously saved amounts belong to the monthly summary, not the next entry box.
-      setDrafts({...initialExpenses});
+      setDrafts({...initialExpenses});setMiscRemark('');
+      setMiscEntries(Array.isArray(values.miscEntries)?values.miscEntries:[]);
       setSavedTotals({rent:Number(values.rent||0),office:Number(values.office||0),
         rooms:Number(values.rooms||0),misc:Number(values.misc||0)});
       setDirty({});setSaved(values.savedFields||{});
@@ -94,11 +97,16 @@ export default function MonthlyExpensesDashboard(){
       setNote('Enter a valid non-negative amount for '+expenseHeads.find(x=>x.key===key)?.line+' (up to 2 decimals).');
       return;
     }
+    const remark=key==='misc'?miscRemark.trim().replace(/\s+/g,' '):'';
+    if(key==='misc'&&(!remark||remark.length>120)){
+      setNote('Enter Miscellaneous Remarks (1–120 characters), e.g. SIIB Monthly.');
+      return;
+    }
     setBusy(previous=>({...previous,[key]:true}));setNote('');
     try{
       const res=await fetch('/api/monthly-expenses',{method:'PATCH',credentials:'include',
         headers:{'content-type':'application/json'},
-        body:JSON.stringify({month,field:key,value:raw})});
+        body:JSON.stringify({month,field:key,value:raw,...(key==='misc'?{remarks:remark}:{})})});
       const result=await res.json();
       if(!res.ok||!result.ok)throw new Error(result.error||'Save failed.');
       const verifiedResponse=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month)+'&view=expenses',
@@ -107,14 +115,23 @@ export default function MonthlyExpensesDashboard(){
       if(!verifiedResponse.ok||!verified.ok||!verified.savedFields?.[key]||
         Number(verified[key])!==Number(result.value))
         throw new Error('Could not confirm saved '+key+' amount in database.');
+      if(key==='misc'&&(!result.entry?.id||
+        !verified.miscEntries?.some(entry=>entry.id===result.entry.id&&
+          entry.remarks===remark&&Number(entry.amount)===Number(raw))))
+        throw new Error('Miscellaneous Remarks could not be verified in the database.');
       // The submitted amount is now stored in the monthly running total.
       // Clear only this input, leaving all other unsaved entries untouched.
       setDrafts(previous=>({...previous,[key]:''}));
+      if(key==='misc'){
+        setMiscRemark('');
+        setMiscEntries(verified.miscEntries||[]);
+      }
       setSavedTotals(previous=>({...previous,[key]:Number(verified[key])}));
       setDirty(previous=>({...previous,[key]:false}));
       setSaved(previous=>({...previous,[key]:true}));
       setRecord(previous=>previous?{...previous,values:{...previous.values,[key]:Number(verified[key])}}:previous);
       setNote('✓ SAVED TO DATABASE • '+expenseHeads.find(x=>x.key===key)?.line+
+        (key==='misc'?' ('+remark+')':'')+
         ': '+show(Number(raw))+' added • Monthly total: '+show(verified[key]));
     }catch(error){
       setSaved(previous=>({...previous,[key]:false}));
@@ -140,7 +157,7 @@ export default function MonthlyExpensesDashboard(){
         </div>
         <label style={{display:'grid',gap:5,fontWeight:900,fontSize:12}}>SELECT MONTH
           <input type="month" min="2026-10" max={monthNow()} value={month}
-            onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
+            onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setMiscRemark('');setMiscEntries([]);setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
             style={{...input,fontWeight:800}}/>
         </label>
       </div>
@@ -156,6 +173,18 @@ export default function MonthlyExpensesDashboard(){
               disabled={loading||Boolean(busy[head.key])}
               onChange={e=>changeExpense(head.key,e.target.value)}
               style={{...input,display:'block',width:'100%',margin:'9px 0'}}/>
+            {head.key==='misc'&&<label style={{display:'block',fontWeight:800,fontSize:12,color:'#365574',margin:'0 0 9px'}}>
+              REMARKS
+              <input type="text" aria-label="Miscellaneous Remarks" maxLength={120}
+                placeholder="e.g. SIIB Monthly" value={miscRemark}
+                disabled={loading||Boolean(busy.misc)}
+                onChange={e=>{
+                  setMiscRemark(e.target.value);
+                  setDirty(previous=>({...previous,misc:true}));
+                  setSaved(previous=>({...previous,misc:false}));
+                }}
+                style={{...input,display:'block',width:'100%',marginTop:6}}/>
+            </label>}
             <button type="button" disabled={loading||Boolean(busy[head.key])||!month}
               onClick={()=>void saveExpense(head.key)}
               style={{border:0,borderRadius:9,width:'100%',background:saved[head.key]?'#15803d':'#2056a1',
@@ -167,6 +196,47 @@ export default function MonthlyExpensesDashboard(){
             </small>
             {dirty[head.key]&&<small style={{display:'block',marginTop:7,color:'#a16207',fontWeight:750}}>Unsaved changes</small>}
           </div>)}
+        </div>
+        <div style={{...card,marginTop:12,padding:0,overflow:'hidden'}} aria-label="Saved Miscellaneous entries">
+          <h3 style={{padding:'12px 14px',margin:0,background:'#f0f5fc',fontSize:14,color:'#1d4678'}}>
+            SAVED MISCELLANEOUS ENTRIES • {caption}
+          </h3>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',minWidth:400}}>
+              <thead><tr style={{background:'#fafcff'}}>
+                <th style={{...td,textAlign:'left'}}>Remarks</th>
+                <th style={{...td,textAlign:'right'}}>Amount (₹)</th>
+                <th style={{...td,textAlign:'right'}}>Saved On (IST)</th>
+              </tr></thead>
+              <tbody>
+                {miscEntries.map(entry=><tr key={entry.id}>
+                  <td style={td}>{entry.remarks}</td>
+                  <td style={{...td,textAlign:'right',fontWeight:800}}>{show(entry.amount)}</td>
+                  <td style={{...td,textAlign:'right',color:'#5e7188',fontSize:12}}>
+                    {entry.createdAt?new Date(entry.createdAt).toLocaleString('en-IN',{
+                      timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'
+                    }):'—'}
+                  </td>
+                </tr>)}
+                {Math.round((savedTotals.misc-miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0))*100)/100>0&&
+                  <tr><td style={td}>Previously saved Miscellaneous (before Remarks)</td>
+                    <td style={{...td,textAlign:'right',fontWeight:800}}>
+                      {show(Math.round((savedTotals.misc-miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0))*100)/100)}
+                    </td><td style={{...td,textAlign:'right'}}>—</td>
+                  </tr>}
+                {!miscEntries.length&&savedTotals.misc===0&&<tr>
+                  <td colSpan={3} style={{...td,color:'#64748b',textAlign:'center'}}>
+                    No Miscellaneous expenses saved for this month.
+                  </td>
+                </tr>}
+              </tbody>
+              <tfoot><tr style={{background:'#eef4fc',fontWeight:900}}>
+                <td style={td}>MISCELLANEOUS TOTAL</td>
+                <td style={{...td,textAlign:'right'}}>{show(savedTotals.misc)}</td>
+                <td style={td}></td>
+              </tr></tfoot>
+            </table>
+          </div>
         </div>
       </section>
       {loading&&!record&&<div style={card}>Loading monthly figures…</div>}
