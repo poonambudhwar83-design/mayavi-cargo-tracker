@@ -165,6 +165,7 @@ function field(row,key){
 }
 
 export default function SpeedPostDashboard({currentUser}){
+  const canViewProfit=currentUser?.role==='admin';
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [selectedEntryDay,setSelectedEntryDay]=useState('LATEST');
@@ -651,14 +652,14 @@ export default function SpeedPostDashboard({currentUser}){
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='MONTHLY'?'#2258ce':'#fff',color:speedPostTab==='MONTHLY'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         MONTHLY RECORDS
       </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
+      {canViewProfit&&<button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
         onClick={()=>{setSpeedPostTab('PROFIT');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='PROFIT'?'#2258ce':'#fff',
           color:speedPostTab==='PROFIT'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         MONTHLY PROFIT & COSTING
-      </button>
+      </button>}
     </div>
-    {speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
+    {canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
       rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
       onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
