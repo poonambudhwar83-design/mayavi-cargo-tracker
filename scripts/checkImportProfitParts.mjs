@@ -164,7 +164,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={20}'));
+assert.ok(profitUi.includes('colSpan={21}'),'21 Import Profit columns including 15% Goods Charge');
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
