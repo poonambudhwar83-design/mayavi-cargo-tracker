@@ -119,10 +119,10 @@ assert.ok(ui.includes("saved[head.key]?'#15803d':'#2056a1'"),
   'Successful SAVE turns only its corresponding button green');
 assert.ok(api.includes("if(['rent','office','rooms','misc'].includes(field))"),
   'API supports 4 independent saves');
-assert.ok(api.includes('SET rent=EXCLUDED.rent,rent_saved_at=now()'),'Rent has independent save');
-assert.ok(api.includes('SET office_expenses=EXCLUDED.office_expenses,office_saved_at=now()'),'Office Expenses has independent save');
-assert.ok(api.includes('SET rooms_expenses=EXCLUDED.rooms_expenses,rooms_saved_at=now()'),'Rooms Expenses has independent save');
-assert.ok(api.includes('SET misc_expenses=EXCLUDED.misc_expenses,misc_saved_at=now()'),'Misc has independent save');
+assert.ok(api.includes('SET rent=mayavi_monthly_expenses.rent+EXCLUDED.rent,rent_saved_at=now()'),'Rent has independent save');
+assert.ok(api.includes('SET office_expenses=mayavi_monthly_expenses.office_expenses+EXCLUDED.office_expenses,office_saved_at=now()'),'Office Expenses has independent save');
+assert.ok(api.includes('SET rooms_expenses=mayavi_monthly_expenses.rooms_expenses+EXCLUDED.rooms_expenses,rooms_saved_at=now()'),'Rooms Expenses has independent save');
+assert.ok(api.includes('SET misc_expenses=mayavi_monthly_expenses.misc_expenses+EXCLUDED.misc_expenses,misc_saved_at=now()'),'Misc has independent save');
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS rooms_expenses'),'New Rooms head migrated without erasing old expenses');
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS misc_expenses'),'New Misc head migrated without erasing old expenses');
 
@@ -130,6 +130,29 @@ assert.ok(api.includes('ADD COLUMN IF NOT EXISTS misc_expenses'),'New Misc head 
 for(const label of ['Import Gross Profit','Export Gross Profit','Jind Branch — Amount Paid to Branch','Karnal Branch — Amount Paid to Branch',
  'Import — 15% Goods Charge Total','Salary — Cash Paid','Salary — Account Paid','Rent','Office Expenses','Rooms Expenses','Miscellaneous'])
  assert.ok(ui.includes(label),label+' must be displayed');
+// Saving an expense must clear the input while keeping previously saved
+// totals in the month and never clearing the other three active draft entries.
+assert.ok(ui.includes("const initialExpenses={rent:'',office:'',rooms:'',misc:''}"),
+ 'Every expense input starts empty, even when monthly totals already exist.');
+assert.ok(ui.includes('setDrafts({...initialExpenses});'),
+ 'Loading or re-opening the month must show empty entry boxes.');
+assert.ok(ui.includes("setDrafts(previous=>({...previous,[key]:''}))"),
+ 'After successful database confirmation only the saved input clears.');
+assert.ok(ui.includes('setSavedTotals(previous=>({...previous,[key]:Number(verified[key])}))'),
+ 'Saved monthly totals must remain visible and account for submitted expenses.');
+assert.ok(ui.includes('value:savedTotals[head.key]'),
+ 'Expenses table must use saved totals, not cleared entry boxes.');
+assert.ok(ui.includes('calculateMonthlyExpenses({...record.values,...savedTotals})'),
+ 'Final Profit must be based on persisted amounts, not unsaved input drafts.');
+assert.ok(ui.includes('Saved this month: {show(savedTotals[head.key])}'),
+ 'Monthly saved totals should be distinct from entry fields.');
+assert.ok(ui.includes('Enter amount to add'),
+ 'A cleared field is ready for a new expense entry.');
+for(const [field,col] of [['rent','rent'],['office','office_expenses'],
+  ['rooms','rooms_expenses'],['misc','misc_expenses']]){
+  assert.ok(api.includes('SET '+col+'=mayavi_monthly_expenses.'+col+'+EXCLUDED.'+col),
+    field+' Save must accumulate a new entry atomically, not replace prior expenses.');
+}
 assert.ok(ui.includes('metrics.finalProfit'));
 assert.ok(ui.includes("saved[head.key]?'#15803d':'#2056a1'"));
 assert.ok(dash.includes("selectedDashboard==='MONTHLY_EXPENSES'"));
