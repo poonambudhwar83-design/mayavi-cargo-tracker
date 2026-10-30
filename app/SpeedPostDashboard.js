@@ -4,7 +4,7 @@ import { checkEdChecksum } from '../lib/speedpostOcr.js';
 import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
 import { createSpeedPostPdf, createSpeedPostXlsx } from '../lib/speedpostExports.js';
 import SpeedPostMonthlyProfit from './SpeedPostMonthlyProfit.js';
-import {speedPostProfitRow} from '../lib/speedpostMonthlyProfit.js';
+import {speedPostProfitRow,speedPostDailySummary} from '../lib/speedpostMonthlyProfit.js';
 import { speedPostEntryDay, speedPostEntryMonth, speedPostCostSummary,
   speedPostGroupByEntryDay, speedPostGroupByEntryMonth } from '../lib/speedpostCostReports.js';
 
@@ -165,6 +165,7 @@ function field(row,key){
 }
 
 export default function SpeedPostDashboard({currentUser}){
+  const canViewProfit=currentUser?.role==='admin';
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [selectedEntryDay,setSelectedEntryDay]=useState('LATEST');
@@ -518,6 +519,9 @@ export default function SpeedPostDashboard({currentUser}){
   const filteredTotals=speedPostCostSummary(displayedRows,reportOptions);
   const allTotals=speedPostCostSummary(rows,reportOptions);
   const monthDayGroups=speedPostGroupByEntryDay(monthRows);
+  // Existing Monthly Records breakdown: only Admin can calculate or see profit.
+  const monthProfit=canViewProfit?speedPostDailySummary(monthRows):null;
+  const dailyProfitByDate=new Map((monthProfit?.daily||[]).map(item=>[item.date,item]));
   const currency=n=>rupeePerKg.format(n);
   function downloadStatusFile(format){
     if(!downloadRows.length){
@@ -651,14 +655,14 @@ export default function SpeedPostDashboard({currentUser}){
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='MONTHLY'?'#2258ce':'#fff',color:speedPostTab==='MONTHLY'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         MONTHLY RECORDS
       </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
+      {canViewProfit&&<button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
         onClick={()=>{setSpeedPostTab('PROFIT');setExportStatus('SHEET');}}
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='PROFIT'?'#2258ce':'#fff',
           color:speedPostTab==='PROFIT'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         MONTHLY PROFIT & COSTING
-      </button>
+      </button>}
     </div>
-    {speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
+    {canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
       rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
       onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
@@ -776,13 +780,23 @@ export default function SpeedPostDashboard({currentUser}){
       <h3 style={{fontSize:13,margin:'14px 0 7px'}}>Entry-day breakdown • {effectiveMonth}</h3>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:680,fontSize:12}}>
-          <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total'].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
+          <thead><tr>{['Entry Date','Packets','Tariff Total','Cash Cost Total','Combined Total',
+            ...(canViewProfit?['Daily Profit']:[])].map(label=><th style={th} key={label}>{label}</th>)}</tr></thead>
           <tbody>{monthDayGroups.map(([day,items])=>{const t=speedPostCostSummary(items,reportOptions);return <tr key={day}>
             <td style={td}>{day}</td><td style={td}>{t.packets}</td>
             <td style={td}>{currency(t.tariff)}</td><td style={td}>{currency(t.cash)}</td>
             <td style={{...td,fontWeight:700}}>{currency(t.combined)}</td>
+            {canViewProfit&&<td style={{...td,fontWeight:900,color:(dailyProfitByDate.get(day)?.profit||0)<0?'#b91c1c':'#166534'}}
+              title={dailyProfitByDate.get(day)?.pendingProfit?dailyProfitByDate.get(day).pendingProfit+' packet(s) missing profit details':''}>
+              {dailyProfitByDate.get(day)?.profitablePackets?currency(dailyProfitByDate.get(day).profit):'—'}
+              {dailyProfitByDate.get(day)?.pendingProfit>0&&<span style={{fontWeight:600,fontSize:10,color:'#a16207'}}> • {dailyProfitByDate.get(day).pendingProfit} pending</span>}
+            </td>}
           </tr>})}</tbody>
-          <tfoot><tr style={{background:'#eaf2ff',fontWeight:900}}><td style={td}>MONTH TOTAL</td><td style={td}>{monthlyTotals.packets}</td><td style={td}>{currency(monthlyTotals.tariff)}</td><td style={td}>{currency(monthlyTotals.cash)}</td><td style={td}>{currency(monthlyTotals.combined)}</td></tr></tfoot>
+          <tfoot><tr style={{background:'#eaf2ff',fontWeight:900}}><td style={td}>MONTH TOTAL</td><td style={td}>{monthlyTotals.packets}</td><td style={td}>{currency(monthlyTotals.tariff)}</td><td style={td}>{currency(monthlyTotals.cash)}</td><td style={td}>{currency(monthlyTotals.combined)}</td>
+          {canViewProfit&&<td style={{...td,color:(monthProfit?.month.profit||0)<0?'#b91c1c':'#166534',fontWeight:900}}>
+            {monthProfit?.month.profitablePackets?currency(monthProfit.month.profit):'—'}
+            {monthProfit?.month.pendingProfit>0&&<span style={{fontSize:10,color:'#a16207'}}> • {monthProfit.month.pendingProfit} pending</span>}
+          </td>}</tr></tfoot>
         </table>
       </div>
     </section>}

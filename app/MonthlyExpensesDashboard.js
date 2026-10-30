@@ -125,7 +125,8 @@ export default function MonthlyExpensesDashboard(){
     {label:'Export Gross Profit (Export Profit Sheet total)',value:record.values.exportGross},
     {label:'Jind Branch — Amount Paid to Branch',value:record.values.jind},
     {label:'Karnal Branch — Amount Paid to Branch',value:record.values.karnal},
-    {label:'Import — 15% Goods Charge Total',value:record.values.goods15}]:[];
+    {label:'Import — 15% Goods Charge Total',value:record.values.goods15},
+    {label:'Speed Post — Net Profit',value:record.values.speedPost}]:[];
   const expenses=record?[{label:'Salary — Cash Paid',value:record.values.salaryCash},
     {label:'Salary — Account Paid',value:record.values.salaryAccount},
     ...expenseHeads.map(head=>({label:head.line,value:savedTotals[head.key]}))]:[];
@@ -187,8 +188,13 @@ export default function MonthlyExpensesDashboard(){
           <strong style={{fontSize:24,color:metrics.finalProfit<0?'#b91c1c':'#166534'}}>{show(metrics.finalProfit)}</strong>
         </div>
         <p style={{fontSize:12,color:'#60738a',lineHeight:1.7}}>
-          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit sums completed Import rows; the 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved and accumulated by month. Their entry boxes clear after a verified save. Import/Export totals match the unfiltered monthly Profit Sheets.
+          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit sums completed Import rows; the 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved and accumulated by month. Their entry boxes clear after a verified save. Import/Export totals match the unfiltered monthly Profit Sheets. Speed Post Net Profit is automatically included in Total Income for the same month, using the saved EMS entry dates. Its Tariff, Cash Cost and Packing/Transportation have already been deducted within Speed Post, so they are not subtracted again here.
         </p>
+        {record.source.speedPost?.missing>0&&
+          <p style={{padding:11,borderRadius:9,background:'#fff6df',color:'#7c5300',fontSize:12,fontWeight:750}}>
+            Speed Post Net Profit includes {record.source.speedPost.complete} of {record.source.speedPost.packets} entries.
+            {record.source.speedPost.missing} entries are pending a verified weight, tariff, or destination selling rate and are excluded until complete.
+          </p>}
         {(record.source.import.completed<record.source.import.totalRows||record.source.export.completed<record.source.export.totalRows)&&
           <p style={{padding:11,borderRadius:9,background:'#fff6df',color:'#7c5300',fontSize:12,fontWeight:750}}>
             Some Profit Sheet rows are missing required inputs: Import {record.source.import.completed}/{record.source.import.totalRows}, Export {record.source.export.completed}/{record.source.export.totalRows}.

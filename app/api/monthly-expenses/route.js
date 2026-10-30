@@ -1,6 +1,7 @@
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {branchPayoutForRecord} from '../../../lib/branchLoads.js';
+import {speedPostProfitTotals} from '../../../lib/speedpostMonthlyProfit.js';
 import {selectedProfitMonth} from '../../../lib/profitPeriod.js';
 import {GET as getImportProfit} from '../import-profit/route.js';
 import {GET as getExportProfit} from '../export-profit/route.js';
@@ -71,7 +72,7 @@ export async function GET(request){
     // Reuse Salary API values to avoid counting planned-but-unpaid salaries.
     const internalUrl=(name)=>new Request('https://mayavi.local/api/'+name+'?month='+encodeURIComponent(month),
       {headers:request.headers});
-    const [imports,exports,salaries,branches,stored]=await Promise.all([
+    const [imports,exports,salaries,branches,stored,speedPostEntries]=await Promise.all([
       getImportProfit(internalUrl('import-profit')).then(r=>requireMonthlyApi(r,'Import Profit Sheet')),
       getExportProfit(internalUrl('export-profit')).then(r=>requireMonthlyApi(r,'Export Profit Sheet')),
       getSalary(internalUrl('salary')).then(r=>requireMonthlyApi(r,'Salary page')),
@@ -80,9 +81,18 @@ export async function GET(request){
         WHERE record_date>=${month+'-01'}::date
           AND record_date<(${month+'-01'}::date+INTERVAL '1 month')`,
       sql`SELECT rent,office_expenses,rooms_expenses,misc_expenses,updated_at,updated_by
-        FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`
+        FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`,
+      // Same source as Speed Post page; month is original India-time ED entry month.
+      sql`SELECT tracking_no,data,created_at FROM mayavi_speedpost
+        WHERE created_at >= (${month+'-01'}::timestamp AT TIME ZONE 'Asia/Kolkata')
+          AND created_at < ((${month+'-01'}::timestamp + INTERVAL '1 month') AT TIME ZONE 'Asia/Kolkata')`
     ]);
     const importTotals=sumMonthlyImport(imports.rows||[]);
+    const speedPostTotals=speedPostProfitTotals(speedPostEntries.map(row=>({
+      ...row.data,trackingNo:row.tracking_no,createdAt:row.created_at
+    }))).totals;
+    // Speed Post net profit already deducts Tariff, Cash and ₹10/kg packing.
+    const speedPost=speedPostTotals.profit;
     const exportTotals=sumMonthlyExport(exports.rows||[]);
     // Exactly match the Branch Loads page's "Amount Paid to Branch" column.
     // Use the authoritative derived payout, including branch share of Extra Cost
@@ -106,16 +116,16 @@ export async function GET(request){
     const misc=Number(stored[0]?.misc_expenses||0);
     const results=calculateMonthlyExpenses({
       importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
-      jind,karnal,goods15:importTotals.goodsCharge15Percent,
+      jind,karnal,goods15:importTotals.goodsCharge15Percent,speedPost,
       salaryCash,salaryAccount,rent,office,rooms,misc
     });
     return json({ok:true,month,values:{
       importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
-      jind,karnal,goods15:importTotals.goodsCharge15Percent,
+      jind,karnal,goods15:importTotals.goodsCharge15Percent,speedPost,
       salaryCash,salaryAccount,salaryBudget:Number(salaries.totals?.monthlySalary||0),
       rent,office,rooms,misc
     },results,
-      source:{import:importTotals,export:exportTotals,salaryEmployees:salaries.rows?.length||0},
+      source:{import:importTotals,export:exportTotals,speedPost:speedPostTotals,salaryEmployees:salaries.rows?.length||0},
       updatedAt:stored[0]?.updated_at||null,updatedBy:stored[0]?.updated_by||''});
   }catch(error){return json({ok:false,error:error?.message||'Unable to load Monthly Expenses & Profit.'},503);}
 }

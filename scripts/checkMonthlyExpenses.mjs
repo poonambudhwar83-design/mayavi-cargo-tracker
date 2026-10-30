@@ -67,6 +67,27 @@ assert.deepEqual(calculateMonthlyExpenses({
  salaryCash:12000,salaryAccount:18000,rent:10000,office:5000
 }),{totalIncome:135000,totalSalary:30000,totalExpenses:45000,finalProfit:90000});
 assert.equal(calculateMonthlyExpenses({salaryCash:200,salaryAccount:300,rent:400,office:100}).finalProfit,-1000);
+
+assert.deepEqual(calculateMonthlyExpenses({
+  importGross:60000,exportGross:40000,jind:20000,karnal:10000,goods15:5000,
+  speedPost:16770,salaryCash:12000,salaryAccount:18000,
+  rent:10000,office:5000,rooms:2000,misc:1000
+}),{totalIncome:151770,totalSalary:30000,totalExpenses:48000,finalProfit:103770});
+assert.equal(calculateMonthlyExpenses({speedPost:-500}).finalProfit,-500,
+  'EMS loss must reduce, not inflate, overall Final Profit');
+assert.ok(api.includes('speedPostProfitTotals(speedPostEntries.map('),
+  'Use the same Speed Post profit calculator as its monthly tab');
+assert.ok(api.includes('FROM mayavi_speedpost'),
+  'Sync the persisted EMS ledger, not manual amount entries');
+assert.ok(api.includes("AT TIME ZONE 'Asia/Kolkata'"),
+  'Speed Post must use the same original IST entry month');
+assert.ok(api.includes('speedPost:speedPostTotals'),
+  'Expose pending/profit packet counts to the Admin page');
+assert.ok(ui.includes('Speed Post — Net Profit'),
+  'Display Speed Post Net Profit as an explicit income line');
+assert.ok(ui.includes('record.source.speedPost?.missing>0'),
+  'Warn the Admin when not all Speed Post packets have calculable profit');
+
 assert.deepEqual(calculateMonthlyExpenses({
  importGross:60000,exportGross:40000,jind:20000,karnal:10000,goods15:5000,
  salaryCash:12000,salaryAccount:18000,rent:10000,office:5000,rooms:2000,misc:1000
