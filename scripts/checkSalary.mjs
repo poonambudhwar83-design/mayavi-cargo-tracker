@@ -75,14 +75,21 @@ assert.ok(ui.includes('const [companyFilter,setCompanyFilter]=useState('),
   'Salary company filter must be editable');
 assert.ok(ui.includes('const [employeeSearch,setEmployeeSearch]=useState('),
   'Salary employee name search must be editable');
-assert.ok(ui.includes('(!companyFilter||row.companyName===companyFilter)'),
+assert.ok(ui.includes('(!companyFilter||stored.companyName===companyFilter)'),
   'Company filter must restrict visible salary records');
-assert.ok(ui.includes("(!employeeSearch||String(row.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))"),
+assert.ok(ui.includes("(!employeeSearch||String(stored.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))"),
   'Employee name search must restrict visible salary records');
 assert.ok(ui.includes('salaryTotals(visible)'),'Salary totals must respect the filters');
 assert.ok(ui.includes('visible.map((row,index)=>'),'Only filtered salary rows should be rendered');
 assert.ok(ui.includes('visible.length>0&&<tfoot>'),'Footer must reflect filtered rows');
 assert.ok(ui.includes('>CLEAR FILTERS</button>'),'Admin can reset company and name filters');
+assert.ok(ui.includes("const [saved,setSaved]=useState({});"),'Salary row save states are tracked');
+assert.ok(ui.includes("setSaved(previous=>({...previous,[row.id]:true}))"),'Only successful saves mark a row saved');
+assert.ok(ui.includes("background:saved[row.id]&&editing!==row.id?'#15803d':'#2056a1'"),'Saved state must turn the button green');
+assert.ok(ui.includes("saved[row.id]?'✓ SAVED':'SAVE'"),'Saved state must be visibly labeled');
+assert.ok(ui.includes("setSaved(previous=>({...previous,[id]:false}))"),'Changing inputs resets saved status');
+assert.ok(ui.includes("filter(row=>row.updatedAt)"),'Already-saved rows are recognized when the month loads');
+assert.ok(ui.includes('editing===row.id||('),'Editing must not hide a salary row under company filter');
 
 assert.ok(api.includes('mayavi_salary_monthly'));
 assert.ok(api.includes('PRIMARY KEY(employee_id,salary_month)'));
