@@ -132,34 +132,35 @@ export async function PATCH(request){
       const sql=database();await ensure(sql);
       const session=readSession(request);
       let saved;
-      // Each Save only updates its own category. Existing expense values are
-      // never overwritten by another category's Save, even across different tabs.
+      // Each Save adds one new expense to the selected month's existing total.
+      // Category totals are updated atomically so simultaneous entries are not lost.
+      // Saving one category never changes the other categories or historic months.
       if(field==='rent')saved=await sql`INSERT INTO mayavi_monthly_expenses
         (expense_month,rent,rent_saved_at,updated_by)
         VALUES(${month},${amount},now(),${session.username})
         ON CONFLICT(expense_month) DO UPDATE
-          SET rent=EXCLUDED.rent,rent_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+          SET rent=mayavi_monthly_expenses.rent+EXCLUDED.rent,rent_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING rent AS amount`;
       else if(field==='office')saved=await sql`INSERT INTO mayavi_monthly_expenses
         (expense_month,office_expenses,office_saved_at,updated_by)
         VALUES(${month},${amount},now(),${session.username})
         ON CONFLICT(expense_month) DO UPDATE
-          SET office_expenses=EXCLUDED.office_expenses,office_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+          SET office_expenses=mayavi_monthly_expenses.office_expenses+EXCLUDED.office_expenses,office_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING office_expenses AS amount`;
       else if(field==='rooms')saved=await sql`INSERT INTO mayavi_monthly_expenses
         (expense_month,rooms_expenses,rooms_saved_at,updated_by)
         VALUES(${month},${amount},now(),${session.username})
         ON CONFLICT(expense_month) DO UPDATE
-          SET rooms_expenses=EXCLUDED.rooms_expenses,rooms_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+          SET rooms_expenses=mayavi_monthly_expenses.rooms_expenses+EXCLUDED.rooms_expenses,rooms_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING rooms_expenses AS amount`;
       else saved=await sql`INSERT INTO mayavi_monthly_expenses
         (expense_month,misc_expenses,misc_saved_at,updated_by)
         VALUES(${month},${amount},now(),${session.username})
         ON CONFLICT(expense_month) DO UPDATE
-          SET misc_expenses=EXCLUDED.misc_expenses,misc_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+          SET misc_expenses=mayavi_monthly_expenses.misc_expenses+EXCLUDED.misc_expenses,misc_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING misc_expenses AS amount`;
-      return json({ok:true,month,field,value:Number(saved[0].amount),
-        message:field.toUpperCase()+' expense saved for '+month+'.'});
+      return json({ok:true,month,field,value:Number(saved[0].amount),added:amount,
+        message:field.toUpperCase()+' expense added for '+month+'.'});
     }
     if(field)return json({ok:false,error:'Invalid monthly expense category.'},400);
     // Backward compatibility for older clients using combined Rent + Office Save.
