@@ -156,6 +156,53 @@ export async function PATCH(request){
     const month=selectedProfitMonth(body.month);
     if(!month)return json({ok:false,error:'Choose a valid monthly accounting period.'},400);
     const field=String(body.field||'');
+    if(field==='edit_misc'){
+      // Optimistic comparison prevents one Admin session from silently
+      // replacing a different session's already revised entry.
+      const id=String(body.id||'').trim();
+      const amount=monthlyAmount(body.value);
+      const previousAmount=monthlyAmount(body.previousAmount);
+      const remarks=String(body.remarks??'').trim().replace(/\s+/g,' ');
+      const previousRemarks=String(body.previousRemarks??'').trim().replace(/\s+/g,' ');
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+        return json({ok:false,error:'Select a valid saved Miscellaneous entry.'},400);
+      if(amount===null||previousAmount===null)
+        return json({ok:false,error:'Enter a valid non-negative amount (up to 2 decimals).'},400);
+      if(!remarks||remarks.length>120||!previousRemarks||previousRemarks.length>120)
+        return json({ok:false,error:'Enter valid Miscellaneous Remarks (1–120 characters).'},400);
+      const sql=database();await ensure(sql);
+      const session=readSession(request);
+      // A correction changes only the selected saved entry. Its monthly
+      // expense total changes by NEW − OLD (it must never count twice).
+      // Both updates happen in the same PostgreSQL statement/transaction.
+      const corrected=await sql`WITH edited AS (
+        UPDATE mayavi_monthly_misc_entries
+          SET amount=${amount},remarks=${remarks}
+          WHERE id=${id}::uuid AND expense_month=${month}
+            AND amount=${previousAmount} AND remarks=${previousRemarks}
+            AND EXISTS(SELECT 1 FROM mayavi_monthly_expenses
+              WHERE expense_month=${month})
+          RETURNING id,amount,remarks,created_at
+      ), adjusted AS (
+        UPDATE mayavi_monthly_expenses
+          SET misc_expenses=mayavi_monthly_expenses.misc_expenses+
+            (${amount}::numeric-${previousAmount}::numeric),
+            updated_by=${session.username},updated_at=now(),misc_saved_at=now()
+          WHERE expense_month=${month} AND EXISTS(SELECT 1 FROM edited)
+          RETURNING misc_expenses
+      )
+      SELECT adjusted.misc_expenses AS total,edited.id::text AS id,
+        edited.amount,edited.remarks,edited.created_at
+      FROM edited CROSS JOIN adjusted`;
+      if(!corrected.length)
+        return json({ok:false,error:'This Miscellaneous entry was changed or is no longer available. Refresh the month and try again.'},409);
+      const result=corrected[0];
+      return json({ok:true,month,field,value:Number(result.total),
+        difference:Math.round((amount-previousAmount)*100)/100,
+        entry:{id:result.id,amount:Number(result.amount),remarks:result.remarks,
+          createdAt:result.created_at},
+        message:'Miscellaneous entry updated for '+month+'.'});
+    }
     if(['rent','office','rooms','misc'].includes(field)){
       const amount=monthlyAmount(body.value);
       if(amount===null)return json({ok:false,error:'Enter a valid non-negative amount (up to 2 decimals).'},400);
