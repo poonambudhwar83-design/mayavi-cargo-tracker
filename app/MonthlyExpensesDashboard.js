@@ -34,11 +34,13 @@ const expenseHeads=[
   {key:'rooms',label:'ROOMS EXPENSES',line:'Rooms Expenses'},
   {key:'misc',label:'MISCELLANEOUS',line:'Miscellaneous'}
 ];
-const initialExpenses={rent:'0',office:'0',rooms:'0',misc:'0'};
+const initialExpenses={rent:'',office:'',rooms:'',misc:''};
+const initialSavedTotals={rent:0,office:0,rooms:0,misc:0};
 export default function MonthlyExpensesDashboard(){
   const [month,setMonth]=useState(monthNow);
   const [record,setRecord]=useState(null);
   const [drafts,setDrafts]=useState(initialExpenses);
+  const [savedTotals,setSavedTotals]=useState(initialSavedTotals);
   const [dirty,setDirty]=useState({});
   const [saved,setSaved]=useState({});
   const [loading,setLoading]=useState(true);
@@ -52,8 +54,10 @@ export default function MonthlyExpensesDashboard(){
         {credentials:'include',cache:'no-store'});
       const values=await res.json();
       if(!res.ok||!values.ok)throw new Error(values.error||'Unable to load saved monthly expenses.');
-      setDrafts({rent:String(values.rent),office:String(values.office),
-        rooms:String(values.rooms),misc:String(values.misc)});
+      // Previously saved amounts belong to the monthly summary, not the next entry box.
+      setDrafts({...initialExpenses});
+      setSavedTotals({rent:Number(values.rent||0),office:Number(values.office||0),
+        rooms:Number(values.rooms||0),misc:Number(values.misc||0)});
       setDirty({});setSaved(values.savedFields||{});
       try{
         const response=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month),
@@ -75,9 +79,9 @@ export default function MonthlyExpensesDashboard(){
     const timer=setInterval(poll,90000);
     return()=>clearInterval(timer);
   },[load,dirty,busy]);
-  const metrics=useMemo(()=>record?calculateMonthlyExpenses({...record.values,
-    ...Object.fromEntries(expenseHeads.map(head=>[head.key,Number(drafts[head.key]||0)]))
-  }):null,[record,drafts]);
+  // Only persisted totals enter the monthly accounts; a new unsaved entry
+  // never affects Total Expenses or Final Profit.
+  const metrics=useMemo(()=>record?calculateMonthlyExpenses({...record.values,...savedTotals}):null,[record,savedTotals]);
   function changeExpense(key,value){
     setDrafts(previous=>({...previous,[key]:value}));
     setDirty(previous=>({...previous,[key]:true}));
@@ -103,11 +107,15 @@ export default function MonthlyExpensesDashboard(){
       if(!verifiedResponse.ok||!verified.ok||!verified.savedFields?.[key]||
         Number(verified[key])!==Number(result.value))
         throw new Error('Could not confirm saved '+key+' amount in database.');
-      setDrafts(previous=>({...previous,[key]:String(result.value)}));
+      // The submitted amount is now stored in the monthly running total.
+      // Clear only this input, leaving all other unsaved entries untouched.
+      setDrafts(previous=>({...previous,[key]:''}));
+      setSavedTotals(previous=>({...previous,[key]:Number(verified[key])}));
       setDirty(previous=>({...previous,[key]:false}));
       setSaved(previous=>({...previous,[key]:true}));
-      setRecord(previous=>previous?{...previous,values:{...previous.values,[key]:result.value}}:previous);
-      setNote('✓ SAVED TO DATABASE • '+expenseHeads.find(x=>x.key===key)?.line+': '+show(result.value));
+      setRecord(previous=>previous?{...previous,values:{...previous.values,[key]:Number(verified[key])}}:previous);
+      setNote('✓ SAVED TO DATABASE • '+expenseHeads.find(x=>x.key===key)?.line+
+        ': '+show(Number(raw))+' added • Monthly total: '+show(verified[key]));
     }catch(error){
       setSaved(previous=>({...previous,[key]:false}));
       setNote('Not saved: '+(error.message||'Unable to save the expense.'));
@@ -120,7 +128,7 @@ export default function MonthlyExpensesDashboard(){
     {label:'Import — 15% Goods Charge Total',value:record.values.goods15}]:[];
   const expenses=record?[{label:'Salary — Cash Paid',value:record.values.salaryCash},
     {label:'Salary — Account Paid',value:record.values.salaryAccount},
-    ...expenseHeads.map(head=>({label:head.line,value:Number(drafts[head.key]||0)}))]:[];
+    ...expenseHeads.map(head=>({label:head.line,value:savedTotals[head.key]}))]:[];
   const caption=new Date(Number(month.slice(0,4)),Number(month.slice(5))-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   return <main style={{background:'#f5f8fc',minHeight:'75vh',padding:'22px clamp(12px,3vw,32px)',color:'#183153'}}>
     <div style={{maxWidth:1140,margin:'auto'}}>
@@ -131,19 +139,19 @@ export default function MonthlyExpensesDashboard(){
         </div>
         <label style={{display:'grid',gap:5,fontWeight:900,fontSize:12}}>SELECT MONTH
           <input type="month" min="2026-10" max={monthNow()} value={month}
-            onChange={e=>{setMonth(e.target.value);setRecord(null);setDirty({});setSaved({});setBusy({});}}
+            onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
             style={{...input,fontWeight:800}}/>
         </label>
       </div>
       {note&&<div role="status" style={{padding:12,background:'#e8f0fd',color:'#1e4b82',borderRadius:10,marginBottom:15,fontWeight:750,fontSize:13}}>{note}</div>}
       <section style={{marginBottom:16}}>
         <h2 style={{margin:'0 0 9px',fontSize:17}}>Monthly Expense Entries — {caption}</h2>
-        <p style={{fontSize:12,color:'#64748b',margin:'0 0 12px'}}>Each expense has its own SAVE button and is stored separately by month. Changing one amount will not overwrite another.</p>
+        <p style={{fontSize:12,color:'#64748b',margin:'0 0 12px'}}>Each expense has its own SAVE. After saving, the amount clears from its entry box and is included in that month's saved total. Another entry in the same category adds to the total.</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(225px,1fr))',gap:12}}>
           {expenseHeads.map(head=><div key={head.key} style={card}>
             <label htmlFor={'monthly-expense-'+head.key} style={{fontSize:12,fontWeight:900,color:'#365574'}}>{head.label}</label>
             <input id={'monthly-expense-'+head.key} type="number" min="0" max="999999999" step=".01"
-              aria-label={'Monthly '+head.line} value={drafts[head.key]}
+              aria-label={'Monthly '+head.line} placeholder="Enter amount to add" value={drafts[head.key]}
               disabled={loading||Boolean(busy[head.key])}
               onChange={e=>changeExpense(head.key,e.target.value)}
               style={{...input,display:'block',width:'100%',margin:'9px 0'}}/>
@@ -153,6 +161,9 @@ export default function MonthlyExpensesDashboard(){
                 color:'#fff',fontWeight:900,cursor:'pointer',fontSize:13,padding:'11px 14px'}}>
               {busy[head.key]?'SAVING…':saved[head.key]?'✓ SAVED':'SAVE'}
             </button>
+            <small style={{display:'block',marginTop:8,color:'#45617b',fontWeight:750}}>
+              Saved this month: {show(savedTotals[head.key])}
+            </small>
             {dirty[head.key]&&<small style={{display:'block',marginTop:7,color:'#a16207',fontWeight:750}}>Unsaved changes</small>}
           </div>)}
         </div>
@@ -176,7 +187,7 @@ export default function MonthlyExpensesDashboard(){
           <strong style={{fontSize:24,color:metrics.finalProfit<0?'#b91c1c':'#166534'}}>{show(metrics.finalProfit)}</strong>
         </div>
         <p style={{fontSize:12,color:'#60738a',lineHeight:1.7}}>
-          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit sums completed Import rows; the 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved by month. Import/Export totals match the unfiltered monthly Profit Sheets.
+          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit sums completed Import rows; the 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved and accumulated by month. Their entry boxes clear after a verified save. Import/Export totals match the unfiltered monthly Profit Sheets.
         </p>
         {(record.source.import.completed<record.source.import.totalRows||record.source.export.completed<record.source.export.totalRows)&&
           <p style={{padding:11,borderRadius:9,background:'#fff6df',color:'#7c5300',fontSize:12,fontWeight:750}}>
