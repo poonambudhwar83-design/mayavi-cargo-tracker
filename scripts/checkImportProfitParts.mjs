@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -164,7 +164,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={21}'),'21 Import Profit columns including 15% Goods Charge');
+assert.ok(profitUi.includes('colSpan={22}'),'22 Import Profit columns including 15% and Gross Profit');
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
@@ -256,5 +256,31 @@ assert.ok(profitUi.includes('const totalCost=importTotalCost({duty,eici,driverEx
 assert.equal(importTotalCost({...dx,goodsCharge15Percent:99999}),37400,
   '15% reporting value must never become a landed expense');
 
+
+// The final Gross Profit column is net Profit PLUS the existing Protein and
+// Clothes deductions; it must not restore freight, driver cost, Goods Charge
+// or the display-only 15% amount and must not invent results for incomplete rows.
+assert.equal(importGrossProfit(10000,5000,0),15000,'DXB protein gross profit');
+assert.equal(importGrossProfit(10000,8000,0),18000,'Canada/Germany/USA protein gross profit');
+assert.equal(importGrossProfit(10000,0,3000),13000,'Clothes gross profit');
+assert.equal(importGrossProfit(10000,0,0),10000,'HH and Battery gross profit unchanged');
+assert.equal(importGrossProfit(-1000,500,0),-500,'Negative net profit is preserved');
+assert.equal(importGrossProfit(null,500,0),null,'Incomplete Profit stays blank');
+assert.equal(importGrossProfit(NaN,500,0),null,'Nonfinite Profit stays blank');
+// Part-level results sum without reintroducing the master-level charge.
+assert.equal(importGrossProfit(1000,2500,0)+importGrossProfit(500,2500,0),6500);
+assert.ok(profitUi.includes("const grossProfit=importGrossProfit(profit,proteinDeduction,siibDeduction);"),
+  'Add ONLY the two previously subtracted deductions');
+assert.ok(profitUi.includes("'Gross Profit (₹)'"),'Gross Profit must appear in table');
+assert.ok(profitUi.includes("'Gross Profit (Profit + Protein/Clothes Deduction)'"),
+  'Gross Profit must appear in CSV');
+assert.ok(profitUi.includes("n.averageWeightPerBag,n.grossProfit];"),
+  'Gross Profit must be the LAST CSV column');
+assert.ok(profitUi.includes('displayMoney(n.grossProfit)'),'Display physical part Gross Profit');
+assert.ok(profitUi.includes('grossProfit+=n.grossProfit'),'Footer must sum calculated Gross Profit');
+assert.ok(profitUi.includes('totals.completed?displayMoney(totals.grossProfit)'),
+  'Empty or incomplete rows cannot fabricate a Gross Profit footer');
+assert.ok(profitUi.includes("displayAmount(n.averageWeightPerBag)}</td>\n                <td style={{...cell,fontWeight:900,color:n.grossProfit"),
+  'Gross Profit must be the LAST visible table cell');
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
