@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkEdChecksum } from '../lib/speedpostOcr.js';
 import { createBookingPendingPdf } from '../lib/speedpostPendingPdf.js';
 import { createSpeedPostPdf, createSpeedPostXlsx } from '../lib/speedpostExports.js';
+import SpeedPostMonthlyProfit from './SpeedPostMonthlyProfit.js';
+import {speedPostProfitRow} from '../lib/speedpostMonthlyProfit.js';
 import { speedPostEntryDay, speedPostEntryMonth, speedPostCostSummary,
   speedPostGroupByEntryDay, speedPostGroupByEntryMonth } from '../lib/speedpostCostReports.js';
 
@@ -128,10 +130,9 @@ function entryDateCostGroups(allRows){
   return groups;
 }
 function costPerKg(row){
-  const kg=weightInKg(row?.weight);
-  const total=Number(String(row?.tariff??'').replace(/[,₹\s]/g,''));
-  if(!kg||!Number.isFinite(total)||total<0)return null;
-  return total/kg;
+  // Total Cost (Tariff + Cash Cost) divided by the rounded/billed kilograms.
+  // This is identical to the new Monthly Profit tab's Cost/kg.
+  return speedPostProfitRow(row).costPerKg;
 }
 const rupeePerKg=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 function nowISTDate(){
@@ -601,9 +602,9 @@ export default function SpeedPostDashboard({currentUser}){
     }
   };
   const summary=weightSummary(displayedRows);
-  const ratedRows=displayedRows.filter(r=>postalCost(r)!==null&&weightInKg(r.weight)!==null);
-  const ratedWeight=ratedRows.reduce((sum,r)=>sum+weightInKg(r.weight),0);
-  const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+postalCost(r),0)/ratedWeight:null;
+  const ratedRows=displayedRows.map(speedPostProfitRow).filter(r=>r.totalCost!==null);
+  const ratedWeight=ratedRows.reduce((sum,r)=>sum+r.roundedWeight,0);
+  const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+r.totalCost,0)/ratedWeight:null;
   return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
@@ -650,7 +651,16 @@ export default function SpeedPostDashboard({currentUser}){
         style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='MONTHLY'?'#2258ce':'#fff',color:speedPostTab==='MONTHLY'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
         MONTHLY RECORDS
       </button>
+      <button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
+        onClick={()=>{setSpeedPostTab('PROFIT');setExportStatus('SHEET');}}
+        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='PROFIT'?'#2258ce':'#fff',
+          color:speedPostTab==='PROFIT'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
+        MONTHLY PROFIT & COSTING
+      </button>
     </div>
+    {speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
+      rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
+      onSelectMonth={setSelectedEntryMonth} loading={loading} historyIncomplete={historyIncomplete}/>}
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
       <strong style={{color:'#991b1b',fontSize:15}}>DUPLICATE ED ALERT — {duplicateRows.length} packet{duplicateRows.length===1?'':'s'}</strong>
       <div style={{fontSize:12,color:'#7f1d1d',marginTop:5,marginBottom:7}}>Same ED number entered again. Existing entries are highlighted in their Active / Delivered rows; no duplicate shipment was created.</div>
@@ -943,7 +953,7 @@ export default function SpeedPostDashboard({currentUser}){
         </div>
         <p style={{fontSize:11,margin:'7px 0 0',color:'#64748b'}}>Missing Tariff: {allTotals.tariffMissing} • Missing Cash Cost: {allTotals.cashMissing} • Both available: {allTotals.completePackets}. Every ED is counted once, including Delivered entries.</p>
       </section>
-      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is Tariff + Cash Cost, and no separate Tariff minus Cash column is shown. Both amounts must be available for an individual Total Cost. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
+      <p style={{fontSize:11,color:'#64748b',marginBottom:0}}>Only the Consignee Name is editable and saved in the same row. ED No., Name, Entry Date and Destination stay visible while scrolling. Total Cost is Tariff + Cash Cost. Cost per kg is Total Cost ÷ Rounded Weight (kg), and no separate Tariff minus Cash column is shown. Both amounts must be available for an individual Total Cost. Cash Cost beside Weight is rounded-up whole kilograms × ₹150. Scroll horizontally to view the right-hand columns. Address, weight, origin and destination are filled only when present on an ED-matched tracking result. “Previous check” means saved historical data; missing addresses are not guessed. Refresh each packet to check its details again.</p>
     </section>
     </>}
   </main>;
