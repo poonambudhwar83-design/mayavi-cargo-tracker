@@ -161,8 +161,19 @@ assert.equal(byDate.month.amountReceived,23850);
 assert.equal(byDate.month.profit,16770);
 assert.equal(byDate.month.profitablePackets,3);
 assert.equal(byDate.month.pendingProfit,2);
-for(const label of ['DAILY SUMMARY','No. of Packets','Total Tariff','Total Cash Cost',
-  'Total Amount','Daily Profit','Profit Pending','MONTH TOTAL'])
-  assert.ok(profitUI.includes(label),'Daily summary must show '+label);
-assert.ok(profitUI.includes('speedPostDailySummary(rows)'));
+assert.ok(!profitUI.includes('DAILY SUMMARY'),
+  'Do not add a separate daily summary in the Profit tab.');
+assert.ok(!profitUI.includes('speedPostDailySummary(rows)'),
+  'The daily breakdown belongs in existing Monthly Records only.');
+assert.ok(main.includes('const monthProfit=canViewProfit?speedPostDailySummary(monthRows):null;'),
+  'Only Admin may calculate daily profit within Monthly Records.');
+assert.ok(main.includes("...(canViewProfit?['Daily Profit']:[])"),
+  'Daily Profit heading in existing Monthly Records must be Admin-only.');
+assert.ok(main.includes('dailyProfitByDate.get(day)?.profitablePackets'),
+  'The existing Monthly Records rows must show daily profit.');
+assert.ok(main.includes('monthProfit?.month.profitablePackets'),
+  'The existing Monthly Records footer must include monthly total profit.');
+assert.ok(main.includes('dailyProfitByDate.get(day)?.pendingProfit'),
+  'Incomplete tariff/rate entries must not fake a full daily profit.');
+
 console.log('EMS Daily Summary regression passed for IST date, weight, tariff, cash, combined, profit.');
