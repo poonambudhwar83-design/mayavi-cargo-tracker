@@ -29,6 +29,15 @@ assert.equal(speedPostTariff({tariff:'₹1,000'}),1000);
 assert.equal(speedPostTariff({tariff:''}),null,'Unverified tariff is missing, not zero');
 assert.equal(speedPostProfitCountry({destination:'Leicester',destinationCountry:'United Kingdom'}),'UK');
 assert.equal(speedPostProfitCountry({destination:'New York',destinationCountry:'US'}),'USA');
+assert.equal(speedPostProfitCountry({destination:'ESSEX'}),'UK');
+assert.equal(speedPostProfitCountry({destination:'SOUTHALL'}),'UK');
+assert.equal(speedPostProfitCountry({destination:'ESSEX',state:'Connecticut'}),'USA',
+  'US state must override ambiguous city Essex');
+assert.equal(speedPostProfitCountry({destination:'ESSEX',destinationCountry:'USA'}),'USA',
+  'An explicit country is stronger than a city name');
+assert.equal(speedPostProfitCountry({destination:'London',destinationCountry:'Canada'}),'Canada');
+assert.equal(speedPostProfitCountry({destination:'BOSTON'}),'USA');
+
 const uk5=speedPostProfitRow({
  trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'₹1,000',createdAt:'2026-10-01T15:00:00Z'
 });
