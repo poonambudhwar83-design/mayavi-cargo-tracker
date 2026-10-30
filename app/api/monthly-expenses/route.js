@@ -184,7 +184,7 @@ export async function PATCH(request){
           SET rooms_expenses=mayavi_monthly_expenses.rooms_expenses+EXCLUDED.rooms_expenses,rooms_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
         RETURNING rooms_expenses AS amount`;
       else {
-        const remarks=String(body.remarks??'').trim().replace(/\\s+/g,' ');
+        const remarks=String(body.remarks??'').trim().replace(/\s+/g,' ');
         if(!remarks||remarks.length>120)
           return json({ok:false,error:'Enter Miscellaneous Remarks (1–120 characters), e.g. SIIB Monthly.'},400);
         // ONE atomic SQL statement: either the itemized remark AND its amount
