@@ -97,7 +97,8 @@ export default function MonthlyExpensesDashboard(){
     setSaved(previous=>({...previous,[key]:false}));
   }
   async function saveExpense(key){
-    if(busy[key]||loading||!month||totalEditBusy||(editingTotal?.key===key))return;
+    if(busy[key]||loading||!month)return;
+    if(totalEditBusy||(editingTotal?.key===key))return;
     const raw=String(drafts[key]??'').trim();
     if(raw===''||!/^\d+(?:\.\d{1,2})?$/.test(raw)||Number(raw)>999999999){
       setNote('Enter a valid non-negative amount for '+expenseHeads.find(x=>x.key===key)?.line+' (up to 2 decimals).');
