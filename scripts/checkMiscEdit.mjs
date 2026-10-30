@@ -39,7 +39,7 @@ for(const phrase of [
  'const [miscEditBusy,setMiscEditBusy]=useState(false)',
  'function beginMiscEdit(entry)',
  'async function saveMiscEdit()',
- "field:'edit_misc',id:draft.id",
+ "field:isLegacy?'edit_legacy_misc':'edit_misc'",
  'previousAmount:draft.previousAmount',
  'previousRemarks:draft.previousRemarks',
  'savedEntry.remarks!==remark||Number(savedEntry.amount)!==Number(raw)',
@@ -54,3 +54,62 @@ for(const phrase of [
  'Previously saved Miscellaneous (before Remarks)'
 ])assert.ok(ui.includes(phrase),'UI must allow verified edit: '+phrase);
 console.log('Monthly Misc edit regression passed: optimistic edit and accurate amount delta, legacy preservation.');
+
+
+// Legacy Misc amounts predate itemized Remarks entries. Do not overwrite or
+// add them again: only the unitemized amount (monthly total - new entries)
+// is changed, preserving every newer entry and the original monthly totals.
+const oldMisc=2600000,itemized=400000,legacy=oldMisc-itemized;
+assert.equal(legacy,2200000);
+assert.equal(legacy+itemized,oldMisc);
+const correctedTotal=oldMisc+(2000000-legacy);
+assert.equal(correctedTotal,2400000);
+assert.equal(correctedTotal-itemized,2000000);
+assert.equal(calculateMonthlyExpenses({misc:correctedTotal}).finalProfit-
+  calculateMonthlyExpenses({misc:oldMisc}).finalProfit,200000);
+assert.equal(calculateMonthlyExpenses({misc:oldMisc}).finalProfit,
+  calculateMonthlyExpenses({misc:oldMisc}).finalProfit,
+  'Only saved values are used in Final Profit');
+
+for(const phrase of [
+  'ADD COLUMN IF NOT EXISTS misc_legacy_remarks',
+  'const legacyMiscAmount=Math.round((Number(row.misc_expenses||0)-',
+  'miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0)',
+  'legacyMisc:{amount:Math.max(0,legacyMiscAmount)',
+  'if(field===\'edit_legacy_misc\')',
+  'if(field===\'edit_total\')',
+  "['rent','office','rooms'].includes(category)",
+  'SET rent=${amount},rent_saved_at=now()',
+  'SET office_expenses=${amount},office_saved_at=now()',
+  'SET rooms_expenses=${amount},rooms_saved_at=now()',
+  'WHERE expense_month=${month} AND rent=${previousAmount}',
+  'WHERE expense_month=${month} AND office_expenses=${previousAmount}',
+  'WHERE expense_month=${month} AND rooms_expenses=${previousAmount}',
+  'misc_expenses=misc_expenses+(${amount}::numeric-${previousAmount}::numeric)',
+  'misc_legacy_remarks=${remarks}',
+  'COALESCE((SELECT SUM(amount)',
+  'FROM mayavi_monthly_misc_entries WHERE expense_month=${month}',
+  'AND misc_legacy_remarks=${previousRemarks}',
+  'Refresh the month and try again.',
+  "if(!adminOnly(request))"
+])assert.ok(api.includes(phrase),'Legacy and other expense edits must be safe: '+phrase);
+
+for(const phrase of [
+  'const [legacyMisc,setLegacyMisc]=useState(',
+  'const [editingTotal,setEditingTotal]=useState(null)',
+  'setLegacyMisc(values.legacyMisc||',
+  'async function saveTotalEdit()',
+  "field:'edit_total',category:edit.key",
+  'previousAmount:edit.previousAmount',
+  "field:isLegacy?'edit_legacy_misc':'edit_misc'",
+  'const isLegacy=draft.id===\'legacy\'',
+  'const savedEntry=isLegacy?verified.legacyMisc:verified.miscEntries?',
+  "const listedMiscEntries=useMemo(()=>[",
+  "id:'legacy',remarks:legacyMisc.remarks,amount:Number(legacyMisc.amount)",
+  '{listedMiscEntries.map(entry=><tr',
+  'EDIT SAVED TOTAL','EDIT SAVED MONTHLY TOTAL','SAVE CHANGES','CANCEL',
+  "setSavedTotals(previous=>({...previous,[edit.key]:Number(verified[edit.key])}))",
+  "setLegacyMisc(verified.legacyMisc||",
+  'Object.values(busy).some(Boolean)||editingMisc||miscEditBusy||editingTotal||totalEditBusy'
+])assert.ok(ui.includes(phrase),'Show correct per-month saved value edit: '+phrase);
+console.log('Legacy Misc + Rent/Office/Rooms edit regression passed without historical double-counting.');

@@ -26,6 +26,7 @@ async function ensure(sql){
     office_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(office_expenses>=0),
     rooms_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(rooms_expenses>=0),
     misc_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(misc_expenses>=0),
+    misc_legacy_remarks TEXT NOT NULL DEFAULT 'Previously saved Miscellaneous (before Remarks)',
     rent_saved_at TIMESTAMPTZ,
     office_saved_at TIMESTAMPTZ,
     rooms_saved_at TIMESTAMPTZ,
@@ -40,6 +41,7 @@ async function ensure(sql){
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS office_saved_at TIMESTAMPTZ`;
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS rooms_saved_at TIMESTAMPTZ`;
   await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS misc_saved_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS misc_legacy_remarks TEXT NOT NULL DEFAULT 'Previously saved Miscellaneous (before Remarks)'`;
   // Itemized Misc remarks preserve a clear reason for every NEW expense.
   // Historic mayavi_monthly_expenses.misc_expenses is not moved or reset.
   await sql`CREATE TABLE IF NOT EXISTS mayavi_monthly_misc_entries(
@@ -68,7 +70,7 @@ export async function GET(request){
     // Load Rent and Office Expenses independently of Import/Export tracking:
     // these entries must remain editable when an external profit source fails.
     if(new URL(request.url).searchParams.get('view')==='expenses'){
-      const saved=await sql`SELECT rent,office_expenses,rooms_expenses,misc_expenses,
+      const saved=await sql`SELECT rent,office_expenses,rooms_expenses,misc_expenses,misc_legacy_remarks,
           rent_saved_at,office_saved_at,rooms_saved_at,misc_saved_at,updated_at,updated_by
         FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`;
       const row=saved[0]||{};
@@ -76,7 +78,11 @@ export async function GET(request){
         FROM mayavi_monthly_misc_entries
         WHERE expense_month=${month}
         ORDER BY created_at DESC,id DESC`;
-      return json({ok:true,month,miscEntries:miscEntries.map(entry=>({
+      const legacyMiscAmount=Math.round((Number(row.misc_expenses||0)-
+        miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0))*100)/100;
+      return json({ok:true,month,legacyMisc:{amount:Math.max(0,legacyMiscAmount),
+        remarks:row.misc_legacy_remarks||'Previously saved Miscellaneous (before Remarks)'},
+        miscEntries:miscEntries.map(entry=>({
         id:entry.id,remarks:entry.remarks,amount:Number(entry.amount),
         createdBy:entry.created_by,createdAt:entry.created_at
       })),rent:Number(row.rent||0),office:Number(row.office_expenses||0),
@@ -156,6 +162,62 @@ export async function PATCH(request){
     const month=selectedProfitMonth(body.month);
     if(!month)return json({ok:false,error:'Choose a valid monthly accounting period.'},400);
     const field=String(body.field||'');
+    if(field==='edit_total'){
+      const category=String(body.category||'');
+      if(!['rent','office','rooms'].includes(category))
+        return json({ok:false,error:'Choose Rent, Office Expenses or Rooms Expenses to edit.'},400);
+      const amount=monthlyAmount(body.value),previousAmount=monthlyAmount(body.previousAmount);
+      if(amount===null||previousAmount===null)
+        return json({ok:false,error:'Enter a valid non-negative amount (up to 2 decimals).'},400);
+      const sql=database();await ensure(sql);
+      const session=readSession(request);
+      // Replace one prior monthly total. Another Admin save makes a stale
+      // edit fail rather than silently undoing that newer payment.
+      let saved;
+      if(category==='rent')saved=await sql`UPDATE mayavi_monthly_expenses
+        SET rent=${amount},rent_saved_at=now(),updated_by=${session.username},updated_at=now()
+        WHERE expense_month=${month} AND rent=${previousAmount}
+        RETURNING rent AS amount`;
+      else if(category==='office')saved=await sql`UPDATE mayavi_monthly_expenses
+        SET office_expenses=${amount},office_saved_at=now(),updated_by=${session.username},updated_at=now()
+        WHERE expense_month=${month} AND office_expenses=${previousAmount}
+        RETURNING office_expenses AS amount`;
+      else saved=await sql`UPDATE mayavi_monthly_expenses
+        SET rooms_expenses=${amount},rooms_saved_at=now(),updated_by=${session.username},updated_at=now()
+        WHERE expense_month=${month} AND rooms_expenses=${previousAmount}
+        RETURNING rooms_expenses AS amount`;
+      if(!saved.length)return json({ok:false,error:'This saved expense total has changed. Refresh the month and try again.'},409);
+      return json({ok:true,month,field,category,value:Number(saved[0].amount),
+        difference:Math.round((amount-previousAmount)*100)/100,
+        message:'Saved '+category+' monthly expense total updated.'});
+    }
+    if(field==='edit_legacy_misc'){
+      const amount=monthlyAmount(body.value),previousAmount=monthlyAmount(body.previousAmount);
+      const remarks=String(body.remarks??'').trim().replace(/\s+/g,' ');
+      const previousRemarks=String(body.previousRemarks??'').trim().replace(/\s+/g,' ');
+      if(amount===null||previousAmount===null||previousAmount<=0)
+        return json({ok:false,error:'Select an existing previously saved Miscellaneous amount.'},400);
+      if(!remarks||remarks.length>120||!previousRemarks||previousRemarks.length>120)
+        return json({ok:false,error:'Enter valid Miscellaneous Remarks (1–120 characters).'},400);
+      const sql=database();await ensure(sql);
+      const session=readSession(request);
+      // Only the unitemized historical residue changes. Itemized Misc entries
+      // are untouched; neither original amounts nor new expenses are duplicated.
+      const saved=await sql`UPDATE mayavi_monthly_expenses
+        SET misc_expenses=misc_expenses+(${amount}::numeric-${previousAmount}::numeric),
+            misc_legacy_remarks=${remarks},misc_saved_at=now(),
+            updated_by=${session.username},updated_at=now()
+        WHERE expense_month=${month}
+          AND ROUND((misc_expenses-COALESCE((SELECT SUM(amount)
+            FROM mayavi_monthly_misc_entries WHERE expense_month=${month}),0)),2)=${previousAmount}::numeric
+          AND misc_legacy_remarks=${previousRemarks}
+        RETURNING misc_expenses AS total,misc_legacy_remarks AS remarks`;
+      if(!saved.length)return json({ok:false,error:'The previously saved Miscellaneous amount has changed. Refresh the month and try again.'},409);
+      return json({ok:true,month,field,value:Number(saved[0].total),
+        difference:Math.round((amount-previousAmount)*100)/100,
+        legacyMisc:{amount,remarks:saved[0].remarks},
+        message:'Previously saved Miscellaneous expense updated.'});
+    }
     if(field==='edit_misc'){
       // Optimistic comparison prevents one Admin session from silently
       // replacing a different session's already revised entry.
