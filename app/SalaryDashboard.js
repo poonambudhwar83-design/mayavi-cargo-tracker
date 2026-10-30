@@ -6,6 +6,19 @@ const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maxim
 const input={width:'100%',minWidth:95,boxSizing:'border-box',padding:'8px 9px',border:'1px solid #c9d7e6',borderRadius:8,background:'#fff',fontSize:13,color:'#122139'};
 const button={border:0,borderRadius:8,padding:'10px 14px',fontWeight:800,cursor:'pointer'};
 const cell={padding:'8px 10px',borderBottom:'1px solid #e3eaf2',fontSize:13,whiteSpace:'nowrap'};
+// Distinct, soft pastel company colours: visible in row badges and selectors.
+const companyPastels=Object.freeze({
+  'KCC':{background:'#ede9fe',color:'#5b21b6',borderColor:'#ddd6fe'},
+  'PV':{background:'#dcfce7',color:'#166534',borderColor:'#bbf7d0'},
+  'PV HYD':{background:'#ffedd5',color:'#9a3412',borderColor:'#fed7aa'},
+  'CHENNAI':{background:'#e0f2fe',color:'#075985',borderColor:'#bae6fd'},
+  'BANGLORE':{background:'#ffe4e6',color:'#9f1239',borderColor:'#fecdd3'},
+  'JEPO DELHI':{background:'#fef3c7',color:'#92400e',borderColor:'#fde68a'},
+  'JEPO KARNAL':{background:'#cffafe',color:'#155e75',borderColor:'#a5f3fc'},
+  'JEPO JIND':{background:'#f3e8ff',color:'#7e22ce',borderColor:'#e9d5ff'},
+  'AIRPORT STAFF':{background:'#e0e7ff',color:'#3730a3',borderColor:'#c7d2fe'}
+});
+const companyPastel=company=>companyPastels[company]||{background:'#f1f5f9',color:'#475569',borderColor:'#e2e8f0'};
 const show=value=>money.format(Number(value)||0);
 const currentMonth=()=>{const today=new Date();return String(today.getFullYear())+'-'+String(today.getMonth()+1).padStart(2,'0');};
 export default function SalaryDashboard(){
@@ -95,7 +108,7 @@ export default function SalaryDashboard(){
           <input value={name} onChange={e=>setName(e.target.value)} required maxLength={100} placeholder="Enter employee name" style={input}/>
         </label>
         <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>COMPANY NAME
-          <select aria-label="Company Name" value={company} onChange={e=>setCompany(e.target.value)} required style={{...input,minWidth:155}}>
+          <select aria-label="Company Name" value={company} onChange={e=>setCompany(e.target.value)} required style={{...input,minWidth:155,...(company?companyPastel(company):{})}}>
             <option value="">Select company</option>
             {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
           </select>
@@ -108,7 +121,7 @@ export default function SalaryDashboard(){
       <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. Use EDIT to change an employee's name, company and default salary; existing saved monthly payments are preserved. You can also change each month's salary independently. Select September 2026 to enter older salary payments.</p>
       <section aria-label="Salary filters" style={{display:'flex',flexWrap:'wrap',alignItems:'end',gap:10,background:'#fff',padding:12,borderRadius:12,border:'1px solid #d9e5f4'}}>
         <label style={{display:'grid',gap:5,minWidth:180,fontSize:12,fontWeight:800}}>FILTER BY COMPANY
-          <select aria-label="Filter salaries by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{...input,minWidth:175}}>
+          <select aria-label="Filter salaries by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{...input,minWidth:175,...(companyFilter?companyPastel(companyFilter):{})}}>
             <option value="">All Companies</option>
             {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
           </select>
@@ -150,11 +163,11 @@ export default function SalaryDashboard(){
                   :row.employeeName}</td>
                 <td style={cell}>{editing===row.id
                   ?<select aria-label={'Edit Company Name for '+row.employeeName}
-                    value={row.companyName||''} onChange={e=>edit(row.id,'companyName',e.target.value)} style={{...input,minWidth:160}}>
+                    value={row.companyName||''} onChange={e=>edit(row.id,'companyName',e.target.value)} style={{...input,minWidth:160,...(row.companyName?companyPastel(row.companyName):{})}}>
                     <option value="">Select company</option>
                     {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
                   </select>
-                  :<span style={{fontWeight:800,color:'#174b87'}}>{row.companyName||'Not selected'}</span>}
+                  :<span style={{display:'inline-flex',alignItems:'center',padding:'6px 11px',borderRadius:999,fontWeight:800,fontSize:12,border:'1px solid',...companyPastel(row.companyName)}}>{row.companyName||'Not selected'}</span>}
                 </td>
                 {['salaryAmount','cashPaid','accountPaid'].map(field=><td key={field} style={cell}>
                   <input type="number" min="0" max="999999999" step="0.01" aria-label={row.employeeName+' '+field}

@@ -105,6 +105,23 @@ assert.ok(ui.includes("['salaryAmount','cashPaid','accountPaid']"),'Cash and Acc
 assert.ok(ui.includes('total.totalPaid')&&ui.includes('total.cash')&&ui.includes('total.account'));
 assert.ok(ui.includes("action:'save_month'"),'Row saves must persist each month');
 assert.ok(ui.includes('No TDS or deductions'));
+// All nine companies have different pastel fills, readable foregrounds and borders.
+const pastels=[...ui.matchAll(/^\s*'([^']+)':\{background:'(#[0-9a-f]{6})',color:'(#[0-9a-f]{6})',borderColor:'(#[0-9a-f]{6})'\},?$/gmi)];
+assert.deepEqual(pastels.map(m=>m[1]).sort(),[...SALARY_COMPANIES].sort(),
+  'Every company must have a pastel badge, including Airport Staff');
+assert.equal(new Set(pastels.map(m=>m[2])).size,SALARY_COMPANIES.length,
+  'Each company must have a distinct pastel background');
+assert.ok(ui.includes('...companyPastel(row.companyName)'),
+  'Company cells and editing selector should use their selected pastel');
+assert.ok(ui.includes('...(company?companyPastel(company):{})'),
+  'Add Employee company selector shows its selected pastel');
+assert.ok(ui.includes('...(companyFilter?companyPastel(companyFilter):{})'),
+  'Company filter shows its selected pastel');
+assert.ok(ui.includes("border:'1px solid',...companyPastel(row.companyName)"),
+  'Company name badges must have an outlined readable pill');
+assert.ok(ui.includes('companyPastel=company=>companyPastels[company]'),
+  'Older employees with blank companies should have a neutral fallback');
+
 assert.ok(navigation.includes('selectedDashboard===\x27SALARY\x27')&&navigation.includes('<SalaryDashboard/>'));
 assert.ok(navigation.includes('>SALARY</button>'));
 console.log('Salary calculator regression passed: September selection, per-employee cash/account, total, balance, persistence, admin-only access and no deductions.');
