@@ -6,6 +6,7 @@ import AdminNotesDashboard from './AdminNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import SalaryDashboard from './SalaryDashboard.js';
+import MonthlyExpensesDashboard from './MonthlyExpensesDashboard.js';
 import ExportFinanceSection from './ExportFinanceSection.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 import HaryanaAdminDashboard from './HaryanaAdminDashboard.js';
@@ -207,6 +208,8 @@ export default function UnifiedDashboard(){
       ?<ExportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='SALARY'
       ?<SalaryDashboard/>
+    :session?.role==='admin'&&selectedDashboard==='MONTHLY_EXPENSES'
+      ?<MonthlyExpensesDashboard/>
     :session?.role==='admin'&&selectedDashboard==='NOTES'
       ?<AdminNotesDashboard currentUser={session}/>
     :speedPostAllowed&&selectedDashboard==='SPEED_POST'
@@ -224,6 +227,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
