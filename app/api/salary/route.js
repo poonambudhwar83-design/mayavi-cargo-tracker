@@ -115,7 +115,7 @@ export async function POST(request){
         )
         INSERT INTO mayavi_salary_monthly
           (employee_id,salary_month,salary_amount,cash_paid,account_paid,updated_by)
-        SELECT id,${month},${salary},${cash},${account},${admin.username} FROM profile
+        SELECT id,${month},${salary},${cash},${account},${admin.username} FROM profile WHERE TRUE
         ON CONFLICT(employee_id,salary_month) DO UPDATE
           SET salary_amount=EXCLUDED.salary_amount,cash_paid=EXCLUDED.cash_paid,
               account_paid=EXCLUDED.account_paid,updated_by=EXCLUDED.updated_by,
