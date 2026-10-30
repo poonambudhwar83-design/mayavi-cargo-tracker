@@ -43,6 +43,8 @@ export default function MonthlyExpensesDashboard(){
   const [savedTotals,setSavedTotals]=useState(initialSavedTotals);
   const [miscRemark,setMiscRemark]=useState('');
   const [miscEntries,setMiscEntries]=useState([]);
+  const [editingMisc,setEditingMisc]=useState(null);
+  const [miscEditBusy,setMiscEditBusy]=useState(false);
   const [dirty,setDirty]=useState({});
   const [saved,setSaved]=useState({});
   const [loading,setLoading]=useState(true);
@@ -57,7 +59,7 @@ export default function MonthlyExpensesDashboard(){
       const values=await res.json();
       if(!res.ok||!values.ok)throw new Error(values.error||'Unable to load saved monthly expenses.');
       // Previously saved amounts belong to the monthly summary, not the next entry box.
-      setDrafts({...initialExpenses});setMiscRemark('');
+      setDrafts({...initialExpenses});setMiscRemark('');setEditingMisc(null);
       setMiscEntries(Array.isArray(values.miscEntries)?values.miscEntries:[]);
       setSavedTotals({rent:Number(values.rent||0),office:Number(values.office||0),
         rooms:Number(values.rooms||0),misc:Number(values.misc||0)});
@@ -77,11 +79,11 @@ export default function MonthlyExpensesDashboard(){
   },[month]);
   useEffect(()=>{void load()},[load]);
   useEffect(()=>{
-    if(Object.values(dirty).some(Boolean)||Object.values(busy).some(Boolean))return;
+    if(Object.values(dirty).some(Boolean)||Object.values(busy).some(Boolean)||editingMisc||miscEditBusy)return;
     const poll=()=>{if(document.visibilityState!=='hidden')void load()};
     const timer=setInterval(poll,90000);
     return()=>clearInterval(timer);
-  },[load,dirty,busy]);
+  },[load,dirty,busy,editingMisc,miscEditBusy]);
   // Only persisted totals enter the monthly accounts; a new unsaved entry
   // never affects Total Expenses or Final Profit.
   const metrics=useMemo(()=>record?calculateMonthlyExpenses({...record.values,...savedTotals}):null,[record,savedTotals]);
@@ -138,6 +140,53 @@ export default function MonthlyExpensesDashboard(){
       setNote('Not saved: '+(error.message||'Unable to save the expense.'));
     }finally{setBusy(previous=>({...previous,[key]:false}));}
   }
+  function beginMiscEdit(entry){
+    if(miscEditBusy||loading)return;
+    setEditingMisc({id:entry.id,month,amount:String(entry.amount),
+      remarks:entry.remarks,previousAmount:entry.amount,previousRemarks:entry.remarks});
+    setNote('');
+  }
+  async function saveMiscEdit(){
+    const draft=editingMisc;
+    if(!draft||miscEditBusy||loading||draft.month!==month)return;
+    const raw=String(draft.amount??'').trim();
+    const remark=String(draft.remarks??'').trim().replace(/\s+/g,' ');
+    if(!/^\d+(?:\.\d{1,2})?$/.test(raw)||Number(raw)>999999999){
+      setNote('Enter a valid non-negative Miscellaneous amount (up to 2 decimals).');
+      return;
+    }
+    if(!remark||remark.length>120){
+      setNote('Enter Miscellaneous Remarks (1–120 characters).');
+      return;
+    }
+    setMiscEditBusy(true);setNote('');
+    try{
+      const response=await fetch('/api/monthly-expenses',{
+        method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},
+        body:JSON.stringify({month,field:'edit_misc',id:draft.id,
+          value:raw,remarks:remark,previousAmount:draft.previousAmount,
+          previousRemarks:draft.previousRemarks})
+      });
+      const updated=await response.json();
+      if(!response.ok||!updated.ok)throw new Error(updated.error||'Could not update Miscellaneous.');
+      const confirmation=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month)+'&view=expenses',
+        {credentials:'include',cache:'no-store'});
+      const verified=await confirmation.json();
+      const savedEntry=verified.miscEntries?.find(entry=>entry.id===draft.id);
+      if(!confirmation.ok||!verified.ok||Number(verified.misc)!==Number(updated.value)||
+          !savedEntry||savedEntry.remarks!==remark||Number(savedEntry.amount)!==Number(raw))
+        throw new Error('Could not confirm updated Miscellaneous amount and Remarks in the database.');
+      setMiscEntries(verified.miscEntries);
+      setSavedTotals(previous=>({...previous,misc:Number(verified.misc)}));
+      setRecord(previous=>previous?{...previous,values:{...previous.values,misc:Number(verified.misc)}}:previous);
+      setSaved(previous=>({...previous,misc:true}));
+      setEditingMisc(null);
+      setNote('✓ UPDATED TO DATABASE • '+remark+': '+show(Number(raw))+
+        ' • Monthly Miscellaneous Total: '+show(verified.misc));
+    }catch(error){
+      setNote('Miscellaneous edit not confirmed: '+(error.message||'Unable to update the entry.'));
+    }finally{setMiscEditBusy(false)}
+  }
   const income=record?[{label:'Import Gross Profit',value:record.values.importGross},
     {label:'Export Gross Profit (Export Profit Sheet total)',value:record.values.exportGross},
     {label:'Jind Branch — Amount Paid to Branch',value:record.values.jind},
@@ -157,7 +206,7 @@ export default function MonthlyExpensesDashboard(){
         </div>
         <label style={{display:'grid',gap:5,fontWeight:900,fontSize:12}}>SELECT MONTH
           <input type="month" min="2026-10" max={monthNow()} value={month}
-            onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setMiscRemark('');setMiscEntries([]);setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
+            onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setMiscRemark('');setMiscEntries([]);setEditingMisc(null);setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
             style={{...input,fontWeight:800}}/>
         </label>
       </div>
@@ -185,7 +234,7 @@ export default function MonthlyExpensesDashboard(){
                 }}
                 style={{...input,display:'block',width:'100%',marginTop:6}}/>
             </label>}
-            <button type="button" disabled={loading||Boolean(busy[head.key])||!month}
+            <button type="button" disabled={loading||Boolean(busy[head.key])||!month||(head.key==='misc'&&Boolean(editingMisc))}
               onClick={()=>void saveExpense(head.key)}
               style={{border:0,borderRadius:9,width:'100%',background:saved[head.key]?'#15803d':'#2056a1',
                 color:'#fff',fontWeight:900,cursor:'pointer',fontSize:13,padding:'11px 14px'}}>
@@ -202,30 +251,62 @@ export default function MonthlyExpensesDashboard(){
             SAVED MISCELLANEOUS ENTRIES • {caption}
           </h3>
           <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',minWidth:400}}>
+            <table style={{width:'100%',borderCollapse:'collapse',minWidth:660}}>
               <thead><tr style={{background:'#fafcff'}}>
                 <th style={{...td,textAlign:'left'}}>Remarks</th>
                 <th style={{...td,textAlign:'right'}}>Amount (₹)</th>
                 <th style={{...td,textAlign:'right'}}>Saved On (IST)</th>
+                <th style={{...td,textAlign:'right'}}>Actions</th>
               </tr></thead>
               <tbody>
-                {miscEntries.map(entry=><tr key={entry.id}>
-                  <td style={td}>{entry.remarks}</td>
-                  <td style={{...td,textAlign:'right',fontWeight:800}}>{show(entry.amount)}</td>
+                {miscEntries.map(entry=><tr key={entry.id} style={{background:editingMisc?.id===entry.id?'#f1f6ff':'#fff'}}>
+                  <td style={td}>{editingMisc?.id===entry.id
+                    ?<input type="text" aria-label={'Edit Remarks for '+entry.remarks}
+                      maxLength={120} value={editingMisc.remarks} disabled={miscEditBusy}
+                      onChange={e=>setEditingMisc(previous=>({...previous,remarks:e.target.value}))}
+                      style={{...input,width:'100%',minWidth:170}}/>
+                    :entry.remarks}</td>
+                  <td style={{...td,textAlign:'right',fontWeight:800}}>
+                    {editingMisc?.id===entry.id
+                      ?<input type="number" min="0" step=".01" max="999999999"
+                        aria-label={'Edit Amount for '+entry.remarks}
+                        value={editingMisc.amount} disabled={miscEditBusy}
+                        onChange={e=>setEditingMisc(previous=>({...previous,amount:e.target.value}))}
+                        style={{...input,width:125,minWidth:105}}/>
+                      :show(entry.amount)}
+                  </td>
                   <td style={{...td,textAlign:'right',color:'#5e7188',fontSize:12}}>
                     {entry.createdAt?new Date(entry.createdAt).toLocaleString('en-IN',{
                       timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'
                     }):'—'}
+                  </td>
+                  <td style={{...td,textAlign:'right',whiteSpace:'nowrap'}}>
+                    {editingMisc?.id===entry.id
+                      ?<div style={{display:'flex',gap:7,justifyContent:'flex-end'}}>
+                        <button type="button" disabled={miscEditBusy} onClick={()=>void saveMiscEdit()}
+                          style={{border:0,borderRadius:8,background:'#2056a1',color:'#fff',
+                            padding:'9px 12px',fontWeight:800,cursor:'pointer'}}>
+                          {miscEditBusy?'SAVING…':'SAVE CHANGES'}
+                        </button>
+                        <button type="button" disabled={miscEditBusy} onClick={()=>{setEditingMisc(null);setNote('');}}
+                          style={{border:'1px solid #d7e1ee',borderRadius:8,background:'#f4f6fa',
+                            padding:'9px 12px',fontWeight:800,cursor:'pointer'}}>CANCEL</button>
+                      </div>
+                      :<button type="button" disabled={miscEditBusy||loading||Boolean(editingMisc)}
+                        aria-label={'Edit Miscellaneous entry '+entry.remarks}
+                        onClick={()=>beginMiscEdit(entry)}
+                        style={{border:0,borderRadius:8,background:'#e6effe',color:'#174b87',
+                          padding:'9px 13px',fontWeight:800,cursor:'pointer'}}>EDIT</button>}
                   </td>
                 </tr>)}
                 {Math.round((savedTotals.misc-miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0))*100)/100>0&&
                   <tr><td style={td}>Previously saved Miscellaneous (before Remarks)</td>
                     <td style={{...td,textAlign:'right',fontWeight:800}}>
                       {show(Math.round((savedTotals.misc-miscEntries.reduce((sum,entry)=>sum+Number(entry.amount||0),0))*100)/100)}
-                    </td><td style={{...td,textAlign:'right'}}>—</td>
+                    </td><td style={{...td,textAlign:'right'}}>—</td><td style={td}>—</td>
                   </tr>}
                 {!miscEntries.length&&savedTotals.misc===0&&<tr>
-                  <td colSpan={3} style={{...td,color:'#64748b',textAlign:'center'}}>
+                  <td colSpan={4} style={{...td,color:'#64748b',textAlign:'center'}}>
                     No Miscellaneous expenses saved for this month.
                   </td>
                 </tr>}
@@ -233,7 +314,7 @@ export default function MonthlyExpensesDashboard(){
               <tfoot><tr style={{background:'#eef4fc',fontWeight:900}}>
                 <td style={td}>MISCELLANEOUS TOTAL</td>
                 <td style={{...td,textAlign:'right'}}>{show(savedTotals.misc)}</td>
-                <td style={td}></td>
+                <td style={td}></td><td style={td}></td>
               </tr></tfoot>
             </table>
           </div>
