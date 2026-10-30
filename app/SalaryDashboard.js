@@ -1,0 +1,134 @@
+'use client';
+import {useCallback,useEffect,useMemo,useState} from 'react';
+import {salaryRowTotals,salaryTotals} from '../lib/salaryMath.js';
+
+const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
+const input={width:'100%',minWidth:95,boxSizing:'border-box',padding:'8px 9px',border:'1px solid #c9d7e6',borderRadius:8,background:'#fff',fontSize:13,color:'#122139'};
+const button={border:0,borderRadius:8,padding:'10px 14px',fontWeight:800,cursor:'pointer'};
+const cell={padding:'8px 10px',borderBottom:'1px solid #e3eaf2',fontSize:13,whiteSpace:'nowrap'};
+const show=value=>money.format(Number(value)||0);
+const currentMonth=()=>{const today=new Date();return String(today.getFullYear())+'-'+String(today.getMonth()+1).padStart(2,'0');};
+export default function SalaryDashboard(){
+  const [month,setMonth]=useState(currentMonth);
+  const [rows,setRows]=useState([]);
+  const [drafts,setDrafts]=useState({});
+  const [name,setName]=useState('');
+  const [baseSalary,setBaseSalary]=useState('');
+  const [busy,setBusy]=useState({});
+  const [adding,setAdding]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [message,setMessage]=useState('');
+  const load=useCallback(async ()=>{
+    setLoading(true);setMessage('');setDrafts({});
+    try{
+      const res=await fetch('/api/salary?month='+encodeURIComponent(month),{cache:'no-store',credentials:'include'});
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||'Unable to load salary details.');
+      setRows(data.rows||[]);
+    }catch(error){setRows([]);setMessage(error.message||'Could not load Salary page.');}
+    finally{setLoading(false);}
+  },[month]);
+  useEffect(()=>{void load()},[load]);
+  const shown=useMemo(()=>rows.map(row=>({...row,...(drafts[row.id]||{})})),[rows,drafts]);
+  const total=useMemo(()=>salaryTotals(shown),[shown]);
+  function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));}
+  async function addEmployee(e){
+    e.preventDefault();if(adding)return;setAdding(true);setMessage('');
+    try{
+      const res=await fetch('/api/salary',{method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'add_employee',employeeName:name,salaryAmount:baseSalary})});
+      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Could not add employee.');
+      setName('');setBaseSalary('');await load();setMessage(data.message);
+    }catch(error){setMessage(error.message||'Could not add employee.');}finally{setAdding(false);}
+  }
+  async function saveRow(row){
+    if(busy[row.id])return;setBusy(p=>({...p,[row.id]:true}));setMessage('');
+    try{
+      const res=await fetch('/api/salary',{method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'save_month',employeeId:row.id,month,
+          salaryAmount:row.salaryAmount,cashPaid:row.cashPaid,accountPaid:row.accountPaid})});
+      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
+      setRows(previous=>previous.map(r=>r.id===row.id?{...r,...data.row}:r));
+      setDrafts(previous=>{const next={...previous};delete next[row.id];return next});
+      setMessage(data.message);
+    }catch(error){setMessage(row.employeeName+': '+(error.message||'Save failed.'));}
+    finally{setBusy(p=>({...p,[row.id]:false}));}
+  }
+  const monthTitle=useMemo(()=>{const [year,m]=month.split('-').map(Number);
+    return new Date(year,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  },[month]);
+  return <main style={{minHeight:'75vh',background:'#f4f8ff',padding:'20px clamp(12px,3vw,32px)',color:'#142642'}}>
+    <div style={{maxWidth:1250,margin:'auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+        <div><small style={{fontWeight:900,color:'#315b98',letterSpacing:1.1}}>MAYAVI CARGO • ADMIN ONLY</small>
+          <h1 style={{margin:'6px 0',fontSize:26}}>Salary Calculator</h1>
+          <p style={{color:'#5a6e84',margin:'4px 0'}}>Simple monthly salary entries • Cash + Account = Total Paid • No TDS or deductions</p>
+        </div>
+        <label style={{display:'grid',gap:4,fontSize:12,fontWeight:900}}>SALARY MONTH
+          <input type="month" aria-label="Salary month" min="2020-01" max="2100-12" value={month} onChange={e=>setMonth(e.target.value)} style={{...input,minWidth:190,fontWeight:800}}/>
+        </label>
+      </div>
+      <form onSubmit={addEmployee} style={{display:'flex',alignItems:'end',flexWrap:'wrap',gap:10,background:'#fff',border:'1px solid #d9e5f4',borderRadius:12,padding:16,marginTop:18}}>
+        <label style={{flex:'2 1 200px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>EMPLOYEE NAME
+          <input value={name} onChange={e=>setName(e.target.value)} required maxLength={100} placeholder="Enter employee name" style={input}/>
+        </label>
+        <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>MONTHLY SALARY (₹)
+          <input type="number" step="0.01" min="0" max="999999999" value={baseSalary} onChange={e=>setBaseSalary(e.target.value)} required placeholder="e.g. 25000" style={input}/>
+        </label>
+        <button type="submit" disabled={adding} style={{...button,background:'#2056a1',color:'#fff',minHeight:38}}>{adding?'ADDING…':'+ ADD EMPLOYEE'}</button>
+      </form>
+      <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. You can change each month's salary independently. Select September 2026 to enter older salary payments.</p>
+      {message&&<p role="status" style={{background:'#eaf2ff',borderRadius:8,padding:'10px 12px',fontSize:13,fontWeight:700,color:'#1d4678'}}>{message}</p>}
+      <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,margin:'17px 0'}} aria-label="Monthly salary totals">
+        {[
+          ['MONTHLY SALARY',total.monthlySalary],
+          ['TOTAL CASH',total.cash],
+          ['TOTAL ACCOUNT',total.account],
+          ['TOTAL PAID',total.totalPaid],
+          ['BALANCE',total.balance]
+        ].map(([label,value])=><div key={label} style={{background:'#fff',padding:15,borderRadius:12,border:'1px solid #dce7f4'}}>
+          <small style={{fontWeight:900,color:'#45607f'}}>{label}</small>
+          <div style={{fontSize:21,fontWeight:900,marginTop:5,color:label==='BALANCE'&&value<0?'#b91c1c':'#174b87'}}>{show(value)}</div>
+        </div>)}
+      </section>
+      <div style={{overflowX:'auto',border:'1px solid #dae5f1',borderRadius:12,background:'#fff'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:890}}>
+          <thead><tr style={{background:'#eaf2ff',color:'#233d60'}}>
+            {['S.No.','Employee Name','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
+          </tr></thead>
+          <tbody>
+            {shown.map((row,index)=>{
+              const values=salaryRowTotals(row);
+              return <tr key={row.id} style={{background:index%2?'#fafcff':'#fff'}}>
+                <td style={cell}>{index+1}</td>
+                <td style={{...cell,fontWeight:800}}>{row.employeeName}</td>
+                {['salaryAmount','cashPaid','accountPaid'].map(field=><td key={field} style={cell}>
+                  <input type="number" min="0" max="999999999" step="0.01" aria-label={row.employeeName+' '+field}
+                    value={row[field]??''} onChange={e=>edit(row.id,field,e.target.value)}
+                    style={{...input,width:120}}/>
+                </td>)}
+                <td style={{...cell,fontWeight:900,color:'#17623e'}}>{values?show(values.totalPaid):'—'}</td>
+                <td style={{...cell,fontWeight:800,color:values&&values.balance<0?'#b91c1c':'#42566e'}}>{values?show(values.balance):'—'}</td>
+                <td style={cell}><button type="button" disabled={Boolean(busy[row.id])} onClick={()=>void saveRow(row)}
+                  style={{...button,background:'#0b786e',color:'#fff',padding:'8px 12px'}}>{busy[row.id]?'SAVING…':'SAVE'}</button></td>
+              </tr>;
+            })}
+            {!shown.length&&<tr><td colSpan={8} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':'No employees added. Use Add Employee above.'}</td></tr>}
+          </tbody>
+          {shown.length>0&&<tfoot><tr style={{background:'#dceafe',fontWeight:900}}>
+            <td style={cell} colSpan={2}>TOTAL • {shown.length} employees • {monthTitle}</td>
+            <td style={cell}>{show(total.monthlySalary)}</td>
+            <td style={cell}>{show(total.cash)}</td>
+            <td style={cell}>{show(total.account)}</td>
+            <td style={cell}>{show(total.totalPaid)}</td>
+            <td style={cell}>{show(total.balance)}</td>
+            <td style={cell}>—</td>
+          </tr></tfoot>}
+        </table>
+      </div>
+      <p style={{fontSize:12,color:'#64748b'}}>Total Paid = Cash Paid + Account Paid. Balance = Monthly Salary − Total Paid. A negative balance indicates payment above the entered salary. Every month's saved entries are kept separately in Mayavi's shared database; no TDS, PF or other deduction is calculated.</p>
+    </div>
+  </main>;
+}
