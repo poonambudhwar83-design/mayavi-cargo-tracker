@@ -1,6 +1,6 @@
 'use client';
 import {useMemo} from 'react';
-import {speedPostProfitTotals,speedPostDailySummary} from '../lib/speedpostMonthlyProfit.js';
+import {speedPostProfitTotals} from '../lib/speedpostMonthlyProfit.js';
 import {speedPostEntryDay} from '../lib/speedpostCostReports.js';
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const format=value=>value===null||value===undefined?'—':money.format(value);
@@ -9,7 +9,6 @@ const td={padding:'9px 8px',fontSize:12,borderBottom:'1px solid #e4ecf5',whiteSp
 const card={border:'1px solid #dce5f1',borderRadius:12,padding:15,background:'#fff'};
 export default function SpeedPostMonthlyProfit({rows=[],entryMonths=[],month='',onSelectMonth,loading=false,historyIncomplete=false}){
   const report=useMemo(()=>speedPostProfitTotals(rows),[rows]);
-  const dailyReport=useMemo(()=>speedPostDailySummary(rows),[rows]);
   const t=report.totals;
   const fields=[['TOTAL ENTRIES',t.packets],['CALCULATED',t.complete],
     ['AMOUNT RECEIVED',format(t.amountReceived)],['CONSULTING COST',format(t.consultingCost)],
@@ -46,50 +45,6 @@ export default function SpeedPostMonthlyProfit({rows=[],entryMonths=[],month='',
         <strong style={{display:'block',marginTop:5,fontSize:18,color:name==='NET PROFIT'&&t.profit<0?'#b91c1c':name==='NET PROFIT'?'#167144':'#193f80'}}>{value}</strong>
       </div>)}
     </div>
-    <section aria-label="EMS daily financial summary" style={{border:'1px solid #cbd9eb',borderRadius:11,background:'#f9fbff',padding:12,marginBottom:15}}>
-      <h3 style={{fontSize:16,color:'#173f91',margin:'0 0 5px'}}>DAILY SUMMARY • {month||'Entry month not available'}</h3>
-      <p style={{fontSize:12,color:'#536a85',margin:'0 0 11px'}}>
-        Each date shows how many ED packets were first entered, their total weights, Tariff + Cash Cost,
-        and profit calculated from the UK/USA selling rates. Delivered packets stay on their original entry date.
-      </p>
-      <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',minWidth:1100,borderCollapse:'separate',borderSpacing:0}}>
-          <thead><tr>{['Entry Date','No. of Packets','Actual Weight (kg)','Rounded Weight (kg)',
-            'Total Tariff (₹)','Total Cash Cost (₹)','Total Amount (₹)','Daily Profit (₹)','Profit Pending'].map(label=>
-            <th key={label} style={{...th,position:'static'}}>{label}</th>)}</tr></thead>
-          <tbody>{dailyReport.daily.length?dailyReport.daily.map(day=>
-            <tr key={day.date}>
-              <td style={{...td,fontWeight:750}}>{day.date==='UNKNOWN'?'Entry date unknown':day.date}</td>
-              <td style={td}>{day.packets}</td>
-              <td style={td}>{day.actualWeightKg.toLocaleString('en-IN',{maximumFractionDigits:4})}</td>
-              <td style={td}>{day.roundedWeightKg.toLocaleString('en-IN')}</td>
-              <td style={td}>{format(day.tariff)}</td>
-              <td style={td}>{format(day.cashCost)}</td>
-              <td style={{...td,fontWeight:800}}>{format(day.totalAmount)}</td>
-              <td style={{...td,fontWeight:900,color:day.profit<0?'#b91c1c':'#167144'}}>{day.profitablePackets?format(day.profit):'—'}</td>
-              <td style={{...td,color:day.pendingProfit?'#a16207':'#166534',fontWeight:700}}>{day.pendingProfit}</td>
-            </tr>):<tr><td colSpan={9} style={{...td,textAlign:'center',padding:18,color:'#64748b'}}>No packets booked in this month.</td></tr>}</tbody>
-          <tfoot><tr style={{background:'#e9f4ee',fontWeight:900}}>
-            <td style={td}>MONTH TOTAL</td>
-            <td style={td}>{dailyReport.month.packets}</td>
-            <td style={td}>{dailyReport.month.actualWeightKg.toLocaleString('en-IN',{maximumFractionDigits:4})}</td>
-            <td style={td}>{dailyReport.month.roundedWeightKg.toLocaleString('en-IN')}</td>
-            <td style={td}>{format(dailyReport.month.tariff)}</td>
-            <td style={td}>{format(dailyReport.month.cashCost)}</td>
-            <td style={td}>{format(dailyReport.month.totalAmount)}</td>
-            <td style={{...td,color:dailyReport.month.profit<0?'#b91c1c':'#166534'}}>
-              {dailyReport.month.profitablePackets?format(dailyReport.month.profit):'—'}
-            </td>
-            <td style={td}>{dailyReport.month.pendingProfit}</td>
-          </tr></tfoot>
-        </table>
-      </div>
-      <p style={{fontSize:11,color:'#64748b',margin:'10px 0 0'}}>
-        Total Amount = available Tariff Total + available Cash Cost Total. Missing Tariff or Cash values are not treated as confirmed zero.
-        Daily Profit includes only fully costed parcels with a configured selling rate; Profit Pending shows excluded packets.
-        Actual and rounded weights are shown separately to avoid mixing parcel weight with billing weight.
-      </p>
-    </section>
     {historyIncomplete&&<p role="alert" style={{color:'#9a3412',fontWeight:800,fontSize:12}}>Only the latest 5,000 EMS entries are loaded; displayed financial totals are not a full historical ledger.</p>}
     {t.missing>0&&<p style={{background:'#fff8e7',color:'#8a4c06',padding:10,borderRadius:8,fontSize:12,fontWeight:750}}>
       {t.missing} of {t.packets} entries are missing a weight, tariff or configured selling rate.
