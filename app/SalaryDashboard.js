@@ -36,14 +36,19 @@ export default function SalaryDashboard(){
   },[month]);
   useEffect(()=>{void load()},[load]);
   const shown=useMemo(()=>rows.map(row=>({...row,...(drafts[row.id]||{})})),[rows,drafts]);
-  const visible=useMemo(()=>shown.filter(row=>
-    (!companyFilter||row.companyName===companyFilter)&&
-    (!employeeSearch||String(row.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))
-  ),[shown,companyFilter,employeeSearch]);
+  const visible=useMemo(()=>shown.filter(row=>{
+    // Keep a row visible during EDIT even when its company/name is changing.
+    // Apply company/employee filters against the last saved profile only.
+    const stored=rows.find(original=>original.id===row.id)||row;
+    return editing===row.id||(
+      (!companyFilter||stored.companyName===companyFilter)&&
+      (!employeeSearch||String(stored.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))
+    );
+  }),[shown,rows,editing,companyFilter,employeeSearch]);
   const total=useMemo(()=>salaryTotals(visible),[visible]);
   function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));setSaved(previous=>({...previous,[id]:false}));}
   function beginEdit(row){setEditing(row.id);setSaved(previous=>({...previous,[row.id]:false}));setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
-  function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
+  function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)&&!('cashPaid' in (drafts[id]||{}))&&!('accountPaid' in (drafts[id]||{}))}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
   async function addEmployee(e){
     e.preventDefault();if(adding)return;setAdding(true);setMessage('');
     try{
