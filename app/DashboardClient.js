@@ -360,7 +360,7 @@ function airAsiaScheduledFinalArrival(row={}){
   const time=formatTime24(row.scheduledArrivalTime||'');
   const destination=String(row.destination||'').toUpperCase();
   const finalDestination=String(row.finalFlightDestination||'').toUpperCase();
-  if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(date)||destination!=='DEL'||
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date)||destination!=='DEL'||
     (finalDestination&&finalDestination!==destination))return null;
   return{date,time};
 }
