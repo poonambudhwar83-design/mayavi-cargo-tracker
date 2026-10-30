@@ -14,6 +14,8 @@ export default function SalaryDashboard(){
   const [drafts,setDrafts]=useState({});
   const [name,setName]=useState('');
   const [company,setCompany]=useState('');
+  const [companyFilter,setCompanyFilter]=useState('');
+  const [employeeSearch,setEmployeeSearch]=useState('');
   const [editing,setEditing]=useState(null);
   const [baseSalary,setBaseSalary]=useState('');
   const [busy,setBusy]=useState({});
@@ -32,7 +34,11 @@ export default function SalaryDashboard(){
   },[month]);
   useEffect(()=>{void load()},[load]);
   const shown=useMemo(()=>rows.map(row=>({...row,...(drafts[row.id]||{})})),[rows,drafts]);
-  const total=useMemo(()=>salaryTotals(shown),[shown]);
+  const visible=useMemo(()=>shown.filter(row=>
+    (!companyFilter||row.companyName===companyFilter)&&
+    (!employeeSearch||String(row.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))
+  ),[shown,companyFilter,employeeSearch]);
+  const total=useMemo(()=>salaryTotals(visible),[visible]);
   function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));}
   function beginEdit(row){setEditing(row.id);setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
   function cancelEdit(id){setEditing(null);setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
@@ -92,6 +98,21 @@ export default function SalaryDashboard(){
         <button type="submit" disabled={adding} style={{...button,background:'#2056a1',color:'#fff',minHeight:38}}>{adding?'ADDING…':'+ ADD EMPLOYEE'}</button>
       </form>
       <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. Use EDIT to change an employee's name, company and default salary; existing saved monthly payments are preserved. You can also change each month's salary independently. Select September 2026 to enter older salary payments.</p>
+      <section aria-label="Salary filters" style={{display:'flex',flexWrap:'wrap',alignItems:'end',gap:10,background:'#fff',padding:12,borderRadius:12,border:'1px solid #d9e5f4'}}>
+        <label style={{display:'grid',gap:5,minWidth:180,fontSize:12,fontWeight:800}}>FILTER BY COMPANY
+          <select aria-label="Filter salaries by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{...input,minWidth:175}}>
+            <option value="">All Companies</option>
+            {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
+        <label style={{display:'grid',gap:5,flex:'1 1 190px',maxWidth:300,fontSize:12,fontWeight:800}}>SEARCH EMPLOYEE
+          <input type="search" aria-label="Search salary employees" value={employeeSearch}
+            onChange={e=>setEmployeeSearch(e.target.value)} placeholder="Employee name" style={input}/>
+        </label>
+        <button type="button" onClick={()=>{setCompanyFilter('');setEmployeeSearch('')}}
+          style={{...button,background:'#e8effa',color:'#2056a1',minHeight:38}}>CLEAR FILTERS</button>
+        <small style={{color:'#55718b',fontWeight:700}}>{visible.length} of {shown.length} employees shown</small>
+      </section>
       {message&&<p role="status" style={{background:'#eaf2ff',borderRadius:8,padding:'10px 12px',fontSize:13,fontWeight:700,color:'#1d4678'}}>{message}</p>}
       <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,margin:'17px 0'}} aria-label="Monthly salary totals">
         {[
@@ -111,7 +132,7 @@ export default function SalaryDashboard(){
             {['S.No.','Employee Name','Company Name','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
           </tr></thead>
           <tbody>
-            {shown.map((row,index)=>{
+            {visible.map((row,index)=>{
               const values=salaryRowTotals(row);
               return <tr key={row.id} style={{background:index%2?'#fafcff':'#fff'}}>
                 <td style={cell}>{index+1}</td>
@@ -145,10 +166,10 @@ export default function SalaryDashboard(){
                 </div></td>
               </tr>;
             })}
-            {!shown.length&&<tr><td colSpan={9} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':'No employees added. Use Add Employee above.'}</td></tr>}
+            {!visible.length&&<tr><td colSpan={9} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':shown.length?'No employees match the selected filters.':'No employees added. Use Add Employee above.'}</td></tr>}
           </tbody>
-          {shown.length>0&&<tfoot><tr style={{background:'#dceafe',fontWeight:900}}>
-            <td style={cell} colSpan={3}>TOTAL • {shown.length} employees • {monthTitle}</td>
+          {visible.length>0&&<tfoot><tr style={{background:'#dceafe',fontWeight:900}}>
+            <td style={cell} colSpan={3}>TOTAL • {visible.length} employees • {monthTitle}</td>
             <td style={cell}>{show(total.monthlySalary)}</td>
             <td style={cell}>{show(total.cash)}</td>
             <td style={cell}>{show(total.account)}</td>
@@ -158,7 +179,7 @@ export default function SalaryDashboard(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#64748b'}}>Total Paid = Cash Paid + Account Paid. Balance = Monthly Salary − Total Paid. A negative balance indicates payment above the entered salary. Every month's saved entries are kept separately in Mayavi's shared database; no TDS, PF or other deduction is calculated.</p>
+      <p style={{fontSize:12,color:'#64748b'}}>Total Paid = Cash Paid + Account Paid. Balance = Monthly Salary − Total Paid. A negative balance indicates payment above the entered salary. Cash, Account, Total Paid and Balance totals reflect the selected company and employee filters. Every month's saved entries are kept separately in Mayavi's shared database; no TDS, PF or other deduction is calculated.</p>
     </div>
   </main>;
 }
