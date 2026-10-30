@@ -1,6 +1,6 @@
 'use client';
-import {useCallback,useEffect,useMemo,useState} from 'react';
-import {salaryRowTotals,salaryTotals,SALARY_COMPANIES,SALARY_DESIGNATIONS} from '../lib/salaryMath.js';
+import {Fragment,useCallback,useEffect,useMemo,useState} from 'react';
+import {salaryRowTotals,salaryTotals,SALARY_COMPANIES,SALARY_DESIGNATIONS,salaryCompanyGroup,salaryCompanyGroups} from '../lib/salaryMath.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
 const input={width:'100%',minWidth:95,boxSizing:'border-box',padding:'8px 9px',border:'1px solid #c9d7e6',borderRadius:8,background:'#fff',fontSize:13,color:'#122139'};
@@ -55,11 +55,29 @@ export default function SalaryDashboard(){
     // Apply company/employee filters against the last saved profile only.
     const stored=rows.find(original=>original.id===row.id)||row;
     return editing===row.id||(
-      (!companyFilter||stored.companyName===companyFilter)&&
+      (!companyFilter||stored.companyName===companyFilter||
+        (companyFilter.startsWith('GROUP:')&&salaryCompanyGroup(stored.companyName)===companyFilter.slice(6)))&&
       (!employeeSearch||String(stored.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))
     );
   }),[shown,rows,editing,companyFilter,employeeSearch]);
   const total=useMemo(()=>salaryTotals(visible),[visible]);
+  // Group by LAST SAVED company, not the in-progress Edit draft. This keeps
+  // employee inputs mounted and avoids moving a row during an unsaved edit.
+  const groupedVisible=useMemo(()=>salaryCompanyGroups(visible,
+    row=>rows.find(stored=>stored.id===row.id)?.companyName??row.companyName),[visible,rows]);
+  const groupedTableRows=useMemo(()=>{
+    const display=[];let serial=0;
+    for(const group of groupedVisible){
+      display.push({kind:'groupHeader',group});
+      for(const companyPart of group.companies){
+        if(group.companies.length>1)display.push({kind:'companyHeader',part:companyPart,group});
+        for(const row of companyPart.rows)display.push({kind:'employee',row,serial:++serial});
+        if(group.companies.length>1)display.push({kind:'companyTotal',part:companyPart,group});
+      }
+      display.push({kind:'groupTotal',group});
+    }
+    return display;
+  },[groupedVisible]);
   function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));setSaved(previous=>({...previous,[id]:false}));}
   function beginEdit(row){setEditing(row.id);setSaved(previous=>({...previous,[row.id]:false}));setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',designation:row.designation||'',salaryAmount:row.salaryAmount}}));setMessage('');}
   function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)&&!('cashPaid' in (drafts[id]||{}))&&!('accountPaid' in (drafts[id]||{}))}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.designation;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
@@ -130,6 +148,8 @@ export default function SalaryDashboard(){
         <label style={{display:'grid',gap:5,minWidth:180,fontSize:12,fontWeight:800}}>FILTER BY COMPANY
           <select aria-label="Filter salaries by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{...input,minWidth:175,...(companyFilter?companyPastel(companyFilter):{})}}>
             <option value="">All Companies</option>
+            <option value="GROUP:JEPO">ALL JEPO — Delhi, Karnal & Jind</option>
+            <option value="GROUP:PV">ALL PV — PV & PV HYD</option>
             {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
           </select>
         </label>
@@ -154,16 +174,66 @@ export default function SalaryDashboard(){
           <div style={{fontSize:21,fontWeight:900,marginTop:5,color:label==='BALANCE'&&value<0?'#b91c1c':'#174b87'}}>{show(value)}</div>
         </div>)}
       </section>
+      {groupedVisible.length>0&&<section aria-label="Company-wise salary aggregation" style={{margin:'16px 0'}}>
+        <h2 style={{fontSize:16,fontWeight:900,color:'#193f77',margin:'0 0 9px'}}>COMPANY-WISE SALARY SUMMARY • {monthTitle}</h2>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+          {groupedVisible.map(group=><div key={group.name} style={{background:'#fff',border:'1px solid #dce7f4',borderRadius:11,padding:13}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+              <strong style={{fontSize:15,color:'#19467f'}}>{group.name}</strong>
+              <small style={{fontWeight:750,color:'#64748b'}}>{group.totals.employees} employees</small>
+            </div>
+            {group.companies.length>1&&<p style={{fontSize:11,color:'#5e718c',margin:'5px 0 8px'}}>
+              {group.companies.map(part=>part.name+' ('+part.rows.length+')').join(' • ')}
+            </p>}
+            <div style={{fontSize:12,color:'#475569',marginTop:8,lineHeight:1.9}}>
+              <div>Salary: <strong style={{float:'right',color:'#193f77'}}>{show(group.totals.monthlySalary)}</strong></div>
+              <div>Cash: <strong style={{float:'right'}}>{show(group.totals.cash)}</strong></div>
+              <div>Account: <strong style={{float:'right'}}>{show(group.totals.account)}</strong></div>
+              <div>Total Paid: <strong style={{float:'right'}}>{show(group.totals.totalPaid)}</strong></div>
+              <div>Balance: <strong style={{float:'right',color:group.totals.balance<0?'#b91c1c':'#166534'}}>{show(group.totals.balance)}</strong></div>
+            </div>
+          </div>)}
+        </div>
+      </section>}
       <div style={{overflowX:'auto',border:'1px solid #dae5f1',borderRadius:12,background:'#fff'}}>
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:1230}}>
           <thead><tr style={{background:'#eaf2ff',color:'#233d60'}}>
             {['S.No.','Employee Name','Company Name','Designation','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
           </tr></thead>
           <tbody>
-            {visible.map((row,index)=>{
+            {groupedTableRows.map((entry,index)=>{
+              if(entry.kind==='groupHeader')return <tr key={'group-'+entry.group.name} style={{background:'#e4edf9'}}>
+                <td colSpan={10} style={{...cell,fontWeight:900,fontSize:14,color:'#173d79',padding:'12px 14px'}}>
+                  {entry.group.name} • {entry.group.totals.employees} employees
+                  {entry.group.companies.length>1&&
+                    <span style={{fontWeight:600,fontSize:11,color:'#486a93',marginLeft:12}}>
+                      {entry.group.companies.map(part=>part.name).join(' • ')}
+                    </span>}
+                </td>
+              </tr>;
+              if(entry.kind==='companyHeader')return <tr key={'company-'+entry.part.name} style={{background:'#f3f7fd'}}>
+                <td colSpan={10} style={{...cell,fontWeight:900,paddingLeft:22,color:'#284977'}}>
+                  {entry.part.name} • {entry.part.rows.length} employees
+                </td>
+              </tr>;
+              if(entry.kind==='companyTotal'||entry.kind==='groupTotal'){
+                const figures=entry.kind==='companyTotal'?entry.part.totals:entry.group.totals;
+                const label=entry.kind==='companyTotal'?entry.part.name+' SUBTOTAL':entry.group.name+' TOTAL';
+                return <tr key={entry.kind+'-'+label} style={{
+                  background:entry.kind==='groupTotal'?'#dceafe':'#eff6ff',fontWeight:900}}>
+                  <td style={cell} colSpan={4}>{label} • {figures.employees} employees</td>
+                  <td style={cell}>{show(figures.monthlySalary)}</td>
+                  <td style={cell}>{show(figures.cash)}</td>
+                  <td style={cell}>{show(figures.account)}</td>
+                  <td style={cell}>{show(figures.totalPaid)}</td>
+                  <td style={{...cell,color:figures.balance<0?'#b91c1c':'#174b87'}}>{show(figures.balance)}</td>
+                  <td style={cell}>—</td>
+                </tr>;
+              }
+              const row=entry.row;
               const values=salaryRowTotals(row);
               return <tr key={row.id} style={{background:index%2?'#fafcff':'#fff'}}>
-                <td style={cell}>{index+1}</td>
+                <td style={cell}>{entry.serial}</td>
                 <td style={{...cell,fontWeight:800}}>{editing===row.id
                   ?<input aria-label="Edit Employee Name" value={row.employeeName} maxLength={100}
                     onChange={e=>edit(row.id,'employeeName',e.target.value)} style={{...input,minWidth:150}}/>
@@ -215,7 +285,7 @@ export default function SalaryDashboard(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#64748b'}}>Total Paid = Cash Paid + Account Paid. Balance = Monthly Salary − Total Paid. A negative balance indicates payment above the entered salary. Cash, Account, Total Paid and Balance totals reflect the selected company and employee filters. Every month's saved entries are kept separately in Mayavi's shared database; no TDS, PF or other deduction is calculated.</p>
+      <p style={{fontSize:12,color:'#64748b'}}>Company-wise groups show JEPO Delhi/Karnal/Jind together, PV and PV HYD together, and KCC together. Original saved company names remain unchanged; sub-company and group totals use only employees currently included by your filters. Total Paid = Cash Paid + Account Paid. Balance = Monthly Salary − Total Paid. A negative balance indicates payment above the entered salary. Cash, Account, Total Paid and Balance totals reflect the selected company and employee filters. Every month's saved entries are kept separately in Mayavi's shared database; no TDS, PF or other deduction is calculated.</p>
     </div>
   </main>;
 }
