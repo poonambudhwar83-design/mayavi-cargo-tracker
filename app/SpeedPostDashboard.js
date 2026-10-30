@@ -557,7 +557,7 @@ export default function SpeedPostDashboard({currentUser}){
   async function saveBankPayment(day){
     if(!canViewProfit||bankSaving||bankLoading||bankMonth!==effectiveMonth||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))return;
     const amount=String(bankDrafts[day]??currentBank[day]??'').trim();
-    if(!/^\\d{1,9}(?:\\.\\d{1,2})?$/.test(amount)){
+    if(!/^\d{1,9}(?:\.\d{1,2})?$/.test(amount)){
       setBankError('Enter a valid non-negative bank payment (up to 2 decimals) for '+day+'.');
       return;
     }
