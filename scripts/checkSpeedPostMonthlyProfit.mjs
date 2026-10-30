@@ -104,6 +104,10 @@ for(const phrase of [
 assert.ok(profitUI.includes("speedPostEntryDay(row)"),'Monthly tab uses immutable entry date');
 assert.ok(api.includes('SELECT tracking_no,data,created_at,updated_at FROM mayavi_speedpost'),
  'Read existing Speed Post records without new tracking writes');
+assert.ok(!main.includes('loading={loading}'),
+ 'Monthly Profit tab cannot reference an undefined loading variable and crash the client.');
+assert.ok(main.includes('onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}'),
+ 'Profit tab can render with only defined parent properties.');
 assert.ok(!main.includes("speedPostTab==='PROFIT'?monthRows:dayRows"),
  'Do not accidentally alter the daily tracking sheet');
 console.log('EMS Monthly Profit passed: rounded weights, UK/USA rate thresholds, 12kg UK, cost/kg, consulting, packing, net profit, missing inputs, monthly UI.');
