@@ -238,14 +238,20 @@ for(const [label,fragment] of ethiopianRouteContract){
 // Protect only Ethiopian's live-data preference on the shared dashboard.
 // The rest of the dashboard can evolve, including Remarks column styling.
 const dashboard=readFileSync('app/DashboardClient.js','utf8');
+// Under one genuine Saudia split-load MAWB, a manifested first part still
+// requires a balance row before any piece has reached the destination.
+if(!dashboard.includes('if(masterTotal>0&&parts.length>0&&available>0){')){
+  console.error('SAUDIA PENDING BALANCE REGRESSION: 17/67 MAN must show 50/67 pending even before any destination arrival.');
+  changed=true;
+}
 // The Active Sheet weight must count all visible physical parts, including
 // future manifests, without requiring ARRIVED/Customs Clear status.
 // Otherwise pending SV manifests silently disappear from the total.
 for(const [label,fragment] of [
   ['all physical parts counted',"if(row._partKey)return partKg(row.weight)||0;"],
   ['single partial rows counted',"return fractional?(partKg(row.weight)||0):weightForTotal(row);"],
-  ['one master or sum of physical parts',"if(parts.length)total+=parts.reduce((sum,p)=>sum+summaryRowWeight(p,activeTab),0);"],
-  ['no virtual DIS balance double count',"if(row._saudiaPendingVirtual===true)return 0;"]
+  ['one master or sum of physical parts and its unmanifested Saudia balance',"if(parts.length)total+=group.filter(p=>p._partKey||p._saudiaPendingVirtual===true).reduce((sum,p)=>sum+summaryRowWeight(p,activeTab),0);"],
+  ['Saudia outstanding physical kg included once',"if(row._saudiaPendingVirtual===true)return partKg(row.weight)||0;"]
 ]){
   if(!dashboard.includes(fragment)){
     console.error('LOCKED ACTIVE WEIGHT REGRESSION: '+label);
