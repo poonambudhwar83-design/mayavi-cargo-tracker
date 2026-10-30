@@ -4,6 +4,7 @@ import {runInNewContext} from 'node:vm';
 import {monthlyAmount,monthlyImportFigures,sumMonthlyImport,sumMonthlyExport,calculateMonthlyExpenses} from '../lib/monthlyExpenses.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
 import {resolvedExportShipmentCharge} from '../lib/exportShipmentCharge.js';
+import {branchPayoutForRecord} from '../lib/branchLoads.js';
 import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 const importUI=readFileSync('app/ImportProfitSheet.js','utf8');
 const exportUI=readFileSync('app/ExportProfitSheet.js','utf8');
@@ -66,36 +67,71 @@ assert.deepEqual(calculateMonthlyExpenses({
  salaryCash:12000,salaryAccount:18000,rent:10000,office:5000
 }),{totalIncome:135000,totalSalary:30000,totalExpenses:45000,finalProfit:90000});
 assert.equal(calculateMonthlyExpenses({salaryCash:200,salaryAccount:300,rent:400,office:100}).finalProfit,-1000);
+assert.deepEqual(calculateMonthlyExpenses({
+ importGross:60000,exportGross:40000,jind:20000,karnal:10000,goods15:5000,
+ salaryCash:12000,salaryAccount:18000,rent:10000,office:5000,rooms:2000,misc:1000
+}),{totalIncome:135000,totalSalary:30000,totalExpenses:48000,finalProfit:87000});
+// Branch income must match the same derived "Amount Paid to Branch" displayed
+// in Branch Loads, including Extra Cost allocation and legacy records.
+assert.equal(branchPayoutForRecord({
+ amount:12000,paidToJepo:10500,extraCost:0,commodity:'Household Goods'
+}),1500);
+assert.equal(branchPayoutForRecord({
+ amount:12000,paidToJepo:10500,extraCost:1000,
+ commodity:'Household and Medicine'
+}),1800); // ₹300 to branch; ₹700 to JEPO
+assert.equal(branchPayoutForRecord({
+ amount:12000,paidToJepo:10500,extraCost:1000,commodity:'Medicine'
+}),2500); // Medicine-only extra cost belongs entirely to Branch
+
 assert.ok(api.includes("readSession(request)?.role==='admin'"));
 assert.ok(api.includes('GET as getImportProfit')&&api.includes('GET as getExportProfit'));
 assert.ok(api.includes('GET as getSalary'));
-assert.ok(api.includes("SUM(amount) FILTER (WHERE branch='JIND')"));
-assert.ok(api.includes("SUM(amount) FILTER (WHERE branch='KARNAL')"));
+assert.ok(!api.includes("SUM(amount) FILTER"),'Never add total booking Amount as branch income');
+assert.ok(api.includes('branchPayoutForRecord({'),'Use source Branch Loads payout calculator');
+assert.ok(api.includes('paidToJepo:row.paid_to_jepo'),'Use paid-to-JEPO amount in branch payout');
+assert.ok(api.includes('extraCost:row.extra_cost,bottleCount:row.bottle_count'),
+ 'Allocate extra cost correctly between JEPO and Branch');
+assert.ok(api.includes('payout[branch]=Math.round((payout[branch]+amount)*100)/100'),
+ 'Sum actual branch payout for each branch, not master booking');
 assert.ok(api.includes("record_date>=${month+'-01'}::date"));
 assert.ok(api.includes('mayavi_monthly_expenses'));
 assert.ok(api.includes('ON CONFLICT(expense_month) DO UPDATE'));
 assert.ok(api.includes("searchParams.get('view')==='expenses'"),
   'Independent Rent loading must not depend on Import/Export Profit Sheets');
-assert.ok(api.includes("SELECT rent,office_expenses,updated_at,updated_by"),
-  'Read back Rent and Office amounts from saved database records');
+assert.ok(api.includes('rent,office_expenses,rooms_expenses,misc_expenses'),
+  'Read all four saved monthly expense categories');
 assert.ok(ui.includes("view=expenses"),
   'Client must load Rent independently even during profit-source failures');
 assert.ok(ui.includes('SAVED TO DATABASE'),
   'Successful Rent saving needs explicit persisted confirmation');
-assert.ok(ui.includes('Number(verified.rent)!==Number(result.rent)'),
-  'Do not claim Rent saved without database verification');
-assert.ok(ui.includes('!month)return;'),
-  'Rent saving must not be blocked by missing Import/Export profit data');
-assert.ok(ui.includes('Unsaved changes — click SAVE'),
-  'Rent edits must show clear unsaved state');
-assert.ok(ui.includes('SAVE RENT & OFFICE EXPENSES'),
-  'Dedicated Rent & Office saving action must be visible');
+assert.ok(ui.includes('Number(verified[key])!==Number(result.value)'),
+  'Do not claim any expense saved without category-specific database verification');
+assert.ok(ui.includes('busy[key]||loading||!month)return;'),
+  'Expense saving must not be blocked by missing Import/Export profit data');
+assert.ok(ui.includes('Unsaved changes'),
+  'Each expense entry must show an unsaved state on edit');
+assert.ok(ui.includes('expenseHeads.map(head=><div key={head.key}'),
+  'Each of the four expense categories has its own entry box');
+assert.ok(ui.includes('onClick={()=>void saveExpense(head.key)}'),
+  'Each expense category has its own SAVE button');
+assert.ok(ui.includes("saved[head.key]?'#15803d':'#2056a1'"),
+  'Successful SAVE turns only its corresponding button green');
+assert.ok(api.includes("if(['rent','office','rooms','misc'].includes(field))"),
+  'API supports 4 independent saves');
+assert.ok(api.includes('SET rent=EXCLUDED.rent,rent_saved_at=now()'),'Rent has independent save');
+assert.ok(api.includes('SET office_expenses=EXCLUDED.office_expenses,office_saved_at=now()'),'Office Expenses has independent save');
+assert.ok(api.includes('SET rooms_expenses=EXCLUDED.rooms_expenses,rooms_saved_at=now()'),'Rooms Expenses has independent save');
+assert.ok(api.includes('SET misc_expenses=EXCLUDED.misc_expenses,misc_saved_at=now()'),'Misc has independent save');
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS rooms_expenses'),'New Rooms head migrated without erasing old expenses');
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS misc_expenses'),'New Misc head migrated without erasing old expenses');
 
-for(const label of ['Import Gross Profit','Export Gross Profit','Jind Branch','Karnal Branch',
- 'Import — 15% Goods Charge Total','Salary — Cash Paid','Salary — Account Paid','Rent','Office Expenses'])
+
+for(const label of ['Import Gross Profit','Export Gross Profit','Jind Branch — Amount Paid to Branch','Karnal Branch — Amount Paid to Branch',
+ 'Import — 15% Goods Charge Total','Salary — Cash Paid','Salary — Account Paid','Rent','Office Expenses','Rooms Expenses','Miscellaneous'])
  assert.ok(ui.includes(label),label+' must be displayed');
 assert.ok(ui.includes('metrics.finalProfit'));
-assert.ok(ui.includes("saved?'#15803d':'#2056a1'"));
+assert.ok(ui.includes("saved[head.key]?'#15803d':'#2056a1'"));
 assert.ok(dash.includes("selectedDashboard==='MONTHLY_EXPENSES'"));
 assert.ok(dash.includes('>MONTHLY EXPENSES</button>'));
 console.log('Monthly Expenses regression passed: Import/Export parity, physical parts, 15%, branch sums, salary, rent, office, final profit and admin controls.');
