@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {salaryRowTotals,salaryTotals} from '../lib/salaryMath.js';
+import {salaryRowTotals,salaryTotals,SALARY_COMPANIES} from '../lib/salaryMath.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
 const input={width:'100%',minWidth:95,boxSizing:'border-box',padding:'8px 9px',border:'1px solid #c9d7e6',borderRadius:8,background:'#fff',fontSize:13,color:'#122139'};
@@ -13,13 +13,15 @@ export default function SalaryDashboard(){
   const [rows,setRows]=useState([]);
   const [drafts,setDrafts]=useState({});
   const [name,setName]=useState('');
+  const [company,setCompany]=useState('');
+  const [editing,setEditing]=useState(null);
   const [baseSalary,setBaseSalary]=useState('');
   const [busy,setBusy]=useState({});
   const [adding,setAdding]=useState(false);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState('');
   const load=useCallback(async ()=>{
-    setLoading(true);setMessage('');setDrafts({});
+    setLoading(true);setMessage('');setDrafts({});setEditing(null);
     try{
       const res=await fetch('/api/salary?month='+encodeURIComponent(month),{cache:'no-store',credentials:'include'});
       const data=await res.json();
@@ -32,26 +34,30 @@ export default function SalaryDashboard(){
   const shown=useMemo(()=>rows.map(row=>({...row,...(drafts[row.id]||{})})),[rows,drafts]);
   const total=useMemo(()=>salaryTotals(shown),[shown]);
   function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));}
+  function beginEdit(row){setEditing(row.id);setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
+  function cancelEdit(id){setEditing(null);setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
   async function addEmployee(e){
     e.preventDefault();if(adding)return;setAdding(true);setMessage('');
     try{
       const res=await fetch('/api/salary',{method:'POST',credentials:'include',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'add_employee',employeeName:name,salaryAmount:baseSalary})});
+        body:JSON.stringify({action:'add_employee',employeeName:name,companyName:company,salaryAmount:baseSalary})});
       const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Could not add employee.');
-      setName('');setBaseSalary('');await load();setMessage(data.message);
+      setName('');setCompany('');setBaseSalary('');await load();setMessage(data.message);
     }catch(error){setMessage(error.message||'Could not add employee.');}finally{setAdding(false);}
   }
   async function saveRow(row){
-    if(busy[row.id])return;setBusy(p=>({...p,[row.id]:true}));setMessage('');
+    if(busy[row.id])return;const editProfile=editing===row.id;setBusy(p=>({...p,[row.id]:true}));setMessage('');
     try{
       const res=await fetch('/api/salary',{method:'POST',credentials:'include',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'save_month',employeeId:row.id,month,
-          salaryAmount:row.salaryAmount,cashPaid:row.cashPaid,accountPaid:row.accountPaid})});
+          salaryAmount:row.salaryAmount,cashPaid:row.cashPaid,accountPaid:row.accountPaid,
+          editProfile,employeeName:row.employeeName,companyName:row.companyName})});
       const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
       setRows(previous=>previous.map(r=>r.id===row.id?{...r,...data.row}:r));
       setDrafts(previous=>{const next={...previous};delete next[row.id];return next});
+      if(editProfile)setEditing(null);
       setMessage(data.message);
     }catch(error){setMessage(row.employeeName+': '+(error.message||'Save failed.'));}
     finally{setBusy(p=>({...p,[row.id]:false}));}
@@ -67,19 +73,25 @@ export default function SalaryDashboard(){
           <p style={{color:'#5a6e84',margin:'4px 0'}}>Simple monthly salary entries • Cash + Account = Total Paid • No TDS or deductions</p>
         </div>
         <label style={{display:'grid',gap:4,fontSize:12,fontWeight:900}}>SALARY MONTH
-          <input type="month" aria-label="Salary month" min="2020-01" max="2100-12" value={month} onChange={e=>setMonth(e.target.value)} style={{...input,minWidth:190,fontWeight:800}}/>
+          <input type="month" aria-label="Salary month" min="2020-01" max="2100-12" value={month} onChange={e=>{setEditing(null);setMonth(e.target.value)}} style={{...input,minWidth:190,fontWeight:800}}/>
         </label>
       </div>
       <form onSubmit={addEmployee} style={{display:'flex',alignItems:'end',flexWrap:'wrap',gap:10,background:'#fff',border:'1px solid #d9e5f4',borderRadius:12,padding:16,marginTop:18}}>
         <label style={{flex:'2 1 200px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>EMPLOYEE NAME
           <input value={name} onChange={e=>setName(e.target.value)} required maxLength={100} placeholder="Enter employee name" style={input}/>
         </label>
+        <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>COMPANY NAME
+          <select aria-label="Company Name" value={company} onChange={e=>setCompany(e.target.value)} required style={{...input,minWidth:155}}>
+            <option value="">Select company</option>
+            {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
         <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>MONTHLY SALARY (₹)
           <input type="number" step="0.01" min="0" max="999999999" value={baseSalary} onChange={e=>setBaseSalary(e.target.value)} required placeholder="e.g. 25000" style={input}/>
         </label>
         <button type="submit" disabled={adding} style={{...button,background:'#2056a1',color:'#fff',minHeight:38}}>{adding?'ADDING…':'+ ADD EMPLOYEE'}</button>
       </form>
-      <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. You can change each month's salary independently. Select September 2026 to enter older salary payments.</p>
+      <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. Use EDIT to change an employee's name, company and default salary; existing saved monthly payments are preserved. You can also change each month's salary independently. Select September 2026 to enter older salary payments.</p>
       {message&&<p role="status" style={{background:'#eaf2ff',borderRadius:8,padding:'10px 12px',fontSize:13,fontWeight:700,color:'#1d4678'}}>{message}</p>}
       <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,margin:'17px 0'}} aria-label="Monthly salary totals">
         {[
@@ -94,16 +106,27 @@ export default function SalaryDashboard(){
         </div>)}
       </section>
       <div style={{overflowX:'auto',border:'1px solid #dae5f1',borderRadius:12,background:'#fff'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',minWidth:890}}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:1080}}>
           <thead><tr style={{background:'#eaf2ff',color:'#233d60'}}>
-            {['S.No.','Employee Name','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
+            {['S.No.','Employee Name','Company Name','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
           </tr></thead>
           <tbody>
             {shown.map((row,index)=>{
               const values=salaryRowTotals(row);
               return <tr key={row.id} style={{background:index%2?'#fafcff':'#fff'}}>
                 <td style={cell}>{index+1}</td>
-                <td style={{...cell,fontWeight:800}}>{row.employeeName}</td>
+                <td style={{...cell,fontWeight:800}}>{editing===row.id
+                  ?<input aria-label="Edit Employee Name" value={row.employeeName} maxLength={100}
+                    onChange={e=>edit(row.id,'employeeName',e.target.value)} style={{...input,minWidth:150}}/>
+                  :row.employeeName}</td>
+                <td style={cell}>{editing===row.id
+                  ?<select aria-label={'Edit Company Name for '+row.employeeName}
+                    value={row.companyName||''} onChange={e=>edit(row.id,'companyName',e.target.value)} style={{...input,minWidth:160}}>
+                    <option value="">Select company</option>
+                    {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
+                  </select>
+                  :<span style={{fontWeight:800,color:'#174b87'}}>{row.companyName||'Not selected'}</span>}
+                </td>
                 {['salaryAmount','cashPaid','accountPaid'].map(field=><td key={field} style={cell}>
                   <input type="number" min="0" max="999999999" step="0.01" aria-label={row.employeeName+' '+field}
                     value={row[field]??''} onChange={e=>edit(row.id,field,e.target.value)}
@@ -111,14 +134,21 @@ export default function SalaryDashboard(){
                 </td>)}
                 <td style={{...cell,fontWeight:900,color:'#17623e'}}>{values?show(values.totalPaid):'—'}</td>
                 <td style={{...cell,fontWeight:800,color:values&&values.balance<0?'#b91c1c':'#42566e'}}>{values?show(values.balance):'—'}</td>
-                <td style={cell}><button type="button" disabled={Boolean(busy[row.id])} onClick={()=>void saveRow(row)}
-                  style={{...button,background:'#0b786e',color:'#fff',padding:'8px 12px'}}>{busy[row.id]?'SAVING…':'SAVE'}</button></td>
+                <td style={cell}><div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <button type="button" disabled={Boolean(busy[row.id])} onClick={()=>void saveRow(row)}
+                    style={{...button,background:'#0b786e',color:'#fff',padding:'8px 12px'}}>{busy[row.id]?'SAVING…':editing===row.id?'SAVE CHANGES':'SAVE'}</button>
+                  {editing===row.id
+                    ?<button type="button" disabled={Boolean(busy[row.id])} onClick={()=>cancelEdit(row.id)}
+                      style={{...button,background:'#e7edf4',color:'#263b56',padding:'8px 12px'}}>CANCEL</button>
+                    :<button type="button" disabled={Boolean(busy[row.id])} onClick={()=>beginEdit(row)}
+                      style={{...button,background:'#e6effe',color:'#174b87',padding:'8px 12px'}}>EDIT</button>}
+                </div></td>
               </tr>;
             })}
-            {!shown.length&&<tr><td colSpan={8} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':'No employees added. Use Add Employee above.'}</td></tr>}
+            {!shown.length&&<tr><td colSpan={9} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':'No employees added. Use Add Employee above.'}</td></tr>}
           </tbody>
           {shown.length>0&&<tfoot><tr style={{background:'#dceafe',fontWeight:900}}>
-            <td style={cell} colSpan={2}>TOTAL • {shown.length} employees • {monthTitle}</td>
+            <td style={cell} colSpan={3}>TOTAL • {shown.length} employees • {monthTitle}</td>
             <td style={cell}>{show(total.monthlySalary)}</td>
             <td style={cell}>{show(total.cash)}</td>
             <td style={cell}>{show(total.account)}</td>
