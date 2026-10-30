@@ -113,6 +113,12 @@ for(const phrase of [
 assert.ok(profitUI.includes("speedPostEntryDay(row)"),'Monthly tab uses immutable entry date');
 assert.ok(api.includes('SELECT tracking_no,data,created_at,updated_at FROM mayavi_speedpost'),
  'Read existing Speed Post records without new tracking writes');
+assert.ok(main.includes("const canViewProfit=currentUser?.role==='admin';"),
+ 'Profit and Daily Summary are Admin-only, not Sonu or other staff');
+assert.ok(main.includes("{canViewProfit&&<button type=\"button\" role=\"tab\" aria-selected={speedPostTab==='PROFIT'}"),
+ 'Profit tab button is only available for Admin');
+assert.ok(main.includes("{canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit"),
+ 'Profit data component and daily calculations must not render for non-Admin');
 assert.ok(!main.includes('loading={loading}'),
  'Monthly Profit tab cannot reference an undefined loading variable and crash the client.');
 assert.ok(main.includes('onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}'),
