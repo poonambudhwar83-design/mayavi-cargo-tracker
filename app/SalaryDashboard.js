@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {salaryRowTotals,salaryTotals,SALARY_COMPANIES} from '../lib/salaryMath.js';
+import {salaryRowTotals,salaryTotals,SALARY_COMPANIES,SALARY_DESIGNATIONS} from '../lib/salaryMath.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
 const input={width:'100%',minWidth:95,boxSizing:'border-box',padding:'8px 9px',border:'1px solid #c9d7e6',borderRadius:8,background:'#fff',fontSize:13,color:'#122139'};
@@ -27,6 +27,7 @@ export default function SalaryDashboard(){
   const [drafts,setDrafts]=useState({});
   const [name,setName]=useState('');
   const [company,setCompany]=useState('');
+  const [designation,setDesignation]=useState('');
   const [companyFilter,setCompanyFilter]=useState('');
   const [employeeSearch,setEmployeeSearch]=useState('');
   const [editing,setEditing]=useState(null);
@@ -60,16 +61,16 @@ export default function SalaryDashboard(){
   }),[shown,rows,editing,companyFilter,employeeSearch]);
   const total=useMemo(()=>salaryTotals(visible),[visible]);
   function edit(id,field,value){setDrafts(previous=>({...previous,[id]:{...(previous[id]||{}),[field]:value}}));setSaved(previous=>({...previous,[id]:false}));}
-  function beginEdit(row){setEditing(row.id);setSaved(previous=>({...previous,[row.id]:false}));setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',salaryAmount:row.salaryAmount}}));setMessage('');}
-  function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)&&!('cashPaid' in (drafts[id]||{}))&&!('accountPaid' in (drafts[id]||{}))}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
+  function beginEdit(row){setEditing(row.id);setSaved(previous=>({...previous,[row.id]:false}));setDrafts(previous=>({...previous,[row.id]:{...(previous[row.id]||{}),employeeName:row.employeeName,companyName:row.companyName||'',designation:row.designation||'',salaryAmount:row.salaryAmount}}));setMessage('');}
+  function cancelEdit(id){setEditing(null);setSaved(previous=>({...previous,[id]:Boolean(rows.find(row=>row.id===id)?.updatedAt)&&!('cashPaid' in (drafts[id]||{}))&&!('accountPaid' in (drafts[id]||{}))}));setDrafts(previous=>{const next={...previous},draft={...(next[id]||{})};delete draft.employeeName;delete draft.companyName;delete draft.designation;delete draft.salaryAmount;if(Object.keys(draft).length)next[id]=draft;else delete next[id];return next;});}
   async function addEmployee(e){
     e.preventDefault();if(adding)return;setAdding(true);setMessage('');
     try{
       const res=await fetch('/api/salary',{method:'POST',credentials:'include',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'add_employee',employeeName:name,companyName:company,salaryAmount:baseSalary})});
+        body:JSON.stringify({action:'add_employee',employeeName:name,companyName:company,designation,salaryAmount:baseSalary})});
       const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Could not add employee.');
-      setName('');setCompany('');setBaseSalary('');await load();setMessage(data.message);
+      setName('');setCompany('');setDesignation('');setBaseSalary('');await load();setMessage(data.message);
     }catch(error){setMessage(error.message||'Could not add employee.');}finally{setAdding(false);}
   }
   async function saveRow(row){
@@ -79,7 +80,7 @@ export default function SalaryDashboard(){
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'save_month',employeeId:row.id,month,
           salaryAmount:row.salaryAmount,cashPaid:row.cashPaid,accountPaid:row.accountPaid,
-          editProfile,employeeName:row.employeeName,companyName:row.companyName})});
+          editProfile,employeeName:row.employeeName,companyName:row.companyName,designation:row.designation})});
       const data=await res.json();if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
       setRows(previous=>previous.map(r=>r.id===row.id?{...r,...data.row,updatedAt:new Date().toISOString()}:r));
       setDrafts(previous=>{const next={...previous};delete next[row.id];return next});
@@ -113,12 +114,18 @@ export default function SalaryDashboard(){
             {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
           </select>
         </label>
+        <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>DESIGNATION
+          <select aria-label="Employee Designation" value={designation} onChange={e=>setDesignation(e.target.value)} required style={{...input,minWidth:175}}>
+            <option value="">Select designation</option>
+            {SALARY_DESIGNATIONS.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
         <label style={{flex:'1 1 180px',display:'grid',gap:5,fontSize:12,fontWeight:800}}>MONTHLY SALARY (₹)
           <input type="number" step="0.01" min="0" max="999999999" value={baseSalary} onChange={e=>setBaseSalary(e.target.value)} required placeholder="e.g. 25000" style={input}/>
         </label>
         <button type="submit" disabled={adding} style={{...button,background:'#2056a1',color:'#fff',minHeight:38}}>{adding?'ADDING…':'+ ADD EMPLOYEE'}</button>
       </form>
-      <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. Use EDIT to change an employee's name, company and default salary; existing saved monthly payments are preserved. You can also change each month's salary independently. Select September 2026 to enter older salary payments.</p>
+      <p style={{fontSize:12,color:'#54708c'}}>Employees are added only once and shown in every month. Use EDIT to change an employee's name, company, designation and default salary; existing saved monthly payments are preserved. You can also change each month's salary independently. Select September 2026 to enter older salary payments.</p>
       <section aria-label="Salary filters" style={{display:'flex',flexWrap:'wrap',alignItems:'end',gap:10,background:'#fff',padding:12,borderRadius:12,border:'1px solid #d9e5f4'}}>
         <label style={{display:'grid',gap:5,minWidth:180,fontSize:12,fontWeight:800}}>FILTER BY COMPANY
           <select aria-label="Filter salaries by company" value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)} style={{...input,minWidth:175,...(companyFilter?companyPastel(companyFilter):{})}}>
@@ -148,9 +155,9 @@ export default function SalaryDashboard(){
         </div>)}
       </section>
       <div style={{overflowX:'auto',border:'1px solid #dae5f1',borderRadius:12,background:'#fff'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',minWidth:1080}}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:1230}}>
           <thead><tr style={{background:'#eaf2ff',color:'#233d60'}}>
-            {['S.No.','Employee Name','Company Name','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
+            {['S.No.','Employee Name','Company Name','Designation','Monthly Salary (₹)','Cash Paid (₹)','Account Paid (₹)','Total Paid (₹)','Balance (₹)','Save'].map(label=><th key={label} style={{...cell,textAlign:'left',fontSize:12}}>{label}</th>)}
           </tr></thead>
           <tbody>
             {visible.map((row,index)=>{
@@ -168,6 +175,14 @@ export default function SalaryDashboard(){
                     {SALARY_COMPANIES.map(value=><option key={value} value={value}>{value}</option>)}
                   </select>
                   :<span style={{display:'inline-flex',alignItems:'center',padding:'6px 11px',borderRadius:999,fontWeight:800,fontSize:12,border:'1px solid',...companyPastel(row.companyName)}}>{row.companyName||'Not selected'}</span>}
+                </td>
+                <td style={cell}>{editing===row.id
+                  ?<select aria-label={'Edit Designation for '+row.employeeName}
+                      value={row.designation||''} onChange={e=>edit(row.id,'designation',e.target.value)} style={{...input,minWidth:175}}>
+                      <option value="">Select designation</option>
+                      {SALARY_DESIGNATIONS.map(value=><option key={value} value={value}>{value}</option>)}
+                    </select>
+                  :<span style={{color:'#334155',fontWeight:750}}>{row.designation||'Not selected'}</span>}
                 </td>
                 {['salaryAmount','cashPaid','accountPaid'].map(field=><td key={field} style={cell}>
                   <input type="number" min="0" max="999999999" step="0.01" aria-label={row.employeeName+' '+field}
@@ -187,10 +202,10 @@ export default function SalaryDashboard(){
                 </div></td>
               </tr>;
             })}
-            {!visible.length&&<tr><td colSpan={9} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':shown.length?'No employees match the selected filters.':'No employees added. Use Add Employee above.'}</td></tr>}
+            {!visible.length&&<tr><td colSpan={10} style={{textAlign:'center',padding:28,color:'#64748b'}}>{loading?'Loading employees…':shown.length?'No employees match the selected filters.':'No employees added. Use Add Employee above.'}</td></tr>}
           </tbody>
           {visible.length>0&&<tfoot><tr style={{background:'#dceafe',fontWeight:900}}>
-            <td style={cell} colSpan={3}>TOTAL • {visible.length} employees • {monthTitle}</td>
+            <td style={cell} colSpan={4}>TOTAL • {visible.length} employees • {monthTitle}</td>
             <td style={cell}>{show(total.monthlySalary)}</td>
             <td style={cell}>{show(total.cash)}</td>
             <td style={cell}>{show(total.account)}</td>

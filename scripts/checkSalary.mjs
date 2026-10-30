@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {salaryMonth,salaryAmount,salaryRowTotals,salaryTotals,SALARY_COMPANIES,salaryCompany} from '../lib/salaryMath.js';
+import {salaryMonth,salaryAmount,salaryRowTotals,salaryTotals,SALARY_COMPANIES,salaryCompany,SALARY_DESIGNATIONS,salaryDesignation} from '../lib/salaryMath.js';
 
 assert.equal(salaryMonth('2026-09'),'2026-09','September 2026 must be editable');
 assert.equal(salaryMonth('2026-13'),'');
@@ -34,23 +34,31 @@ assert.deepEqual(SALARY_COMPANIES,[
 assert.equal(salaryCompany('pv hyd'),'PV HYD');
 assert.equal(salaryCompany('jepo karnal'),'JEPO KARNAL');
 assert.equal(salaryCompany('some other company'),'');
+assert.deepEqual(SALARY_DESIGNATIONS,[
+  'AIRPORT STAFF','WAREHOUSE PACKING','BOOKING STAFF','GROUP D','WAREHOUSE MANAGER',
+  'OFFICE MANAGER','SENIOR MANAGER','HEAD','DIRECTOR'
+]);
+assert.equal(salaryDesignation('senior manager'),'SENIOR MANAGER');
+assert.equal(salaryDesignation('Airport Staff'),'AIRPORT STAFF');
+assert.equal(salaryDesignation('invalid role'),'');
 const api=readFileSync('app/api/salary/route.js','utf8');
 const ui=readFileSync('app/SalaryDashboard.js','utf8');
 const navigation=readFileSync('app/UnifiedDashboard.js','utf8');
 assert.ok(api.includes("session?.role==='admin'"),'Employee salaries must be private to Admin');
 assert.ok(api.includes('mayavi_salary_employees'));
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS designation'), 'Existing employees must keep their history and gain a Designation field');
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS company_name'),
   'Existing employee data must be migrated without deleting monthly payment history');
 assert.ok(api.includes('COALESCE(m.salary_amount,e.default_salary)'),
   'Existing monthly overrides are preserved');
 assert.ok(api.includes('e.company_name'),'Company Name must appear in monthly query');
-assert.ok(api.includes('INSERT INTO mayavi_salary_employees(id,employee_name,company_name'),
+assert.ok(api.includes('INSERT INTO mayavi_salary_employees(id,employee_name,company_name,designation'),
   'Employee company is required at creation');
 assert.ok(api.includes("if(!company)return reply("),
   'New company must match the allowed dropdown list');
 assert.ok(api.includes('if(editProfile){')&&api.includes('data.editProfile===true'),
   'Row-level profile editing must be explicitly requested');
-assert.ok(api.includes('SET employee_name=${name},normalized_name=${key},company_name=${companyName},'),
+assert.ok(api.includes('SET employee_name=${name},normalized_name=${key},company_name=${companyName},designation=${designation},'),
   'Name and company changes must be persisted');
 assert.ok(api.includes('default_salary=${salary}'),
   'Salary template must update for future unsaved months');
@@ -62,15 +70,15 @@ assert.ok(ui.includes("const [editing,setEditing]=useState(null);"),
   'Each employee must have an explicit Edit mode');
 assert.ok(ui.includes('beginEdit(row)')&&ui.includes('cancelEdit(row.id)'),
   'Edit and Cancel buttons must work');
-assert.ok(ui.includes("editProfile,employeeName:row.employeeName,companyName:row.companyName"),
+assert.ok(ui.includes("editProfile,employeeName:row.employeeName,companyName:row.companyName,designation:row.designation"),
   'Row Save Changes must send the selected name and company');
-assert.ok(ui.includes("'Employee Name','Company Name','Monthly Salary"),
+assert.ok(ui.includes("'Employee Name','Company Name','Designation','Monthly Salary"),
   'Company Name is immediately after employee name in the table');
 assert.ok(ui.includes('SALARY_COMPANIES.map(value=><option'),
   'The same company options appear on add and edit');
 assert.ok(ui.includes('>SAVE CHANGES')||ui.includes("?'SAVE CHANGES'"),
   'Employee name/company edits must have a save action');
-assert.ok(ui.includes('colSpan={9}'),'Table now has nine columns');
+assert.ok(ui.includes('colSpan={10}'),'Table now has ten columns');
 assert.ok(ui.includes('const [companyFilter,setCompanyFilter]=useState('),
   'Salary company filter must be editable');
 assert.ok(ui.includes('const [employeeSearch,setEmployeeSearch]=useState('),
@@ -105,6 +113,11 @@ assert.ok(ui.includes("['salaryAmount','cashPaid','accountPaid']"),'Cash and Acc
 assert.ok(ui.includes('total.totalPaid')&&ui.includes('total.cash')&&ui.includes('total.account'));
 assert.ok(ui.includes("action:'save_month'"),'Row saves must persist each month');
 assert.ok(ui.includes('No TDS or deductions'));
+assert.ok(ui.includes('SALARY_DESIGNATIONS.map(value=><option'), 'Designation list used in both add and edit forms');
+assert.ok(ui.includes('edit(row.id,\'designation\',e.target.value)'), 'Edited Designation must persist');
+assert.ok(ui.includes('designation:row.designation||\'\''), 'Existing employees can edit blank designations');
+assert.ok(api.includes('e.designation'), 'Salary API returns employee designations');
+assert.ok(api.includes('designation=${designation}'), 'Salary API updates the designation');
 // All nine companies have different pastel fills, readable foregrounds and borders.
 const pastels=[...ui.matchAll(/^\s*'([^']+)':\{background:'(#[0-9a-f]{6})',color:'(#[0-9a-f]{6})',borderColor:'(#[0-9a-f]{6})'\},?$/gmi)];
 assert.deepEqual(pastels.map(m=>m[1]).sort(),[...SALARY_COMPANIES].sort(),

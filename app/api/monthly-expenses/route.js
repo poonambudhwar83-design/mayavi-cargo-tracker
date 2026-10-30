@@ -37,6 +37,15 @@ export async function GET(request){
   try{
     const sql=database();
     await ensure(sql);
+    // Load Rent and Office Expenses independently of Import/Export tracking:
+    // these entries must remain editable when an external profit source fails.
+    if(new URL(request.url).searchParams.get('view')==='expenses'){
+      const saved=await sql`SELECT rent,office_expenses,updated_at,updated_by
+        FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`;
+      return json({ok:true,month,rent:Number(saved[0]?.rent||0),
+        office:Number(saved[0]?.office_expenses||0),updatedAt:saved[0]?.updated_at||null,
+        updatedBy:saved[0]?.updated_by||''});
+    }
     // Reuse the same month filters and physical rows as the two live Profit sheets.
     // Reuse Salary API values to avoid counting planned-but-unpaid salaries.
     const internalUrl=(name)=>new Request('https://mayavi.local/api/'+name+'?month='+encodeURIComponent(month),
