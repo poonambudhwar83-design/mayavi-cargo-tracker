@@ -1,0 +1,109 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {
+  speedPostRoundedWeight,speedPostTariff,speedPostProfitCountry,
+  speedPostSellingRate,speedPostProfitRow,speedPostProfitTotals
+} from '../lib/speedpostMonthlyProfit.js';
+const main=readFileSync('app/SpeedPostDashboard.js','utf8');
+const profitUI=readFileSync('app/SpeedPostMonthlyProfit.js','utf8');
+const api=readFileSync('app/api/speedpost/route.js','utf8');
+
+assert.equal(speedPostRoundedWeight('4250 g'),5);
+assert.equal(speedPostRoundedWeight('5.001 kg'),6);
+assert.equal(speedPostRoundedWeight('5000 g'),5);
+assert.equal(speedPostRoundedWeight('11050 g'),12);
+assert.equal(speedPostRoundedWeight('1,050 g'),2);
+assert.equal(speedPostRoundedWeight('1000'),null,'Unknown units must not be guessed');
+assert.equal(speedPostRoundedWeight(''),null);
+assert.equal(speedPostSellingRate('UK',1),1050);
+assert.equal(speedPostSellingRate('UK',5),1050);
+assert.equal(speedPostSellingRate('UK',6),950);
+assert.equal(speedPostSellingRate('UK',10),950);
+assert.equal(speedPostSellingRate('UK',11),950,'UK above 10 kg also uses ₹950/kg');
+assert.equal(speedPostSellingRate('UK',70),950);
+assert.equal(speedPostSellingRate('USA',5),1300);
+assert.equal(speedPostSellingRate('USA',6),1200);
+assert.equal(speedPostSellingRate('USA',40),1200);
+assert.equal(speedPostSellingRate('CANADA',5),null);
+assert.equal(speedPostTariff({tariff:'₹1,000'}),1000);
+assert.equal(speedPostTariff({tariff:''}),null,'Unverified tariff is missing, not zero');
+assert.equal(speedPostProfitCountry({destination:'Leicester',destinationCountry:'United Kingdom'}),'UK');
+assert.equal(speedPostProfitCountry({destination:'New York',destinationCountry:'US'}),'USA');
+const uk5=speedPostProfitRow({
+ trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'₹1,000',createdAt:'2026-10-01T15:00:00Z'
+});
+assert.equal(uk5.roundedWeight,5);
+assert.equal(uk5.rate,1050);
+assert.equal(uk5.amountReceived,5250);
+assert.equal(uk5.cashCost,750);
+assert.equal(uk5.totalCost,1750);
+assert.equal(uk5.costPerKg,350,'Cost/kg = total ₹1750 / rounded weight 5 kg');
+assert.equal(uk5.consultingCost,1750,'Consulting = ₹350/kg * 5 kg');
+assert.equal(uk5.packingTransport,50,'Packing+Transportation = ₹10/kg');
+assert.equal(uk5.profit,3450,'Profit = ₹5250 - ₹1750 - ₹50');
+const uk12=speedPostProfitRow({trackingNo:'ED222222222IN',destination:'UK',weight:'11.1 kg',tariff:'1500'});
+assert.equal(uk12.roundedWeight,12);
+assert.equal(uk12.rate,950,'UK above 10 kg per user confirmation');
+assert.equal(uk12.amountReceived,11400);
+assert.equal(uk12.totalCost,3300,'Tariff ₹1500 + ₹1800 cash');
+assert.equal(uk12.costPerKg,275);
+assert.equal(uk12.consultingCost,3300);
+assert.equal(uk12.packingTransport,120);
+assert.equal(uk12.profit,7980);
+const usa=speedPostProfitRow({trackingNo:'ED333333333IN',destinationCountry:'USA',weight:'5.1 kg',tariff:'900'});
+assert.equal(usa.roundedWeight,6);
+assert.equal(usa.rate,1200);
+assert.equal(usa.amountReceived,7200);
+assert.equal(usa.totalCost,1800);
+assert.equal(usa.packingTransport,60);
+assert.equal(usa.profit,5340);
+const incomplete=speedPostProfitRow({trackingNo:'ED444444444IN',destination:'UK',weight:'4 kg',tariff:''});
+assert.equal(incomplete.profit,null,'Missing tariff must not fake a profit');
+const other=speedPostProfitRow({trackingNo:'ED555555555IN',destination:'Australia',weight:'2 kg',tariff:'500'});
+assert.equal(other.profit,null,'Unknown destination rates must not be invented');
+
+const monthRows=[
+ {...uk5,destination:'UK',weight:'4250 g',tariff:'1000'},
+ {...uk12,destination:'UK',weight:'11.1 kg',tariff:'1500'},
+ {...usa,destinationCountry:'USA',weight:'5.1 kg',tariff:'900'},
+ {trackingNo:'ED444444444IN',destination:'UK',weight:'4 kg',tariff:''},
+ {trackingNo:'ED555555555IN',destination:'Australia',weight:'2 kg',tariff:'500'},
+ {...uk5,trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'1000'}
+];
+const report=speedPostProfitTotals(monthRows);
+assert.equal(report.totals.packets,5,'Duplicate ED is counted once');
+assert.equal(report.totals.complete,3);
+assert.equal(report.totals.missing,2);
+assert.equal(report.totals.roundedWeight,23);
+assert.equal(report.totals.amountReceived,23850);
+assert.equal(report.totals.consultingCost,6850);
+assert.equal(report.totals.packingTransport,230);
+assert.equal(report.totals.profit,16770);
+for(const phrase of [
+ "speedPostTab==='PROFIT'",
+ 'MONTHLY PROFIT & COSTING',
+ 'rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}',
+ 'onSelectMonth={setSelectedEntryMonth}',
+ 'function costPerKg(row){',
+ 'return speedPostProfitRow(row).costPerKg;',
+ 'const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+r.totalCost,0)/ratedWeight:null;',
+ "speedPostTab==='MONTHLY'?'Monthly Entry Records",
+ "speedPostTab==='DELIVERED'?deliveredRows"
+]){
+ assert.ok(main.includes(phrase),'EMS main dashboard integration: '+phrase);
+}
+for(const phrase of [
+ 'UK','Above 5 kg: ₹950/kg','USA','Up to 5 kg: ₹1,300/kg',
+ 'Cost/kg = Total Cost ÷ Rounded kg','Amount Received',
+ 'Consulting Cost','Packing + Transport','Profit (₹)',
+ 'speedPostProfitTotals(rows)','month={effectiveMonth}'
+].filter(Boolean)){
+ if(phrase==='month={effectiveMonth}')continue;
+ assert.ok(profitUI.includes(phrase),'Profit dashboard label '+phrase);
+}
+assert.ok(profitUI.includes("speedPostEntryDay(row)"),'Monthly tab uses immutable entry date');
+assert.ok(api.includes('SELECT tracking_no,data,created_at,updated_at FROM mayavi_speedpost'),
+ 'Read existing Speed Post records without new tracking writes');
+assert.ok(!main.includes("speedPostTab==='PROFIT'?monthRows:dayRows"),
+ 'Do not accidentally alter the daily tracking sheet');
+console.log('EMS Monthly Profit passed: rounded weights, UK/USA rate thresholds, 12kg UK, cost/kg, consulting, packing, net profit, missing inputs, monthly UI.');
