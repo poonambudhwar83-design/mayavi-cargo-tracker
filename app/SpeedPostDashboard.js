@@ -660,7 +660,7 @@ export default function SpeedPostDashboard({currentUser}){
     </div>
     {speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
       rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
-      onSelectMonth={setSelectedEntryMonth} loading={loading} historyIncomplete={historyIncomplete}/>}
+      onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}
     {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
       <strong style={{color:'#991b1b',fontSize:15}}>DUPLICATE ED ALERT — {duplicateRows.length} packet{duplicateRows.length===1?'':'s'}</strong>
       <div style={{fontSize:12,color:'#7f1d1d',marginTop:5,marginBottom:7}}>Same ED number entered again. Existing entries are highlighted in their Active / Delivered rows; no duplicate shipment was created.</div>
