@@ -28,7 +28,7 @@ export default function SpeedPostMonthlyProfit({rows=[],entryMonths=[],month='',
     </div>
     <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:13}}>
       <div style={{padding:'9px 12px',background:'#eef5ff',borderRadius:9,fontSize:12}}>
-        <strong>UK</strong> • Up to 5 kg: ₹1,050/kg • Above 5–10 kg: ₹950/kg
+        <strong>UK</strong> • Up to 5 kg: ₹1,050/kg • Above 5 kg: ₹950/kg
       </div>
       <div style={{padding:'9px 12px',background:'#f0fdf4',borderRadius:9,fontSize:12}}>
         <strong>USA</strong> • Up to 5 kg: ₹1,300/kg • Above 5 kg: ₹1,200/kg
@@ -49,7 +49,7 @@ export default function SpeedPostMonthlyProfit({rows=[],entryMonths=[],month='',
     {t.missing>0&&<p style={{background:'#fff8e7',color:'#8a4c06',padding:10,borderRadius:8,fontSize:12,fontWeight:750}}>
       {t.missing} of {t.packets} entries are missing a weight, tariff or configured selling rate.
       They remain visible but are excluded from Amount Received and Net Profit totals.
-      UK above 10 kg and destinations other than UK/USA need a confirmed selling rate.
+      Destinations other than UK/USA need a confirmed selling rate.
     </p>}
     <div style={{overflowX:'auto',maxHeight:'68vh',overflowY:'auto'}}>
       <table style={{width:'100%',minWidth:1620,borderCollapse:'separate',borderSpacing:0}}>
