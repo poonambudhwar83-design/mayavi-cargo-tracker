@@ -74,6 +74,23 @@ assert.ok(api.includes("SUM(amount) FILTER (WHERE branch='KARNAL')"));
 assert.ok(api.includes("record_date>=${month+'-01'}::date"));
 assert.ok(api.includes('mayavi_monthly_expenses'));
 assert.ok(api.includes('ON CONFLICT(expense_month) DO UPDATE'));
+assert.ok(api.includes("searchParams.get('view')==='expenses'"),
+  'Independent Rent loading must not depend on Import/Export Profit Sheets');
+assert.ok(api.includes("SELECT rent,office_expenses,updated_at,updated_by"),
+  'Read back Rent and Office amounts from saved database records');
+assert.ok(ui.includes("view=expenses"),
+  'Client must load Rent independently even during profit-source failures');
+assert.ok(ui.includes('SAVED TO DATABASE'),
+  'Successful Rent saving needs explicit persisted confirmation');
+assert.ok(ui.includes('Number(verified.rent)!==Number(result.rent)'),
+  'Do not claim Rent saved without database verification');
+assert.ok(ui.includes('!month)return;'),
+  'Rent saving must not be blocked by missing Import/Export profit data');
+assert.ok(ui.includes('Unsaved changes — click SAVE'),
+  'Rent edits must show clear unsaved state');
+assert.ok(ui.includes('SAVE RENT & OFFICE EXPENSES'),
+  'Dedicated Rent & Office saving action must be visible');
+
 for(const label of ['Import Gross Profit','Export Gross Profit','Jind Branch','Karnal Branch',
  'Import — 15% Goods Charge Total','Salary — Cash Paid','Salary — Account Paid','Rent','Office Expenses'])
  assert.ok(ui.includes(label),label+' must be displayed');
