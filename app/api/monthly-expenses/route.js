@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
+import {branchPayoutForRecord} from '../../../lib/branchLoads.js';
 import {selectedProfitMonth} from '../../../lib/profitPeriod.js';
 import {GET as getImportProfit} from '../import-profit/route.js';
 import {GET as getExportProfit} from '../export-profit/route.js';
@@ -21,9 +22,22 @@ async function ensure(sql){
     expense_month CHAR(7) PRIMARY KEY,
     rent NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(rent>=0),
     office_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(office_expenses>=0),
+    rooms_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(rooms_expenses>=0),
+    misc_expenses NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(misc_expenses>=0),
+    rent_saved_at TIMESTAMPTZ,
+    office_saved_at TIMESTAMPTZ,
+    rooms_saved_at TIMESTAMPTZ,
+    misc_saved_at TIMESTAMPTZ,
     updated_by TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  // Non-destructive migration: all previously saved Rent and Office Expenses stay intact.
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS rooms_expenses NUMERIC(14,2) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS misc_expenses NUMERIC(14,2) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS rent_saved_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS office_saved_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS rooms_saved_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_monthly_expenses ADD COLUMN IF NOT EXISTS misc_saved_at TIMESTAMPTZ`;
 }
 async function requireMonthlyApi(response,label){
   const data=await response.json();
@@ -40,11 +54,18 @@ export async function GET(request){
     // Load Rent and Office Expenses independently of Import/Export tracking:
     // these entries must remain editable when an external profit source fails.
     if(new URL(request.url).searchParams.get('view')==='expenses'){
-      const saved=await sql`SELECT rent,office_expenses,updated_at,updated_by
+      const saved=await sql`SELECT rent,office_expenses,rooms_expenses,misc_expenses,
+          rent_saved_at,office_saved_at,rooms_saved_at,misc_saved_at,updated_at,updated_by
         FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`;
-      return json({ok:true,month,rent:Number(saved[0]?.rent||0),
-        office:Number(saved[0]?.office_expenses||0),updatedAt:saved[0]?.updated_at||null,
-        updatedBy:saved[0]?.updated_by||''});
+      const row=saved[0]||{};
+      return json({ok:true,month,rent:Number(row.rent||0),office:Number(row.office_expenses||0),
+        rooms:Number(row.rooms_expenses||0),misc:Number(row.misc_expenses||0),
+        savedFields:{
+          rent:Boolean(row.rent_saved_at||(!row.rent_saved_at&&row.updated_at&&Number(row.rent||0)!==0)),
+          office:Boolean(row.office_saved_at||(!row.office_saved_at&&row.updated_at&&Number(row.office_expenses||0)!==0)),
+          rooms:Boolean(row.rooms_saved_at),misc:Boolean(row.misc_saved_at)
+        },
+        updatedAt:row.updated_at||null,updatedBy:row.updated_by||''});
     }
     // Reuse the same month filters and physical rows as the two live Profit sheets.
     // Reuse Salary API values to avoid counting planned-but-unpaid salaries.
@@ -54,32 +75,45 @@ export async function GET(request){
       getImportProfit(internalUrl('import-profit')).then(r=>requireMonthlyApi(r,'Import Profit Sheet')),
       getExportProfit(internalUrl('export-profit')).then(r=>requireMonthlyApi(r,'Export Profit Sheet')),
       getSalary(internalUrl('salary')).then(r=>requireMonthlyApi(r,'Salary page')),
-      sql`SELECT
-        COALESCE(SUM(amount) FILTER (WHERE branch='JIND'),0) AS jind,
-        COALESCE(SUM(amount) FILTER (WHERE branch='KARNAL'),0) AS karnal
+      sql`SELECT branch,amount,paid_to_jepo,paid_to_branch,extra_cost,commodity,bottle_count
         FROM mayavi_branch_loads
         WHERE record_date>=${month+'-01'}::date
           AND record_date<(${month+'-01'}::date+INTERVAL '1 month')`,
-      sql`SELECT rent,office_expenses,updated_at,updated_by
+      sql`SELECT rent,office_expenses,rooms_expenses,misc_expenses,updated_at,updated_by
         FROM mayavi_monthly_expenses WHERE expense_month=${month} LIMIT 1`
     ]);
     const importTotals=sumMonthlyImport(imports.rows||[]);
     const exportTotals=sumMonthlyExport(exports.rows||[]);
-    const jind=Number(branches[0]?.jind||0),karnal=Number(branches[0]?.karnal||0);
+    // Exactly match the Branch Loads page's "Amount Paid to Branch" column.
+    // Use the authoritative derived payout, including branch share of Extra Cost
+    // and the legacy calculation rules. NEVER sum the total booking amount here.
+    const payout={JIND:0,KARNAL:0};
+    for(const row of branches){
+      const branch=String(row.branch||'').toUpperCase();
+      if(!Object.hasOwn(payout,branch))continue;
+      const amount=branchPayoutForRecord({
+        amount:row.amount,paidToJepo:row.paid_to_jepo,paidToBranch:row.paid_to_branch,
+        commodity:row.commodity,extraCost:row.extra_cost,bottleCount:row.bottle_count
+      });
+      payout[branch]=Math.round((payout[branch]+amount)*100)/100;
+    }
+    const jind=payout.JIND,karnal=payout.KARNAL;
     const salaryCash=Number(salaries.totals?.cash||0);
     const salaryAccount=Number(salaries.totals?.account||0);
     const rent=Number(stored[0]?.rent||0);
     const office=Number(stored[0]?.office_expenses||0);
+    const rooms=Number(stored[0]?.rooms_expenses||0);
+    const misc=Number(stored[0]?.misc_expenses||0);
     const results=calculateMonthlyExpenses({
       importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
       jind,karnal,goods15:importTotals.goodsCharge15Percent,
-      salaryCash,salaryAccount,rent,office
+      salaryCash,salaryAccount,rent,office,rooms,misc
     });
     return json({ok:true,month,values:{
       importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
       jind,karnal,goods15:importTotals.goodsCharge15Percent,
       salaryCash,salaryAccount,salaryBudget:Number(salaries.totals?.monthlySalary||0),
-      rent,office
+      rent,office,rooms,misc
     },results,
       source:{import:importTotals,export:exportTotals,salaryEmployees:salaries.rows?.length||0},
       updatedAt:stored[0]?.updated_at||null,updatedBy:stored[0]?.updated_by||''});
@@ -91,6 +125,44 @@ export async function PATCH(request){
     const body=await request.json().catch(()=>({}));
     const month=selectedProfitMonth(body.month);
     if(!month)return json({ok:false,error:'Choose a valid monthly accounting period.'},400);
+    const field=String(body.field||'');
+    if(['rent','office','rooms','misc'].includes(field)){
+      const amount=monthlyAmount(body.value);
+      if(amount===null)return json({ok:false,error:'Enter a valid non-negative amount (up to 2 decimals).'},400);
+      const sql=database();await ensure(sql);
+      const session=readSession(request);
+      let saved;
+      // Each Save only updates its own category. Existing expense values are
+      // never overwritten by another category's Save, even across different tabs.
+      if(field==='rent')saved=await sql`INSERT INTO mayavi_monthly_expenses
+        (expense_month,rent,rent_saved_at,updated_by)
+        VALUES(${month},${amount},now(),${session.username})
+        ON CONFLICT(expense_month) DO UPDATE
+          SET rent=EXCLUDED.rent,rent_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+        RETURNING rent AS amount`;
+      else if(field==='office')saved=await sql`INSERT INTO mayavi_monthly_expenses
+        (expense_month,office_expenses,office_saved_at,updated_by)
+        VALUES(${month},${amount},now(),${session.username})
+        ON CONFLICT(expense_month) DO UPDATE
+          SET office_expenses=EXCLUDED.office_expenses,office_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+        RETURNING office_expenses AS amount`;
+      else if(field==='rooms')saved=await sql`INSERT INTO mayavi_monthly_expenses
+        (expense_month,rooms_expenses,rooms_saved_at,updated_by)
+        VALUES(${month},${amount},now(),${session.username})
+        ON CONFLICT(expense_month) DO UPDATE
+          SET rooms_expenses=EXCLUDED.rooms_expenses,rooms_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+        RETURNING rooms_expenses AS amount`;
+      else saved=await sql`INSERT INTO mayavi_monthly_expenses
+        (expense_month,misc_expenses,misc_saved_at,updated_by)
+        VALUES(${month},${amount},now(),${session.username})
+        ON CONFLICT(expense_month) DO UPDATE
+          SET misc_expenses=EXCLUDED.misc_expenses,misc_saved_at=now(),updated_by=EXCLUDED.updated_by,updated_at=now()
+        RETURNING misc_expenses AS amount`;
+      return json({ok:true,month,field,value:Number(saved[0].amount),
+        message:field.toUpperCase()+' expense saved for '+month+'.'});
+    }
+    if(field)return json({ok:false,error:'Invalid monthly expense category.'},400);
+    // Backward compatibility for older clients using combined Rent + Office Save.
     const rent=monthlyAmount(body.rent),office=monthlyAmount(body.office);
     if(rent===null||office===null)
       return json({ok:false,error:'Enter valid non-negative Rent and Office Expenses (up to 2 decimals).'},400);
