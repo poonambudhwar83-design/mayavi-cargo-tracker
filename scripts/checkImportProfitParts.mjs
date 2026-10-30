@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -164,7 +164,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={20}'));
+assert.ok(profitUi.includes('colSpan={21}'),'21 Import Profit columns including 15% Goods Charge');
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
@@ -229,15 +229,32 @@ assert.ok(profitUi.includes("Protein from DXB ₹3,000/bag, Protein from USA (in
 assert.ok(profitUi.includes("Protein DXB 3000/bag; Protein USA incl JFK, Canada, Germany 1800/bag"));
 assert.ok(!profitUi.includes("Protein JFK/DXB 3000"));
 assert.ok(!profitUi.includes('isJfkOrigin?3000'));
-// The 15% surcharge must be absent from the per-part calculation, table,
- // total footer, CSV and all shipment/Profit tooltips and documentation.
-assert.ok(!profitUi.includes('goodsCharge15Percent'));
-assert.ok(!profitUi.includes('goodsCharge15Eligible'));
-assert.ok(!profitUi.includes('15% Goods Charge (₹)'));
-assert.ok(!profitUi.includes('15% Goods Charge: '));
-assert.ok(!profitUi.includes('existing applicable 15%'));
-assert.ok(profitUi.includes('No additional 15% Goods Charge is deducted'));
-assert.ok(profitUi.includes('const totalCost=importTotalCost({duty,eici,driverExpense,goodsCharge,freightCharge,proteinDeduction,siibDeduction});'));
+// 15% reporting column: ordinary HH ₹340/bag is excluded, every other
+// Goods Charge tariff is eligible, including HKG HH ₹1,500/bag.
+for(const [total,bagRate,expected] of [
+  [340,340,0],[340*6,340,0],
+  [1500*4,1500,900],[1800*3,1800,810],
+  [3000*2,3000,900],[1500*1,1500,225],
+  [0,1500,0],[1234.50,1500,185.18]
+])assert.equal(importGoodsCharge15Percent(total,bagRate),expected,
+  '15% Goods Charge '+total+' at '+bagRate+'/bag');
+assert.equal(importGoodsCharge15Percent(null,340),null);
+assert.equal(importGoodsCharge15Percent(null,1500),null);
+assert.equal(importGoodsCharge15Percent(1500,null),null);
+assert.ok(profitUi.includes("const goodsCharge15Percent=importGoodsCharge15Percent(goodsCharge,chargePerBag);"));
+assert.ok(profitUi.includes("'15% of Goods Charge (₹)'"),'Show 15% next to Goods Charge');
+assert.ok(profitUi.includes("n.goodsCharge,n.goodsCharge15Percent,n.profit"),
+  'CSV must export 15% directly after Goods Charge');
+assert.ok(profitUi.includes("displayMoney(n.goodsCharge15Percent)"),
+  'Each physical part has own 15% value');
+assert.ok(profitUi.includes("displayMoney(totals.goodsCharge15Percent)"),
+  'Footer total must sum 15% values');
+assert.ok(profitUi.includes("not added to Total Cost or deducted from Profit"),
+  'Display-only amount must be explained');
+assert.ok(profitUi.includes('const totalCost=importTotalCost({duty,eici,driverExpense,goodsCharge,freightCharge,proteinDeduction,siibDeduction});'),
+  '15% reporting value must NOT change Total Cost or Profit');
+assert.equal(importTotalCost({...dx,goodsCharge15Percent:99999}),37400,
+  '15% reporting value must never become a landed expense');
 
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');

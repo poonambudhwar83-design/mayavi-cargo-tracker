@@ -39,6 +39,11 @@ const locked = Object.freeze({
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
+  // Thai AirAsia 900 & AirAsia 807 SmartKargo: owner-approved temporary freeze
+  // of AWB-specific tracking, DMK connection and verified DEL arrival parser.
+  'lib/airAsia.js':'8191d7df6dbb3f71189b1caf311b32ae93d745e8',
+  'lib/airAsiaBrowser.js':'aa5639c01c7ccf11d5c25868e19b32c538806ca5',
+  'scripts/checkThaiAirAsia900.mjs':'e47c1112054644fa4b7dd379fa6060c22d2c3be0',
 });
 let changed=false;
 for (const [filename,expected] of Object.entries(locked)){
@@ -292,5 +297,30 @@ if(!Array.isArray(config.crons)||!config.crons.some(item=>
   console.error('LOCKED ETHIOPIAN AUTO REFRESH CHANGED: Explicit unlock approval required.');
   changed=true;
 }
+// Thai AirAsia 900 temporary lock: shareable multi-airline API and dashboard
+// remain editable for other carriers, but the final-station arrival rules,
+// scheduled flight label and 807/900 regression checks must remain in place.
+// Only the owner may explicitly unlock the 900 checks for future amendments.
+const airAsiaTrackSource=readFileSync('app/api/track/route.js','utf8');
+const airAsiaDisplaySource=readFileSync('app/DashboardClient.js','utf8');
+const airAsiaPkg=JSON.parse(readFileSync('package.json','utf8'));
+for(const [name,source,expected] of [
+  ['SmartKargo official 900/807 reader',airAsiaTrackSource,"const official=await trackAirAsia(mawb);"],
+  ['Thai AirAsia final-delhi actual guard',airAsiaTrackSource,"if(mawb.startsWith('900-')&&shipment.arrivalIsActual!==true)"],
+  ['Thai AirAsia stale arrival clears',airAsiaTrackSource,"shipment.arrivalVerifiedAbsent=true;"],
+  ['Thai AirAsia scheduled arrival retained separately',airAsiaTrackSource,"shipment.scheduledArrivalDate=converted.arrivalDate;"],
+  ['900 final-flight scheduled UI helper',airAsiaDisplaySource,'function airAsiaScheduledFinalArrival(row={})'],
+  ['900 no false final arrival',airAsiaDisplaySource,'row.arrivalIsActual===true||row.arrivalVerifiedAbsent!==true'],
+  ['900 must require DEL destination',airAsiaDisplaySource,"destination!=='DEL'"],
+  ['900 UI shows scheduled date',airAsiaDisplaySource,'r.arrivalDate||airAsiaScheduledFinalArrival(r)?.date'],
+  ['900 UI labels destination pending',airAsiaDisplaySource,'SCHEDULED ONLY • DEL NOT ARRIVED'],
+  ['900 UI shows IST expected time',airAsiaDisplaySource,'IST • EXPECTED ONLY'],
+  ['900 script executes on every build',String(airAsiaPkg.scripts?.prebuild||''),'node scripts/checkThaiAirAsia900.mjs']
+]){
+  if(!source.includes(expected)){
+    console.error('LOCKED THAI AIRASIA 900 REGRESSION: '+name+'. Owner approval required to unlock.');
+    changed=true;
+  }
+}
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), and Kuwait (229) are LOCKED; Saudia (065) remains regression-guarded.');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), Kuwait (229), and Thai AirAsia (900) are LOCKED; Saudia (065) remains regression-guarded.');
