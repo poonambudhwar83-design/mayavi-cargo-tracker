@@ -179,7 +179,6 @@ export default function MonthlyExpensesDashboard(){
       setMiscEntries(verified.miscEntries);
       setSavedTotals(previous=>({...previous,misc:Number(verified.misc)}));
       setRecord(previous=>previous?{...previous,values:{...previous.values,misc:Number(verified.misc)}}:previous);
-      setSaved(previous=>({...previous,misc:true}));
       setEditingMisc(null);
       setNote('✓ UPDATED TO DATABASE • '+remark+': '+show(Number(raw))+
         ' • Monthly Miscellaneous Total: '+show(verified.misc));
@@ -205,7 +204,7 @@ export default function MonthlyExpensesDashboard(){
           <p style={{margin:0,color:'#5d7189'}}>Income from existing Mayavi sheets minus Salary, Rent, Office, Rooms and Misc expenses.</p>
         </div>
         <label style={{display:'grid',gap:5,fontWeight:900,fontSize:12}}>SELECT MONTH
-          <input type="month" min="2026-10" max={monthNow()} value={month}
+          <input type="month" min="2026-10" max={monthNow()} value={month} disabled={miscEditBusy}
             onChange={e=>{setMonth(e.target.value);setRecord(null);setDrafts({...initialExpenses});setMiscRemark('');setMiscEntries([]);setEditingMisc(null);setSavedTotals({...initialSavedTotals});setDirty({});setSaved({});setBusy({});}}
             style={{...input,fontWeight:800}}/>
         </label>
