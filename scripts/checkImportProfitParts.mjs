@@ -280,7 +280,7 @@ assert.ok(profitUi.includes('displayMoney(n.grossProfit)'),'Display physical par
 assert.ok(profitUi.includes('grossProfit+=n.grossProfit'),'Footer must sum calculated Gross Profit');
 assert.ok(profitUi.includes('totals.completed?displayMoney(totals.grossProfit)'),
   'Empty or incomplete rows cannot fabricate a Gross Profit footer');
-assert.ok(profitUi.includes("displayMoney(n.averageWeightPerBag)}</td>\n                <td style={{...cell,fontWeight:900,color:n.grossProfit"),
+assert.ok(profitUi.includes("displayAmount(n.averageWeightPerBag)}</td>\n                <td style={{...cell,fontWeight:900,color:n.grossProfit"),
   'Gross Profit must be the LAST visible table cell');
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
