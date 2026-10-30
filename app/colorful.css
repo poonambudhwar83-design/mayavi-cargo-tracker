@@ -21,3 +21,184 @@ th{background:linear-gradient(180deg,#f8fbff,#f3f7fd);color:#50637d}tbody tr{tra
 .duplicateMawbInputFlash{animation:mayaviDuplicateBlink .72s ease-in-out 3!important;border-color:#7c3aed!important;font-weight:900!important}
 .duplicateMawbRowFlash td{animation:mayaviDuplicateBlink .72s ease-in-out 3!important}.duplicateMawbRowFlash td strong{font-weight:1000}
 @media (prefers-reduced-motion:reduce){.mailChoice.mailOverdue .mailBtn.no,.mailBtn.no.mailOverdueBtn{animation:none;background:#fb923c;color:#fff;border-color:#f97316}.duplicateMawbInputFlash,.duplicateMawbRowFlash td{animation:none!important;background:#8b5cf6!important;color:#fff!important}}
+
+
+/* MAYAVI 2026 • quiet, compact operations dashboard refinements */
+:root{
+  --mv-ink:#172b48;
+  --mv-muted:#64748b;
+  --mv-border:#e3e9f1;
+  --mv-accent:#205b99;
+  --mv-surface:#ffffff;
+}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  background:#f4f6f9;
+  color:var(--mv-ink);
+}
+main:has(> .hero){padding-top:16px}
+.hero{
+  padding:20px 23px;
+  border-radius:16px;
+  border:1px solid #274867;
+  background:linear-gradient(118deg,#162e4d 0%,#23466e 70%,#205a68 100%);
+  box-shadow:0 7px 20px rgba(23,43,72,.11);
+}
+.hero h1{font-size:27px;line-height:1.18;letter-spacing:-.65px;margin:5px 0 7px;font-weight:750}
+.hero p{font-size:12px;line-height:1.55;color:#dce6f2;opacity:1;max-width:1000px}
+.hero .eyebrow{font-size:10px;letter-spacing:1.2px;color:#bfdbfe}
+.hero .version{padding:8px 11px;background:#ffffff18;border:1px solid #ffffff30;font-size:11px}
+.hero .logoutBtn{height:34px;font-size:11px;font-weight:750}
+.adminBar{
+  margin-top:10px;
+  padding:10px 14px;
+  border-radius:12px;
+  border-color:var(--mv-border);
+  background:#fff;
+  box-shadow:0 2px 9px rgba(23,43,72,.035);
+}
+.adminBar b{color:#34557c;font-size:10px;letter-spacing:.6px}
+.adminBar span{color:#64748b;font-size:11px;line-height:1.5}
+.adminViews{flex-wrap:wrap;gap:6px;margin:12px 0 2px}
+.adminViews button{
+  height:34px;
+  border-radius:9px;
+  border-color:#dce4ed;
+  background:#fff;
+  padding:0 12px;
+  font-size:10px;
+  font-weight:750;
+  box-shadow:none;
+}
+.adminViews button.active{
+  background:#e8f3f1;
+  color:#0c625c;
+  border-color:#a7d5cc;
+  box-shadow:inset 0 0 0 1px rgba(15,118,110,.05);
+}
+.typeTabs{gap:7px;margin:12px 0 4px}
+.typeTabs button{
+  height:38px;
+  min-width:118px;
+  border-radius:10px;
+  border-color:#dce4ed;
+  background:#fff;
+  color:#52657b;
+  font-size:12px;
+  font-weight:750;
+}
+.typeTabs button.active{
+  background:#244b75;
+  color:#fff;
+  border-color:#244b75;
+  box-shadow:0 3px 9px rgba(33,75,122,.13);
+}
+.stats{gap:10px;margin:12px 0 14px}
+.stats div,.stats div:nth-child(1),.stats div:nth-child(2),
+.stats div:nth-child(3),.stats div:nth-child(4),.stats div:nth-child(5){
+  border:1px solid var(--mv-border);
+  border-top:1px solid var(--mv-border);
+  border-left:3px solid #b4c6d9;
+  background:#fff;
+  border-radius:12px;
+  box-shadow:0 2px 8px rgba(23,43,72,.035);
+  padding:13px 15px;
+}
+.stats div:nth-child(1){border-left-color:#32649a}
+.stats div:nth-child(3){border-left-color:#64a2b2}
+.stats div:nth-child(4){border-left-color:#48a38c}
+.stats div:nth-child(5){border-left-color:#dfa56e}
+.stats div:hover{transform:none;box-shadow:0 3px 11px rgba(23,43,72,.07)}
+.stats b{font-size:25px;line-height:1.2;letter-spacing:-.5px;font-weight:750}
+.stats span{display:block;margin-top:4px;font-size:10px;letter-spacing:.2px;color:#6f7e91;font-weight:650}
+.entry,.filters{
+  border:1px solid var(--mv-border);
+  border-radius:13px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(23,43,72,.04);
+}
+.entry{gap:9px;padding:13px}
+.filters{gap:9px;padding:12px;margin-top:11px}
+.entry label,.filters label{color:#61728a;letter-spacing:.3px;font-weight:750}
+.entry input,.filters select{
+  border-color:#d7e0ea;
+  background:#fff;
+  box-shadow:none;
+}
+.entry input{height:39px;font-size:13px}
+.filters select{height:35px;font-size:12px}
+.entry button{height:39px;border-radius:9px;font-size:11px;font-weight:750}
+.entry button:not(.secondary){background:#245c98;box-shadow:none}
+.entry button.secondary{background:#ecf2f8;color:#245481}
+.filters>button{height:35px;border:1px solid #dce4ee;background:#f8fafc;border-radius:9px;font-size:10px}
+.entry input:focus,.filters select:focus,
+.cargoTrackTable input:focus,.cargoTrackTable select:focus{
+  outline:2px solid rgba(37,99,163,.25);
+  outline-offset:1px;
+  border-color:#7fa4c8;
+}
+.note{margin:9px 0;border-radius:10px;font-size:12px}
+.cargoTrackTable{
+  margin-top:11px;
+  border:1px solid #dde6ef;
+  border-radius:12px;
+  box-shadow:0 3px 13px rgba(23,43,72,.055);
+}
+.cargoTrackTable thead th{
+  background:#edf2f7;
+  border-bottom:1px solid #d9e3ed;
+  color:#4c5e75;
+  font-size:10px;
+  letter-spacing:.1px;
+}
+.cargoTrackTable tbody td{border-bottom:1px solid #edf1f5;color:#233650}
+.cargoTrackTable tbody tr:nth-child(even)>td:not([style*="position: sticky"]){background:#fafbfd}
+.cargoTrackTable tbody tr:hover>td:not([style*="position: sticky"]){background:#eef5fc}
+.cargoTrackTable tbody td[style*="position: sticky"]{box-shadow:1px 0 0 #e8edf4}
+.cargoTrackTable .actions button,.cargoTrackTable .trackLink,
+.cargoTrackTable .mailBtn,.cargoTrackTable .customsToggle{
+  box-shadow:none;
+  font-weight:750;
+}
+.cargoTrackTable .refreshBtn{background:#e9f1fa;color:#285886}
+.cargoTrackTable .trackLink{background:#edf1f5;color:#41546b}
+.cargoTrackTable .moveBtn{background:#ecf1f7;color:#365477}
+.cargoTrackTable .clientChip,.cargoTrackTable .employeeChip{
+  border-radius:6px;
+  box-shadow:none;
+}
+.tableSummary{
+  margin-top:8px;
+  padding:10px 13px;
+  border:1px solid var(--mv-border);
+  border-radius:10px;
+  box-shadow:0 2px 8px rgba(23,43,72,.03);
+}
+@media(max-width:900px){
+  .hero{padding:16px}
+  .hero h1{font-size:24px}
+  .stats div,.stats div:nth-child(1),.stats div:nth-child(2),
+  .stats div:nth-child(3),.stats div:nth-child(4),.stats div:nth-child(5){padding:12px}
+}
+@media(max-width:640px){
+  main:has(> .hero){padding:8px}
+  .hero{padding:13px;border-radius:12px}
+  .hero h1{font-size:21px}
+  .hero p{font-size:10px;line-height:1.4}
+  .adminBar{padding:10px}
+  .adminViews{flex-wrap:nowrap;margin:9px 0 2px}
+  .typeTabs{margin:9px 0 4px}
+  .typeTabs button{height:36px;min-width:0;font-size:11px}
+  .stats{gap:7px;margin:9px 0 11px}
+  .stats div,.stats div:nth-child(1),.stats div:nth-child(2),
+  .stats div:nth-child(3),.stats div:nth-child(4),.stats div:nth-child(5){padding:10px;border-radius:10px}
+  .stats b{font-size:21px}
+  .stats span{font-size:9px}
+  .entry,.filters{padding:10px;border-radius:11px}
+  .entry button,.entry input{height:38px}
+  .cargoTrackTable{border-radius:10px;margin-top:9px}
+  .cargoTrackTable thead th{background:#edf2f7!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .stats div{transition:none}
+}
