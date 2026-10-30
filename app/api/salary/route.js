@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
-import { salaryMonth, salaryAmount, salaryTotals, salaryCompany } from '../../../lib/salaryMath.js';
+import { salaryMonth, salaryAmount, salaryTotals, salaryCompany, salaryDesignation } from '../../../lib/salaryMath.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -18,6 +18,7 @@ async function ensure(sql){
     id UUID PRIMARY KEY,
     employee_name TEXT NOT NULL,
     company_name TEXT NOT NULL DEFAULT '',
+    designation TEXT NOT NULL DEFAULT '',
     normalized_name TEXT NOT NULL UNIQUE,
     default_salary NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(default_salary>=0),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -25,6 +26,8 @@ async function ensure(sql){
   )`;
   // Older employees remain intact. They can select their company using EDIT.
   await sql`ALTER TABLE mayavi_salary_employees ADD COLUMN IF NOT EXISTS company_name TEXT NOT NULL DEFAULT ''`;
+  // Existing employees keep all their salary payments; fill designation with EDIT.
+  await sql`ALTER TABLE mayavi_salary_employees ADD COLUMN IF NOT EXISTS designation TEXT NOT NULL DEFAULT ''`;
   await sql`CREATE TABLE IF NOT EXISTS mayavi_salary_monthly(
     employee_id UUID NOT NULL REFERENCES mayavi_salary_employees(id),
     salary_month CHAR(7) NOT NULL CHECK(salary_month ~ '^[0-9]{4}-[0-9]{2}$'),
@@ -43,7 +46,7 @@ export async function GET(request){
   if(!month)return reply({ok:false,error:'Enter a valid salary month.'},400);
   try{
     const sql=sqlClient();await ensure(sql);
-    const entries=await sql`SELECT e.id,e.employee_name,e.company_name,
+    const entries=await sql`SELECT e.id,e.employee_name,e.company_name,e.designation,
         COALESCE(m.salary_amount,e.default_salary) AS salary_amount,
         COALESCE(m.cash_paid,0) AS cash_paid,
         COALESCE(m.account_paid,0) AS account_paid,
@@ -53,7 +56,7 @@ export async function GET(request){
       WHERE e.is_active=TRUE
       ORDER BY lower(e.employee_name),e.id`;
     const rows=entries.map(row=>({
-      id:String(row.id),employeeName:row.employee_name,companyName:row.company_name||'',
+      id:String(row.id),employeeName:row.employee_name,companyName:row.company_name||'',designation:row.designation||'',
       salaryAmount:Number(row.salary_amount),cashPaid:Number(row.cash_paid),
       accountPaid:Number(row.account_paid),updatedAt:row.updated_at||null,updatedBy:row.updated_by||''
     }));
@@ -72,11 +75,13 @@ export async function POST(request){
       if(name.length<2||name.length>100)return reply({ok:false,error:'Enter an employee name (2–100 characters).'},400);
       const company=salaryCompany(data.companyName);
       if(!company)return reply({ok:false,error:'Please select a valid Company Name.'},400);
+      const designation=salaryDesignation(data.designation);
+      if(!designation)return reply({ok:false,error:'Please select a valid Designation.'},400);
       const amount=salaryAmount(data.salaryAmount);
       if(amount===null)return reply({ok:false,error:'Enter a valid monthly salary (₹0 or more).'},400);
       const id=randomUUID(),key=name.toLocaleLowerCase('en-IN');
-      const created=await sql`INSERT INTO mayavi_salary_employees(id,employee_name,company_name,normalized_name,default_salary)
-        VALUES(${id}::uuid,${name},${company},${key},${amount})
+      const created=await sql`INSERT INTO mayavi_salary_employees(id,employee_name,company_name,designation,normalized_name,default_salary)
+        VALUES(${id}::uuid,${name},${company},${designation},${key},${amount})
         ON CONFLICT(normalized_name) DO NOTHING RETURNING id,employee_name`;
       if(!created.length)return reply({ok:false,error:'This employee is already added.'},409);
       return reply({ok:true,message:name+' added to the Salary page.',id});
@@ -97,6 +102,7 @@ export async function POST(request){
       const editProfile=data.editProfile===true;
       let name=matching[0].employee_name;
       let companyName='';
+      let designation='';
       if(editProfile){
         name=normalizedEmployee(data.employeeName);
         if(name.length<2||name.length>100)
@@ -104,12 +110,15 @@ export async function POST(request){
         companyName=salaryCompany(data.companyName);
         if(!companyName)
           return reply({ok:false,error:'Please select a valid Company Name.'},400);
+        designation=salaryDesignation(data.designation);
+        if(!designation)
+          return reply({ok:false,error:'Please select a valid Designation.'},400);
         const key=name.toLocaleLowerCase('en-IN');
         // Update employee name, company, salary template and this month's salary
         // in a single statement. Past month payments/amounts stay untouched.
         const updated=await sql`WITH profile AS (
           UPDATE mayavi_salary_employees
-          SET employee_name=${name},normalized_name=${key},company_name=${companyName},
+          SET employee_name=${name},normalized_name=${key},company_name=${companyName},designation=${designation},
               default_salary=${salary}
           WHERE id=${id}::uuid AND is_active=TRUE RETURNING id
         )
@@ -131,13 +140,14 @@ export async function POST(request){
       }
       // Return the authoritative company/name for ordinary payment saves as well.
       if(!editProfile){
-        const employee=await sql`SELECT employee_name,company_name
+        const employee=await sql`SELECT employee_name,company_name,designation
           FROM mayavi_salary_employees WHERE id=${id}::uuid LIMIT 1`;
         name=employee[0]?.employee_name||name;
         companyName=employee[0]?.company_name||'';
+        designation=employee[0]?.designation||'';
       }
       return reply({ok:true,message:name+(editProfile?' employee details and ':' ')+ 'salary saved for '+month,
-        row:{id,employeeName:name,companyName,salaryAmount:salary,cashPaid:cash,accountPaid:account}});
+        row:{id,employeeName:name,companyName,designation,salaryAmount:salary,cashPaid:cash,accountPaid:account}});
     }
     return reply({ok:false,error:'Invalid salary action.'},400);
   }catch(error){
