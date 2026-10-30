@@ -29,7 +29,7 @@ assert.deepEqual(total,{employees:3,monthlySalary:67000,cash:27000,account:35000
 // All requested companies must be selectable and validated centrally.
 assert.deepEqual(SALARY_COMPANIES,[
   'KCC','PV','PV HYD','CHENNAI','BANGLORE',
-  'JEPO DELHI','JEPO KARNAL','JEPO JIND'
+  'JEPO DELHI','JEPO KARNAL','JEPO JIND','AIRPORT STAFF'
 ]);
 assert.equal(salaryCompany('pv hyd'),'PV HYD');
 assert.equal(salaryCompany('jepo karnal'),'JEPO KARNAL');
