@@ -41,12 +41,26 @@ export default function MonthlyExpensesDashboard(){
   const load=useCallback(async ()=>{
     setLoading(true);
     try{
-      const response=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month),{cache:'no-store',credentials:'include'});
-      const data=await response.json();
-      if(!response.ok||!data.ok)throw new Error(data.error||'Unable to load month.');
-      setRecord(data);setRent(String(data.values.rent));setOffice(String(data.values.office));
-      setSaved(Boolean(data.updatedAt));setChanged(false);setNote('');
-    }catch(error){setRecord(null);setNote(error.message||'Unable to load monthly financial summary.');}
+      // Expense inputs load separately, so Rent can always be saved even if
+      // the Import, Export or Salary profit feeds are temporarily unavailable.
+      const expensesResponse=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month)+'&view=expenses',
+        {cache:'no-store',credentials:'include'});
+      const expenses=await expensesResponse.json();
+      if(!expensesResponse.ok||!expenses.ok)
+        throw new Error(expenses.error||'Unable to load saved Rent and Office Expenses.');
+      setRent(String(expenses.rent));setOffice(String(expenses.office));
+      setSaved(Boolean(expenses.updatedAt));setChanged(false);
+      try{
+        const response=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month),
+          {cache:'no-store',credentials:'include'});
+        const data=await response.json();
+        if(!response.ok||!data.ok)throw new Error(data.error||'Unable to load profit figures.');
+        setRecord(data);setNote('');
+      }catch(error){
+        setRecord(null);
+        setNote('Rent and Office Expenses are available to edit. Profit totals could not be loaded: '+(error.message||error));
+      }
+    }catch(error){setRecord(null);setNote(error.message||'Unable to load monthly expense details.');}
     finally{setLoading(false);}
   },[month]);
   useEffect(()=>{void load()},[load]);
@@ -59,17 +73,30 @@ export default function MonthlyExpensesDashboard(){
   const metrics=useMemo(()=>record?calculateMonthlyExpenses({...record.values,
     rent:rent===''?NaN:Number(rent),office:office===''?NaN:Number(office)}):null,[record,rent,office]);
   async function save(){
-    if(busy||!record)return;
+    if(busy||!month)return;
+    if(rent.trim()===''||office.trim()===''||Number(rent)<0||Number(office)<0){
+      setNote('Enter a valid Rent and Office Expenses amount. Use 0 if there is no expense.');
+      return;
+    }
     setBusy(true);setNote('');
     try{
       const res=await fetch('/api/monthly-expenses',{method:'PATCH',credentials:'include',
         headers:{'content-type':'application/json'},body:JSON.stringify({month,rent,office})});
       const result=await res.json();
       if(!res.ok||!result.ok)throw new Error(result.error||'Could not save expenses.');
-      setSaved(true);setChanged(false);setNote(result.message||'Monthly expenses saved.');
-      await load();
-      setNote(result.message||'Monthly expenses saved.');
-    }catch(error){setNote(error.message||'Could not save monthly expenses.');}
+      // Read the saved values back from Neon, independently of Income feeds.
+      const verifyResponse=await fetch('/api/monthly-expenses?month='+encodeURIComponent(month)+'&view=expenses',
+        {cache:'no-store',credentials:'include'});
+      const verified=await verifyResponse.json();
+      if(!verifyResponse.ok||!verified.ok)throw new Error(verified.error||'Could not verify saved Rent.');
+      if(Number(verified.rent)!==Number(result.rent)||Number(verified.office)!==Number(result.office))
+        throw new Error('Saved values are not confirmed. Please try again.');
+      setRent(String(verified.rent));setOffice(String(verified.office));
+      setRecord(previous=>previous?{...previous,values:{...previous.values,
+        rent:verified.rent,office:verified.office},updatedAt:verified.updatedAt}:previous);
+      setSaved(true);setChanged(false);
+      setNote('✓ SAVED TO DATABASE • Rent: '+show(verified.rent)+' • Office Expenses: '+show(verified.office));
+    }catch(error){setSaved(false);setNote(error.message||'Could not save monthly expenses.');}
     finally{setBusy(false);}
   }
   const income=record?[{label:'Import Gross Profit',value:record.values.importGross},
@@ -95,6 +122,25 @@ export default function MonthlyExpensesDashboard(){
         </label>
       </div>
       {note&&<div role="status" style={{padding:12,background:'#e8f0fd',color:'#1e4b82',borderRadius:10,marginBottom:15,fontWeight:750,fontSize:13}}>{note}</div>}
+      <section style={{...card,marginBottom:16}}>
+        <h2 style={{margin:'0 0 7px',fontSize:17}}>Enter Monthly Expenses — {caption}</h2>
+        <p style={{margin:'0 0 14px',color:'#536d87',fontSize:13}}>Enter Rent and Office Expenses here, then click SAVE. Amounts update the profit calculation instantly and are stored separately for each month.</p>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'end'}}>
+          <label style={{display:'grid',gap:5,fontSize:12,fontWeight:800}}>RENT (₹)
+            <input type="number" aria-label="Monthly Rent" min="0" max="999999999" step=".01" value={rent}
+              onChange={e=>{setRent(e.target.value);setChanged(true);setSaved(false);}} style={input}/>
+          </label>
+          <label style={{display:'grid',gap:5,fontSize:12,fontWeight:800}}>OFFICE EXPENSES (₹)
+            <input type="number" aria-label="Monthly Office Expenses" min="0" max="999999999" step=".01" value={office}
+              onChange={e=>{setOffice(e.target.value);setChanged(true);setSaved(false);}} style={input}/>
+          </label>
+          <button type="button" disabled={busy||loading||!month} onClick={()=>void save()}
+            style={{border:0,borderRadius:9,background:saved?'#15803d':'#2056a1',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:900,padding:'11px 18px',minHeight:42}}>
+            {busy?'SAVING…':saved?'✓ SAVED':'SAVE RENT & OFFICE EXPENSES'}
+          </button>
+        </div>
+        {changed&&<small style={{display:'block',marginTop:9,color:'#9a3412',fontWeight:800}}>Unsaved changes — click SAVE to store these amounts for {caption}.</small>}
+      </section>
       {loading&&!record&&<div style={card}>Loading monthly figures…</div>}
       {record&&metrics&&<>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12,marginBottom:17}}>
@@ -107,24 +153,7 @@ export default function MonthlyExpensesDashboard(){
           <ItemsTable title="INCOME" items={income} total={metrics.totalIncome} color="#e5f5eb"/>
           <ItemsTable title="EXPENSES" items={expenses} total={metrics.totalExpenses} color="#fff0df"/>
         </div>
-        <section style={{...card,marginTop:16}}>
-          <h2 style={{margin:'0 0 7px',fontSize:17}}>Enter Monthly Expenses — {caption}</h2>
-          <p style={{margin:'0 0 14px',color:'#536d87',fontSize:13}}>Salary Cash and Account amounts are synced from the Salary page. Only Rent and Office Expenses are entered here.</p>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'end'}}>
-            <label style={{display:'grid',gap:5,fontSize:12,fontWeight:800}}>RENT (₹)
-              <input type="number" min="0" max="999999999" step=".01" value={rent}
-                onChange={e=>{setRent(e.target.value);setChanged(true);setSaved(false);}} style={input}/>
-            </label>
-            <label style={{display:'grid',gap:5,fontSize:12,fontWeight:800}}>OFFICE EXPENSES (₹)
-              <input type="number" min="0" max="999999999" step=".01" value={office}
-                onChange={e=>{setOffice(e.target.value);setChanged(true);setSaved(false);}} style={input}/>
-            </label>
-            <button type="button" disabled={busy||!metrics} onClick={()=>void save()}
-              style={{border:0,borderRadius:9,background:saved?'#15803d':'#2056a1',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:900,padding:'11px 18px',minHeight:42}}>
-              {busy?'SAVING…':saved?'✓ SAVED':'SAVE MONTHLY EXPENSES'}
-            </button>
-          </div>
-        </section>
+
         <div style={{...card,marginTop:16,background:metrics.finalProfit<0?'#fff1f2':'#eefaf3',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
           <strong style={{fontSize:16}}>FINAL PROFIT = TOTAL INCOME − TOTAL EXPENSES</strong>
           <strong style={{fontSize:24,color:metrics.finalProfit<0?'#b91c1c':'#166534'}}>{show(metrics.finalProfit)}</strong>
