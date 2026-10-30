@@ -30,7 +30,7 @@ function summaryRowWeight(row={},tab='IMPORT'){
   // NOT just the parts already arrived. Future manifests/FOW, departed and
   // in-transit parts must contribute their physical numerator (kg).
   // Never add the master denominator again for a split MAWB.
-  if(row._saudiaPendingVirtual===true)return 0;
+  if(row._saudiaPendingVirtual===true)return partKg(row.weight)||0;
   if(row._partKey)return partKg(row.weight)||0;
   const fractional=isImportLikeType(tab)&&String(row.weight||'').includes('/')&&
     (row.isPartLoad===true||row.partLoad===true||
@@ -631,7 +631,7 @@ function expandPartRows(list=[]){
         if(q>0&&q<=available)available-=q;
         else {const at=parts.indexOf(p);if(at>=0)parts.splice(at,1);}
       }
-      if(masterTotal>0&&arrived>0&&available>0){
+      if(masterTotal>0&&parts.length>0&&available>0){
         const arrivedWeight=parts.filter(p=>p.arrivalIsActual===true)
           .reduce((sum,p)=>sum+(Number(p.weight)||0),0);
         const knownPendingWeight=parts.filter(p=>p.arrivalIsActual!==true)
@@ -925,7 +925,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
     let total=0;
     for(const group of groups.values()){
       const parts=group.filter(r=>Boolean(r._partKey));
-      if(parts.length)total+=parts.reduce((sum,p)=>sum+summaryRowWeight(p,activeTab),0);
+      if(parts.length)total+=group.filter(p=>p._partKey||p._saudiaPendingVirtual===true).reduce((sum,p)=>sum+summaryRowWeight(p,activeTab),0);
       else total+=Math.max(0,...group.map(r=>summaryRowWeight(r,activeTab)));
     }
     return total;
