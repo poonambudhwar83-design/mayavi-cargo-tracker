@@ -39,7 +39,7 @@ for(const phrase of [
  'const [miscEditBusy,setMiscEditBusy]=useState(false)',
  'function beginMiscEdit(entry)',
  'async function saveMiscEdit()',
- "field:'edit_misc',id:draft.id",
+ "field:isLegacy?'edit_legacy_misc':'edit_misc'",
  'previousAmount:draft.previousAmount',
  'previousRemarks:draft.previousRemarks',
  'savedEntry.remarks!==remark||Number(savedEntry.amount)!==Number(raw)',
