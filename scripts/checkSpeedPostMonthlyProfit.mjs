@@ -63,12 +63,12 @@ const other=speedPostProfitRow({trackingNo:'ED555555555IN',destination:'Australi
 assert.equal(other.profit,null,'Unknown destination rates must not be invented');
 
 const monthRows=[
- {...uk5,destination:'UK',weight:'4250 g',tariff:'1000'},
- {...uk12,destination:'UK',weight:'11.1 kg',tariff:'1500'},
- {...usa,destinationCountry:'USA',weight:'5.1 kg',tariff:'900'},
+ {trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'1000'},
+ {trackingNo:'ED222222222IN',destination:'UK',weight:'11.1 kg',tariff:'1500'},
+ {trackingNo:'ED333333333IN',destinationCountry:'USA',weight:'5.1 kg',tariff:'900'},
  {trackingNo:'ED444444444IN',destination:'UK',weight:'4 kg',tariff:''},
  {trackingNo:'ED555555555IN',destination:'Australia',weight:'2 kg',tariff:'500'},
- {...uk5,trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'1000'}
+ {trackingNo:'ED111111111IN',destination:'UK',weight:'4250 g',tariff:'1000'}
 ];
 const report=speedPostProfitTotals(monthRows);
 assert.equal(report.totals.packets,5,'Duplicate ED is counted once');
