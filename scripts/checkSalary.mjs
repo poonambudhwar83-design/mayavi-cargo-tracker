@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {salaryMonth,salaryAmount,salaryRowTotals,salaryTotals,SALARY_COMPANIES,salaryCompany,SALARY_DESIGNATIONS,salaryDesignation} from '../lib/salaryMath.js';
+import {salaryMonth,salaryAmount,salaryRowTotals,salaryTotals,SALARY_COMPANIES,salaryCompany,SALARY_DESIGNATIONS,salaryDesignation,SALARY_COMPANY_GROUPS,salaryCompanyGroup,salaryCompanyGroups} from '../lib/salaryMath.js';
 
 assert.equal(salaryMonth('2026-09'),'2026-09','September 2026 must be editable');
 assert.equal(salaryMonth('2026-13'),'');
@@ -34,6 +34,46 @@ assert.deepEqual(SALARY_COMPANIES,[
 assert.equal(salaryCompany('pv hyd'),'PV HYD');
 assert.equal(salaryCompany('jepo karnal'),'JEPO KARNAL');
 assert.equal(salaryCompany('some other company'),'');
+assert.deepEqual(SALARY_COMPANY_GROUPS.map(g=>[g.name,...g.companies]),[
+  ['JEPO','JEPO DELHI','JEPO KARNAL','JEPO JIND'],
+  ['KCC','KCC'],['PV','PV','PV HYD'],['CHENNAI','CHENNAI'],
+  ['BANGLORE','BANGLORE'],['AIRPORT STAFF','AIRPORT STAFF']
+]);
+for(const name of ['JEPO DELHI','JEPO KARNAL','JEPO JIND'])
+  assert.equal(salaryCompanyGroup(name),'JEPO');
+assert.equal(salaryCompanyGroup('KCC'),'KCC');
+assert.equal(salaryCompanyGroup('PV'),'PV');
+assert.equal(salaryCompanyGroup('PV HYD'),'PV');
+assert.equal(salaryCompanyGroup(''),'UNASSIGNED');
+const groupSample=[
+  {id:'1',companyName:'JEPO JIND',salaryAmount:10000,cashPaid:3000,accountPaid:2000},
+  {id:'2',companyName:'KCC',salaryAmount:12000,cashPaid:5000,accountPaid:7000},
+  {id:'3',companyName:'JEPO DELHI',salaryAmount:22000,cashPaid:10000,accountPaid:10000},
+  {id:'4',companyName:'PV HYD',salaryAmount:25000,cashPaid:0,accountPaid:24000},
+  {id:'5',companyName:'PV',salaryAmount:10000,cashPaid:5000,accountPaid:5000},
+  {id:'6',companyName:'JEPO KARNAL',salaryAmount:15000,cashPaid:7000,accountPaid:6000},
+  {id:'7',companyName:'',salaryAmount:8000,cashPaid:8000,accountPaid:0}
+];
+const grouped=salaryCompanyGroups(groupSample);
+assert.deepEqual(grouped.map(g=>g.name),['JEPO','KCC','PV','UNASSIGNED']);
+assert.deepEqual(grouped[0].companies.map(c=>c.name),['JEPO DELHI','JEPO KARNAL','JEPO JIND'],
+  'JEPO branches must sit next to each other, in a stable order');
+assert.equal(grouped[0].totals.employees,3);
+assert.equal(grouped[0].totals.monthlySalary,47000);
+assert.equal(grouped[0].totals.cash,20000);
+assert.equal(grouped[0].totals.account,18000);
+assert.equal(grouped[0].totals.totalPaid,38000);
+assert.equal(grouped[0].totals.balance,9000);
+assert.deepEqual(grouped[2].companies.map(c=>c.name),['PV','PV HYD']);
+assert.equal(grouped[2].totals.monthlySalary,35000);
+assert.equal(grouped.reduce((sum,g)=>sum+g.totals.monthlySalary,0),salaryTotals(groupSample).monthlySalary,
+  'Company aggregation must not duplicate or exclude salaries');
+assert.equal(salaryCompanyGroups(groupSample.filter(x=>x.companyName==='PV HYD'))[0].totals.employees,1,
+  'Company filter must restrict aggregation to visible employees');
+const sampleEdited={...groupSample[0],companyName:'KCC'};
+const oldCompany=new Map([['1','JEPO JIND']]);
+assert.equal(salaryCompanyGroups([sampleEdited],row=>oldCompany.get(row.id)||row.companyName)[0].name,'JEPO',
+  'An unsaved Edit company change must not move a row while typing');
 assert.deepEqual(SALARY_DESIGNATIONS,[
   'AIRPORT STAFF','WAREHOUSE PACKING','BOOKING STAFF','GROUP D','WAREHOUSE MANAGER',
   'OFFICE MANAGER','SENIOR MANAGER','HEAD','DIRECTOR'
@@ -83,12 +123,28 @@ assert.ok(ui.includes('const [companyFilter,setCompanyFilter]=useState('),
   'Salary company filter must be editable');
 assert.ok(ui.includes('const [employeeSearch,setEmployeeSearch]=useState('),
   'Salary employee name search must be editable');
-assert.ok(ui.includes('(!companyFilter||stored.companyName===companyFilter)'),
+assert.ok(ui.includes('(!companyFilter||stored.companyName===companyFilter||'),
   'Company filter must restrict visible salary records');
+assert.ok(ui.includes("companyFilter.startsWith('GROUP:')"),
+  'JEPO and PV group filters must include their subsidiaries together');
+assert.ok(ui.includes('value="GROUP:JEPO"')&&ui.includes('value="GROUP:PV"'),
+  'Group filters must be available without removing any individual company filters');
 assert.ok(ui.includes("(!employeeSearch||String(stored.employeeName||'').toLowerCase().includes(employeeSearch.trim().toLowerCase()))"),
   'Employee name search must restrict visible salary records');
 assert.ok(ui.includes('salaryTotals(visible)'),'Salary totals must respect the filters');
-assert.ok(ui.includes('visible.map((row,index)=>'),'Only filtered salary rows should be rendered');
+assert.ok(ui.includes('groupedTableRows.map((entry,index)=>'),'Only filtered salary rows should be rendered, grouped by company');
+assert.ok(ui.includes('salaryCompanyGroups(visible,'),
+  'Company groups must aggregate only filtered visible employees');
+assert.ok(ui.includes("rows.find(stored=>stored.id===row.id)?.companyName??row.companyName"),
+  'Company grouping must remain stable while editing an employee');
+assert.ok(ui.includes('COMPANY-WISE SALARY SUMMARY'),
+  'Show a salary summary grouped by company family');
+assert.ok(ui.includes("entry.kind==='companyTotal'||entry.kind==='groupTotal'"),
+  'Show branch subtotals and JEPO/PV/KCC group totals in the salary table');
+assert.ok(ui.includes("const label=entry.kind==='companyTotal'?entry.part.name+' SUBTOTAL':entry.group.name+' TOTAL'"),
+  'Company subtotal labels and family TOTAL labels distinguish aggregation');
+assert.ok(ui.includes('group.totals.monthlySalary')&&ui.includes('group.totals.cash')&&ui.includes('group.totals.account')&&ui.includes('group.totals.balance'),
+  'Company summary must show salary, cash, account, paid, and balance');
 assert.ok(ui.includes('visible.length>0&&<tfoot>'),'Footer must reflect filtered rows');
 assert.ok(ui.includes('>CLEAR FILTERS</button>'),'Admin can reset company and name filters');
 assert.ok(ui.includes("const [saved,setSaved]=useState({});"),'Salary row save states are tracked');
@@ -137,4 +193,4 @@ assert.ok(ui.includes('companyPastel=company=>companyPastels[company]'),
 
 assert.ok(navigation.includes('selectedDashboard===\x27SALARY\x27')&&navigation.includes('<SalaryDashboard/>'));
 assert.ok(navigation.includes('>SALARY</button>'));
-console.log('Salary calculator regression passed: September selection, per-employee cash/account, total, balance, persistence, admin-only access and no deductions.');
+console.log('Salary calculator regression passed: JEPO/KCC/PV company groups, branch subtotal, original monthly salary persistence, admin-only access and no deductions.');
