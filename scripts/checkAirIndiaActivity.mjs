@@ -73,6 +73,19 @@ assert.equal(offloaded.departureIsActual,false);
 const priorDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH\n'+newOffload.replace('AWB Activity Timeline\n','');
 assert.equal(parseActivity(newOffload+'\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'OFFLOADED','Latest offload must override an older departure');
 assert.equal(parseActivity(priorDeparture,example).status,'IN TRANSIT','A later verified departure restores transit');
+// This AWB was offloaded on two separate dates; the older 28 Oct full
+// offload is history. Count the latest 30 Oct 6+15+20 only once.
+const historicalOffloads='AWB Activity Timeline\n'
+  +'OFFLOADED Offloaded 6 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\n'
+  +'OFFLOADED Offloaded 15 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\n'
+  +'OFFLOADED Offloaded 20 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\n'
+  +'DEPARTURE Departed 41 pcs 0 kg on IX-0124, 30 Oct 2026 14:40 (A) at AUH\n'
+  +'OFFLOADED Offloaded 41 pcs 0 kg for IX-0124, 28 Oct 2026 at AUH';
+const currentOffload=parseActivity(historicalOffloads,example);
+assert.equal(currentOffload.status,'OFFLOADED');
+assert.equal(currentOffload.offloadedPieces,'41','Historical 28 Oct offload must not double count current 30 Oct 41 pcs');
+assert.equal(currentOffload.arrivalDate,'','An OFFLOADED master must not enter next-day arrival list');
+
 const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
 assert.equal(departed.status,'IN TRANSIT','Departure is not actual cargo arrival');
