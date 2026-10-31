@@ -76,6 +76,7 @@ async function getData(sql,month){
   return {incomes,expenses:saved.map(viewExpense)};
 }
 export async function GET(request){
+  if(readSession(request)?.role!=='admin')return reply({ok:false,error:'Only the main Admin can view Branch Profit & Loss.'},403);
   try{
     const sql=database();
     if(!await adminOnly(request,sql))return reply({ok:false,error:'Only the main Admin can view Branch Profit & Loss.'},403);
@@ -86,6 +87,7 @@ export async function GET(request){
   }catch(e){return reply({ok:false,error:e?.message||'Unable to load branch profit.'},503);}
 }
 export async function POST(request){
+  if(readSession(request)?.role!=='admin')return reply({ok:false,error:'Only the main Admin can save branch expenses.'},403);
   try{
     const sql=database(),admin=await adminOnly(request,sql);
     if(!admin)return reply({ok:false,error:'Only the main Admin can save branch expenses.'},403);
@@ -100,6 +102,7 @@ export async function POST(request){
   }catch(e){return reply({ok:false,error:e?.message||'Unable to save expense.'},503);}
 }
 export async function PATCH(request){
+  if(readSession(request)?.role!=='admin')return reply({ok:false,error:'Only the main Admin can edit branch expenses.'},403);
   try{
     const sql=database(),admin=await adminOnly(request,sql);
     if(!admin)return reply({ok:false,error:'Only the main Admin can edit branch expenses.'},403);
@@ -117,6 +120,7 @@ export async function PATCH(request){
   }catch(e){return reply({ok:false,error:e?.message||'Unable to edit expense.'},503);}
 }
 export async function DELETE(request){
+  if(readSession(request)?.role!=='admin')return reply({ok:false,error:'Only the main Admin can delete branch expenses.'},403);
   try{
     const sql=database(),admin=await adminOnly(request,sql);
     if(!admin)return reply({ok:false,error:'Only the main Admin can delete branch expenses.'},403);
