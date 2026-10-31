@@ -33,7 +33,7 @@ assert.ok(dashboard.includes("speedPostTab!=='MONTHLY'"),
 assert.ok(dashboard.includes("if(!canViewProfit||bankSaving"),
   'Bank payment updates must remain Admin-only');
 assert.ok(dashboard.includes("...(canViewProfit?['Amount Paid in Bank','Difference','Daily Profit']:[])"),
-  'Admin's day-by-day bank reconciliation and profit must remain');
+  'Admin-only daily bank reconciliation and profit must remain');
 assert.ok(dashboard.includes('createBookingPendingPdf('),'Booking Pending PDF preserved');
 assert.ok(dashboard.includes("return row?.delivered===true"),'Delivered status classification preserved');
 
