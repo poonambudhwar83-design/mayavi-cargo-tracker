@@ -38,7 +38,7 @@ const freshCheck=new Date(tick-3*60*1000).toISOString();
 assert.equal(cathayRefreshDecision({flightNo:'CX679',arrivalDate:'2026-10-27',arrivalTime:'13:45',arrivalIsActual:true,status:'ARRIVED',lastChecked:oldCheck},'ACTIVE',tick).due,true);
 assert.equal(cathayRefreshDecision({flightNo:'CX679',arrivalDate:'2026-10-27',arrivalTime:'13:45',arrivalIsActual:true,status:'ARRIVED',lastChecked:freshCheck},'ACTIVE',tick).due,false);
 assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:new Date(tick-6*60*1000).toISOString()},'ACTIVE',tick).due,true);
-assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:freshCheck},'ACTIVE',tick).due,false);
+assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:freshCheck},'ACTIVE',tick).due,true);
 assert.equal(cathayRefreshDecision({status:'BOOKED',lastChecked:oldCheck},'SKIP',tick).due,false);
 
 // Official photo (27 Oct 2026): one piece, 60kg, CX679 on 27 Oct,
@@ -78,6 +78,9 @@ assert.ok(browserSource.includes('typeCathayAwbAsUser(page,serial)'), 'CX AWB se
 assert.ok(browserSource.includes("await fillField(page,'awb',serial)"));
 const bookingDetails=parseCathayBookingStatus(cathayPhotoText.replace('Booking Status','Booking Details'),'160-18865044');
 assert.ok(bookingDetails,'lower Booking Details card should be parsed');
+const bookingInformation=parseCathayBookingStatus(cathayPhotoText.replace('Booking Status','Booking Information'),'160-18865044');
+assert.ok(bookingInformation,'Booking Information card must be parsed too');
+assert.equal(bookingInformation.arrivalDate,'2026-10-28');
 assert.equal(bookingDetails.flightNo,'CX679');
 assert.equal(bookingDetails.arrivalDate,'2026-10-28');
 assert.equal(bookingDetails.arrivalTime,'00:10');
