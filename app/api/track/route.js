@@ -8,6 +8,7 @@ import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
 import { applySaudiaPartFlightEtas } from '../../../lib/saudiaPartEta.js';
 import { reconcileSaudiaPhysicalParts } from '../../../lib/saudiaPhysicalParts.js';
+import { resolveSaudiaArrivedMasterFlight } from '../../../lib/saudiaArrivedMasterFlight.js';
 import { guardSaudiaFromLatestSal, enforceSaudiaArrivalEvidence } from '../../../lib/saudiaTransitGuard.js';
 import { trackTurkish } from '../../../lib/turkish.js';
 import { trackTurkishTrackingOne } from '../../../lib/turkishTrackingOne.js';
@@ -1602,7 +1603,7 @@ async function handle(mawb,fallback={}){
     // Final physical SAL reconciliation must run AFTER all latest-flight
     // guards. Preserve 49/99 Delhi ARR and 50/99 JED RCF as two independent
     // parts, not the duplicated 49 ARR + 49 historic DEP.
-    shipment=reconcileSaudiaPhysicalParts(shipment);
+    shipment=resolveSaudiaArrivedMasterFlight(reconcileSaudiaPhysicalParts(shipment));
   }
   if(cathayFastPath){
     // Return previously verified fields to the dashboard as well as protect DB writes.
