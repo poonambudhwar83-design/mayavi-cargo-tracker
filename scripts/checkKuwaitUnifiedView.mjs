@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { kuwaitPartLoadFromActivity } from '../lib/kuwaitPartLoads.js';
 import { consolidatedKuwaitDeparture } from '../lib/kuwaitUnifiedView.js';
 import { kuwaitDatedArrivalEta, applyKuwaitDatedEta } from '../lib/kuwaitFlightEta.js';
+import { reconcileKuwaitMasterEvents } from '../lib/kuwaitMasterEvents.js';
 
 const ops=[
   {code:'DEP',airport:'KWI',dateText:'31-OCT-26 19:07',details:'Departed on Flight on KU381/31-OCT-26 19:07, 87 Pieces, 2885.0 Kgs, 31-OCT-26 19:07 at KWI'},
@@ -50,3 +51,40 @@ assert.equal(live.arrivalTime,'01:02');
 assert.equal(kuwaitDatedArrivalEta({...old,flightDate:'2026-11-03'},null)?.arrivalTime,undefined,'unknown future timetable never gets a fake +7h');
 assert.equal(kuwaitDatedArrivalEta(old,{flightNo:'KU383',departureDate:'2026-10-31',arrivalDate:'2026-11-01',arrivalTime:'06:00'}).arrivalTime,'01:30','wrong-flight ETA rejected, known schedule fallback');
 console.log('Kuwait 87/87 merge verified; accurate dated ETA 01 Nov 01:30 IST; 55+32 history, Customs/Mail, no false arrival, and split/unmerge safeguards verified.');
+
+const genericMawb={mawb:'229-90876543',origin:'KWI',destination:'DEL',flightNo:'KU383',
+  flightDate:'2026-11-05',pieces:'20',weight:'700',status:'ARRIVED',arrivalDate:'2026-11-05',
+  arrivalTime:'23:59',arrivalIsActual:true}; // stale legacy +7h clock must not imply ARR
+const genericOps=[
+  {code:'DEP',airport:'KWI',dateText:'05-NOV-26 19:22',
+    details:'Departed on Flight on KU383/05-NOV-26 19:22, 20 Pieces, 700.0 Kgs, 05-NOV-26 19:22 at KWI'},
+  {code:'RCS',airport:'KWI',dateText:'05-NOV-26 14:00',
+    details:'Received from shipper on KU383/05-NOV-26 14:00, 20 Pieces, 700.0 Kgs at KWI'}];
+const generic=reconcileKuwaitMasterEvents(genericMawb,genericOps);
+assert.equal(generic.status,'DEPARTED','Any 229 master with exact full DEP must be DEPARTED');
+assert.equal(generic.arrivalIsActual,false,'Time passed must not imply official cargo arrival');
+assert.equal(generic.kuwaitCargoDepartureConfirmed,true);
+assert.equal(generic.partShipments,undefined,'Single-load Kuwait master remains single row');
+assert.equal(generic.departureTime,'19:22');
+const anotherDated=kuwaitDatedArrivalEta(generic,{flightNo:'KU383',departureDate:'2026-11-05',
+  arrivalDate:'2026-11-06',arrivalTime:'02:20',arrivalTimeZone:'IST',source:'Dated flight timetable'});
+assert.equal(anotherDated.arrivalTime,'02:20','Future other KU flights use their own live ETA');
+assert.match(anotherDated.arrivalTimeSource,/KU383/,'Future ETA label must contain actual flight');
+const genericWithEta=applyKuwaitDatedEta(generic,anotherDated);
+assert.equal(genericWithEta.status,'DEPARTED');
+assert.equal(genericWithEta.arrivalTime,'02:20');
+assert.equal(genericWithEta.arrivalIsActual,false);
+const noDate=kuwaitDatedArrivalEta(generic,{});
+assert.equal(noDate,null,'Never reuse 31 Oct KU381 ETA for future shipments');
+assert.equal(applyKuwaitDatedEta(generic,noDate).arrivalTime,'','Unknown future ETA stays blank');
+const irrelevant=reconcileKuwaitMasterEvents(genericMawb,[{...genericOps[0],
+  details:genericOps[0].details.replace('20 Pieces','19 Pieces')}]);
+assert.equal(irrelevant.kuwaitCargoDepartureConfirmed,undefined,'19/20 cargo cannot confirm full uplift');
+const confirmedRcf=reconcileKuwaitMasterEvents(genericMawb,[{code:'RCF',airport:'DEL',
+  dateText:'06-NOV-26 03:00',details:'Received from Flight on KU383/06-NOV-26 03:00, 20 Pieces, 700.0 Kgs'},...genericOps]);
+assert.equal(confirmedRcf.status,'ARRIVED');
+assert.equal(confirmedRcf.arrivalIsActual,true);
+assert.equal(confirmedRcf.arrivalTime,'03:00');
+const transit=reconcileKuwaitMasterEvents({...genericMawb,destination:'LHR',via:'DXB'},genericOps);
+assert.equal(transit.status,'IN TRANSIT');
+console.log('Any Kuwait 229 MAWB verified: official whole-master DEP, true RCF arrival, independent future dated flight ETA, no sample AWB dependence.');
