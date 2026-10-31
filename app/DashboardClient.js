@@ -157,6 +157,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
   if(s.includes('PRE-MANIFEST'))return'PRE-MANIFESTED';
+  if(n.startsWith('229-')&&s==='MANIFESTED')return'MANIFESTED';
   if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
   return'BOOKED';
 }
@@ -560,7 +561,7 @@ function expandPartRows(list=[]){
     const row=digits(savedRow.mawb).startsWith('065')
       ?enforceSaudiaArrivalEvidence(guardSaudiaConnectingFlightWithoutSal(savedRow)):savedRow;
     const prefix=digits(row.mawb).slice(0,3);
-    if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176')return[row];
+    if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176'&&prefix!=='229')return[row];
 
     const raw=Array.isArray(row.partShipments)?row.partShipments.filter(Boolean):[];
     const status=String(row.status||'').toUpperCase();
@@ -966,7 +967,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   }}
   async function refreshByMawb(value,{silent=false}={}){const index=rowsRef.current.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rowsRef.current[index];if(!row)return;if(!silent)setNote(`Refreshing ${row.mawb}…`);let next;try{const s=await track(row.mawb,row);let live={...s};const saudiaDis=normalize(row.mawb).startsWith('065-')&&(s.disAfterFow===true||/\b(?:DIS|DUS)\b|offloaded|not loaded/i.test(String(s.sourceStatus||'')+' '+String(s.discrepancy||'')+' '+String(s.remarks||'')));/* Removed temporary Saudia ETA protection lock: live SAL evidence is authoritative. */if(saudiaDis){live={...s,flightNo:'',flightDate:'',arrivalDate:Number(s.arrivedPieces||0)>0?(s.arrivalDate||''):'',arrivalTime:Number(s.arrivedPieces||0)>0?(s.arrivalTime||''):'',arrivalIsActual:false,saudiaExpectedArrivalLocked:false,expectedDateOverrideSource:'',remarks:s.remarks||'Offloaded / not loaded to flight'};}if(Array.isArray(live.partShipments)){
   live.partShipments=mergePartMail(live.partShipments,row.partShipments||[]);
-  if(['065','098','176','312'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
+  if(['065','098','176','312','229'].some(prefix=>digits(row.mawb).startsWith(prefix))&&live.partShipments.length>=1){
     live.partShipments=mergePartCustoms(live.partShipments,row.partShipments||[]);
   }
 }if(normalize(row.mawb).startsWith('232-')&&s.arrivalVerifiedAbsent===true){live={...live,arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalVerifiedAbsent:true,mailTime:''};}if(normalize(row.mawb).startsWith('074-')&&s.klmLiveVerifiedAt&&!row.klmLiveVerifiedAt){
