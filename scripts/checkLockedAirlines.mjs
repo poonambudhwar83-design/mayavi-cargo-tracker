@@ -233,6 +233,7 @@ for(const [label,fragment] of kuwaitFullLiveRouteContract){
     changed=true;
   }
 }
+const kuwaitLockedDashboard=readFileSync('app/DashboardClient.js','utf8');
 const kuwaitDashboardContract=[
   ['KU consolidated master projection',"import { consolidatedKuwaitDeparture } from '../lib/kuwaitUnifiedView.js';"],
   ['KU full load single-row decision',"if(prefix==='229'){"],
@@ -243,7 +244,7 @@ const kuwaitDashboardContract=[
   ['KU consolidated Master Customs button',"operation:'kuwaitMasterCustoms'"],
 ];
 for(const [label,fragment] of kuwaitDashboardContract){
-  if(!dashboard.includes(fragment)){
+  if(!kuwaitLockedDashboard.includes(fragment)){
     console.error('LOCKED KUWAIT DASHBOARD CHANGED: '+label+'. Explicit owner unlock required.');
     changed=true;
   }
