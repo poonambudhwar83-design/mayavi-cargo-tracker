@@ -1566,11 +1566,23 @@ async function handle(mawb,fallback={}){
       partLoadEvidence:direct.partLoadEvidence
     });
     if(!direct.partShipments.every(p=>p.arrivalIsActual===true)){
-      shipment.arrivalDate='';
-      shipment.arrivalTime='';
+      // A verified KU cargo DEP may include a calculated arrival forecast even
+      // when destination RCF remains N/A. Never discard those individual ETAs.
+      const pending=direct.partShipments.filter(p=>p.arrivalIsActual!==true);
+      const allPendingHaveEta=pending.length>0&&pending.every(p=>p.arrivalEstimate===true
+        &&/^20\d{2}-\d{2}-\d{2}$/.test(String(p.arrivalDate||''))
+        &&/^([01]\d|2[0-3]):[0-5]\d$/.test(String(p.arrivalTime||'')));
+      const commonEta=allPendingHaveEta&&pending.every(p=>
+        p.arrivalDate===pending[0].arrivalDate&&p.arrivalTime===pending[0].arrivalTime);
+      shipment.arrivalDate=commonEta?pending[0].arrivalDate:'';
+      shipment.arrivalTime=commonEta?pending[0].arrivalTime:'';
+      shipment.scheduledArrivalDate=shipment.arrivalDate;
+      shipment.scheduledArrivalTime=shipment.arrivalTime;
+      shipment.arrivalTimeZone=commonEta?'IST':'';
+      shipment.arrivalTimeSource=commonEta?pending[0].arrivalTimeSource:'';
       shipment.arrivalIsActual=false;
-      shipment.arrivalEstimate=false;
-      shipment.arrivalVerifiedAbsent=true;
+      shipment.arrivalEstimate=Boolean(commonEta);
+      shipment.arrivalVerifiedAbsent=!commonEta;
       shipment.mailTime='';
     }
   }
