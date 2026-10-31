@@ -4,6 +4,7 @@ import { readSession } from '../../../lib/mayaviAuth.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../../../lib/partMail.js';
 import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
 import { guardCathayFinalArrival } from '../../../lib/cathayFinalArrival.js';
+import { consolidatedKuwaitDeparture } from '../../../lib/kuwaitUnifiedView.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -322,9 +323,15 @@ export async function PATCH(request){
     }
     const partKey=String(body?.partKey||'').trim();
     const partCustoms=body?.operation==='partCustoms'||body?.operation==='emiratesPartCustoms';
-    const supportedPart=Boolean(awb&&['065','098','176','312'].some(prefix=>awb.startsWith(prefix)));
+    const kuwaitBulkMail=body?.operation==='kuwaitMasterMail';
+    const kuwaitBulkCustoms=body?.operation==='kuwaitMasterCustoms';
+    const kuwaitBulk=kuwaitBulkMail||kuwaitBulkCustoms;
+    const supportedPart=Boolean(awb&&['065','098','176','312','229'].some(prefix=>awb.startsWith(prefix)));
     if(!awb||partKey.length>256||(
-        partCustoms
+        kuwaitBulk
+          ? (!awb.startsWith('229')||Boolean(partKey)||
+             typeof (kuwaitBulkCustoms?body?.customsCleared:body?.mailSent)!=='boolean')
+          : partCustoms
           ? (!supportedPart||!partKey||typeof body?.customsCleared!=='boolean')
           : typeof body?.mailSent!=='boolean'
       )){
@@ -343,7 +350,30 @@ export async function PATCH(request){
       }
       const date=new Date().toISOString();
       const updated={...previous.data};
-      if(partKey){
+      if(kuwaitBulk){
+        // A full KU cargo DEP is one operator-visible master, yet historical
+        // physical parts retain their IDs, weights, timestamps and notes.
+        // Validate again during each compare-and-swap retry.
+        if(!consolidatedKuwaitDeparture(updated)){
+          return Response.json({ok:false,error:'Kuwait load no longer consolidated. Refresh and select the physical part.'},{status:409});
+        }
+        const date=new Date().toISOString();
+        const actor=String(auth.session?.displayName||auth.session?.username||'Operator');
+        if(kuwaitBulkCustoms&&body.customsCleared===true&&updated.partShipments.some(p=>p.mailSent!==true)){
+          return Response.json({ok:false,error:'Select Mail YES before Customs Clear.'},{status:409});
+        }
+        if(kuwaitBulkMail){
+          updated.mailSent=body.mailSent;updated.mailUpdatedAt=date;
+          updated.partShipments=updated.partShipments.map(p=>({...p,mailSent:body.mailSent,mailUpdatedAt:date}));
+        }else{
+          updated.customsCleared=body.customsCleared;
+          updated.customsClearedAt=body.customsCleared?date:'';
+          updated.customsClearedBy=body.customsCleared?actor:'';
+          updated.partShipments=updated.partShipments.map(p=>({...p,
+            customsCleared:body.customsCleared,customsClearedAt:body.customsCleared?date:'',
+            customsClearedBy:body.customsCleared?actor:''}));
+        }
+      }else if(partKey){
         if(!Array.isArray(updated.partShipments)){
           return Response.json({ok:false,error:'Part shipment changed. Refresh and try again.'},{status:409});
         }
