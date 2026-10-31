@@ -685,7 +685,7 @@ export default function SpeedPostDashboard({currentUser}){
   const ratedRows=displayedRows.map(speedPostProfitRow).filter(r=>r.totalCost!==null);
   const ratedWeight=ratedRows.reduce((sum,r)=>sum+r.roundedWeight,0);
   const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+r.totalCost,0)/ratedWeight:null;
-  return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
+  return <main style={{padding:'12px min(2vw,16px) 20px',background:'linear-gradient(180deg,#f6f8ff,#f8fafc)',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
         0%,100%{background-color:#fff0ed;box-shadow:inset 0 0 0 1px #fecaca}
@@ -972,18 +972,19 @@ export default function SpeedPostDashboard({currentUser}){
         </table>
       </div>
     </section>}
-    {speedPostTab==='DELIVERED'&&<p style={{fontSize:12,color:'#475569',margin:'0 0 10px'}}>All delivered ED packets are compiled in this single sheet across every Entry Date and month.</p>}
+    {speedPostTab==='DELIVERED'&&<p style={{fontSize:12,color:'#475569',margin:'0 0 10px'}}>All delivered ED packets are compiled together. Use the Entry Date dropdown above for a specific day.</p>}
     <section style={{...card,padding:12,marginBottom:10}}>
       <h3 style={{margin:'0 0 8px',fontSize:14,color:'#163c80'}}>{pageLabel} • Financial Totals</h3>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
         {[
-          ['Entries',String(reportTotals.packets)],
-          ['Tariff Total',currency(reportTotals.tariff)],
-          ['Cash Cost Total',currency(reportTotals.cash)],
-          ['Combined Total',currency(reportTotals.combined)]
-        ].map(([name,value])=><div key={name} style={{background:'#f1f5fd',borderRadius:8,padding:'9px 10px'}}>
-          <div style={{fontSize:11,color:'#475569'}}>{name}</div>
-          <strong style={{fontSize:16,color:'#173f91'}}>{value}</strong>
+          ['Entries',String(reportTotals.packets),'#eef2ff','#4338ca'],
+          ['Tariff Total',currency(reportTotals.tariff),'#ecfeff','#0e7490'],
+          ['Cash Cost Total',currency(reportTotals.cash),'#fff7ed','#b45309'],
+          ['Combined Total',currency(reportTotals.combined),'#ecfdf5','#047857']
+        ].map(([name,value,bg,color])=><div key={name}
+          style={{background:bg,borderRadius:10,padding:'12px 13px',border:'1px solid #e2e8f0',borderLeft:'3px solid '+color}}>
+          <div style={{fontSize:11,color:'#475569',fontWeight:700}}>{name}</div>
+          <strong style={{fontSize:17,color}}>{value}</strong>
         </div>)}
       </div>
       <p style={{fontSize:11,color:'#64748b',margin:'9px 0 0'}}>
@@ -1087,7 +1088,10 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
-            <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
+            <td style={td}><span style={{display:'inline-block',padding:'5px 9px',borderRadius:12,
+              background:isDelivered(r)?'#dcfce7':statusBucket(r)==='PENDING'?'#fef3c7':statusBucket(r)==='IN_TRANSIT'?'#dbeafe':'#ede9fe',
+              color:isDelivered(r)?'#166534':statusBucket(r)==='PENDING'?'#92400e':statusBucket(r)==='IN_TRANSIT'?'#1d4ed8':'#5b21b6'}}>
+              <strong>{formatValue(r.status)}</strong></span>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
