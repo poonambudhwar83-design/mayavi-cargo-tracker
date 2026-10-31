@@ -327,6 +327,7 @@ export default function SpeedPostDashboard({currentUser}){
     const data=await resp.json().catch(()=>({}));
     if(!resp.ok||!data.ok)throw Error(data.error||'Could not save parcel');
     if(data.row)setRows(old=>[data.row,...old.filter(x=>x.trackingNo!==ed)]);
+    if(data.duplicate===true&&data.row)focusDuplicateED(data.row);
     return data;
   }
   async function saveReviewedBatch(index,item){
@@ -338,8 +339,9 @@ export default function SpeedPostDashboard({currentUser}){
     try{
       const data=await saveBatchED(ed);
       if(data.row)setRows(old=>[data.row,...old.filter(r=>r.trackingNo!==ed)]);
-      updateBatchItem(index,{status:'saved',ed,
-        error:'ED saved. Enter consignee name in the table row below.'});
+      updateBatchItem(index,{status:data.duplicate===true?'duplicate':'saved',ed,
+        error:data.duplicate===true?'Duplicate ED: original packet is blinking in Active / Delivered.'
+          :'ED saved. Enter consignee name in the table row below.'});
     }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
     finally{setReviewBusy(false);}
   }
@@ -372,8 +374,10 @@ export default function SpeedPostDashboard({currentUser}){
             const saved=await resp.json();
             if(!resp.ok||!saved.ok)throw Error(saved.error||'Could not save barcode ED');
             if(saved.row)setRows(old=>[saved.row,...old.filter(x=>x.trackingNo!==barcode)]);
-            updateBatchItem(i,{ed:barcode,status:'saved',
-              error:'Barcode read and saved. Enter consignee name in its table row.'});
+            if(saved.duplicate===true&&saved.row)focusDuplicateED(saved.row);
+            updateBatchItem(i,{ed:barcode,status:saved.duplicate===true?'duplicate':'saved',
+              error:saved.duplicate===true?'Duplicate barcode ED: original packet highlighted.'
+                :'Barcode read and saved. Enter consignee name in its table row.'});
             continue;
           }
           const form=new FormData();form.append('photo',file);form.append('edOnly','1');
@@ -395,8 +399,9 @@ export default function SpeedPostDashboard({currentUser}){
           if(!certain)continue;
           const saved=await saveBatchED(ed);
           if(saved.row)setRows(old=>[saved.row,...old.filter(r=>r.trackingNo!==ed)]);
-          updateBatchItem(i,{status:'saved',
-            error:'ED saved. Enter consignee name manually in the table row.'});
+          updateBatchItem(i,{status:saved.duplicate===true?'duplicate':'saved',
+            error:saved.duplicate===true?'Duplicate ED: original packet is pinned at the top.'
+              :'ED saved. Enter consignee name manually in the table row.'});
           // Deliberately avoid a third-party tracking fetch inside this batch:
           // the ED + TO fields are saved first and tracking can be refreshed.
         }catch(e){
@@ -839,7 +844,7 @@ export default function SpeedPostDashboard({currentUser}){
         </form>
       </div>
       {(imageName||ocrBusy||batchItems.length>0)&&<div role="status" style={{fontSize:11,marginTop:5,color:'#305994'}}>
-        {ocrBusy?ocrProgress||'Scanning ED…':batchItems.length?('Photos: '+batchItems.filter(x=>['saved','review','error'].includes(x.status)).length+'/'+batchItems.length+' checked'):imageName?'Last photo: '+imageName:''}
+        {ocrBusy?ocrProgress||'Scanning ED…':batchItems.length?('Photos: '+batchItems.filter(x=>['saved','duplicate','review','error'].includes(x.status)).length+'/'+batchItems.length+' checked'):imageName?'Last photo: '+imageName:''}
       </div>}
       {ocrCandidates.length>0&&<div style={{border:'1px solid #bfd3ef',borderRadius:7,padding:7,marginTop:6,background:'#f4f8ff'}}>
         <span style={{fontSize:11,fontWeight:700}}>Confirm the printed ED number:</span>
