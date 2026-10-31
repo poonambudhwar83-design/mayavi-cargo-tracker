@@ -607,7 +607,9 @@ function expandPartRows(list=[]){
     // general version of the original ZIP's DIS-only pending-balance row.
     // The record is VIEW ONLY: never invent a flight, ETA, DEP, ARR or Mail YES.
     // For example 065-11493661 must show 49/99 ARRIVED and 50/99 PENDING.
-    if(prefix==='065'){
+    // Never fabricate an unverified physical row by subtraction. A balance
+    // row is permitted only with explicit SAL evidence, not total-minus-part.
+    if(prefix==='065'&&row.saudiaVerifiedPendingBalance===true){
       const masterTotal=Number(row.totalPieces||row.masterPieces||String(row.bags||row.pieces||'').split('/').at(-1)||0);
       const recordedArrived=Number(row.arrivedPieces??0);
       const confirmedArrived=parts
@@ -1032,7 +1034,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
       const physicalId=String(partKey||'').split('::').slice(1).join('::');
       const partIndex=row.partShipments.findIndex((p,i)=>partIdentity(p,i)===physicalId);
       if(!physicalId||partIndex<0){setNote('Select one part row. Refresh if its ID has changed.');return;}
-      if(cleared&&row.partShipments[partIndex].mailSent!==true){
+      if(cleared&&!normalize(row.mawb).startsWith('065-')&&row.partShipments[partIndex].mailSent!==true){
         setNote(`${row.mawb} • part ${partIndex+1}: Select Mail YES first; then click Customs Pending.`);
         return;
       }
