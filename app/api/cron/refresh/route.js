@@ -48,6 +48,12 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   // Departed = IN TRANSIT
   // Arrived/Delivered = ARRIVED
   if(mawb.startsWith('229-')&&s.includes('PART LOAD'))return'PART LOAD';
+  // Kuwait Cargo confirmed a full direct KWI -> DEL uplift. Do not remap
+  // verified DEPARTED to IN TRANSIT during the 10-minute backend refresh.
+  if(mawb.startsWith('229-')&&row.kuwaitCargoDepartureConfirmed===true
+    &&airportCode(row.origin)==='KWI'&&airportCode(row.destination)==='DEL'
+    &&!explicitViaForStatus(row)
+    &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(isAirIndia(mawb)){
     if(s.includes('OFFLOAD'))return'OFFLOADED';
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
