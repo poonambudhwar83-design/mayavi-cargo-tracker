@@ -4,6 +4,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
 import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
 import styles from './BranchLoadsDashboard.module.css';
+import BranchProfitDashboard from './BranchProfitDashboard.js';
 
 const API='/api/branch-loads';
 // The same request ID is reused if a save must be retried, preventing duplicate entries.
@@ -505,6 +506,16 @@ export default function BranchLoadsDashboard({currentUser}){
       cash={jepoCashPart(record.commodity,record.extraCost,record.bottleCount,{legacy:true})}
     /></td>
   ];
+  if(sheet==='PROFIT'&&currentUser?.role==='admin')return <main className={styles.page}>
+    <header className={styles.heading}><div><small>MAYAVI • MAIN ADMIN ONLY</small><h1>Jind &amp; Karnal — Branch Finance</h1><p>Monthly income, salaries, operating expenses and branch-wise profit or loss</p></div></header>
+    <nav className={styles.sheetTabs} aria-label="Branch finance navigation">
+      <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads</button>
+      <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet</button>
+      <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
+      <button type="button" className={styles.activeTab}>Branch Profit &amp; Loss</button>
+    </nav>
+    <BranchProfitDashboard/>
+  </main>;
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
@@ -535,6 +546,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
       <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
+      {currentUser?.role==='admin'&&<button type="button" className={styles.sheetTab} onClick={()=>switchSheet('PROFIT')}>Branch Profit &amp; Loss</button>}
     </nav>
 
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch. Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
