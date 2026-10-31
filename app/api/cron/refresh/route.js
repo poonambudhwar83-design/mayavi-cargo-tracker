@@ -48,6 +48,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   // Departed = IN TRANSIT
   // Arrived/Delivered = ARRIVED
   if(isAirIndia(mawb)){
+    if(s.includes('OFFLOAD'))return'OFFLOADED';
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
     if(s.includes('DELIVER'))return'DELIVERED';
     if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){
@@ -83,9 +84,9 @@ function decorateTiming(existing={},incoming={}){
   const shipmentType=shipmentTypeOf(incoming.shipmentType||existing.shipmentType);
   const mawb=normalize(incoming.mawb||existing.mawb||incoming.awb||existing.awb)||incoming.mawb||existing.mawb||'';
   const clearArrival=incoming.arrivalVerifiedAbsent===true;
-  const clearSaudiaEta=clearArrival&&mawb.startsWith('065-');
-  const scheduledArrivalDate=clearSaudiaEta?'':(incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'');
-  const scheduledArrivalTime=clearSaudiaEta?'':(incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'');
+  const clearUnverifiedEta=clearArrival&&(mawb.startsWith('065-')||isAirIndia(mawb));
+  const scheduledArrivalDate=clearUnverifiedEta?'':(incoming.scheduledArrivalDate||existing.scheduledArrivalDate||incoming.arrivalDate||existing.arrivalDate||'');
+  const scheduledArrivalTime=clearUnverifiedEta?'':(incoming.scheduledArrivalTime||existing.scheduledArrivalTime||incoming.arrivalTime||existing.arrivalTime||'');
   const arrivalDate=clearArrival?'':(incoming.arrivalDate||existing.arrivalDate||'');
   // Flydubai may confirm final RCF without an actual clock: never carry the
   // previous ETA into the actual arrival-time cell.
