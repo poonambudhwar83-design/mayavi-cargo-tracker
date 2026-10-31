@@ -7,6 +7,7 @@ import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js
 import { averageWeightPerBag } from '../lib/averageBagWeight.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
 import { notifyProfitSourceChanged } from '../lib/profitSync.js';
+import { resolveSaudiaArrivedMasterFlight } from '../lib/saudiaArrivedMasterFlight.js';
 import { matchSaudiaRcfParts } from '../lib/saudiaRcfParts.js';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 import { guardCathayFinalArrival } from '../lib/cathayFinalArrival.js';
@@ -267,7 +268,7 @@ function decorateTiming(existing={},incoming={}){
   const handoverTime=exportLike?handoverTimeFrom(departureDate,departureTime):'';
   const handoverDone=exportLike?merged.handoverDone===true:undefined;
 
-  return {...merged,via,flightNo,bookingDate,bookingTime,destination:merged.destination||'',shipmentType,departureDate,departureTime,handoverTime,handoverDone,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,wasDelayed,remarks,mailTime,mailSent,customsCleared,masterCopyReceived};
+  return resolveSaudiaArrivedMasterFlight({...merged,via,flightNo,bookingDate,bookingTime,destination:merged.destination||'',shipmentType,departureDate,departureTime,handoverTime,handoverDone,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual:Boolean(merged.arrivalIsActual),timingDeltaMinutes,timingStatus,status,wasDelayed,remarks,mailTime,mailSent,customsCleared,masterCopyReceived});
 }
 function clientStyle(name=''){const s=String(name||'').trim();if(!s)return{};let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return {backgroundColor:`hsl(${h} 75% 92%)`,color:`hsl(${h} 48% 28%)`,borderColor:`hsl(${h} 55% 76%)`}}
 function officialUrl(row={}){
