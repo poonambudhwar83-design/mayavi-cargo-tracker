@@ -29,3 +29,22 @@ assert.equal(kuwaitPartLoadFromActivity([ops[2],ops[3]],{destination:'DEL'}),nul
 const persisted=kuwaitPartLoadFromActivity([ops[0],{...ops[1],code:'PRE',details:ops[1].details.replace('Manifested on Flight','Pre-Manifested on Flight')},ops[1],ops[2],ops[3]],{destination:'DEL'});
 assert.deepEqual(persisted.partShipments.map(p=>p.status),['MANIFESTED','PRE-MANIFESTED'],'Latest true MAN wins same physical part PRE history');
 console.log('Kuwait 229 part load verified: 41/87 1360 MAN + 46/87 1525 PRE; total 87/2885, no false cargo arrival.');
+
+
+const entireDeparted=[
+  {code:'DEP',airport:'KWI',dateText:'31-OCT-26 19:15',details:'Departed on Flight on KU381/31-OCT-26 19:15, 87 Pieces, 2885.0 Kgs, 31-OCT-26 19:15 at KWI'},
+  {code:'MAN',airport:'KWI',dateText:'31-OCT-26 12:24',details:'Manifested on Flight on KU381/31-OCT-26 12:24, 55 Pieces, 1824.0 Kgs, 31-OCT-26 12:24 at KWI'},
+  {code:'MAN',airport:'KWI',dateText:'31-OCT-26 12:24',details:'Manifested on Flight on KU381/31-OCT-26 12:24, 32 Pieces, 1061.0 Kgs, 31-OCT-26 12:24 at KWI'},
+  {code:'RCS',airport:'KWI',dateText:'30-OCT-26 22:17',details:'Received from shipper 87 Pieces, 2885.0 Kgs'}
+];
+const loaded=kuwaitPartLoadFromActivity(entireDeparted,{destination:'DEL'});
+assert.equal(loaded.status,'IN TRANSIT','Verified master DEP means full load departed');
+assert.equal(loaded.partShipments.length,2,'Keep two independently listed physical parts');
+assert.deepEqual(loaded.partShipments.map(p=>[p.pieces,p.weight,p.status,p.sourceStatus]),[
+  ['55','1824','IN TRANSIT','DEP'],['32','1061','IN TRANSIT','DEP']]);
+assert.ok(loaded.partShipments.every(p=>p.departureIsActual===true&&!p.arrivalIsActual));
+const unverified=kuwaitPartLoadFromActivity(entireDeparted.map(x=>({...x,
+  code:x.code==='DEP'?'MAN':x.code})),{destination:'DEL'});
+assert.equal(unverified.status,'PART LOAD');
+assert.ok(unverified.partShipments.every(p=>p.departureIsActual===false));
+console.log('Kuwait verified full 87-bag DEP updates both 55/32 physical rows without merging; MAN stays MAN');
