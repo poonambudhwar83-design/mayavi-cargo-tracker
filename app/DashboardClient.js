@@ -784,6 +784,8 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   const [goodsFilter,setGoodsFilter]=useState(''),[companyFilter,setCompanyFilter]=useState(''),[enteredByFilter,setEnteredByFilter]=useState('');
   const [currentImportMonth,setCurrentImportMonth]=useState(currentImportIstMonth);
   const [mailClock,setMailClock]=useState(Date.now());
+  // Transient UI highlight: do not write duplicate alerts into shared shipment data.
+  const [duplicateFocus,setDuplicateFocus]=useState(null);
   useEffect(()=>{const id=setInterval(()=>setMailClock(Date.now()),15000);return()=>clearInterval(id)},[]);
   const rowsRef=useRef(rows);
   rowsRef.current=rows;
@@ -886,17 +888,40 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   },[loaded]);
   useEffect(()=>{setClientFilter('');setOriginFilter('');setDestinationFilter('');setPrefixFilter('');setGoodsFilter('');setCompanyFilter('');setEnteredByFilter('')},[activeTab,adminView]);
   const tabRows=useMemo(()=>dedupeRowsByMawb(rows).filter(r=>shipmentTypeOf(r.shipmentType)===activeTab),[rows,activeTab]);
+  const duplicateInTab=Boolean(duplicateFocus&&duplicateFocus.shipmentType===activeTab);
+  function focusExistingMaster(record){
+    const existing={...record,mawb:normalize(record.mawb)};
+    const physical=expandPartRows([existing]);
+    const fullyCleared=isImportLikeType(existing.shipmentType)
+      ?(hasIndependentCustomsParts(existing)
+        ?physical.length>0&&physical.every(p=>p.customsCleared===true)
+        :isCustomsArchived(existing))
+      :isExportArchived(existing);
+    const targetView=fullyCleared?'CLEARED':'ACTIVE';
+    setDuplicateFocus({mawb:existing.mawb,shipmentType:shipmentTypeOf(existing.shipmentType),targetView});
+    setActiveTab(shipmentTypeOf(existing.shipmentType));
+    if(isAdmin)setAdminView(targetView);
+    setPrefixFilter('');setClientFilter('');setGoodsFilter('');
+    setCompanyFilter('');setEnteredByFilter('');setOriginFilter('');setDestinationFilter('');
+    setNote(existing.mawb+' already exists in '+(fullyCleared?'CUSTOMS CLEARED':'ACTIVE')+
+      ' • Client: '+(existing.clientName||existing.client||'Not entered')+
+      '. Existing master highlighted at the top; no duplicate created.');
+  }
   const dashboardRows=useMemo(()=>{
     if(exportLikeTab){
       if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>isExportArchived(r)&&
-        (activeTab!=='EXPORT'||importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth));
-      return tabRows.filter(r=>!isExportArchived(r));
+        (activeTab!=='EXPORT'||importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth||
+         (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb))));
+      return tabRows.filter(r=>!isExportArchived(r)||
+        (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb)));
     }
     // Emirates split loads must be included in both candidate views. After
     // expansion, only the cleared physical parts go to Customs Cleared.
-    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r));
-    return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r));
-  },[tabRows,activeTab,isAdmin,adminView,currentImportMonth]);
+    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r)||
+      (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb)));
+    return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r)||
+      (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb)));
+  },[tabRows,activeTab,isAdmin,adminView,currentImportMonth,duplicateFocus,duplicateInTab]);
   const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>
     sum+expandPartRows([row]).filter(p=>p.customsCleared===true&&
       (!p.arrivalDate||importArrivalMonth(p.arrivalDate)===currentImportMonth)).length
@@ -914,11 +939,20 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
     if(clearedFilterMode&&importLikeTab){
       // Filter AFTER physical part expansion: Sep part goes to Sep archive,
       // Oct part stays visible here even when both share one MAWB.
-      return r.customsCleared===true&&(privateTab||!r.arrivalDate||importArrivalMonth(r.arrivalDate)===currentImportMonth);
+      return r.customsCleared===true&&(privateTab||!r.arrivalDate||
+        importArrivalMonth(r.arrivalDate)===currentImportMonth||
+        (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb)));
     }
+    if(duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb)&&!isAdmin)return true;
     if(!r._partKey)return true;
     return clearedFilterMode?r.customsCleared===true:r.customsCleared!==true;
-  });return sortForDashboard(expanded,activeTab)},[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,goodsFilter,companyFilter,enteredByFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth,privateTab,mailClock]);
+  });
+  const ordered=sortForDashboard(expanded,activeTab);
+  if(!duplicateInTab)return ordered;
+  // Keep every visible physical part of the repeated MAWB together at the top.
+  return [...ordered.filter(r=>digits(r.mawb)===digits(duplicateFocus.mawb)),
+    ...ordered.filter(r=>digits(r.mawb)!==digits(duplicateFocus.mawb))];
+  },[dashboardRows,clearedFilterMode,customsFilterMode,clientFilter,goodsFilter,companyFilter,enteredByFilter,originFilter,destinationFilter,prefixFilter,activeTab,currentImportMonth,privateTab,mailClock,duplicateFocus,duplicateInTab]);
   const totalWeight=useMemo(()=>{
     const groups=new Map();
     for(const row of visibleRows){
