@@ -101,6 +101,13 @@ function viaForRow(row={}){
     const via=[...new Set((stops.length?stops:saved).filter(code=>code!==origin&&code!==destination))];
     if(via.length)return via.join(' / ');
   }
+  // The old generic fallback displayed KWI itself as a VIA on direct
+  // KU381 KWI -> DEL, which in turn incorrectly labelled DEP as IN TRANSIT.
+  if(n.startsWith('229-')&&origin==='KWI'&&destination==='DEL'){
+    const stop=[row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub]
+      .map(airportCode).find(code=>code&&code!==origin&&code!==destination);
+    return stop||'';
+  }
   const explicit=[row.via,row.transitAirport,row.routeVia,row.connectionAirport,row.hub].map(airportCode).find(Boolean);
   if(explicit)return explicit;
   const departureDestination=airportCode(row.departureDestination);
@@ -123,6 +130,9 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   // A missed Ethiopian final-leg ETA must remain visible as RESCHEDULED,
   // not be collapsed to BOOKED by the generic display mapper.
   if(s.includes('RESCHEDUL'))return'RESCHEDULED';
+  if(n.startsWith('229-')&&origin==='KWI'&&destination==='DEL'&&!via
+     &&row.kuwaitCargoDepartureConfirmed===true
+     &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(n.startsWith('065-')&&String(row.sourceStatus||'').toUpperCase()==='FOW'&&row.arrivalIsActual!==true&&s==='IN TRANSIT')return'EXPECTED';
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
@@ -739,6 +749,7 @@ function expandPartRows(list=[]){
       arrivalEstimate:p.arrivalEstimate===true||Boolean(saudiaEta),
       arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?'Matching Saudia flight/date planned ETA; IST, not actual arrival':''),
       status:p.status||row.status,
+      sourceStatus:prefix==='229'?(p.sourceStatus||row.sourceStatus):row.sourceStatus,
       saudiaRcfFollowUp:Boolean(rcf),
       saudiaRcfStation:rcf?.station||'',
       saudiaRcfDate:rcf?.date||'',
