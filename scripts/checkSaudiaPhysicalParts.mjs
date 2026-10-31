@@ -96,4 +96,9 @@ assert.match(trackRoute,/shipment\.partShipments\.reduce\(\(n,p\)=>n\+Number\(p\
   'no incomplete/cross-flight partial movement may replace saved physical rows');
 assert.match(trackRoute,/persistAirIndiaVirginResult\(mawb,shipment\)/,
   'verified physical split must reach backend shared DB write');
+const dashSource=readFileSync('app/DashboardClient.js','utf8');
+assert.match(dashSource,/const serverAuthoritative=key\.startsWith\('065'\)/,
+  'Saudia 065 must prefer correct shared DB on page hydration');
+assert.match(dashSource,/out\.push\(key\.startsWith\('065'\)/,
+  'Saudia 065 must prefer shared DB to stale local storage during 1-minute polling');
 console.log('Saudia SAL physical 113/121 JED RCF + 8/121 SV1127 FOW; per-part ETA and no false DEL ARR passed.');
