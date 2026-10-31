@@ -16,6 +16,17 @@ const locked = Object.freeze({
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
   // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
   'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',
+  // Owner-approved 2026-10-31 Kuwait 229 LIVE LOCK: full AWB DEP and RCF
+  // events, split reconciliation, cargo vs aircraft departure, dated IST ETA,
+  // safe one-row consolidation and regression baselines. Any source changes
+  // require explicit owner unlock; background live data may continue updating.
+  'lib/kuwaitPartLoads.js':'5dc0565ad54c37e5050974ce33fec135ce9b0aa9',
+  'lib/kuwaitAircraftDeparture.js':'7cc94d007f8ab31cbb0bf4cd42c6b53c65d756c6',
+  'lib/kuwaitFlightEta.js':'34c9d11df7055d5c441f7d75f1f0f9488d6d1148',
+  'lib/kuwaitMasterEvents.js':'eb66b2fb73f86b0898263cce756c3e5d58a3406f',
+  'lib/kuwaitUnifiedView.js':'4f442d8531668e13681a1488189c382977d28f03',
+  'scripts/checkKuwaitUnifiedView.mjs':'aa863f268b4d53d2c2b8c4c5bbcd7677e925a2fb',
+  'scripts/checkKuwaitPartLoads.mjs':'d82e0981e718f57fa870ec03d89c8d69f3aa3a21',
   // IndiGo is now working on the live V2 deployment; freeze its official adapter,
   // part-load form extraction, sync API and sync component as of 2026-10-11.
   'lib/indigo.js':'3b56a630f809db8dddf2428739bba25c1c6beffc',
@@ -197,6 +208,61 @@ for(const [label,fragment] of kuwaitRouteContract){
     console.error('LOCKED KUWAIT INTEGRATION CHANGED: '+label+'. Explicit unlock approval required.');
     changed=true;
   }
+}
+// Kuwait 229 live lock: protect carrier-specific stages inside the shared
+// multi-airline tracking endpoint without preventing other airlines from
+// being maintained. Exact Kuwait source algorithms above are Git-blob locked.
+const kuwaitFullLiveRouteContract=[
+  ['Official 229 master DEP/RCF reconciler import',"import { reconcileKuwaitMasterEvents } from '../../../lib/kuwaitMasterEvents.js';"],
+  ['KU physical split reconciler import',"import { kuwaitPartLoadFromActivity } from '../../../lib/kuwaitPartLoads.js';"],
+  ['KU flight ETA correction import',"import { kuwaitDatedArrivalEta, applyKuwaitDatedEta } from '../../../lib/kuwaitFlightEta.js';"],
+  ['KU aircraft departure evidence import',"import { markKuwaitAircraftDeparture } from '../../../lib/kuwaitAircraftDeparture.js';"],
+  ['KU official full-master cargo event processing',"Object.assign(direct,reconcileKuwaitMasterEvents(direct,directResult?.debug?.ops||[]));"],
+  ['KU part movements processed',"const split=kuwaitPartLoadFromActivity(directResult?.debug?.ops||[],direct);"],
+  ['KU split rows retained for historical audit',"if(split)Object.assign(direct,split);"],
+  ['KU aircraft-vs-cargo movement separation',"Object.assign(direct,markKuwaitAircraftDeparture(direct,verified));"],
+  ['KU dated flight source preferred',"const flightEtaSource=(verified?.arrivalTime||verified?.scheduledArrivalTime)"],
+  ['KU dated flight ETA applied',"Object.assign(direct,applyKuwaitDatedEta(direct,"],
+  ['KU whole master status carried to persistence',"shipment.status=kuwaitFastPath&&direct?.partShipments?.length>1?direct.status:freshStatus;"],
+  ['KU split cargo preserved in shared shipment',"if(kuwaitFastPath&&direct?.partShipments?.length>1){"],
+  ['KU split part master persisted',"shipment.partShipments=direct.partShipments;"],
+];
+for(const [label,fragment] of kuwaitFullLiveRouteContract){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED KUWAIT LIVE TRACKING CHANGED: '+label+'. Explicit owner unlock required.');
+    changed=true;
+  }
+}
+const kuwaitDashboardContract=[
+  ['KU consolidated master projection',"import { consolidatedKuwaitDeparture } from '../lib/kuwaitUnifiedView.js';"],
+  ['KU full load single-row decision',"if(prefix==='229'){"],
+  ['KU single master view',"const one=consolidatedKuwaitDeparture(row);"],
+  ['KU consolidated master displayed once',"if(one)return[one];"],
+  ['KU consolidated customs archive eligibility',"function isCustomsArchived(row={}){const kuwait=consolidatedKuwaitDeparture(row);"],
+  ['KU consolidated Master Mail button',"operation:unified?'kuwaitMasterMail':undefined"],
+  ['KU consolidated Master Customs button',"operation:'kuwaitMasterCustoms'"],
+];
+for(const [label,fragment] of kuwaitDashboardContract){
+  if(!dashboard.includes(fragment)){
+    console.error('LOCKED KUWAIT DASHBOARD CHANGED: '+label+'. Explicit owner unlock required.');
+    changed=true;
+  }
+}
+const kuwaitShipments=readFileSync('app/api/shipments/route.js','utf8');
+for(const [label,fragment] of [
+  ['Kuwait master mail atomic save',"const kuwaitBulkMail=body?.operation==='kuwaitMasterMail';"],
+  ['Kuwait master customs atomic save',"const kuwaitBulkCustoms=body?.operation==='kuwaitMasterCustoms';"],
+  ['Kuwait bulk save re-verification',"if(!consolidatedKuwaitDeparture(updated)){"],
+  ['Kuwait preserves all physical split records',"updated.partShipments=updated.partShipments.map(p=>({...p,"],
+]){
+  if(!kuwaitShipments.includes(fragment)){
+    console.error('LOCKED KUWAIT MASTER SAVE CHANGED: '+label+'. Explicit owner unlock required.');
+    changed=true;
+  }
+}
+if(!saudiaCron.includes("if(mawb.startsWith('229-')&&row.kuwaitCargoDepartureConfirmed===true")){
+  console.error('LOCKED KUWAIT AUTO REFRESH CHANGED: verified direct KWI cargo must remain DEPARTED.');
+  changed=true;
 }
 // Keep the existing IndiGo 312 routing and part-load reconciliation wired up.
 // Other airline logic in the shared track route is intentionally not locked.
