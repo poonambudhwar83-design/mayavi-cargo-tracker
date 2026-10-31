@@ -67,7 +67,7 @@
     },
     {
       "path": "/api/cron/saudia",
-      "schedule": "*/15 8-9 * * *"
+      "schedule": "*/15 20-21 * * *"
     },
     {
       "path": "/api/cron/client-ledger",
