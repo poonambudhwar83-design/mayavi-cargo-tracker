@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {EXPORT_BAG_CODES,exportCategorySummary,validateExportBagCount} from '../lib/exportCategoryBags.js';
+const result=exportCategorySummary({D:2,T:3,DT:1,GC:4});
+assert.deepEqual(EXPORT_BAG_CODES,['D','T','DT','GC']);
+assert.equal(result.clientCharge,2*15000+3*10000+1*5000+4*500);
+assert.equal(result.deduction,2*6000+3*6000+1*6000+4*300);
+assert.equal(result.netProfit,2*9000+3*4000-1000+4*200);
+assert.equal(exportCategorySummary({}).netProfit,0);
+assert.equal(validateExportBagCount('0'),0);
+assert.equal(validateExportBagCount('11'),11);
+assert.equal(validateExportBagCount('2.5'),null);
+assert.equal(validateExportBagCount('-1'),null);
+assert.equal(validateExportBagCount('100001'),null);
+console.log('Export D, T, DT and G&C charges and deductions verified.');

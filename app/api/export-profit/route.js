@@ -4,6 +4,7 @@ import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
 import { selectedProfitMonth, profitMonths, currentProfitMonth, exportProfitHandoverDate, exportRateForCompany } from '../../../lib/profitPeriod.js';
 import { includeExportMasterInProfit, exportProfitRegister } from '../../../lib/exportProfitSource.js';
 import { EXPORT_SHIPMENT_CHARGE, validateExportShipmentCharge } from '../../../lib/exportShipmentCharge.js';
+import {exportCategorySummary,validateExportBagCount} from '../../../lib/exportCategoryBags.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,21 @@ async function ensureCharges(sql){
     updated_by TEXT NOT NULL DEFAULT ''
   )`;
 }
+async function ensureCategoryBags(sql){
+  // These counts never alter the tracking record's original bag count.
+  await sql`CREATE TABLE IF NOT EXISTS mayavi_export_category_bags (
+    awb VARCHAR(11) PRIMARY KEY,
+    d_bags INTEGER NOT NULL DEFAULT 0 CHECK(d_bags >= 0),
+    t_bags INTEGER NOT NULL DEFAULT 0 CHECK(t_bags >= 0),
+    dt_bags INTEGER NOT NULL DEFAULT 0 CHECK(dt_bags >= 0),
+    gc_bags INTEGER NOT NULL DEFAULT 0 CHECK(gc_bags >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT NOT NULL DEFAULT ''
+  )`;
+}
+function savedBagCounts(row={}){
+  return {D:Number(row.d_bags||0),T:Number(row.t_bags||0),DT:Number(row.dt_bags||0),GC:Number(row.gc_bags||0)};
+}
 export async function GET(request){
   if(readSession(request)?.role!=='admin')
     return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
@@ -55,14 +71,16 @@ export async function GET(request){
   if(!month)return Response.json({ok:false,error:'Profit sheets start from October 2026. Choose a valid month.'},{status:400});
   try{
     const sql=sqlClient();
-    await ensureCharges(sql);
-    const [shipments,charges]=await Promise.all([
+    await Promise.all([ensureCharges(sql),ensureCategoryBags(sql)]);
+    const [shipments,charges,categoryRows]=await Promise.all([
       sql`SELECT awb,data FROM mayavi_shipments
         WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'
         ORDER BY updated_at DESC`,
-      sql`SELECT awb,charge FROM mayavi_export_shipment_charge`
+      sql`SELECT awb,charge FROM mayavi_export_shipment_charge`,
+      sql`SELECT awb,d_bags,t_bags,dt_bags,gc_bags FROM mayavi_export_category_bags`
     ]);
     const savedCharges=new Map(charges.map(row=>[awbDigits(row.awb),Number(row.charge)]));
+    const savedBags=new Map(categoryRows.map(row=>[awbDigits(row.awb),savedBagCounts(row)]));
     const seen=new Set(),rows=[];
     for(const shipment of shipments){
       const awb=awbDigits(shipment.awb);
@@ -74,6 +92,8 @@ export async function GET(request){
       const client=clientName(data);
       const rate=exportRateForCompany(client);
       const shipmentCharge=savedCharges.has(awb)?savedCharges.get(awb):EXPORT_SHIPMENT_CHARGE;
+      const categoryBags=savedBags.get(awb)||savedBagCounts();
+      const categories=exportCategorySummary(categoryBags);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         handoverDate:exportProfitHandoverDate(data),
@@ -82,7 +102,9 @@ export async function GET(request){
         clientName:client,
         rate,
         shipmentCharge, // Admin-editable; still once per master MAWB.
-        profit:weight===null?null:Math.round((weight*rate-shipmentCharge)*100)/100
+        categoryBags,categoryClientCharge:categories.clientCharge,
+        categoryDeduction:categories.deduction,categoryProfit:categories.netProfit,
+        profit:weight===null?null:Math.round((weight*rate-shipmentCharge+categories.netProfit)*100)/100
       });
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
@@ -98,15 +120,39 @@ export async function PATCH(request){
   try{
     const body=await request.json().catch(()=>({}));
     const awb=awbDigits(body.mawb);
-    const charge=validateExportShipmentCharge(body.shipmentCharge);
-    if(!awb||charge===null)
+    if(!awb)return Response.json({ok:false,error:'Enter a valid Export MAWB.'},{status:400});
+    const category=String(body.category||'').trim().toUpperCase();
+    const bags=category?validateExportBagCount(body.bags):null;
+    if(category&&(!['D','T','DT','GC'].includes(category)||bags===null))
+      return Response.json({ok:false,error:'Enter D, T, DT or G&C bags as a whole number between 0 and 100,000.'},{status:400});
+    const charge=category?null:validateExportShipmentCharge(body.shipmentCharge);
+    if(!category&&charge===null)
       return Response.json({ok:false,error:'Enter a valid Shipment Charge (₹0 or more, up to 2 decimals).'},{status:400});
     const sql=sqlClient();
-    await ensureCharges(sql);
+    await Promise.all([ensureCharges(sql),ensureCategoryBags(sql)]);
     const matched=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
       AND UPPER(COALESCE(data->>'shipmentType',''))='EXPORT' LIMIT 1`;
     if(!matched.length)
       return Response.json({ok:false,error:'Export MAWB not found. Refresh the sheet.'},{status:404});
+    if(category){
+      if(category==='D')await sql`INSERT INTO mayavi_export_category_bags(awb,d_bags,updated_by)
+        VALUES (${awb},${bags},${admin.username}) ON CONFLICT(awb) DO UPDATE
+        SET d_bags=EXCLUDED.d_bags,updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
+      if(category==='T')await sql`INSERT INTO mayavi_export_category_bags(awb,t_bags,updated_by)
+        VALUES (${awb},${bags},${admin.username}) ON CONFLICT(awb) DO UPDATE
+        SET t_bags=EXCLUDED.t_bags,updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
+      if(category==='DT')await sql`INSERT INTO mayavi_export_category_bags(awb,dt_bags,updated_by)
+        VALUES (${awb},${bags},${admin.username}) ON CONFLICT(awb) DO UPDATE
+        SET dt_bags=EXCLUDED.dt_bags,updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
+      if(category==='GC')await sql`INSERT INTO mayavi_export_category_bags(awb,gc_bags,updated_by)
+        VALUES (${awb},${bags},${admin.username}) ON CONFLICT(awb) DO UPDATE
+        SET gc_bags=EXCLUDED.gc_bags,updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
+      const values=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags
+        FROM mayavi_export_category_bags WHERE awb=${awb} LIMIT 1`;
+      const categoryBags=savedBagCounts(values[0]);
+      return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),categoryBags,
+        categoryTotals:exportCategorySummary(categoryBags)}, {headers:{'Cache-Control':'no-store, private'}});
+    }
     await sql`INSERT INTO mayavi_export_shipment_charge(awb,charge,updated_by)
       VALUES (${awb},${charge},${admin.username})
       ON CONFLICT(awb) DO UPDATE SET charge=EXCLUDED.charge,
