@@ -174,6 +174,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [rowSearch,setRowSearch]=useState('');
   const [selectedEntryMonth,setSelectedEntryMonth]=useState('LATEST');
   const [duplicateBusy,setDuplicateBusy]=useState('');
+  const [duplicateFocus,setDuplicateFocus]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
 
   const [busy,setBusy]=useState('');
@@ -216,6 +217,19 @@ export default function SpeedPostDashboard({currentUser}){
   },[]);
   useEffect(()=>{load();const poll=setInterval(load,60*1000);return()=>clearInterval(poll);},[load]);
 
+  const focusDuplicateED=useCallback(row=>{
+    const id=normalizeED(row?.trackingNo);
+    if(!id)return;
+    // Full original record, not the date of the new scan, determines the page.
+    setDuplicateFocus(id);
+    setSpeedPostTab(isDelivered(row)?'DELIVERED':'ACTIVE');
+    setSelectedListDay('ALL');
+    setExportStatus('SHEET');
+    setRowSearch('');
+    setTrackingNo(id);
+    setMessage(id+' is already saved • Consignee: '+(row.consigneeName||'Not entered')+
+      '. The original packet is highlighted at the top with all saved details.');
+  },[]);
   const trackOne=useCallback(async(no,action='add',photoFields=null)=>{
     const id=normalizeED(no);
     if(!id){setMessage('Enter a valid tracking number such as ED977951280IN.');return;}
@@ -230,8 +244,7 @@ export default function SpeedPostDashboard({currentUser}){
       setTrackingNo(id);
       
       if(result.duplicate===true){
-        setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
-        setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName?' Please enter the consignee name.':''));
+        focusDuplicateED(result.row||{trackingNo:id});
         return;
       }
       if(result.created===true||result.manualSaved===true){
@@ -262,7 +275,7 @@ export default function SpeedPostDashboard({currentUser}){
       }
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
-  },[]);
+  },[focusDuplicateED]);
   // Chrome/Android native Code-128 detection is faster for legible 1-D EMS barcodes.
   // Other browsers and unreadable barcodes continue to the dedicated OCR route.
   async function readEDBarcode(file){
@@ -477,6 +490,7 @@ export default function SpeedPostDashboard({currentUser}){
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not clear duplicate alert');
       setRows(old=>old.map(r=>r.trackingNo===id?result.row:r));
+      setDuplicateFocus(focus=>focus===id?'':focus);
       setMessage('Duplicate warning acknowledged for '+id+'. Shipment remains saved.');
     }catch(e){setMessage(e.message||'Cannot acknowledge duplicate alert.');}
     finally{setDuplicateBusy('');}
@@ -520,6 +534,7 @@ export default function SpeedPostDashboard({currentUser}){
     speedPostTab==='TRACKING'?'Latest Entry Sheet • '+effectiveDay:
     'Daily Entry Records • '+effectiveDay;
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
+  const focusedDuplicate=rows.find(r=>r.trackingNo===duplicateFocus);
   const actualStatuses=[...new Set(pageRows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
   // Status filters and downloads never leak records from another daily page.
   const searchTerm=rowSearch.trim().toLowerCase();
@@ -529,7 +544,13 @@ export default function SpeedPostDashboard({currentUser}){
       statusBucket(r)===exportStatus))
     .filter(r=>!searchTerm||[r.trackingNo,r.consigneeName,destinationWithCountry(r),r.enteredBy]
       .some(v=>String(v||'').toLowerCase().includes(searchTerm)))
-    .slice().sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
+    .slice().sort((a,b)=>{
+      if(a.trackingNo===duplicateFocus)return -1;
+      if(b.trackingNo===duplicateFocus)return 1;
+      if(a.duplicateAlert===true&&b.duplicateAlert!==true)return -1;
+      if(b.duplicateAlert===true&&a.duplicateAlert!==true)return 1;
+      return (Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0);
+    });
   const downloadRows=displayedRows;
   const countStatus=value=>pageRows.filter(r=>statusBucket(r)===value).length;
   const filterLabel=exportStatus==='SHEET'||exportStatus==='ALL'?pageLabel:
