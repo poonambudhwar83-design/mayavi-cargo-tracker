@@ -1,4 +1,4 @@
-import {trackCathayBrowserFallback as trackArchived} from '../../../../lib/cathaySeptember19.js';
+import {trackCathayBrowserFallback as trackArchived} from '../../../lib/cathaySeptember19.js';
 export const runtime='nodejs';export const dynamic='force-dynamic';export const maxDuration=120;
 export async function GET(){
   const mawb='160-18860310';
