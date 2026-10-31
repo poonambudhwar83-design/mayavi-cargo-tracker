@@ -47,6 +47,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   // Manifested/Accepted/Built Up/Executed/Booked = BOOKED
   // Departed = IN TRANSIT
   // Arrived/Delivered = ARRIVED
+  if(mawb.startsWith('229-')&&s.includes('PART LOAD'))return'PART LOAD';
   if(isAirIndia(mawb)){
     if(s.includes('OFFLOAD'))return'OFFLOADED';
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
