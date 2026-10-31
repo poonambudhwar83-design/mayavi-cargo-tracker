@@ -316,7 +316,7 @@ export async function PATCH(request){
         updated.partShipments=updated.partShipments.map((part,index)=>{
           if(partIdentity(part,index)!==partKey)return part;
           matches++;
-          if(partCustoms&&body.customsCleared===true&&part.mailSent!==true){
+          if(partCustoms&&body.customsCleared===true&&!awb.startsWith('065-')&&part.mailSent!==true){
             withoutMailYes=true;
             return part;
           }
