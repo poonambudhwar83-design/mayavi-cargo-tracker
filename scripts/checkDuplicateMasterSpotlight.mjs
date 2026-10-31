@@ -36,7 +36,7 @@ assert.ok(ui.indexOf("if(local){await recordDuplicateMawb(local);return}")<
   'Original master must be caught before any newly entered shipment fields are set');
 assert.ok(ui.indexOf('if(found){')<ui.indexOf('if(!clientName){setNote'),
   'Duplicate lookup must not require the user to re-enter or overwrite saved client name');
-assert.ok(ui.includes("(duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb))"),
+assert.ok(ui.includes("importArrivalMonth(r.arrivalDate)===currentImportMonth||")&&ui.includes("isDuplicateRow(r)"),
   'Old-month Customs Cleared masters must be visible when repeated');
 assert.ok(ui.includes('hasIndependentCustomsParts(r)||isCustomsArchived(r)'),
   'Split-load cleared/active logic must be preserved');
