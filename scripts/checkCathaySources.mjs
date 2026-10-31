@@ -23,8 +23,8 @@ const booking={ok:true,shipment:{mawb,flightNo:'CX679',flightDate:'2026-10-31',
 const full=annotateCathaySources({...base,...booking.shipment},{mawb,terminal,booking});
 assert.equal(full.flightNo,'CX679');
 assert.equal(full.cxBookingDetailsPending,false);
-assert.match(full.flightNoSource,/Booking Details/);
-assert.match(full.arrivalDetailsSource,/Booking Details/);
+assert.match(full.flightNoSource,/Booking Status/);
+assert.match(full.arrivalDetailsSource,/Booking Status/);
 assert.equal(full.cxTrackingSources.bookingDetails.status,'AWB_MATCHED');
 const unrelated=annotateCathaySources(base,{mawb,terminal,
   booking:{ok:true,shipment:{...booking.shipment,mawb:'160-18860311'}}});
