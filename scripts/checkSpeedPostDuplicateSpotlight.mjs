@@ -21,7 +21,7 @@ for(const fragment of [
  ".sp-record-table tbody tr.sp-duplicate-row > td",
  "animation:speedPostDuplicateBlink 1.3s linear infinite!important",
  "className={(r.duplicateAlert===true||r.trackingNo===duplicateFocus)?'sp-duplicate-row':undefined}",
- "Existing packet",
+ "The original packet is highlighted at the top with all saved details.",
  "r.consigneeName||'NAME PENDING'",
  "setDuplicateFocus(focus=>focus===id?'':focus)",
 ]){
