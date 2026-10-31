@@ -22,6 +22,7 @@ import { trackOman } from '../../../lib/oman.js';
 import { trackFlydubai } from '../../../lib/flydubai.js';
 import { trackKuwait } from '../../../lib/kuwait.js';
 import { kuwaitPartLoadFromActivity } from '../../../lib/kuwaitPartLoads.js';
+import { kuwaitDatedArrivalEta, applyKuwaitDatedEta } from '../../../lib/kuwaitFlightEta.js';
 import { markKuwaitAircraftDeparture } from '../../../lib/kuwaitAircraftDeparture.js';
 import { trackGulfAir } from '../../../lib/gulfAir.js';
 import { trackGulfAirParcels } from '../../../lib/gulfAirParcels.js';
@@ -765,6 +766,15 @@ async function handle(mawb,fallback={}){
       const verified=observed?.departureIsActual===true
         ?observed:await trackFlightScheduleFast(flightInput).catch(()=>null);
       Object.assign(direct,markKuwaitAircraftDeparture(direct,verified));
+      // The legacy locked Kuwait reader uses cargo DEP +7h, which is NOT
+      // the dated KU381 flight arrival. Prefer a real flight timetable.
+      // Cargo DEP/ARR remain AWB-card decisions; aircraft ETA is only a forecast.
+      const flightEtaSource=(verified?.arrivalTime||verified?.scheduledArrivalTime)
+        ?verified:await trackFlightScheduleFast({
+          flightNo:direct.flightNo,date:direct.flightDate,origin:'KWI',destination:'DEL'
+        }).catch(()=>null);
+      Object.assign(direct,applyKuwaitDatedEta(direct,
+        kuwaitDatedArrivalEta(direct,flightEtaSource||{})));
     }
   }
   const browser=browserResult?.ok?browserShipment:null;
