@@ -174,6 +174,7 @@ export default function SpeedPostDashboard({currentUser}){
   const [rowSearch,setRowSearch]=useState('');
   const [selectedEntryMonth,setSelectedEntryMonth]=useState('LATEST');
   const [duplicateBusy,setDuplicateBusy]=useState('');
+  const [duplicateFocus,setDuplicateFocus]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
 
   const [busy,setBusy]=useState('');
@@ -216,6 +217,19 @@ export default function SpeedPostDashboard({currentUser}){
   },[]);
   useEffect(()=>{load();const poll=setInterval(load,60*1000);return()=>clearInterval(poll);},[load]);
 
+  const focusDuplicateED=useCallback(row=>{
+    const id=normalizeED(row?.trackingNo);
+    if(!id)return;
+    // Full original record, not the date of the new scan, determines the page.
+    setDuplicateFocus(id);
+    setSpeedPostTab(isDelivered(row)?'DELIVERED':'ACTIVE');
+    setSelectedListDay('ALL');
+    setExportStatus('SHEET');
+    setRowSearch('');
+    setTrackingNo(id);
+    setMessage(id+' is already saved • Consignee: '+(row.consigneeName||'Not entered')+
+      '. The original packet is highlighted at the top with all saved details.');
+  },[]);
   const trackOne=useCallback(async(no,action='add',photoFields=null)=>{
     const id=normalizeED(no);
     if(!id){setMessage('Enter a valid tracking number such as ED977951280IN.');return;}
@@ -230,8 +244,7 @@ export default function SpeedPostDashboard({currentUser}){
       setTrackingNo(id);
       
       if(result.duplicate===true){
-        setSpeedPostTab(isDelivered(result.row)?'DELIVERED':'TRACKING');
-        setMessage(id+' — DUPLICATE ED. '+(result.message||'Existing packet highlighted; no extra row added.')+(!result.row?.consigneeName?' Please enter the consignee name.':''));
+        focusDuplicateED(result.row||{trackingNo:id});
         return;
       }
       if(result.created===true||result.manualSaved===true){
@@ -262,7 +275,7 @@ export default function SpeedPostDashboard({currentUser}){
       }
     }catch(e){setMessage(id+' — '+(e.message||'Unable to save. Please retry.'));}
     finally{setBusy('');}
-  },[]);
+  },[focusDuplicateED]);
   // Chrome/Android native Code-128 detection is faster for legible 1-D EMS barcodes.
   // Other browsers and unreadable barcodes continue to the dedicated OCR route.
   async function readEDBarcode(file){
@@ -314,6 +327,7 @@ export default function SpeedPostDashboard({currentUser}){
     const data=await resp.json().catch(()=>({}));
     if(!resp.ok||!data.ok)throw Error(data.error||'Could not save parcel');
     if(data.row)setRows(old=>[data.row,...old.filter(x=>x.trackingNo!==ed)]);
+    if(data.duplicate===true&&data.row)focusDuplicateED(data.row);
     return data;
   }
   async function saveReviewedBatch(index,item){
@@ -325,8 +339,9 @@ export default function SpeedPostDashboard({currentUser}){
     try{
       const data=await saveBatchED(ed);
       if(data.row)setRows(old=>[data.row,...old.filter(r=>r.trackingNo!==ed)]);
-      updateBatchItem(index,{status:'saved',ed,
-        error:'ED saved. Enter consignee name in the table row below.'});
+      updateBatchItem(index,{status:data.duplicate===true?'duplicate':'saved',ed,
+        error:data.duplicate===true?'Duplicate ED: original packet is blinking in Active / Delivered.'
+          :'ED saved. Enter consignee name in the table row below.'});
     }catch(e){updateBatchItem(index,{status:'review',error:e.message||'Unable to save this ED'});}
     finally{setReviewBusy(false);}
   }
@@ -359,8 +374,10 @@ export default function SpeedPostDashboard({currentUser}){
             const saved=await resp.json();
             if(!resp.ok||!saved.ok)throw Error(saved.error||'Could not save barcode ED');
             if(saved.row)setRows(old=>[saved.row,...old.filter(x=>x.trackingNo!==barcode)]);
-            updateBatchItem(i,{ed:barcode,status:'saved',
-              error:'Barcode read and saved. Enter consignee name in its table row.'});
+            if(saved.duplicate===true&&saved.row)focusDuplicateED(saved.row);
+            updateBatchItem(i,{ed:barcode,status:saved.duplicate===true?'duplicate':'saved',
+              error:saved.duplicate===true?'Duplicate barcode ED: original packet highlighted.'
+                :'Barcode read and saved. Enter consignee name in its table row.'});
             continue;
           }
           const form=new FormData();form.append('photo',file);form.append('edOnly','1');
@@ -382,8 +399,9 @@ export default function SpeedPostDashboard({currentUser}){
           if(!certain)continue;
           const saved=await saveBatchED(ed);
           if(saved.row)setRows(old=>[saved.row,...old.filter(r=>r.trackingNo!==ed)]);
-          updateBatchItem(i,{status:'saved',
-            error:'ED saved. Enter consignee name manually in the table row.'});
+          updateBatchItem(i,{status:saved.duplicate===true?'duplicate':'saved',
+            error:saved.duplicate===true?'Duplicate ED: original packet is pinned at the top.'
+              :'ED saved. Enter consignee name manually in the table row.'});
           // Deliberately avoid a third-party tracking fetch inside this batch:
           // the ED + TO fields are saved first and tracking can be refreshed.
         }catch(e){
@@ -477,6 +495,7 @@ export default function SpeedPostDashboard({currentUser}){
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Could not clear duplicate alert');
       setRows(old=>old.map(r=>r.trackingNo===id?result.row:r));
+      setDuplicateFocus(focus=>focus===id?'':focus);
       setMessage('Duplicate warning acknowledged for '+id+'. Shipment remains saved.');
     }catch(e){setMessage(e.message||'Cannot acknowledge duplicate alert.');}
     finally{setDuplicateBusy('');}
@@ -520,6 +539,7 @@ export default function SpeedPostDashboard({currentUser}){
     speedPostTab==='TRACKING'?'Latest Entry Sheet • '+effectiveDay:
     'Daily Entry Records • '+effectiveDay;
   const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
+  const focusedDuplicate=rows.find(r=>r.trackingNo===duplicateFocus);
   const actualStatuses=[...new Set(pageRows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
   // Status filters and downloads never leak records from another daily page.
   const searchTerm=rowSearch.trim().toLowerCase();
@@ -529,7 +549,13 @@ export default function SpeedPostDashboard({currentUser}){
       statusBucket(r)===exportStatus))
     .filter(r=>!searchTerm||[r.trackingNo,r.consigneeName,destinationWithCountry(r),r.enteredBy]
       .some(v=>String(v||'').toLowerCase().includes(searchTerm)))
-    .slice().sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
+    .slice().sort((a,b)=>{
+      if(a.trackingNo===duplicateFocus)return -1;
+      if(b.trackingNo===duplicateFocus)return 1;
+      if(a.duplicateAlert===true&&b.duplicateAlert!==true)return -1;
+      if(b.duplicateAlert===true&&a.duplicateAlert!==true)return 1;
+      return (Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0);
+    });
   const downloadRows=displayedRows;
   const countStatus=value=>pageRows.filter(r=>statusBucket(r)===value).length;
   const filterLabel=exportStatus==='SHEET'||exportStatus==='ALL'?pageLabel:
@@ -688,10 +714,14 @@ export default function SpeedPostDashboard({currentUser}){
   return <main style={{padding:'12px min(2vw,16px) 20px',background:'linear-gradient(180deg,#f6f8ff,#f8fafc)',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
-        0%,100%{background-color:#fff0ed;box-shadow:inset 0 0 0 1px #fecaca}
-        50%{background-color:#ffaaaa;box-shadow:inset 0 0 0 2px #b91c1c}
+        0%,100%{background-color:#f3e8ff;box-shadow:inset 0 0 0 1px #c084fc}
+        50%{background-color:#d8b4fe;box-shadow:inset 0 0 0 2px #7e22ce}
       }
-      .sp-duplicate-alert,.sp-duplicate-row{animation:speedPostDuplicateBlink 1.3s linear infinite}
+      .sp-duplicate-alert{animation:speedPostDuplicateBlink 1.3s linear infinite}
+      .sp-record-table tbody tr.sp-duplicate-row > td{
+        animation:speedPostDuplicateBlink 1.3s linear infinite!important;
+        background-color:#f3e8ff!important;
+      }
       .sp-freeze-0,.sp-freeze-1,.sp-freeze-2,.sp-freeze-3,.sp-freeze-4{
         position:sticky;box-sizing:border-box;background:#fff;z-index:3
       }
@@ -706,7 +736,7 @@ export default function SpeedPostDashboard({currentUser}){
       .sp-freeze-4{left:454px;width:150px;min-width:150px;max-width:150px;border-right:1px solid rgba(148,163,184,.18);box-shadow:1px 0 3px rgba(30,50,80,.035)}
       .sp-duplicate-row .sp-freeze-0,.sp-duplicate-row .sp-freeze-1,.sp-duplicate-row .sp-freeze-2,
       .sp-duplicate-row .sp-freeze-3,.sp-duplicate-row .sp-freeze-4{
-        animation:speedPostDuplicateBlink 1.3s linear infinite
+        z-index:4!important
       }
       .sp-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
       .sp-overview-card{display:flex;flex-direction:column;gap:4px;padding:11px 13px;border-radius:11px;border:1px solid #e2e8f0;min-width:0}
@@ -715,7 +745,9 @@ export default function SpeedPostDashboard({currentUser}){
       .sp-record-table tbody tr:hover td:not(.sp-freeze-0):not(.sp-freeze-1):not(.sp-freeze-2):not(.sp-freeze-3):not(.sp-freeze-4){background:#eef4ff}
       @media(max-width:720px){.sp-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-pages{flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px}}
       @media (prefers-reduced-motion:reduce){
-        .sp-duplicate-alert,.sp-duplicate-row{animation:none;background-color:#fee2e2;outline:2px solid #b91c1c}
+        .sp-duplicate-alert,.sp-record-table tbody tr.sp-duplicate-row > td{
+          animation:none!important;background-color:#e9d5ff!important;outline:1px solid #7e22ce
+        }
       }
     `}</style>
     <section style={{...card,padding:'13px 16px',borderRadius:12,background:'linear-gradient(112deg,#173f91,#325ac4 68%,#6d51bb)',color:'#fff',marginBottom:12}}>
@@ -781,14 +813,14 @@ export default function SpeedPostDashboard({currentUser}){
     {canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
       rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
       onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}
-    {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #b91c1c',marginBottom:15}}>
-      <strong style={{color:'#991b1b',fontSize:15}}>DUPLICATE ED ALERT — {duplicateRows.length} packet{duplicateRows.length===1?'':'s'}</strong>
-      <div style={{fontSize:12,color:'#7f1d1d',marginTop:5,marginBottom:7}}>Same ED number entered again. Existing entries are highlighted in their Active / Delivered rows; no duplicate shipment was created.</div>
+    {duplicateRows.length>0&&<div className="sp-duplicate-alert" role="alert" style={{...card,border:'2px solid #7e22ce',background:'#f5edff',marginBottom:15}}>
+      <strong style={{color:'#581c87',fontSize:15}}>DUPLICATE ED ALERT — {duplicateRows.length} packet{duplicateRows.length===1?'':'s'}</strong>
+      <div style={{fontSize:12,color:'#581c87',marginTop:5,marginBottom:7}}>Original packet with its saved consignee, destination, booking date and tracking details is pinned at the top of Active / Delivered. No second ED record was created.</div>
       <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-        {duplicateRows.map(r=><div key={r.trackingNo} style={{display:'flex',gap:5,alignItems:'center',padding:7,borderRadius:8,background:'#fff'}}>
-          <button type="button" style={{...btn,padding:'6px 8px',background:'#b91c1c',fontSize:12}}
-            onClick={()=>setSpeedPostTab(isDelivered(r)?'DELIVERED':'TRACKING')}>{r.trackingNo} • VIEW ROW</button>
-          <button type="button" style={{...btn,padding:'6px 8px',fontSize:11,background:'#fff',color:'#991b1b',border:'1px solid #fecaca'}}
+        {duplicateRows.map(r=><div key={r.trackingNo} style={{display:'flex',gap:5,alignItems:'center',padding:7,borderRadius:8,background:'#fff',flexWrap:'wrap'}}>
+          <button type="button" style={{...btn,padding:'6px 8px',background:'#7e22ce',fontSize:12}}
+            onClick={()=>focusDuplicateED(r)}>{r.trackingNo} • {r.consigneeName||'NAME PENDING'} • VIEW ORIGINAL</button>
+          <button type="button" style={{...btn,padding:'6px 8px',fontSize:11,background:'#fff',color:'#6b21a8',border:'1px solid #d8b4fe'}}
             disabled={Boolean(duplicateBusy)} onClick={()=>acknowledgeDuplicate(r.trackingNo)}>{duplicateBusy===r.trackingNo?'WAIT…':'ACKNOWLEDGE'}</button>
         </div>)}
       </div>
@@ -812,7 +844,7 @@ export default function SpeedPostDashboard({currentUser}){
         </form>
       </div>
       {(imageName||ocrBusy||batchItems.length>0)&&<div role="status" style={{fontSize:11,marginTop:5,color:'#305994'}}>
-        {ocrBusy?ocrProgress||'Scanning ED…':batchItems.length?('Photos: '+batchItems.filter(x=>['saved','review','error'].includes(x.status)).length+'/'+batchItems.length+' checked'):imageName?'Last photo: '+imageName:''}
+        {ocrBusy?ocrProgress||'Scanning ED…':batchItems.length?('Photos: '+batchItems.filter(x=>['saved','duplicate','review','error'].includes(x.status)).length+'/'+batchItems.length+' checked'):imageName?'Last photo: '+imageName:''}
       </div>}
       {ocrCandidates.length>0&&<div style={{border:'1px solid #bfd3ef',borderRadius:7,padding:7,marginTop:6,background:'#f4f8ff'}}>
         <span style={{fontSize:11,fontWeight:700}}>Confirm the printed ED number:</span>
@@ -1053,10 +1085,10 @@ export default function SpeedPostDashboard({currentUser}){
             style={{...th,...(index<5?{padding:'8px 4px'}:{})}}>{index===3?
               <><span style={{display:'block'}}>Entry Date</span><small style={{display:'block',fontSize:10,fontWeight:600,marginTop:2}}>Entered By</small></>
               :label}</th>)}</tr></thead>
-          <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={r.duplicateAlert===true?'sp-duplicate-row':undefined}>
+          <tbody>{displayedRows.length?displayedRows.map((r,i)=><tr key={r.trackingNo} className={(r.duplicateAlert===true||r.trackingNo===duplicateFocus)?'sp-duplicate-row':undefined}>
             <td className="sp-freeze-0" style={{...td,padding:'7px 4px'}}>{i+1}</td>
             <td className="sp-freeze-1" style={{...td,padding:'7px 4px'}}><strong>{r.trackingNo}</strong>
-              {r.duplicateAlert===true&&<strong style={{display:'block',fontSize:10,color:'#991b1b'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}
+              {(r.duplicateAlert===true||r.trackingNo===duplicateFocus)&&<strong style={{display:'block',fontSize:10,color:'#7e22ce'}}>DUPLICATE{Number(r.duplicateCount)>0?' ×'+r.duplicateCount:''}</strong>}
             </td>
             <td className="sp-freeze-2" style={{...td,padding:'6px 3px'}}>
               <div style={{display:'flex',alignItems:'center',gap:3}}>
@@ -1099,7 +1131,7 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={td}><div style={{display:'flex',gap:6}}>
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11}} onClick={()=>trackOne(r.trackingNo,'refresh')} disabled={anythingBusy}>{busy===r.trackingNo?'…':'REFRESH'}</button>
               <a href="https://www.trackparcel.in/" target="_blank" rel="noreferrer" style={{...btn,padding:'8px',fontSize:11,background:'#e4edfa',color:'#1d4ed8',textDecoration:'none'}}>TRACKPARCEL ↗</a>
-              {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
+              {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#f5edff',color:'#7e22ce',border:'1px solid #d8b4fe'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
           </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No delivered parcels match this date.':
