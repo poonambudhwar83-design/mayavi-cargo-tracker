@@ -5,6 +5,7 @@ import { normalizeExportTimesToIst } from '../lib/exportIst.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.js';
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 import { averageWeightPerBag } from '../lib/averageBagWeight.js';
+import { consolidatedKuwaitDeparture } from '../lib/kuwaitUnifiedView.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
 import { notifyProfitSourceChanged } from '../lib/profitSync.js';
 import { resolveSaudiaArrivedMasterFlight } from '../lib/saudiaArrivedMasterFlight.js';
@@ -358,7 +359,7 @@ function currentImportIstMonth(){
   const items=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit'}).formatToParts(new Date());
   return items.find(x=>x.type==='year')?.value+'-'+items.find(x=>x.type==='month')?.value;
 }
-function isCustomsArchived(row={}){return isImportLikeType(row.shipmentType)&&row.customsCleared===true}
+function isCustomsArchived(row={}){const kuwait=consolidatedKuwaitDeparture(row);return isImportLikeType(row.shipmentType)&&(kuwait?kuwait.customsCleared===true:row.customsCleared===true)}
 function isExportArchived(row={}){return isExportLikeType(row.shipmentType)&&row.handoverDone===true&&row.masterCopyReceived===true}
 function isPartArrived(row={}){return String(row.status||'').toUpperCase().includes('PART ARRIVED')}
 // Thai AirAsia's 900 SmartKargo record can confirm its 31 Oct final
@@ -572,6 +573,13 @@ function expandPartRows(list=[]){
     const row=digits(savedRow.mawb).startsWith('065')
       ?enforceSaudiaArrivalEvidence(guardSaudiaConnectingFlightWithoutSal(savedRow)):savedRow;
     const prefix=digits(row.mawb).slice(0,3);
+    // Kuwait: one verified full-master cargo DEP on the same KU flight is
+    // one row, while 55/32 physical parts stay in stored audit history.
+    // If a part arrives separately or clearance becomes mixed, unmerge.
+    if(prefix==='229'){
+      const one=consolidatedKuwaitDeparture(row);
+      if(one)return[one];
+    }
     if(prefix!=='065'&&prefix!=='098'&&prefix!=='312'&&prefix!=='176'&&prefix!=='229')return[row];
 
     const raw=Array.isArray(row.partShipments)?row.partShipments.filter(Boolean):[];
@@ -1114,19 +1122,23 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
   async function setMail(value,sent,partKey=''){
      const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];
      if(!row||isExportLikeType(row.shipmentType))return;
+     const unified=consolidatedKuwaitDeparture(row);
      const physicalId=partKey?String(partKey).split('::').slice(1).join('::'):'';
      const partIndex=physicalId&&Array.isArray(row.partShipments)
        ?row.partShipments.findIndex((p,i)=>partIdentity(p,i)===physicalId):-1;
      if(physicalId&&partIndex<0){setNote('Part row changed. Refresh before saving Mail.');return;}
      const at=new Date().toISOString();
-     const next=physicalId
+     const next=unified
+       ?{...row,mailSent:sent,mailUpdatedAt:at,partShipments:row.partShipments.map(p=>({...p,mailSent:sent,mailUpdatedAt:at}))}
+       :physicalId
        ?{...row,partShipments:row.partShipments.map((p,i)=>i===partIndex?{...p,mailSent:sent,mailUpdatedAt:at}:p)}
        :{...row,mailSent:sent,mailUpdatedAt:at};
      setRows(list=>list.map(x=>normalize(x.mawb)===normalize(value)?next:x));
      try{
        const res=await fetch('/api/shipments',{
          method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},
-         body:JSON.stringify({mawb:row.mawb,mailSent:sent,partKey:physicalId})
+         body:JSON.stringify({mawb:row.mawb,mailSent:sent,partKey:physicalId,
+           operation:unified?'kuwaitMasterMail':undefined})
        });
        const data=await res.json();
        if(!data.ok)throw new Error(data.error||'Mail update failed');
@@ -1143,6 +1155,28 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
    async function setCustomsClear(value,cleared,partKey=''){
     const index=rows.findIndex(x=>normalize(x.mawb)===normalize(value)),row=rows[index];
     if(!row||isExportLikeType(row.shipmentType))return;
+    const unified=consolidatedKuwaitDeparture(row);
+    if(unified){
+      if(cleared&&row.partShipments.some(part=>part.mailSent!==true)){
+        setNote(`${row.mawb}: Select Mail YES before Customs Clear.`);return;
+      }
+      const stamp=new Date().toISOString();
+      const updated={...row,customsCleared:cleared,
+        customsClearedAt:cleared?stamp:'',customsClearedBy:cleared?(employeeName||employeeUsername||'User'):'',
+        partShipments:row.partShipments.map(part=>({...part,customsCleared:cleared,
+          customsClearedAt:cleared?stamp:'',customsClearedBy:cleared?(employeeName||employeeUsername||'User'):''}))};
+      setRows(list=>list.map(item=>normalize(item.mawb)===normalize(value)?updated:item));
+      try{
+        const res=await fetch('/api/shipments',{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},
+          body:JSON.stringify({mawb:row.mawb,operation:'kuwaitMasterCustoms',customsCleared:cleared})});
+        const data=await res.json();if(!data.ok)throw new Error(data.error||'Customs update failed');
+        if(data.row)setRows(list=>list.map(item=>normalize(item.mawb)===normalize(value)?dbToRow(data.row):item));
+        setShared(true);notifyProfitSourceChanged();
+        setNote(`${row.mawb}: Full Kuwait cargo Customs ${cleared?'CLEARED':'PENDING'} updated for all physical parts.`);
+      }catch(e){setRows(list=>list.map(item=>normalize(item.mawb)===normalize(value)?row:item));
+        setNote(`Kuwait Customs save failed: ${e.message||e}`);}
+      return;
+    }
     if(hasIndependentCustomsParts(row)){
       const physicalId=String(partKey||'').split('::').slice(1).join('::');
       const partIndex=row.partShipments.findIndex((p,i)=>partIdentity(p,i)===physicalId);
