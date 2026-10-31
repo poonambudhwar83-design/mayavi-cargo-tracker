@@ -609,7 +609,7 @@ function expandPartRows(list=[]){
     // For example 065-11493661 must show 49/99 ARRIVED and 50/99 PENDING.
     // Never fabricate an unverified physical row by subtraction. A balance
     // row is permitted only with explicit SAL evidence, not total-minus-part.
-    if(prefix==='065'&&row.saudiaVerifiedPendingBalance===true){
+    if(prefix==='065'&&(row.partLoad===true||row.isPartLoad===true)&&Number(row.totalPieces||row.masterPieces||0)>0){
       const masterTotal=Number(row.totalPieces||row.masterPieces||String(row.bags||row.pieces||'').split('/').at(-1)||0);
       const recordedArrived=Number(row.arrivedPieces??0);
       const confirmedArrived=parts
@@ -650,11 +650,11 @@ function expandPartRows(list=[]){
           weight:remainderWeight||'',totalWeight:totalWeight||'',
           flightNo:'',flightDate:'',flightDestination:'',transitAirport:'',
           arrivalDate:'',arrivalTime:'',arrivalIsActual:false,arrivalEstimate:false,
-          status:cancelled?'OFFLOADED':'PENDING AT SAUDIA',
+          status:cancelled?'OFFLOADED':'BALANCE PENDING',
           sourceStatus:cancelled?'DIS':'RCS',mailSent:false,customsCleared:false,
           remarks:cancelled
             ?'SAL DIS/DUS — balance offloaded; awaiting next flight'
-            :'Balance at Saudia — awaiting MAN/FOW/DEP flight assignment (not yet arrived)'
+            :'Outstanding balance calculated from master minus confirmed movements; SAL has not verified a separate flight for this quantity'
         });
       }
     }
