@@ -112,7 +112,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('065-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -124,7 +124,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     const savedParts=Array.isArray(existing?.[0]?.data?.partShipments)?existing[0].data.partShipments:[];
     // Operator Mail/Customs choices persist by stable physical-part identity.
     tracked.partShipments=mergePartMail(tracked.partShipments,savedParts);
-    if((mawb.startsWith('098-')||mawb.startsWith('312-')||mawb.startsWith('229-'))&&tracked.partShipments.length>=2){
+    if((mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('312-')||mawb.startsWith('229-'))&&tracked.partShipments.length>=2){
       tracked.partShipments=mergePartCustoms(tracked.partShipments,savedParts);
       tracked.customsCleared=false;
       tracked.customsClearedAt='';
@@ -1629,6 +1629,12 @@ async function handle(mawb,fallback={}){
     if(mawb.startsWith('176-')){
       try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
       catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
+    }else if(saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology')&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length>=2&&Number(shipment.totalPieces||0)>0&&shipment.partShipments.reduce((n,p)=>n+Number(p.pieces||0),0)===Number(shipment.totalPieces||0)&&Math.abs(shipment.partShipments.reduce((n,p)=>n+Number(p.weight||0),0)-Number(shipment.totalWeight||0))<1){
+      // The verified SAL Parts/Events chronology is authoritative. Save it
+      // immediately to the shared record; do not depend on a browser login or
+      // manual refresh that can leave two stale 8-piece flight-history rows.
+      try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
+      catch(e){console.warn('saudia_verified_split_db_save_failed',mawb,e?.message||String(e));}
     }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
