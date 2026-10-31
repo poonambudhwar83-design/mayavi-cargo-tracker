@@ -22,6 +22,7 @@ import { trackOman } from '../../../lib/oman.js';
 import { trackFlydubai } from '../../../lib/flydubai.js';
 import { trackKuwait } from '../../../lib/kuwait.js';
 import { kuwaitPartLoadFromActivity } from '../../../lib/kuwaitPartLoads.js';
+import { markKuwaitAircraftDeparture } from '../../../lib/kuwaitAircraftDeparture.js';
 import { trackGulfAir } from '../../../lib/gulfAir.js';
 import { trackGulfAirParcels } from '../../../lib/gulfAirParcels.js';
 import { trackVirgin } from '../../../lib/virgin.js';
@@ -753,6 +754,18 @@ async function handle(mawb,fallback={}){
     // Turn distinct 41/87 MAN + 46/87 PRE into two persisted physical rows.
     const split=kuwaitPartLoadFromActivity(directResult?.debug?.ops||[],direct);
     if(split)Object.assign(direct,split);
+    // KU flight movement may be updated before Kuwait Cargo publishes its DEP
+    // card. Show the *verified aircraft departure* separately from cargo uplift.
+    if(/^KU\d{2,4}$/i.test(String(direct.flightNo||''))
+      &&/^20\d{2}-\d{2}-\d{2}$/.test(String(direct.flightDate||''))
+      &&String(direct.origin||'').toUpperCase()==='KWI'
+      &&String(direct.destination||'').toUpperCase()==='DEL'){
+      const flightInput={flightNo:direct.flightNo,date:direct.flightDate,origin:'KWI',destination:'DEL',departureOnly:true};
+      const observed=await trackFlightStatusSnapshot(flightInput).catch(()=>null);
+      const verified=observed?.departureIsActual===true
+        ?observed:await trackFlightScheduleFast(flightInput).catch(()=>null);
+      Object.assign(direct,markKuwaitAircraftDeparture(direct,verified));
+    }
   }
   const browser=browserResult?.ok?browserShipment:null;
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
