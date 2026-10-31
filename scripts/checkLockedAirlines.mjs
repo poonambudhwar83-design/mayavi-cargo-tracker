@@ -395,4 +395,4 @@ for(const [name,source,expected] of [
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), Kuwait (229), and Thai AirAsia (900) are LOCKED; Saudia (065) remains regression-guarded.');
+console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), Kuwait (229), and Thai AirAsia (900) and Saudia (065) are SHA-LOCKED with live movement regression guards.');
