@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { reconcile } from '../lib/saudiaStrong.js';
 import { applySaudiaPartFlightEtas } from '../lib/saudiaPartEta.js';
+import { enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
+import { mergePartCustoms, mergePartMail } from '../lib/partMail.js';
 
 const ev=(Status,Airport,DateTime_LT,Pieces,Weight,Flight_Number='',Flight_Date='10/30/2026 12:00:00 AM',Flight_Dest='JED')=>({
  Status,Airport,DateTime_LT,Pieces,Weight,Flight_Number,Flight_Date,Flight_Dest
@@ -63,4 +65,23 @@ const dep=await applySaudiaPartFlightEtas({destination:'DEL',partShipments:[
 assert.equal(dep.partShipments[0].saudiaArrivalStage,'CONFIRMED_ETA');
 assert.equal(dep.partShipments[0].arrivalTime,'17:15');
 assert.equal(dep.partShipments[0].arrivalIsActual,false);
+const guarded=enforceSaudiaArrivalEvidence({mawb:'065-11493775',destination:'DEL',
+  sourceStatus:'FOW',flightDestination:'JED',partShipments:estimated.partShipments});
+const guardedFow=guarded.partShipments.find(p=>p.pieces===8);
+assert.equal(guardedFow.saudiaArrivalStage,'ESTIMATED');
+assert.equal(guardedFow.arrivalIsActual,false);
+assert.equal(guardedFow.arrivalDate,'');
+const guardedDep=enforceSaudiaArrivalEvidence({mawb:'065-11493775',destination:'DEL',
+  sourceStatus:'DEP',flightDestination:'JED',partShipments:[
+    {...guardedFow,sourceStatus:'DEP',saudiaArrivalStage:'CONFIRMED_ETA'}]});
+assert.equal(guardedDep.partShipments[0].saudiaArrivalStage,'CONFIRMED_ETA');
+assert.equal(guardedDep.partShipments[0].arrivalIsActual,false);
+// Customs and Mail belong to independent part IDs and survive an AWB refresh.
+const savedParts=result.partShipments.map(p=>({...p,mailSent:false,customsCleared:p.pieces===113,
+ customsClearedAt:p.pieces===113?'2026-10-31T03:00:00Z':''}));
+const fresh=mergePartCustoms(mergePartMail(result.partShipments,savedParts),savedParts);
+assert.equal(fresh.find(p=>p.pieces===113).customsCleared,true);
+assert.notEqual(fresh.find(p=>p.pieces===8).customsCleared,true);
+assert.equal(fresh.find(p=>p.pieces===113).mailSent,false);
+
 console.log('Saudia SAL physical 113/121 JED RCF + 8/121 SV1127 FOW; per-part ETA and no false DEL ARR passed.');
