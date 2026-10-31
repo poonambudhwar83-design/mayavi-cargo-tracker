@@ -18,6 +18,7 @@ import { trackAirArabia } from '../../../lib/airArabia.js';
 import { trackOman } from '../../../lib/oman.js';
 import { trackFlydubai } from '../../../lib/flydubai.js';
 import { trackKuwait } from '../../../lib/kuwait.js';
+import { kuwaitPartLoadFromActivity } from '../../../lib/kuwaitPartLoads.js';
 import { trackGulfAir } from '../../../lib/gulfAir.js';
 import { trackGulfAirParcels } from '../../../lib/gulfAirParcels.js';
 import { trackVirgin } from '../../../lib/virgin.js';
@@ -122,7 +123,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     const savedParts=Array.isArray(existing?.[0]?.data?.partShipments)?existing[0].data.partShipments:[];
     // Operator Mail/Customs choices persist by stable physical-part identity.
     tracked.partShipments=mergePartMail(tracked.partShipments,savedParts);
-    if((mawb.startsWith('098-')||mawb.startsWith('312-'))&&tracked.partShipments.length>=2){
+    if((mawb.startsWith('098-')||mawb.startsWith('312-')||mawb.startsWith('229-'))&&tracked.partShipments.length>=2){
       tracked.partShipments=mergePartCustoms(tracked.partShipments,savedParts);
       tracked.customsCleared=false;
       tracked.customsClearedAt='';
@@ -744,6 +745,12 @@ async function handle(mawb,fallback={}){
 
   const api=apiResult?.ok?apiResult.shipment:null;
   const direct=directResult?.ok?directResult.shipment:null;
+  if(kuwaitFastPath&&direct){
+    // KU is locked and already supplies AWB-specific operational cards.
+    // Turn distinct 41/87 MAN + 46/87 PRE into two persisted physical rows.
+    const split=kuwaitPartLoadFromActivity(directResult?.debug?.ops||[],direct);
+    if(split)Object.assign(direct,split);
+  }
   const browser=browserResult?.ok?browserShipment:null;
   const ocr=ocrResult?.ok?ocrResult.shipment:null;
   const cathay=null;
@@ -1125,7 +1132,7 @@ async function handle(mawb,fallback={}){
   const freshStatus=chooseStatus({api,direct,browser,ocr,cathay});
   const freshArrival=preferredArrival(direct,browser,api,ocr);
   const officialSourceSucceeded=Boolean(direct||browser||api||ocr);
-  shipment.status=freshStatus;
+  shipment.status=kuwaitFastPath&&direct?.partShipments?.length>1?direct.status:freshStatus;
   if((vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath)&&shipment.status==='TRACKING'&&savedFallback.status)shipment.status=savedFallback.status;
   // If a successful current official response gives a definite pre-arrival status
   // but no current arrival at all, old database arrival values are stale and must
@@ -1529,6 +1536,28 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeZone=direct.arrivalTimeZone;
   }
   shipment=normalizeShipmentTimesToIst(shipment);
+  if(kuwaitFastPath&&direct?.partShipments?.length>1){
+    // A flight timetable is not proof that the separately manifested parts
+    // departed KWI or arrived DEL. Only physical RCF/DEP per part counts.
+    shipment.partShipments=direct.partShipments;
+    Object.assign(shipment,{
+      isPartLoad:true,partLoad:true,
+      pieces:direct.pieces,bags:direct.bags,weight:direct.weight,
+      totalPieces:direct.totalPieces,totalWeight:direct.totalWeight,
+      masterPieces:direct.masterPieces,masterWeight:direct.masterWeight,
+      status:direct.status,arrivedPieces:direct.arrivedPieces,
+      arrivedWeight:direct.arrivedWeight,remarks:direct.remarks,
+      partLoadEvidence:direct.partLoadEvidence
+    });
+    if(!direct.partShipments.every(p=>p.arrivalIsActual===true)){
+      shipment.arrivalDate='';
+      shipment.arrivalTime='';
+      shipment.arrivalIsActual=false;
+      shipment.arrivalEstimate=false;
+      shipment.arrivalVerifiedAbsent=true;
+      shipment.mailTime='';
+    }
+  }
   if(airIndiaFastPath&&direct){
     // Final AWB-specific Activity View evidence must beat every generic flight
     // forecast and any previous row's arrival date. Especially for OFFLOADED,
