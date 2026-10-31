@@ -1586,7 +1586,15 @@ async function handle(mawb,fallback={}){
     // Per verified SAL physical part: FOW gives a dated matching-flight ETA,
     // DEP upgrades to confirmed-flight ETA. Transit JED flight times never
     // enter the DEL arrival cells or imply physical final cargo arrival.
-    shipment=await applySaudiaPartFlightEtas(shipment,trackFlightScheduleFast);
+    shipment=await applySaudiaPartFlightEtas(shipment,async flightInput=>{
+      const dated=await trackFlightScheduleFast(flightInput).catch(()=>null);
+      if(dated?.ok&&(dated.arrivalTime||dated.scheduledArrivalTime))return dated;
+      // FlightStats dated status can have a real estimate even when the
+      // faster timetable snapshot has not yet published SV1127.
+      const fallbackEta=await trackFlightArrivalEstimate(flightInput).catch(()=>null);
+      return fallbackEta?.ok&&(fallbackEta.arrivalTime||fallbackEta.scheduledArrivalTime)
+        ?fallbackEta:dated;
+    });
     // Recheck at the final response boundary, AFTER any generic flight ETA
     // merge. Passenger flight landing never confirms SAL cargo ARR.
     shipment=enforceSaudiaArrivalEvidence(shipment);
