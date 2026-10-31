@@ -90,7 +90,7 @@ assert.equal(report.totals.packingTransport,230);
 assert.equal(report.totals.profit,16770);
 for(const phrase of [
  "speedPostTab==='PROFIT'",
- 'MONTHLY PROFIT & COSTING',
+ 'Profit & Costing',
  'rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}',
  'onSelectMonth={setSelectedEntryMonth}',
  'function costPerKg(row){',
@@ -115,8 +115,10 @@ assert.ok(api.includes('SELECT tracking_no,data,created_at,updated_at FROM mayav
  'Read existing Speed Post records without new tracking writes');
 assert.ok(main.includes("const canViewProfit=currentUser?.role==='admin';"),
  'Profit and Daily Summary are Admin-only, not Sonu or other staff');
-assert.ok(main.includes("{canViewProfit&&<button type=\"button\" role=\"tab\" aria-selected={speedPostTab==='PROFIT'}"),
- 'Profit tab button is only available for Admin');
+assert.ok(main.includes("...(canViewProfit?[['PROFIT','Profit & Costing'"),
+ 'Profit tab must be present in navigation only when the logged-in user is Admin');
+assert.ok(main.includes('aria-selected={speedPostTab===id}')&&main.includes('role="tab"'),
+ 'Each colour-coded Speed Post page is selectable with accessible tab semantics');
 assert.ok(main.includes("{canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit"),
  'Profit data component and daily calculations must not render for non-Admin');
 assert.ok(!main.includes('loading={loading}'),

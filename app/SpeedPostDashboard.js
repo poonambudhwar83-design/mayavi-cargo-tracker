@@ -170,6 +170,8 @@ export default function SpeedPostDashboard({currentUser}){
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [selectedEntryDay,setSelectedEntryDay]=useState('LATEST');
+  const [selectedListDay,setSelectedListDay]=useState('ALL');
+  const [rowSearch,setRowSearch]=useState('');
   const [selectedEntryMonth,setSelectedEntryMonth]=useState('LATEST');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
@@ -502,19 +504,31 @@ export default function SpeedPostDashboard({currentUser}){
   const effectiveMonth=selectedEntryMonth==='LATEST'?entryMonths[0]?.[0]||'':selectedEntryMonth;
   const dayRows=entryDays.find(([day])=>day===effectiveDay)?.[1]||[];
   const monthRows=entryMonths.find(([month])=>month===effectiveMonth)?.[1]||[];
-  const pageRows=speedPostTab==='DELIVERED'?deliveredRows:
-    speedPostTab==='MONTHLY'?monthRows:dayRows;
-  const pageLabel=speedPostTab==='DELIVERED'?'Delivered (All Dates)':
-    speedPostTab==='MONTHLY'?'Monthly Entry Records '+effectiveMonth:
-    'Entry Date '+effectiveDay;
-  const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
+  const listBaseRows=speedPostTab==='ACTIVE'?activeRows:
+    speedPostTab==='DELIVERED'?deliveredRows:
+    speedPostTab==='BOOKING_PENDING'?bookingPendingRows:[];
+  const listEntryDays=speedPostGroupByEntryDay(listBaseRows);
+  const datedListRows=selectedListDay==='ALL'?listBaseRows:
+    listBaseRows.filter(r=>speedPostEntryDay(r)===selectedListDay);
+  const pageRows=['ACTIVE','DELIVERED','BOOKING_PENDING'].includes(speedPostTab)?datedListRows:
+    speedPostTab==='MONTHLY'?monthRows:dayRows;
+  const pageLabel=speedPostTab==='ACTIVE'?'Active & In Transit'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='DELIVERED'?'Delivered'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='BOOKING_PENDING'?'Booking Date Pending'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='MONTHLY'?'Monthly Entry Records '+effectiveMonth:
+    speedPostTab==='TRACKING'?'Latest Entry Sheet • '+effectiveDay:
+    'Daily Entry Records • '+effectiveDay;
+  const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const actualStatuses=[...new Set(pageRows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
   // Status filters and downloads never leak records from another daily page.
+  const searchTerm=rowSearch.trim().toLowerCase();
   const displayedRows=(exportStatus==='SHEET'||exportStatus==='ALL'?pageRows:
     pageRows.filter(r=>exportStatus.startsWith('EXACT:')?
       String(r.status||'Pending Tracking').trim()===exportStatus.slice(6):
       statusBucket(r)===exportStatus))
+    .filter(r=>!searchTerm||[r.trackingNo,r.consigneeName,destinationWithCountry(r),r.enteredBy]
+      .some(v=>String(v||'').toLowerCase().includes(searchTerm)))
     .slice().sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
   const downloadRows=displayedRows;
   const countStatus=value=>pageRows.filter(r=>statusBucket(r)===value).length;
@@ -671,7 +685,7 @@ export default function SpeedPostDashboard({currentUser}){
   const ratedRows=displayedRows.map(speedPostProfitRow).filter(r=>r.totalCost!==null);
   const ratedWeight=ratedRows.reduce((sum,r)=>sum+r.roundedWeight,0);
   const averageCostPerKg=ratedWeight>0?ratedRows.reduce((sum,r)=>sum+r.totalCost,0)/ratedWeight:null;
-  return <main style={{padding:'8px min(2vw,16px) 18px',background:'#f4f7fc',minHeight:'70vh'}}>
+  return <main style={{padding:'12px min(2vw,16px) 20px',background:'linear-gradient(180deg,#f6f8ff,#f8fafc)',minHeight:'70vh'}}>
     <style>{`
       @keyframes speedPostDuplicateBlink{
         0%,100%{background-color:#fff0ed;box-shadow:inset 0 0 0 1px #fecaca}
@@ -694,36 +708,76 @@ export default function SpeedPostDashboard({currentUser}){
       .sp-duplicate-row .sp-freeze-3,.sp-duplicate-row .sp-freeze-4{
         animation:speedPostDuplicateBlink 1.3s linear infinite
       }
+      .sp-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
+      .sp-overview-card{display:flex;flex-direction:column;gap:4px;padding:11px 13px;border-radius:11px;border:1px solid #e2e8f0;min-width:0}
+      .sp-pages{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+      .sp-record-table tbody tr:nth-child(even) td:not(.sp-freeze-0):not(.sp-freeze-1):not(.sp-freeze-2):not(.sp-freeze-3):not(.sp-freeze-4){background:#f8faff}
+      .sp-record-table tbody tr:hover td:not(.sp-freeze-0):not(.sp-freeze-1):not(.sp-freeze-2):not(.sp-freeze-3):not(.sp-freeze-4){background:#eef4ff}
+      @media(max-width:720px){.sp-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-pages{flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px}}
       @media (prefers-reduced-motion:reduce){
         .sp-duplicate-alert,.sp-duplicate-row{animation:none;background-color:#fee2e2;outline:2px solid #b91c1c}
       }
     `}</style>
-    <section style={{...card,padding:'6px 10px',borderRadius:8,background:'linear-gradient(110deg,#173f91,#2a63c7)',color:'#fff',marginBottom:8}}>
+    <section style={{...card,padding:'13px 16px',borderRadius:12,background:'linear-gradient(112deg,#173f91,#325ac4 68%,#6d51bb)',color:'#fff',marginBottom:12}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-        <h1 style={{margin:0,fontSize:17}}>Speed Post • EMS Tracking</h1>
+        <div><h1 style={{margin:0,fontSize:20}}>Speed Post • EMS</h1>
+          <div style={{fontSize:11,opacity:.88,marginTop:4}}>Booking, live tracking, daily sheets and monthly accounts in one place</div></div>
         <span style={{fontSize:11}}>PRIVATE • Admin / Sonu</span>
       </div>
     </section>
-    <div role="tablist" aria-label="Speed Post sections" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
-      <button type="button" role="tab" aria-selected={speedPostTab==='TRACKING'} onClick={()=>{setSpeedPostTab('TRACKING');setExportStatus('SHEET');}}
-        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='TRACKING'?'#2258ce':'#fff',color:speedPostTab==='TRACKING'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        DAILY ENTRY PAGES
-      </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='DELIVERED'} onClick={()=>{setSpeedPostTab('DELIVERED');setExportStatus('SHEET');}}
-        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='DELIVERED'?'#2258ce':'#fff',color:speedPostTab==='DELIVERED'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        DELIVERED ({deliveredRows.length})
-      </button>
-      <button type="button" role="tab" aria-selected={speedPostTab==='MONTHLY'} onClick={()=>{setSpeedPostTab('MONTHLY');setExportStatus('SHEET');}}
-        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='MONTHLY'?'#2258ce':'#fff',color:speedPostTab==='MONTHLY'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        MONTHLY RECORDS
-      </button>
-      {canViewProfit&&<button type="button" role="tab" aria-selected={speedPostTab==='PROFIT'}
-        onClick={()=>{setSpeedPostTab('PROFIT');setExportStatus('SHEET');}}
-        style={{...btn,padding:'7px 10px',fontSize:11,background:speedPostTab==='PROFIT'?'#2258ce':'#fff',
-          color:speedPostTab==='PROFIT'?'#fff':'#1e40af',border:'1px solid #cbd8ef'}}>
-        MONTHLY PROFIT & COSTING
-      </button>}
-    </div>
+    <section aria-label="Speed Post quick overview" className="sp-overview">
+      {[
+        ['Saved Parcels',rows.length,'#1d4ed8','#eff6ff'],
+        ['Active / In Transit',activeRows.length,'#0f766e','#ecfdf5'],
+        ['Delivered',deliveredRows.length,'#15803d','#f0fdf4'],
+        ['Booking Date Pending',bookingPendingRows.length,'#b45309','#fffbeb']
+      ].map(([name,value,color,bg])=>
+        <div className="sp-overview-card" key={name} style={{background:bg,borderTop:'3px solid '+color}}>
+          <span style={{color:'#475569',fontSize:11,fontWeight:700}}>{name}</span>
+          <strong style={{fontSize:20,color}}>{value}</strong>
+        </div>)}
+    </section>
+    <nav role="tablist" aria-label="Speed Post pages" className="sp-pages">
+      {[
+        ['TRACKING','Add & Scan','#1e40af','#eff6ff'],
+        ['DAILY','Daily Records','#4338ca','#eef2ff'],
+        ['ACTIVE','Active ('+activeRows.length+')','#0f766e','#ecfdf5'],
+        ['DELIVERED','Delivered ('+deliveredRows.length+')','#15803d','#f0fdf4'],
+        ['BOOKING_PENDING','Booking Pending ('+bookingPendingRows.length+')','#b45309','#fffbeb'],
+        ['MONTHLY','Monthly Records','#7c3aed','#faf5ff'],
+        ...(canViewProfit?[['PROFIT','Profit & Costing','#be185d','#fdf2f8']]:[])
+      ].map(([id,label,color,bg])=><button key={id} type="button" role="tab"
+        aria-selected={speedPostTab===id}
+        onClick={()=>{setSpeedPostTab(id);setExportStatus('SHEET');setRowSearch('');setSelectedListDay('ALL');}}
+        style={{...btn,background:speedPostTab===id?color:bg,color:speedPostTab===id?'#fff':color,
+          border:'1px solid '+(speedPostTab===id?color:'#dbe4f0'),boxShadow:speedPostTab===id?'0 2px 8px #1e293b12':'none',
+          padding:'10px 13px',fontSize:12,fontWeight:800,borderRadius:10,whiteSpace:'nowrap'}}>
+        {label}
+      </button>)}
+    </nav>
+    <section aria-label="Selected Speed Post page" style={{...card,padding:'10px 13px',
+      marginBottom:10,borderLeft:'4px solid '+({TRACKING:'#1e40af',DAILY:'#4338ca',ACTIVE:'#0f766e',
+        DELIVERED:'#15803d',BOOKING_PENDING:'#b45309',MONTHLY:'#7c3aed',PROFIT:'#be185d'}[speedPostTab]||'#1e40af'),
+      background:'#fff'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+        <div>
+          <strong style={{fontSize:15,color:'#1e293b'}}>{
+            {TRACKING:'Add & Track New EMS Packets',DAILY:'Daily Entry Records',
+             ACTIVE:'Active & In Transit Packets',DELIVERED:'Delivered Packets',
+             BOOKING_PENDING:'Booking Date Pending',MONTHLY:'Monthly Records & Bank Reconciliation',
+             PROFIT:'Monthly Profit & Costing'}[speedPostTab]}</strong>
+          <div style={{fontSize:11,color:'#64748b',marginTop:3}}>{
+            {TRACKING:'Scan ED photos or enter a tracking number. Recent saved entries appear below.',
+             DAILY:'Choose an original entry date to see only that day’s packets and totals.',
+             ACTIVE:'All undelivered parcels, with optional original entry-date filter.',
+             DELIVERED:'All delivered parcels together; filter by original entry date when needed.',
+             BOOKING_PENDING:'Packets awaiting a verified Booking Date, including any delivered packets.',
+             MONTHLY:'Original entry-month records, daily totals and Admin-only bank reconciliation.',
+             PROFIT:'Admin-only per-packet costing and monthly profit.'}[speedPostTab]}</div>
+        </div>
+        <span style={{fontWeight:800,fontSize:11,color:'#64748b'}}>ORIGINAL ENTRY DATES • IST</span>
+      </div>
+    </section>
     {canViewProfit&&speedPostTab==='PROFIT'&&<SpeedPostMonthlyProfit
       rows={monthRows} month={effectiveMonth} entryMonths={entryMonths}
       onSelectMonth={setSelectedEntryMonth} historyIncomplete={historyIncomplete}/>}
@@ -739,7 +793,7 @@ export default function SpeedPostDashboard({currentUser}){
         </div>)}
       </div>
     </div>}
-    {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED'||speedPostTab==='MONTHLY')&&<>
+    {(['TRACKING','DAILY','ACTIVE','DELIVERED','BOOKING_PENDING','MONTHLY'].includes(speedPostTab))&&<>
     {speedPostTab==='TRACKING'&&<section aria-label="Add Speed Post ED" style={{...card,padding:'8px 10px',borderRadius:9,marginBottom:8}}>
       <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
         <label htmlFor="spPhotoInput" style={{fontSize:12,fontWeight:800,color:'#163c80',whiteSpace:'nowrap'}}>Scan photo</label>
@@ -812,7 +866,7 @@ export default function SpeedPostDashboard({currentUser}){
       <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter only the consignee name manually in each row. Uncertain OCR numbers require confirmation.</div>
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
-    {speedPostTab==='TRACKING'&&<section aria-label="Entry date pages" style={{...card,marginBottom:10,padding:12}}>
+    {speedPostTab==='DAILY'&&<section aria-label="Entry date pages" style={{...card,marginBottom:10,padding:12}}>
       <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:9}}>
         <strong style={{fontSize:13,color:'#163c80'}}>ENTRY DATE • DAILY PAGE</strong>
         <select aria-label="Choose entry date page" value={effectiveDay} onChange={e=>{setSelectedEntryDay(e.target.value);setExportStatus('SHEET');}}
@@ -830,6 +884,28 @@ export default function SpeedPostDashboard({currentUser}){
         </button>)}
       </div>
     </section>}
+    {(['ACTIVE','DELIVERED','BOOKING_PENDING'].includes(speedPostTab))&&<section
+      aria-label="Filter Speed Post by entry date" style={{...card,marginBottom:10,padding:'11px 13px',
+      background:'#f8faff',border:'1px solid #dbe5f5'}}>
+      <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <label htmlFor="sp-list-date" style={{color:'#334155',fontSize:12,fontWeight:800}}>ENTRY DATE</label>
+        <select id="sp-list-date" aria-label="Choose entry date for current EMS page"
+          value={selectedListDay}
+          onChange={e=>{setSelectedListDay(e.target.value);setExportStatus('SHEET');}}
+          style={{...input,height:35,minWidth:210,width:'auto',fontWeight:700,color:'#1e3a8a'}}>
+          <option value="ALL">All Entry Dates • {listBaseRows.length} packets</option>
+          {listEntryDays.map(([day,items])=><option key={day} value={day}>
+            {day==='UNKNOWN'?'Entry Date Unknown':day} • {items.length} packets
+          </option>)}
+        </select>
+        <span style={{fontSize:11,color:'#64748b'}}>Only this page is filtered; saved records stay unchanged.</span>
+        {selectedListDay!=='ALL'&&<button type="button"
+          onClick={()=>{setSelectedListDay('ALL');setExportStatus('SHEET');}}
+          style={{...btn,padding:'7px 10px',background:'#e2e8f0',color:'#334155',fontSize:11}}>SHOW ALL DATES</button>}
+      </div>
+    </section>}
+    {speedPostTab==='TRACKING'&&<div style={{margin:'0 0 8px',fontSize:12,color:'#52647c',
+      padding:'3px 5px'}}>Latest entry date: <strong>{effectiveDay||'No entries yet'}</strong> • Open Daily Records for earlier dates.</div>}
     {speedPostTab==='MONTHLY'&&<section aria-label="Monthly entry records" style={{...card,marginBottom:10,padding:12}}>
       <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:10}}>
         <strong style={{color:'#173f91',fontSize:13}}>ENTRY-WISE MONTHLY RECORDS</strong>
@@ -896,18 +972,19 @@ export default function SpeedPostDashboard({currentUser}){
         </table>
       </div>
     </section>}
-    {speedPostTab==='DELIVERED'&&<p style={{fontSize:12,color:'#475569',margin:'0 0 10px'}}>All delivered ED packets are compiled in this single sheet across every Entry Date and month.</p>}
+    {speedPostTab==='DELIVERED'&&<p style={{fontSize:12,color:'#475569',margin:'0 0 10px'}}>All delivered ED packets are compiled together. Use the Entry Date dropdown above for a specific day.</p>}
     <section style={{...card,padding:12,marginBottom:10}}>
       <h3 style={{margin:'0 0 8px',fontSize:14,color:'#163c80'}}>{pageLabel} • Financial Totals</h3>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
         {[
-          ['Entries',String(reportTotals.packets)],
-          ['Tariff Total',currency(reportTotals.tariff)],
-          ['Cash Cost Total',currency(reportTotals.cash)],
-          ['Combined Total',currency(reportTotals.combined)]
-        ].map(([name,value])=><div key={name} style={{background:'#f1f5fd',borderRadius:8,padding:'9px 10px'}}>
-          <div style={{fontSize:11,color:'#475569'}}>{name}</div>
-          <strong style={{fontSize:16,color:'#173f91'}}>{value}</strong>
+          ['Entries',String(reportTotals.packets),'#eef2ff','#4338ca'],
+          ['Tariff Total',currency(reportTotals.tariff),'#ecfeff','#0e7490'],
+          ['Cash Cost Total',currency(reportTotals.cash),'#fff7ed','#b45309'],
+          ['Combined Total',currency(reportTotals.combined),'#ecfdf5','#047857']
+        ].map(([name,value,bg,color])=><div key={name}
+          style={{background:bg,borderRadius:10,padding:'12px 13px',border:'1px solid #e2e8f0',borderLeft:'3px solid '+color}}>
+          <div style={{fontSize:11,color:'#475569',fontWeight:700}}>{name}</div>
+          <strong style={{fontSize:17,color}}>{value}</strong>
         </div>)}
       </div>
       <p style={{fontSize:11,color:'#64748b',margin:'9px 0 0'}}>
@@ -923,7 +1000,14 @@ export default function SpeedPostDashboard({currentUser}){
         </div>
         <button type="button" style={{...btn,background:'#e7eefb',color:'#224f9b',padding:'8px 10px'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
-      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,background:'#eef4ff',border:'2px solid #afc7f1',borderRadius:10,padding:'12px',marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,background:'#f5f8ff',border:'1px solid #d0def4',borderRadius:10,padding:'11px 12px',marginBottom:12}}>
+        <label htmlFor="emsSearch" style={{fontSize:12,fontWeight:800,color:'#173f91'}}>FIND PACKET</label>
+        <input id="emsSearch" aria-label="Search ED number, consignee, destination or entered by"
+          value={rowSearch} onChange={e=>setRowSearch(e.target.value)}
+          placeholder="ED number / consignee / destination"
+          style={{...input,height:36,flex:'1 1 180px',maxWidth:360,fontSize:12}}/>
+        {rowSearch&&<button type="button" onClick={()=>setRowSearch('')}
+          style={{...btn,padding:'8px 10px',fontSize:11,background:'#e2e8f0',color:'#334155'}}>CLEAR SEARCH</button>}
         <label htmlFor="emsStatusFilter" style={{fontSize:13,fontWeight:900,color:'#173f91'}}>FILTER EMS STATUS</label>
         <select id="emsStatusFilter" aria-label="Filter EMS sheet and download by shipment status"
           value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
@@ -959,7 +1043,7 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       {historyIncomplete&&<p role="alert" style={{color:'#9a3412',fontWeight:700,fontSize:12}}>More than 5,000 saved EMS packets exist. This screen shows the newest 5,000; contact the administrator for a full archive.</p>}
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
+        <table className="sp-record-table" style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
             'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
@@ -1004,7 +1088,10 @@ export default function SpeedPostDashboard({currentUser}){
             <td style={{...td,fontWeight:800,color:'#166534'}}>{cashCost(r)===null?'—':rupeePerKg.format(cashCost(r))}</td>
             <td style={{...td,fontWeight:800,color:'#163c80'}}>{postalCost(r)===null||cashCost(r)===null?'—':rupeePerKg.format(postalCost(r)+cashCost(r))}</td>
             <td style={{...td,fontWeight:700}}>{costPerKg(r)===null?'—':rupeePerKg.format(costPerKg(r))+'/kg'}</td>
-            <td style={td}><strong style={{color:/delivered/i.test(r.status||'')?'#15803d':/out for delivery/i.test(r.status||'')?'#1d4ed8':'#334155'}}>{formatValue(r.status)}</strong>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
+            <td style={td}><span style={{display:'inline-block',padding:'5px 9px',borderRadius:12,
+              background:isDelivered(r)?'#dcfce7':statusBucket(r)==='PENDING'?'#fef3c7':statusBucket(r)==='IN_TRANSIT'?'#dbeafe':'#ede9fe',
+              color:isDelivered(r)?'#166534':statusBucket(r)==='PENDING'?'#92400e':statusBucket(r)==='IN_TRANSIT'?'#1d4ed8':'#5b21b6'}}>
+              <strong>{formatValue(r.status)}</strong></span>{/^delivered$/i.test(String(r.status||''))&&<small style={{display:'block',color:'#64748b',marginTop:4}}>Date / Time: {r.deliveredAtText||'Not yet verified'}</small>}</td>
             <td style={td}>{shortOrigin(r.origin)||'—'}</td>
             <td style={td}>{field(r,'weight')}{weightInKg(r.weight)&&!/\bkg\b/i.test(String(r.weight||''))&&<small style={{display:'block',color:'#64748b'}}> {weightInKg(r.weight).toLocaleString('en-IN',{maximumFractionDigits:4})} kg</small>}</td>
             <td style={{...td,fontWeight:700}}>{billedWeightKg(r.weight)===null?'—':billedWeightKg(r.weight)+' kg'}</td>
@@ -1015,7 +1102,11 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No Delivered parcels yet.':speedPostTab==='MONTHLY'?'No entries in this month.':'No packets for this Entry Date. Select another date or add a new ED.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No delivered parcels match this date.':
+              speedPostTab==='ACTIVE'?'No active parcels match this date.':
+              speedPostTab==='BOOKING_PENDING'?'All selected packets already have Booking Dates.':
+              speedPostTab==='MONTHLY'?'No entries in this month.':
+              'No packets for this Entry Date. Choose another day or add a new ED.'}</td></tr>}</tbody>
         <tfoot><tr style={{background:'#eaf2ff',fontWeight:900,color:'#153866'}}>
             <td colSpan={7} style={{...td,padding:'10px 6px'}}>TOTAL • {displayedRows.length} ENTRIES</td>
             <td style={td}>{currency(filteredTotals.tariff)}</td>
