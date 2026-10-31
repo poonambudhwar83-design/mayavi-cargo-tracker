@@ -6,6 +6,7 @@ import { preserveCathayFlight } from '../../../lib/cathayPreserve.js';
 import { guardCathayFinalArrival } from '../../../lib/cathayFinalArrival.js';
 import { trackBritishEntry } from '../../../lib/britishEntry.js';
 import { trackSaudiaDirect } from '../../../lib/saudiaDirect.js';
+import { applySaudiaPartFlightEtas } from '../../../lib/saudiaPartEta.js';
 import { guardSaudiaFromLatestSal, enforceSaudiaArrivalEvidence } from '../../../lib/saudiaTransitGuard.js';
 import { trackTurkish } from '../../../lib/turkish.js';
 import { trackTurkishTrackingOne } from '../../../lib/turkishTrackingOne.js';
@@ -1582,6 +1583,10 @@ async function handle(mawb,fallback={}){
   // destination is DEL. Never convert that hub event into Delhi arrival.
   if(saudiaFastPath){
     shipment=await guardSaudiaFromLatestSal(mawb,shipment,{flightSchedule:trackFlightScheduleFast});
+    // Per verified SAL physical part: FOW gives a dated matching-flight ETA,
+    // DEP upgrades to confirmed-flight ETA. Transit JED flight times never
+    // enter the DEL arrival cells or imply physical final cargo arrival.
+    shipment=await applySaudiaPartFlightEtas(shipment,trackFlightScheduleFast);
     // Recheck at the final response boundary, AFTER any generic flight ETA
     // merge. Passenger flight landing never confirms SAL cargo ARR.
     shipment=enforceSaudiaArrivalEvidence(shipment);
