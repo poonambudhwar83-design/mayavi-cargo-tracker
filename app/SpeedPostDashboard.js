@@ -170,6 +170,8 @@ export default function SpeedPostDashboard({currentUser}){
   const [rows,setRows]=useState([]);
   const [speedPostTab,setSpeedPostTab]=useState('TRACKING');
   const [selectedEntryDay,setSelectedEntryDay]=useState('LATEST');
+  const [selectedListDay,setSelectedListDay]=useState('ALL');
+  const [rowSearch,setRowSearch]=useState('');
   const [selectedEntryMonth,setSelectedEntryMonth]=useState('LATEST');
   const [duplicateBusy,setDuplicateBusy]=useState('');
   const [trackingNo,setTrackingNo]=useState('');
@@ -502,19 +504,31 @@ export default function SpeedPostDashboard({currentUser}){
   const effectiveMonth=selectedEntryMonth==='LATEST'?entryMonths[0]?.[0]||'':selectedEntryMonth;
   const dayRows=entryDays.find(([day])=>day===effectiveDay)?.[1]||[];
   const monthRows=entryMonths.find(([month])=>month===effectiveMonth)?.[1]||[];
-  const pageRows=speedPostTab==='DELIVERED'?deliveredRows:
-    speedPostTab==='MONTHLY'?monthRows:dayRows;
-  const pageLabel=speedPostTab==='DELIVERED'?'Delivered (All Dates)':
-    speedPostTab==='MONTHLY'?'Monthly Entry Records '+effectiveMonth:
-    'Entry Date '+effectiveDay;
-  const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const bookingPendingRows=rows.filter(r=>!String(r.bookingDate||'').trim());
+  const listBaseRows=speedPostTab==='ACTIVE'?activeRows:
+    speedPostTab==='DELIVERED'?deliveredRows:
+    speedPostTab==='BOOKING_PENDING'?bookingPendingRows:[];
+  const listEntryDays=speedPostGroupByEntryDay(listBaseRows);
+  const datedListRows=selectedListDay==='ALL'?listBaseRows:
+    listBaseRows.filter(r=>speedPostEntryDay(r)===selectedListDay);
+  const pageRows=['ACTIVE','DELIVERED','BOOKING_PENDING'].includes(speedPostTab)?datedListRows:
+    speedPostTab==='MONTHLY'?monthRows:dayRows;
+  const pageLabel=speedPostTab==='ACTIVE'?'Active & In Transit'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='DELIVERED'?'Delivered'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='BOOKING_PENDING'?'Booking Date Pending'+(selectedListDay==='ALL'?' • All Entry Dates':' • '+selectedListDay):
+    speedPostTab==='MONTHLY'?'Monthly Entry Records '+effectiveMonth:
+    speedPostTab==='TRACKING'?'Latest Entry Sheet • '+effectiveDay:
+    'Daily Entry Records • '+effectiveDay;
+  const duplicateRows=rows.filter(r=>r.duplicateAlert===true);
   const actualStatuses=[...new Set(pageRows.map(r=>String(r.status||'Pending Tracking').trim()||'Pending Tracking'))].sort();
   // Status filters and downloads never leak records from another daily page.
+  const searchTerm=rowSearch.trim().toLowerCase();
   const displayedRows=(exportStatus==='SHEET'||exportStatus==='ALL'?pageRows:
     pageRows.filter(r=>exportStatus.startsWith('EXACT:')?
       String(r.status||'Pending Tracking').trim()===exportStatus.slice(6):
       statusBucket(r)===exportStatus))
+    .filter(r=>!searchTerm||[r.trackingNo,r.consigneeName,destinationWithCountry(r),r.enteredBy]
+      .some(v=>String(v||'').toLowerCase().includes(searchTerm)))
     .slice().sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
   const downloadRows=displayedRows;
   const countStatus=value=>pageRows.filter(r=>statusBucket(r)===value).length;
