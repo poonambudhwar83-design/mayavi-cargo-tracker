@@ -27,7 +27,7 @@ assert.equal(r.arrivedPieces,49);
 assert.equal(r.pendingPieces,50);
 assert.equal(r.pendingWeight,1418);
 assert.equal(r.partShipments.length,2,JSON.stringify(r.partShipments));
-assert.deepEqual(r.partShipments.map(p=>[p.pieces,p.weight,p.arrivalIsActual,p.sourceStatus]),[
+assert.deepEqual(r.partShipments.map(p=>[p.pieces,p.weight,p.arrivalIsActual,p.sourceStatus]).sort((a,b)=>a[0]-b[0]),[
  [49,1147,true,'ARR'],
  [50,1418,false,'RCF']]);
 assert.equal(r.partShipments.find(p=>p.pieces===50).transitAirport,'JED');
@@ -37,17 +37,17 @@ assert.equal(r.partShipments.reduce((s,p)=>s+p.pieces,0),99);
 assert.equal(r.partShipments.reduce((s,p)=>s+p.weight,0),2565);
 // A single 49-pc clearance stays with the 49-pc ARR, not the 50-pc RCF.
 // Operator toggles are independent and persist through airline updates.
-const stored=[{...r.partShipments[0],mailSent:true,customsCleared:true,customsClearedAt:'2026-10-31T04:00:00Z'},
- {...r.partShipments[1],mailSent:false,customsCleared:false}];
+const stored=r.partShipments.map(p=>({...p,mailSent:p.pieces===49,
+ customsCleared:p.pieces===49,customsClearedAt:p.pieces===49?'2026-10-31T04:00:00Z':''}));
 const newParts=mergePartCustoms(mergePartMail(r.partShipments,stored),stored);
-assert.equal(newParts[0].customsCleared,true);
-assert.equal(newParts[1].customsCleared,false);
-assert.equal(newParts[0].mailSent,true);
+assert.equal(newParts.find(p=>p.pieces===49).customsCleared,true);
+assert.equal(newParts.find(p=>p.pieces===50).customsCleared,false);
+assert.equal(newParts.find(p=>p.pieces===49).mailSent,true);
 assert.equal(new Set(newParts.map((p,i)=>partIdentity(p,i))).size,2);
 const guarded=enforceSaudiaArrivalEvidence({mawb:'065-11493661',destination:'DEL',
   arrivedPieces:49,status:'PART ARRIVED',sourceStatus:'RCF',partShipments:newParts});
-assert.equal(guarded.partShipments[0].arrivalIsActual,true);
-assert.equal(guarded.partShipments[1].arrivalIsActual,false);
+assert.equal(guarded.partShipments.find(p=>p.pieces===49).arrivalIsActual,true);
+assert.equal(guarded.partShipments.find(p=>p.pieces===50).arrivalIsActual,false);
 // Never silently stop showing the remaining balance before SAL releases
 // a physical RCF/FOW. The UI adds only a clearly labelled virtual UNASSIGNED
 // balance row in that situation, not a fabricated departed cargo.
