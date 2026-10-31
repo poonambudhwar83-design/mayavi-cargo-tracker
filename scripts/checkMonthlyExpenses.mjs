@@ -4,6 +4,7 @@ import {runInNewContext} from 'node:vm';
 import {monthlyAmount,monthlyImportFigures,sumMonthlyImport,sumMonthlyExport,calculateMonthlyExpenses} from '../lib/monthlyExpenses.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
 import {resolvedExportShipmentCharge} from '../lib/exportShipmentCharge.js';
+import {exportCategorySummary} from '../lib/exportCategoryBags.js';
 import {branchPayoutForRecord} from '../lib/branchLoads.js';
 import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 const importUI=readFileSync('app/ImportProfitSheet.js','utf8');
@@ -47,11 +48,11 @@ assert.equal(summary.grossProfit,rounded(examples.map(actualImport)
  .filter(r=>r.profitPerKg!==null).reduce((sum,r)=>sum+r.grossProfit,0)));
 assert.equal(summary.goodsCharge15Percent,rounded(examples.map(actualImport)
  .reduce((sum,r)=>sum+(r.goodsCharge15Percent||0),0)));
-const actualExport=sourceCalc(exportUI,'function profitFor(row={}){','function exportCsv(',{resolvedExportShipmentCharge,Number,Math});
+const actualExport=sourceCalc(exportUI,'function profitFor(row={}){','function exportCsv(',{resolvedExportShipmentCharge,exportCategorySummary,Number,Math});
 const exports=[
  {weight:20,rate:6,shipmentCharge:2600},
  {weight:100,rate:11,shipmentCharge:3000},
- {weight:30,rate:7,shipmentCharge:1500},
+ {weight:30,rate:7,shipmentCharge:1500,categoryBags:{D:2,T:1,DT:1,GC:3}},
  {weight:null,rate:6,shipmentCharge:2600},
  {weight:0,rate:6,shipmentCharge:2600}
 ];

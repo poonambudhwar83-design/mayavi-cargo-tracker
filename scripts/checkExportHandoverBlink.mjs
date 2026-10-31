@@ -78,10 +78,10 @@ assertExportCharge.ok(exportChargeUi.includes('value*rate-resolvedExportShipment
 assertExportCharge.ok(exportChargeUi.includes('acc.shipmentCharges+=resolvedExportShipmentCharge(r.shipmentCharge);'));
 assertExportCharge.ok(exportChargeUi.includes('Shipment Charge defaults to ₹2,600 per MAWB (editable)'));
 assertExportCharge.ok(exportChargeUi.includes('SHIPMENT CHARGES • DEFAULT ₹2,600 / MAWB'));
-assertExportCharge.ok(exportChargeUi.includes('Profit = (Weight × client rate) − Shipment Charge.'));
+assertExportCharge.ok(exportChargeUi.includes('Final Profit = (Weight × client rate) − Shipment Charge + (D/T/DT/G&C client charges − their deductions).'));
 assertExportCharge.ok(exportChargeUi.includes("onBlur={event=>void saveShipmentCharge(row,event.target.value)}"));
 assertExportCharge.ok(exportChargeUi.includes('resolv')&&exportChargeUi.includes('shipmentCharge:data.shipmentCharge'));
-assertExportCharge.ok(exportChargeUi.includes('r.rate??6,resolvedExportShipmentCharge(r.shipmentCharge),profitFor(r)'));
+assertExportCharge.ok(exportChargeUi.includes('r.rate??6,resolvedExportShipmentCharge(r.shipmentCharge)')&&exportChargeUi.includes('categories.netProfit,profitFor(r)'));
 assertExportCharge.ok(exportChargeApi.includes('shipmentCharge, // Admin-editable; still once per master MAWB.'));
 assertExportCharge.ok(exportChargeApi.includes('weight*rate-shipmentCharge'));
 assertExportCharge.ok(exportChargeApi.includes('CREATE TABLE IF NOT EXISTS mayavi_export_shipment_charge'));
