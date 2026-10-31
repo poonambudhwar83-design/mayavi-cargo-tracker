@@ -7,15 +7,31 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
-// Saudia (065) temporary blob-hash protection was removed at the owner's
-// request. Preserve the working SAL parsing/arrival-evidence regression checks.
-// Other airlines retain their existing locks, unchanged.
+// Owner-confirmed live-lock 2026-10-31: freeze Saudia 065 and Kuwait 229
+// carrier-specific readers, physical parts, final ARR guards, and unified
+// Kuwait tracking/ETA. The user may explicitly authorize a future unlock.
+// Tracking data remains live; this blocks unapproved SOURCE CODE edits.
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
   'lib/airIndia.js':'18aa90fc9e3596636d93f67c95e05424902b9073',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
   // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
   'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',
+  // Kuwait 229 latest official full-cargo DEP, dated ETA and master merge.
+  // Physical 55+32 history remains in the DB; the full-departed view is one row.
+  'lib/kuwaitPartLoads.js':'5dc0565ad54c37e5050974ce33fec135ce9b0aa9',
+  'lib/kuwaitUnifiedView.js':'4f442d8531668e13681a1488189c382977d28f03',
+  'lib/kuwaitFlightEta.js':'34c9d11df7055d5c441f7d75f1f0f9488d6d1148',
+  'lib/kuwaitMasterEvents.js':'eb66b2fb73f86b0898263cce756c3e5d58a3406f',
+  'lib/kuwaitAircraftDeparture.js':'7cc94d007f8ab31cbb0bf4cd42c6b53c65d756c6',
+  // Saudia 065: lock verified SAL direct events, parts, hub/transit guards,
+  // final DEL arrival evidence and master final-flight reconciliation.
+  'lib/saudiaDirect.js':'cb39b401c2634dac681021299a328f36cdf6dbb5',
+  'lib/saudiaStrong.js':'32ba65e2da6f98beb3ab025b215cd12b4fbaa13b',
+  'lib/saudiaTransitGuard.js':'ce3970483d3031aee04cbeffc6e89cca9c6b1aaf',
+  'lib/saudiaPhysicalParts.js':'bdd9f796e52b352aeef0ddb662e858c85da0b681',
+  'lib/saudiaArrivedMasterFlight.js':'5fd3ac0ebf36d0302a10b2ef68839413ea9cdbf8',
+  'lib/saudiaRcfParts.js':'17d5c82b8933676063a0f445d0166cc2707e5d4c',
   // IndiGo is now working on the live V2 deployment; freeze its official adapter,
   // part-load form extraction, sync API and sync component as of 2026-10-11.
   'lib/indigo.js':'3b56a630f809db8dddf2428739bba25c1c6beffc',
@@ -108,6 +124,56 @@ const saudiaDashboardContract=[
 for(const [label,fragment] of saudiaDashboardContract){
   if(!saudiaDashboard.includes(fragment)){
     console.error('TEMPORARILY LOCKED SAUDIA DASHBOARD CHANGED: '+label);
+    changed=true;
+  }
+}
+
+// Saudia + Kuwait live-lock: preserve their specific integrations without
+// freezing shared files which other airlines legitimately need to edit.
+// Every deploy checks these gates AND immutable carrier-specific Git blob SHAs.
+const userLockedRoute=[
+  ['SAL 065 physical-part reconciliation',
+    'shipment=resolveSaudiaArrivedMasterFlight(reconcileSaudiaPhysicalParts(shipment));'],
+  ['Saudia SAL-arrived full master flight import',
+    "import { resolveSaudiaArrivedMasterFlight } from '../../../lib/saudiaArrivedMasterFlight.js';"],
+  ['Kuwait official full-master DEP/RCF parser',
+    'Object.assign(direct,reconcileKuwaitMasterEvents(direct,directResult?.debug?.ops||[]));'],
+  ['Kuwait same-flight split reconciliation',
+    'const split=kuwaitPartLoadFromActivity(directResult?.debug?.ops||[],direct);'],
+  ['Kuwait dated flight ETA no cargo DEP+7h',
+    'Object.assign(direct,applyKuwaitDatedEta(direct,'],
+  ['Kuwait per-flight ETA source',
+    'kuwaitDatedArrivalEta(direct,flightEtaSource||{})'],
+  ['Kuwait independent full-master part history',
+    'shipment.partShipments=direct.partShipments;']
+];
+for(const [label,fragment] of userLockedRoute){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED SAUDIA/KUWAIT LIVE INTEGRATION CHANGED: '+label+'. Explicit user-approved unlock required.');
+    changed=true;
+  }
+}
+const kuwaitDashboard=readFileSync('app/DashboardClient.js','utf8');
+for(const [label,fragment] of [
+  ['Full Kuwait DEP master consolidation','const one=consolidatedKuwaitDeparture(row);'],
+  ['Kuwait 229 full-load Mail operation',"operation:unified?'kuwaitMasterMail':undefined"],
+  ['Kuwait 229 full-load Customs operation',"operation:'kuwaitMasterCustoms',customsCleared:cleared"],
+  ['Saudia final arrived master flight display',
+    'return resolveSaudiaArrivedMasterFlight({...merged,via,flightNo,bookingDate']
+]){
+  if(!kuwaitDashboard.includes(fragment)){
+    console.error('LOCKED SAUDIA/KUWAIT LIVE DASHBOARD CHANGED: '+label+'. Explicit user-approved unlock required.');
+    changed=true;
+  }
+}
+const kuwaitSaveRoute=readFileSync('app/api/shipments/route.js','utf8');
+for(const [label,fragment] of [
+  ['Kuwait atomic full-master Mail flag',"const kuwaitBulkMail=body?.operation==='kuwaitMasterMail';"],
+  ['Kuwait atomic full-master Customs flag',"const kuwaitBulkCustoms=body?.operation==='kuwaitMasterCustoms';"],
+  ['Kuwait full master validated before bulk update','if(!consolidatedKuwaitDeparture(updated)){']
+]){
+  if(!kuwaitSaveRoute.includes(fragment)){
+    console.error('LOCKED KUWAIT SHARED SAVE CHANGED: '+label+'. Explicit user-approved unlock required.');
     changed=true;
   }
 }
