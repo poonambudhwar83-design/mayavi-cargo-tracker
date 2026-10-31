@@ -1084,7 +1084,7 @@ async function handle(mawb,fallback={}){
   }
   // Air India: once the flight has departed, show verified scheduled/estimated
   // destination arrival instead of leaving Arrival blank. This is ETA, not ATA.
-  if(airIndiaFastPath&&shipment.flightNo&&shipment.departureDate&&shipment.origin&&shipment.destination&&shipment.arrivalIsActual!==true){
+  if(airIndiaFastPath&&shipment.departureIsActual===true&&shipment.flightNo&&shipment.departureDate&&shipment.origin&&shipment.destination&&shipment.arrivalIsActual!==true){
     const eta=await trackFlightArrivalEstimate({
       flightNo:shipment.flightNo,
       date:shipment.departureDate,
@@ -1095,10 +1095,12 @@ async function handle(mawb,fallback={}){
       shipment.scheduledArrivalTime=eta.arrivalTime;
       shipment.arrivalDate=eta.arrivalDate||shipment.arrivalDate||'';
       shipment.arrivalTime=eta.arrivalTime;
-      shipment.arrivalIsActual=eta.arrivalIsActual===true;
-      shipment.arrivalEstimate=eta.arrivalIsActual!==true;
+      // A passenger flight landing does not prove this AWB was on board or that
+      // its cargo arrived. Only the official Activity View ARRIVAL can do that.
+      shipment.arrivalIsActual=false;
+      shipment.arrivalEstimate=true;
       shipment.arrivalTimeZone=eta.arrivalTimeZone||'IST';
-      shipment.arrivalTimeSource=eta.arrivalTimeSource||eta.source||'Live flight-status ETA';
+      shipment.arrivalTimeSource=(eta.arrivalTimeSource||eta.source||'Live flight-status ETA')+' (not cargo arrival proof)';
     }
   }
 
@@ -1527,6 +1529,25 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeZone=direct.arrivalTimeZone;
   }
   shipment=normalizeShipmentTimesToIst(shipment);
+  if(airIndiaFastPath&&direct){
+    // Final AWB-specific Activity View evidence must beat every generic flight
+    // forecast and any previous row's arrival date. Especially for OFFLOADED,
+    // do not place the cargo on the next-day Arrived/expected-arrival board.
+    if(direct.arrivalVerifiedAbsent===true||
+      (direct.departureIsActual!==true&&direct.arrivalIsActual!==true)){
+      shipment.arrivalDate='';
+      shipment.arrivalTime='';
+      shipment.scheduledArrivalDate='';
+      shipment.scheduledArrivalTime='';
+      shipment.arrivalIsActual=false;
+      shipment.arrivalEstimate=false;
+      shipment.arrivalVerifiedAbsent=true;
+      shipment.mailTime='';
+    }
+    if(direct.status==='OFFLOADED')shipment.status='OFFLOADED';
+    if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
+      shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
+  }
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final
   // destination is DEL. Never convert that hub event into Delhi arrival.
