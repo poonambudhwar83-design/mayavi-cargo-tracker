@@ -38,13 +38,30 @@ const entireDeparted=[
   {code:'RCS',airport:'KWI',dateText:'30-OCT-26 22:17',details:'Received from shipper 87 Pieces, 2885.0 Kgs'}
 ];
 const loaded=kuwaitPartLoadFromActivity(entireDeparted,{destination:'DEL'});
-assert.equal(loaded.status,'IN TRANSIT','Verified master DEP means full load departed');
+assert.equal(loaded.status,'DEPARTED','Verified direct KWI-DEL master cargo DEP means DEPARTED, not IN TRANSIT');
 assert.equal(loaded.partShipments.length,2,'Keep two independently listed physical parts');
 assert.deepEqual(loaded.partShipments.map(p=>[p.pieces,p.weight,p.status,p.sourceStatus]),[
-  ['55','1824','IN TRANSIT','DEP'],['32','1061','IN TRANSIT','DEP']]);
+  ['55','1824','DEPARTED','DEP'],['32','1061','DEPARTED','DEP']]);
 assert.ok(loaded.partShipments.every(p=>p.departureIsActual===true&&!p.arrivalIsActual));
+assert.ok(loaded.partShipments.every(p=>p.arrivalEstimate===true&&p.arrivalDate==='2026-11-01'&&p.arrivalTime==='04:45'&&p.arrivalTimeZone==='IST'));
+assert.ok(loaded.partShipments.every(p=>p.arrivalTimeSource.includes('not cargo ARR')));
 const unverified=kuwaitPartLoadFromActivity(entireDeparted.map(x=>({...x,
   code:x.code==='DEP'?'MAN':x.code})),{destination:'DEL'});
 assert.equal(unverified.status,'PART LOAD');
 assert.ok(unverified.partShipments.every(p=>p.departureIsActual===false));
 console.log('Kuwait verified full 87-bag DEP updates both 55/32 physical rows without merging; MAN stays MAN');
+
+const latestOps=[...entireDeparted];
+latestOps[0]={...latestOps[0],
+  dateText:'31-OCT-26 19:07',
+  details:'Departed on Flight on KU381/31-OCT-26 19:07, 87 Pieces, 2885.0 Kgs, 31-OCT-26 19:07 at KWI'};
+const current=kuwaitPartLoadFromActivity(latestOps,{mawb:'229-18109630',origin:'KWI',destination:'DEL'});
+assert.equal(current.status,'DEPARTED');
+assert.equal(current.partShipments.length,2);
+assert.deepEqual(current.partShipments.map(p=>[p.pieces,p.weight,p.arrivalDate,p.arrivalTime,p.status]),[
+  ['55','1824','2026-11-01','04:37','DEPARTED'],
+  ['32','1061','2026-11-01','04:37','DEPARTED']]);
+assert.equal(current.arrivalIsActual,false,'Kuwait RCF missing: ETA is not arrival');
+const via=kuwaitPartLoadFromActivity(latestOps,{origin:'KWI',destination:'DEL',via:'DXB'});
+assert.equal(via.status,'IN TRANSIT','Real via flights retain IN TRANSIT status');
+console.log('Kuwait direct departure, separate 55/32 records, IST estimated arrival and via rule regression passed');
