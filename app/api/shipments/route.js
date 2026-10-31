@@ -180,7 +180,7 @@ export async function POST(request){
       if(incomingAwb.startsWith('160-'))rowForSave=guardCathayFinalArrival(rowForSave);
       // Import part-load decisions belong to each physical movement; tracking
       // refreshes must never copy the first part's flags to all other parts.
-      const supportsPartCustoms=['065','098','176','312'].some(p=>incomingAwb.startsWith(p));
+      const supportsPartCustoms=['065','098','176','312','229'].some(p=>incomingAwb.startsWith(p));
       if(supportsPartCustoms&&(!Array.isArray(rowForSave.partShipments)||!rowForSave.partShipments.length)
          &&Array.isArray(existingRow?.data?.partShipments)&&existingRow.data.partShipments.length>=2){
         rowForSave.partShipments=existingRow.data.partShipments;
