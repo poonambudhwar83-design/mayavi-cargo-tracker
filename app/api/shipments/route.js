@@ -246,7 +246,10 @@ export async function POST(request){
             'scheduledArrivalTime',CASE WHEN LEFT(EXCLUDED.awb,3)='065' AND EXCLUDED.data->>'arrivalVerifiedAbsent'='true' THEN '' WHEN LEFT(EXCLUDED.awb,3)='900' AND EXCLUDED.data->>'airasiaLiveVerifiedAt' IS NOT NULL THEN COALESCE(EXCLUDED.data->>'scheduledArrivalTime','') ELSE COALESCE(NULLIF(EXCLUDED.data->>'scheduledArrivalTime',''),mayavi_shipments.data->>'scheduledArrivalTime','') END,
             'goodsDescription',COALESCE(NULLIF(EXCLUDED.data->>'goodsDescription',''),mayavi_shipments.data->>'goodsDescription',''),
             'companyType',COALESCE(NULLIF(EXCLUDED.data->>'companyType',''),mayavi_shipments.data->>'companyType',''),
-            'companyName',COALESCE(NULLIF(EXCLUDED.data->>'companyName',''),mayavi_shipments.data->>'companyName','')
+            'companyName',COALESCE(NULLIF(EXCLUDED.data->>'companyName',''),mayavi_shipments.data->>'companyName',''),
+            'duplicateAlert',COALESCE((mayavi_shipments.data->>'duplicateAlert')::boolean,false),
+            'duplicateCount',COALESCE((mayavi_shipments.data->>'duplicateCount')::integer,0),
+            'duplicateAlertAt',COALESCE(mayavi_shipments.data->>'duplicateAlertAt','')
           ),
           version=mayavi_shipments.version+1,
           updated_at=now(),
@@ -285,6 +288,38 @@ export async function PATCH(request){
     if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const body=await request.json();
     const awb=normalize(body?.mawb||body?.awb||'');
+    // A repeated MAWB alerts the ORIGINAL master throughout Mayavi, including
+    // Active Masters in other open browser sessions. This SQL update touches
+    // only alert metadata, never client, customs, carrier or account data.
+    if(body?.operation==='markDuplicate'||body?.operation==='acknowledgeDuplicate'){
+      if(!awb)return Response.json({ok:false,error:'Invalid MAWB.'},{status:400});
+      if(!auth.internal&&!['admin','employee'].includes(auth.session?.role)){
+        return Response.json({ok:false,error:'Operator authorization required.'},{status:403});
+      }
+      const sql=db();
+      const [existing]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+      if(!existing)return Response.json({ok:false,error:'Original MAWB not found.'},{status:404});
+      if(isOtherCountries(existing.data||{})&&!canViewOtherCountries(auth.session,auth.internal)){
+        return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+      }
+      const mark=body.operation==='markDuplicate',now=new Date().toISOString();
+      const [saved]=mark
+        ?await sql`UPDATE mayavi_shipments
+          SET data=jsonb_set(jsonb_set(jsonb_set(data,
+            '{duplicateAlert}','true'::jsonb,true),
+            '{duplicateCount}',to_jsonb(COALESCE((data->>'duplicateCount')::integer,0)+1),true),
+            '{duplicateAlertAt}',to_jsonb(${now}::text),true),
+            version=version+1,updated_at=now()
+          WHERE awb=${awb}
+          RETURNING awb,data,version,updated_at,tracking_checked_at`
+        :await sql`UPDATE mayavi_shipments
+          SET data=jsonb_set(data,'{duplicateAlert}','false'::jsonb,true),
+            version=version+1,updated_at=now()
+          WHERE awb=${awb}
+          RETURNING awb,data,version,updated_at,tracking_checked_at`;
+      return Response.json({ok:true,duplicateAlert:mark,
+        row:{...saved,data:dataForViewer(sanitizeShipment(saved.data||{},saved.awb),auth.session,auth.internal)}});
+    }
     const partKey=String(body?.partKey||'').trim();
     const partCustoms=body?.operation==='partCustoms'||body?.operation==='emiratesPartCustoms';
     const supportedPart=Boolean(awb&&['065','098','176','312'].some(prefix=>awb.startsWith(prefix)));
