@@ -894,7 +894,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
     ||storedDuplicates[0]||null;
   const duplicateVisibleInTab=Boolean(duplicateSpotlight);
   const isDuplicateRow=r=>r.duplicateAlert===true||
-    isDuplicateRow(r);
+    (duplicateInTab&&digits(r.mawb)===digits(duplicateFocus.mawb));
   async function recordDuplicateMawb(existing){
     try{
       const response=await fetch('/api/shipments',{method:'PATCH',credentials:'include',
