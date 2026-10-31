@@ -793,7 +793,7 @@ export default function SpeedPostDashboard({currentUser}){
         </div>)}
       </div>
     </div>}
-    {(speedPostTab==='TRACKING'||speedPostTab==='DELIVERED'||speedPostTab==='MONTHLY')&&<>
+    {(['TRACKING','DAILY','ACTIVE','DELIVERED','BOOKING_PENDING','MONTHLY'].includes(speedPostTab))&&<>
     {speedPostTab==='TRACKING'&&<section aria-label="Add Speed Post ED" style={{...card,padding:'8px 10px',borderRadius:9,marginBottom:8}}>
       <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
         <label htmlFor="spPhotoInput" style={{fontSize:12,fontWeight:800,color:'#163c80',whiteSpace:'nowrap'}}>Scan photo</label>
@@ -866,7 +866,7 @@ export default function SpeedPostDashboard({currentUser}){
       <div style={{fontSize:11,color:'#64748b',marginTop:10}}>Scanned EDs are saved individually. Enter only the consignee name manually in each row. Uncertain OCR numbers require confirmation.</div>
     </section>}
     {(message||loadError)&&<div role="status" style={{...card,marginBottom:14,color:loadError?'#a52a2a':'#1e40af',fontSize:13}}>{loadError||message}</div>}
-    {speedPostTab==='TRACKING'&&<section aria-label="Entry date pages" style={{...card,marginBottom:10,padding:12}}>
+    {speedPostTab==='DAILY'&&<section aria-label="Entry date pages" style={{...card,marginBottom:10,padding:12}}>
       <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:9}}>
         <strong style={{fontSize:13,color:'#163c80'}}>ENTRY DATE • DAILY PAGE</strong>
         <select aria-label="Choose entry date page" value={effectiveDay} onChange={e=>{setSelectedEntryDay(e.target.value);setExportStatus('SHEET');}}
@@ -884,6 +884,28 @@ export default function SpeedPostDashboard({currentUser}){
         </button>)}
       </div>
     </section>}
+    {(['ACTIVE','DELIVERED','BOOKING_PENDING'].includes(speedPostTab))&&<section
+      aria-label="Filter Speed Post by entry date" style={{...card,marginBottom:10,padding:'11px 13px',
+      background:'#f8faff',border:'1px solid #dbe5f5'}}>
+      <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <label htmlFor="sp-list-date" style={{color:'#334155',fontSize:12,fontWeight:800}}>ENTRY DATE</label>
+        <select id="sp-list-date" aria-label="Choose entry date for current EMS page"
+          value={selectedListDay}
+          onChange={e=>{setSelectedListDay(e.target.value);setExportStatus('SHEET');}}
+          style={{...input,height:35,minWidth:210,width:'auto',fontWeight:700,color:'#1e3a8a'}}>
+          <option value="ALL">All Entry Dates • {listBaseRows.length} packets</option>
+          {listEntryDays.map(([day,items])=><option key={day} value={day}>
+            {day==='UNKNOWN'?'Entry Date Unknown':day} • {items.length} packets
+          </option>)}
+        </select>
+        <span style={{fontSize:11,color:'#64748b'}}>Only this page is filtered; saved records stay unchanged.</span>
+        {selectedListDay!=='ALL'&&<button type="button"
+          onClick={()=>{setSelectedListDay('ALL');setExportStatus('SHEET');}}
+          style={{...btn,padding:'7px 10px',background:'#e2e8f0',color:'#334155',fontSize:11}}>SHOW ALL DATES</button>}
+      </div>
+    </section>}
+    {speedPostTab==='TRACKING'&&<div style={{margin:'0 0 8px',fontSize:12,color:'#52647c',
+      padding:'3px 5px'}}>Latest entry date: <strong>{effectiveDay||'No entries yet'}</strong> • Open Daily Records for earlier dates.</div>}
     {speedPostTab==='MONTHLY'&&<section aria-label="Monthly entry records" style={{...card,marginBottom:10,padding:12}}>
       <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:10}}>
         <strong style={{color:'#173f91',fontSize:13}}>ENTRY-WISE MONTHLY RECORDS</strong>
@@ -977,7 +999,14 @@ export default function SpeedPostDashboard({currentUser}){
         </div>
         <button type="button" style={{...btn,background:'#e7eefb',color:'#224f9b',padding:'8px 10px'}} onClick={load} disabled={anythingBusy}>RELOAD RECORDS</button>
       </div>
-      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,background:'#eef4ff',border:'2px solid #afc7f1',borderRadius:10,padding:'12px',marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,background:'#f5f8ff',border:'1px solid #d0def4',borderRadius:10,padding:'11px 12px',marginBottom:12}}>
+        <label htmlFor="emsSearch" style={{fontSize:12,fontWeight:800,color:'#173f91'}}>FIND PACKET</label>
+        <input id="emsSearch" aria-label="Search ED number, consignee, destination or entered by"
+          value={rowSearch} onChange={e=>setRowSearch(e.target.value)}
+          placeholder="ED number / consignee / destination"
+          style={{...input,height:36,flex:'1 1 180px',maxWidth:360,fontSize:12}}/>
+        {rowSearch&&<button type="button" onClick={()=>setRowSearch('')}
+          style={{...btn,padding:'8px 10px',fontSize:11,background:'#e2e8f0',color:'#334155'}}>CLEAR SEARCH</button>}
         <label htmlFor="emsStatusFilter" style={{fontSize:13,fontWeight:900,color:'#173f91'}}>FILTER EMS STATUS</label>
         <select id="emsStatusFilter" aria-label="Filter EMS sheet and download by shipment status"
           value={exportStatus} onChange={e=>setExportStatus(e.target.value)}
@@ -1013,7 +1042,7 @@ export default function SpeedPostDashboard({currentUser}){
       </div>
       {historyIncomplete&&<p role="alert" style={{color:'#9a3412',fontWeight:700,fontSize:12}}>More than 5,000 saved EMS packets exist. This screen shows the newest 5,000; contact the administrator for a full archive.</p>}
       <div style={{overflowX:'auto'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
+        <table className="sp-record-table" style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:2600}}>
           <thead><tr>{[
             'S.No.','Tracking No.','Consignee Name','Entry Date','Destination',
             'Booking Date','Tracking Address','Tariff (INR)','Cash Cost (₹)',
@@ -1069,7 +1098,11 @@ export default function SpeedPostDashboard({currentUser}){
               {r.duplicateAlert===true&&<button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca'}} onClick={()=>acknowledgeDuplicate(r.trackingNo)} disabled={Boolean(duplicateBusy)}>CLEAR ALERT</button>}
               <button type="button" style={{...btn,padding:'7px 9px',fontSize:11,background:'#b91c1c'}} onClick={()=>remove(r.trackingNo)} disabled={anythingBusy}>DELETE</button>
             </div></td>
-          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No Delivered parcels yet.':speedPostTab==='MONTHLY'?'No entries in this month.':'No packets for this Entry Date. Select another date or add a new ED.'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={17} style={{...td,textAlign:'center',padding:28,color:'#64748b'}}>{exportStatus!=='SHEET'?'No packets match this page’s status filter.':speedPostTab==='DELIVERED'?'No delivered parcels match this date.':
+              speedPostTab==='ACTIVE'?'No active parcels match this date.':
+              speedPostTab==='BOOKING_PENDING'?'All selected packets already have Booking Dates.':
+              speedPostTab==='MONTHLY'?'No entries in this month.':
+              'No packets for this Entry Date. Choose another day or add a new ED.'}</td></tr>}</tbody>
         <tfoot><tr style={{background:'#eaf2ff',fontWeight:900,color:'#153866'}}>
             <td colSpan={7} style={{...td,padding:'10px 6px'}}>TOTAL • {displayedRows.length} ENTRIES</td>
             <td style={td}>{currency(filteredTotals.tariff)}</td>
