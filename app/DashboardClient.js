@@ -749,7 +749,6 @@ function expandPartRows(list=[]){
       arrivalEstimate:p.arrivalEstimate===true||Boolean(saudiaEta),
       arrivalTimeSource:p.arrivalTimeSource||(saudiaEta?'Matching Saudia flight/date planned ETA; IST, not actual arrival':''),
       status:p.status||row.status,
-      sourceStatus:prefix==='229'?(p.sourceStatus||row.sourceStatus):row.sourceStatus,
       saudiaRcfFollowUp:Boolean(rcf),
       saudiaRcfStation:rcf?.station||'',
       saudiaRcfDate:rcf?.date||'',
@@ -759,7 +758,7 @@ function expandPartRows(list=[]){
       // master may currently be at JED while another part already arrived DEL.
       airport:prefix==='065'?(p._saudiaPendingVirtual?'':p.arrivalIsActual===true?row.destination:(p.transitAirport||row.airport||'')):row.airport,
       currentLocation:prefix==='065'?(p._saudiaPendingVirtual?'SAUDIA PENDING':p.arrivalIsActual===true?row.destination:(p.transitAirport||row.currentLocation||'')):row.currentLocation,
-      sourceStatus:prefix==='065'?(p.arrivalIsActual===true?'ARR':/^(ARR|DEP)$/.test(String(p.sourceStatus||'').toUpperCase())?String(p.sourceStatus).toUpperCase():p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':row.sourceStatus):row.sourceStatus,
+      sourceStatus:prefix==='065'?(p.arrivalIsActual===true?'ARR':/^(ARR|DEP)$/.test(String(p.sourceStatus||'').toUpperCase())?String(p.sourceStatus).toUpperCase():p.status==='DEPARTED'?'DEP':p.status==='IN TRANSIT'?'FOW':row.sourceStatus):prefix==='229'?(p.sourceStatus||row.sourceStatus):row.sourceStatus,
       mailTime:mailTimeFrom(p.arrivalDate||'',p.arrivalTime||saudiaEta||'')||(saudiaPlan?.time?mailTimeFrom(saudiaPlan.date,saudiaPlan.time):''),
       mailSent:p.mailSent===true,
       mailUpdatedAt:p.mailUpdatedAt||'',
