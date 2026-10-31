@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { reconcile } from '../lib/saudiaStrong.js';
 import { applySaudiaPartFlightEtas } from '../lib/saudiaPartEta.js';
 import { enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
@@ -84,4 +85,15 @@ assert.equal(fresh.find(p=>p.pieces===113).customsCleared,true);
 assert.notEqual(fresh.find(p=>p.pieces===8).customsCleared,true);
 assert.equal(fresh.find(p=>p.pieces===113).mailSent,false);
 
+// Regression: API success must persist the complete SAL physical split to
+// the shared database without requiring the operator's authenticated browser.
+const trackRoute=readFileSync('app/api/track/route.js','utf8');
+assert.match(trackRoute,/mawb\.startsWith\('065-'\)\|\|mawb\.startsWith\('071-'\)/,
+  '065 must be allowed through direct persist helper');
+assert.match(trackRoute,/saudiaFastPath&&String\(shipment\.source\|\|''\)\.includes\('SAL complete shipment chronology'\)/,
+  'only verified SAL chronology should initiate direct 065 save');
+assert.match(trackRoute,/shipment\.partShipments\.reduce\(\(n,p\)=>n\+Number\(p\.pieces\|\|0\),0\)===Number\(shipment\.totalPieces\|\|0\)/,
+  'no incomplete/cross-flight partial movement may replace saved physical rows');
+assert.match(trackRoute,/persistAirIndiaVirginResult\(mawb,shipment\)/,
+  'verified physical split must reach backend shared DB write');
 console.log('Saudia SAL physical 113/121 JED RCF + 8/121 SV1127 FOW; per-part ETA and no false DEL ARR passed.');
