@@ -23,6 +23,7 @@ import { trackFlydubai } from '../../../lib/flydubai.js';
 import { trackKuwait } from '../../../lib/kuwait.js';
 import { kuwaitPartLoadFromActivity } from '../../../lib/kuwaitPartLoads.js';
 import { kuwaitDatedArrivalEta, applyKuwaitDatedEta } from '../../../lib/kuwaitFlightEta.js';
+import { reconcileKuwaitMasterEvents } from '../../../lib/kuwaitMasterEvents.js';
 import { markKuwaitAircraftDeparture } from '../../../lib/kuwaitAircraftDeparture.js';
 import { trackGulfAir } from '../../../lib/gulfAir.js';
 import { trackGulfAirParcels } from '../../../lib/gulfAirParcels.js';
@@ -751,8 +752,10 @@ async function handle(mawb,fallback={}){
   const api=apiResult?.ok?apiResult.shipment:null;
   const direct=directResult?.ok?directResult.shipment:null;
   if(kuwaitFastPath&&direct){
-    // KU is locked and already supplies AWB-specific operational cards.
-    // Turn distinct 41/87 MAN + 46/87 PRE into two persisted physical rows.
+    // Works for ALL Kuwait Airways 229 MAWBs, even when the cargo is booked
+    // as a single complete load rather than a 55/32 split. The original
+    // Kuwait website reader remains locked and unchanged.
+    Object.assign(direct,reconcileKuwaitMasterEvents(direct,directResult?.debug?.ops||[]));
     const split=kuwaitPartLoadFromActivity(directResult?.debug?.ops||[],direct);
     if(split)Object.assign(direct,split);
     // KU flight movement may be updated before Kuwait Cargo publishes its DEP
