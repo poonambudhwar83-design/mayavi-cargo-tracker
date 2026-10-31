@@ -8,20 +8,20 @@ async function fillByLabel(page,kind,value){
  const frames=page.frames();
  for(const frame of frames){
   const found=await frame.evaluate(({kind})=>{
-   const inputs=[...document.querySelectorAll('input')].filter(e=>{const r=e.getBoundingClientRect();return r.width>6&&r.height>6&&!e.disabled;});
+   const inputs=[...document.querySelectorAll('input,textarea,[role="textbox"]')].filter(e=>{const r=e.getBoundingClientRect();return r.width>6&&r.height>6&&!e.disabled;});
    const label=e=>[e.labels?.[0]?.innerText,e.getAttribute('aria-label'),e.placeholder,e.name,e.id].filter(Boolean).join(' ').toLowerCase();
    const el=inputs.find(e=>kind==='prefix'?/airline code|prefix/.test(label(e)):/air waybill number|awb number|airwaybill|waybill/.test(label(e))&&!/airline code|prefix/.test(label(e)));
    return el?{label:label(el),tag:el.tagName,type:el.type}:null;
   },{kind}).catch(()=>null);
   if(found){
    const did=await frame.evaluate(({kind,value})=>{
-    const inputs=[...document.querySelectorAll('input')];const label=e=>[e.labels?.[0]?.innerText,e.getAttribute('aria-label'),e.placeholder,e.name,e.id].filter(Boolean).join(' ').toLowerCase();
+    const inputs=[...document.querySelectorAll('input,textarea,[role="textbox"]')];const label=e=>[e.labels?.[0]?.innerText,e.getAttribute('aria-label'),e.placeholder,e.name,e.id].filter(Boolean).join(' ').toLowerCase();
     const el=inputs.find(e=>kind==='prefix'?/airline code|prefix/.test(label(e)):/air waybill number|awb number|airwaybill|waybill/.test(label(e))&&!/airline code|prefix/.test(label(e)));
     if(!el)return false;
     el.focus();el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;
    },{kind,value});
    // September 2026 used real user-keyboard input, rather than JS-only field changes.
-   const ele=await frame.$$('input');
+   const ele=await frame.$('input,textarea,[role="textbox"]');
    for(const el of ele){
      const met=await el.evaluate(e=>({label:[e.labels?.[0]?.innerText,e.getAttribute('aria-label'),e.placeholder,e.name,e.id].filter(Boolean).join(' ').toLowerCase(),rect:e.getBoundingClientRect().width})).catch(()=>null);
      if(!met||met.rect<6)continue;
