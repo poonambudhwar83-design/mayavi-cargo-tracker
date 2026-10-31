@@ -61,7 +61,7 @@ assert.equal(extractActivityMaster(
   {pieces:'40',weight:'800'}),null);
 
 
-const newOffload='AWB Activity Timeline\\nOFFLOADED Offloaded 6 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\\nAUH • 30 Oct 2026, 15:27:00\\nOFFLOADED Offloaded 15 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\\nAUH • 30 Oct 2026, 15:26:00\\nBOOKED Booked 41 pcs 1,015 kg at AUH for IX-0124, 30 Oct 2026';
+const newOffload='AWB Activity Timeline\nOFFLOADED Offloaded 6 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\nAUH • 30 Oct 2026, 15:27:00\nOFFLOADED Offloaded 15 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\nAUH • 30 Oct 2026, 15:26:00\nBOOKED Booked 41 pcs 1,015 kg at AUH for IX-0124, 30 Oct 2026';
 const example={origin:'AUH',destination:'DEL',pieces:'41',bags:'41',weight:'1015'};
 const offloaded=parseActivity(newOffload,example);
 assert.equal(offloaded.status,'OFFLOADED','Newer offloads must override future summary-card ETA');
@@ -70,15 +70,15 @@ assert.equal(offloaded.masterPieces,'41','41-piece total remains unchanged');
 assert.equal(offloaded.arrivalVerifiedAbsent,true);
 assert.equal(offloaded.arrivalDate,'');
 assert.equal(offloaded.departureIsActual,false);
-const priorDeparture='AWB Activity Timeline\\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH\\n'+newOffload.replace('AWB Activity Timeline\\n','');
-assert.equal(parseActivity(newOffload+'\\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'OFFLOADED','Latest offload must override an older departure');
+const priorDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH\n'+newOffload.replace('AWB Activity Timeline\n','');
+assert.equal(parseActivity(newOffload+'\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'OFFLOADED','Latest offload must override an older departure');
 assert.equal(parseActivity(priorDeparture,example).status,'IN TRANSIT','A later verified departure restores transit');
-const actualDeparture='AWB Activity Timeline\\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
+const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
 assert.equal(departed.status,'IN TRANSIT','Departure is not actual cargo arrival');
 assert.equal(departed.departureIsActual,true);
 assert.equal(departed.arrivalIsActual,false);
-const actualArrival='AWB Activity Timeline\\nARRIVAL Arrived 41 pcs 1015 kg on IX-0124, 31 Oct 2026 10:30 (A) at DEL';
+const actualArrival='AWB Activity Timeline\nARRIVAL Arrived 41 pcs 1015 kg on IX-0124, 31 Oct 2026 10:30 (A) at DEL';
 const arrived=parseActivity(actualArrival,example);
 assert.equal(arrived.status,'ARRIVED','Destination arrival in Activity View confirms cargo arrival');
 assert.equal(arrived.arrivalIsActual,true);
