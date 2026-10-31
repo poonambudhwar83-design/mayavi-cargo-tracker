@@ -748,7 +748,7 @@ export default function SpeedPostDashboard({currentUser}){
         ...(canViewProfit?[['PROFIT','Profit & Costing','#be185d','#fdf2f8']]:[])
       ].map(([id,label,color,bg])=><button key={id} type="button" role="tab"
         aria-selected={speedPostTab===id}
-        onClick={()=>{setSpeedPostTab(id);setExportStatus('SHEET');setRowSearch('');}}
+        onClick={()=>{setSpeedPostTab(id);setExportStatus('SHEET');setRowSearch('');setSelectedListDay('ALL');}}
         style={{...btn,background:speedPostTab===id?color:bg,color:speedPostTab===id?'#fff':color,
           border:'1px solid '+(speedPostTab===id?color:'#dbe4f0'),boxShadow:speedPostTab===id?'0 2px 8px #1e293b12':'none',
           padding:'10px 13px',fontSize:12,fontWeight:800,borderRadius:10,whiteSpace:'nowrap'}}>
