@@ -26,7 +26,7 @@ const locked = Object.freeze({
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
-  'lib/cathay.js':'449ff72bc9eb7ed72970bee9fd17cf0145dac7f8',
+  'lib/cathay.js':'5dba64edc085c943205fe12613f654c2cc943294',
   'lib/cathay-browser-fallback.js':'0ca1b323ef6ef0c4b55d1c67bbde46f22d9dad6d',
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
@@ -35,7 +35,7 @@ const locked = Object.freeze({
   // Do not alter CX retry cadence/decision without an explicit unlock request.
   'lib/cathayRefreshPolicy.js':'dbdf39ab54e46ce59e99831a82fa2a50656ec25a',
   // Keep the production 5-minute Cathay-only auto-refresh implementation stable.
-  'app/api/cron/cathay/route.js':'2350ade0b4830e8a147d0420672e07826ab223ce',
+  'app/api/cron/cathay/route.js':'b91c6c8d54426af375757991ce96079406036de6',
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
@@ -114,7 +114,7 @@ for(const [label,fragment] of saudiaDashboardContract){
 
 const cathayRouteContract=[
   ["Cathay official adapter import","import { trackCathay } from '../../../lib/cathay.js';"],
-  ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb);"],
+  ["Cathay dedicated 160 tracking","if(mawb.startsWith('160-')) return trackCathay(mawb,{fastTerminal:options?.fastTerminal===true});"],
   ["Cathay prefix fast path","const cathayFastPath=mawb.startsWith('160-');"],
   ["Cathay shared persistence","airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath"],
   ["Cathay saved-row eligibility","mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')"],

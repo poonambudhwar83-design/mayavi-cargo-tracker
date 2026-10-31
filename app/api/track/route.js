@@ -365,7 +365,7 @@ function debugText(result={}){
     .filter(Boolean).join(' ');
 }
 
-async function dedicatedOfficial(mawb){
+async function dedicatedOfficial(mawb,options={}){
   if(mawb.startsWith('071-')) return trackEthiopian(mawb);
   if(mawb.startsWith('072-')){
     // ParcelsApp Track Cargo -> scroll to events/summary; CHAMP retained as fallback.
@@ -393,7 +393,7 @@ async function dedicatedOfficial(mawb){
   if(mawb.startsWith('098-')) return trackAirIndia(mawb);
   if(mawb.startsWith('125-')) return trackBritishEntry(mawb);
   if(mawb.startsWith('157-')) return trackQatar(mawb);
-  if(mawb.startsWith('160-')) return trackCathay(mawb);
+  if(mawb.startsWith('160-')) return trackCathay(mawb,{fastTerminal:options?.fastTerminal===true});
   if(mawb.startsWith('176-')) return trackEmirates(mawb);
   if(mawb.startsWith('217-')) return trackThai(mawb);
   if(mawb.startsWith('229-')) return trackKuwait(mawb);
@@ -650,9 +650,9 @@ async function handle(mawb,fallback={}){
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
     skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:gulfAirFastPath?'GULF AIR OFFICIAL CHAMP CARGO TRACKER IS PRIMARY':etihadFastPath?'ETIHAD AWB-VERIFIED OFFICIAL HISTORY IS PRIMARY':ethiopianFastPath?'ETHIOPIAN OFFICIAL AWB-SPECIFIC HTML IS PRIMARY':klmFastPath?'KLM OFFICIAL AFKLM TRACK & TRACE ADAPTER IS PRIMARY':britishFastPath?'BRITISH AIRWAYS IAG TRACK AND TRACE ADAPTER IS PRIMARY':airIndiaFastPath?'AIR INDIA DEDICATED CARGO PORTAL ADAPTER IS PRIMARY':qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':thaiFastPath?'THAI CARGO CHORUS PUBLIC TRACKER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':malaysiaFastPath?'MALAYSIA AIRLINES MASKARGO OFFICIAL TRACKER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':indigoFastPath?'INDIGO DEDICATED SMARTKARGO FORM ADAPTER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
-    dedicatedOfficial(mawb),
+    dedicatedOfficial(mawb,{fastTerminal:cathayFastPath&&fallback?.cxFastRefresh===true}),
     // KLM must never merge an unrelated generic page's weight/route.
-    (klmFastPath||gulfAirFastPath)?Promise.resolve({ok:false,skipped:true,
+    (klmFastPath||gulfAirFastPath||(cathayFastPath&&fallback?.cxFastRefresh===true))?Promise.resolve({ok:false,skipped:true,
       reason:gulfAirFastPath?'GULF AIR USES AWB-VERIFIED PARCELS OR CHAMP ONLY':'KLM USES EXCLUSIVELY AWB-MATCHED OFFICIAL DETAILS'}):browserOfficial(mawb)
   ]);
   const apiResult=apiSettled.status==='fulfilled'?apiSettled.value:{ok:false,reason:apiSettled.reason?.message||'API FAILED'};
@@ -1661,7 +1661,10 @@ export async function POST(request){
   let body={};try{body=await request.json()}catch{return Response.json({ok:false,error:'Invalid request body.'},{status:400})}
   const mawb=normalizeMawb(body?.mawb);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
-  return handle(mawb,body?.currentShipment||{});
+  // CX scheduled refresh can skip the blocked web browser while retaining
+  // the existing AWB-matched terminal + flight-status pipeline.
+  return handle(mawb,{...(body?.currentShipment||{}),
+    cxFastRefresh:mawb.startsWith('160-')&&body?.cxFastRefresh===true});
 }
 
 export async function GET(request){
@@ -1669,5 +1672,6 @@ export async function GET(request){
   if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['141 flydubai Mercator SkyChain','020 Lufthansa','074 KLM AFKLM Track & Trace','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','072 Gulf Air CHAMP AWB tracking','232 Malaysia Airlines MASkargo','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','807 AirAsia Cargo SmartKargo','900 Thai AirAsia Cargo SmartKargo','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
-  return handle(mawb);
+  return handle(mawb,{cxFastRefresh:mawb.startsWith('160-')&&
+    new URL(request.url).searchParams.get('cxFast')==='true'});
 }
