@@ -948,15 +948,12 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
       if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>isExportArchived(r)&&
         (activeTab!=='EXPORT'||importArrivalMonth(r.departureDate||r.flightDate)===currentImportMonth||
          isDuplicateRow(r)));
-      return tabRows.filter(r=>!isExportArchived(r)||
-        isDuplicateRow(r));
+      return tabRows.filter(r=>!isExportArchived(r));
     }
     // Emirates split loads must be included in both candidate views. After
     // expansion, only the cleared physical parts go to Customs Cleared.
-    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r)||
-      isDuplicateRow(r));
-    return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r)||
-      isDuplicateRow(r));
+    if(isAdmin&&adminView==='CLEARED')return tabRows.filter(r=>hasIndependentCustomsParts(r)||isCustomsArchived(r));
+    return tabRows.filter(r=>hasIndependentCustomsParts(r)||!isCustomsArchived(r));
   },[tabRows,activeTab,isAdmin,adminView,currentImportMonth,duplicateFocus,duplicateInTab,storedDuplicates.length]);
   const customsClearedImportCount=useMemo(()=>tabRows.reduce((sum,row)=>
     sum+expandPartRows([row]).filter(p=>p.customsCleared===true&&
