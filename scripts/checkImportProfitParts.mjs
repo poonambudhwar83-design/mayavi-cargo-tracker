@@ -87,7 +87,7 @@ assert.deepEqual(IMPORT_FREIGHT_RATES,{DXB:173,CANADA:450,USA:410,GERMANY:322});
 // New Protein goods charge applies per physical bag, not per kg. USA
 // includes JFK (old JFK ₹3,000 rule has been retired).
 for(const [origin,expectedBagRate] of [
-  ['DXB',3000],['DUBAI',3000],
+  ['DXB',3000],['DUBAI',3000],['DWC',3000],['AL MAKTOUM',3000],
   ['JFK',1800],['USA',1800],['LAX',1800],['EWR',1800],['NEW YORK',1800],
   ['CANADA',1800],['YYZ',1800],['YVR',1800],['TORONTO',1800],
   ['GERMANY',1800],['FRA',1800],['MUC',1800],['FRANKFURT',1800],
@@ -105,7 +105,7 @@ assert.equal(importProteinGoodsChargePerBag('FRA')*4,7200);
 // Only goods charge is changed: for 4 JFK bags, Total Cost falls ₹4,800
 // relative to old ₹3,000/bag, increasing calculated Profit by ₹4,800.
 assert.equal(4*(3000-importProteinGoodsChargePerBag('JFK')),4800);
-for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ','CANADA',450],
+for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['DWC','DXB',173],['YYZ','CANADA',450],
   ['CANADA','CANADA',450],['JFK','USA',410],['USA','USA',410],['LAX','USA',410],
   ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
   assert.equal(importFreightRegion(origin,'PROTEIN'),region,origin);
@@ -233,6 +233,8 @@ assert.ok(!profitUi.includes("Battery charge\" value="));
 assert.ok(profitUi.includes("category==='PROTEIN'?importProteinGoodsChargePerBag(origin):null;"));
 assert.ok(profitUi.includes("Protein from DXB ₹3,000/bag, Protein from USA (including JFK), Canada or Germany ₹1,800/bag"));
 assert.ok(profitUi.includes("Protein DXB 3000/bag; Protein USA incl JFK, Canada, Germany 1800/bag"));
+assert.ok(profitUi.includes('Freight included: {displayMoney(n.freightCharge)} (₹{n.freightRate} × {quantity.format(n.kg||0)} kg)'),
+  'Total Cost must visibly show the amount of freight included, not just the per kg rate');
 assert.ok(!profitUi.includes("Protein JFK/DXB 3000"));
 assert.ok(!profitUi.includes('isJfkOrigin?3000'));
 // 15% reporting column: ordinary HH ₹340/bag is excluded, every other
