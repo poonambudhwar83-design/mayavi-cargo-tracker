@@ -28,7 +28,7 @@ const locked = Object.freeze({
   // final DEL arrival evidence and master final-flight reconciliation.
   'lib/saudiaDirect.js':'cb39b401c2634dac681021299a328f36cdf6dbb5',
   'lib/saudiaStrong.js':'32ba65e2da6f98beb3ab025b215cd12b4fbaa13b',
-  'lib/saudiaTransitGuard.js':'ce3970483d3031aee04cbeffc6e89cca9c6b1aaf',
+  'lib/saudiaTransitGuard.js':'d758ce4d779dc25ae4ddb545ff385dbe0bad228f',
   'lib/saudiaPhysicalParts.js':'bdd9f796e52b352aeef0ddb662e858c85da0b681',
   'lib/saudiaArrivedMasterFlight.js':'5fd3ac0ebf36d0302a10b2ef68839413ea9cdbf8',
   'lib/saudiaRcfParts.js':'17d5c82b8933676063a0f445d0166cc2707e5d4c',

@@ -113,6 +113,46 @@ assert.equal(transitPart.partShipments[1].transitArrivalTime,'23:55');
 assert.equal(transitPart.partShipments[1].arrivalDate,'');
 assert.equal(transitPart.status,'PART ARRIVED');
 
+
+// 121-bag SAL master: 113/121 (2661.6kg) and 8/121 (188.4kg) were received
+// separately at JED. Old dashboard guard wrongly replaced both with a fake
+// 121/121, 188.4/2850 kg row using the latest SV1127 8-bag DEP.
+const sal121={mawb:'065-11493775',origin:'DMM',destination:'DEL',
+  flightNo:'SV1127',flightDestination:'JED',airport:'DMM',
+  sourceStatus:'DEP',status:'DEPARTED',arrivedPieces:0,arrivedWeight:0,
+  totalPieces:121,totalWeight:2850,partLoad:true,isPartLoad:true,
+  partLoadHistory:[
+    {flightNo:'SV1113',flightDate:'10/30/2026 12:00:00 AM',departed:{pieces:113,weight:2661.6}},
+    {flightNo:'SV1127',flightDate:'10/31/2026 12:00:00 AM',departed:{pieces:8,weight:188.4}}
+  ],
+  partShipments:[
+    {partId:'SV1127|2026-10-31|8|188.4',partKey:'SV1127|2026-10-31|8|188.4',
+      flightNo:'SV1127',flightDate:'2026-10-31',pieces:8,weight:188.4,
+      totalPieces:121,totalWeight:2850,sourceStatus:'RCF',
+      status:'IN TRANSIT',arrivalIsActual:false,transitAirport:'JED',flightDestination:'JED'},
+    {partId:'SV1113|2026-10-30|113|2661.6',partKey:'SV1113|2026-10-30|113|2661.6',
+      flightNo:'SV1113',flightDate:'2026-10-30',pieces:113,weight:2661.6,
+      totalPieces:121,totalWeight:2850,sourceStatus:'RCF',
+      status:'IN TRANSIT',arrivalIsActual:false,transitAirport:'JED',flightDestination:'JED'}
+  ]};
+const weightGuarded=guardSaudiaConnectingFlightWithoutSal(sal121);
+assert.equal(weightGuarded.partShipments.length,2,
+  'Never replace 113+8 physical parts with one 121-bag row');
+assert.deepEqual(weightGuarded.partShipments.map(p=>p.pieces).sort((a,b)=>a-b),[8,113]);
+assert.equal(weightGuarded.partShipments.reduce((n,p)=>n+p.weight,0),2850);
+assert.equal(weightGuarded.partShipments.find(p=>p.pieces===8).weight,188.4);
+assert.equal(weightGuarded.partShipments.find(p=>p.pieces===113).weight,2661.6);
+assert.equal(weightGuarded.status,'IN TRANSIT','JED receipts are not final DEL arrival');
+assert.equal(weightGuarded.arrivalDate||'','');
+assert.equal(weightGuarded.arrivalIsActual,false);
+// Even a temporarily incomplete parts list must not assign the 8-bag
+// flight weight to all 121 bags.
+const partialGuarded=guardSaudiaConnectingFlightWithoutSal({
+  ...sal121,partShipments:[sal121.partShipments[0]]});
+assert.equal(partialGuarded.partShipments.length,1);
+assert.equal(partialGuarded.partShipments[0].pieces,8);
+assert.equal(partialGuarded.partShipments[0].weight,188.4);
+
 // The saved history fallback must be used by the dashboard itself, not only
 // by the background refresh: a 49+50 split must render even before cron writes.
 const dashboard=readFileSync('app/DashboardClient.js','utf8');
