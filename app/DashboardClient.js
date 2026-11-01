@@ -123,9 +123,22 @@ function viaForRow(row={}){
 function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   const s=String(raw||'').toUpperCase();
   const n=normalize(mawb);
-  // A 6-piece offload against a 41-piece Air India master is not a 41-piece offload.
-  if(n.startsWith('098-')&&(s==='PART OFFLOADED'||row.offloadReconciliationPending===true||(s==='OFFLOADED'&&Number(row.offloadedPieces)>0&&Number(row.masterPieces||row.pieces||row.bags)>Number(row.offloadedPieces))))
+  // An independent Air India physical part never inherits a whole-master
+  // offload warning. 35 pcs DEPARTED and 6 pcs OFFLOADED are separate rows.
+  if(n.startsWith('098-')&&row._partKey){
+    if(s==='DEPARTED'||s==='IN TRANSIT')return 'DEPARTED';
+    if(s==='OFFLOADED')return 'OFFLOADED';
+    if(s==='ARRIVED'&&row.arrivalIsActual===true)return 'ARRIVED';
+    if(s==='MANIFESTED'||s==='BOOKED')return s;
+  }
+  if(n.startsWith('098-')&&!row._partKey&&
+    (s==='PART OFFLOADED'||(
+      row.airIndiaPartReconciled!==true&&
+      (row.offloadReconciliationPending===true||
+        (s==='OFFLOADED'&&Number(row.offloadedPieces)>0&&
+         Number(row.masterPieces||row.pieces||row.bags)>Number(row.offloadedPieces)))))){
     return 'PART OFFLOAD • VERIFY';
+  }
   const via=viaForRow(row).toUpperCase();
   const origin=String(row.origin||'').toUpperCase(),destination=String(row.destination||'').toUpperCase();
   const directDelhi=destination==='DEL'&&!via;
