@@ -221,8 +221,8 @@ function recoverTurkishLocal(server={},local={}){
   return{row:out,changed};
 }
 function decorateTiming(existing={},incoming={}){
+  const raw=enforceSaudiaArrivalEvidence({...existing,...incoming});
   const latest={...existing,...incoming};
-  const raw=enforceSaudiaArrivalEvidence(latest);
   const isFinalSaudiaArrival=normalize(latest.mawb||latest.awb||'').startsWith('065-')
     &&latest.status==='ARRIVED'&&latest.arrivalIsActual===true
     &&/^(ARR|DLV)$/.test(String(latest.sourceStatus||'').toUpperCase())
