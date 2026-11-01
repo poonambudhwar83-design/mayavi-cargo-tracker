@@ -18,6 +18,7 @@ assert.equal(normalizeSalFlightDate('2026-11-02'),'2026-11-02');
 assert.equal(normalizeSalFlightDate('02/30/2026 12:00:00 AM'),'');
 const salEvent={Status:'RCS',Airport:'JED',Flight_Dest:'DEL',Flight_Number:'756',
   Flight_Date:salRaw,DateTime_LT:'11/1/2026 4:46:00 PM',Pieces:39,Weight:830};
+let flightStatsCard='DEL flight arrival times Scheduled 09:45 IST';
 const originalFetch=globalThis.fetch;
 try{
   globalThis.fetch=async url=>{
@@ -26,7 +27,7 @@ try{
         Awb:base.mawb,Origin:'JED',Destination:'DEL',TotalPieces:39,TotalWeight:830,
         Parts:[{Events:[salEvent]}]})}),{status:200});
     if(String(url).startsWith('https://www.flightstats.com/v2/flight-tracker/SV/756'))
-      return new Response('DEL flight arrival times Scheduled 09:45 IST',{status:200});
+      return new Response(flightStatsCard,{status:200});
     return new Response('unavailable',{status:404});
   };
   const publicLive=await trackSaudiaViaSal(base.mawb);
@@ -45,6 +46,15 @@ try{
   assert.equal(projected.mailTime,'');
   assert.equal(projected.arrivalIsActual,false);
   assert.equal(projected.status,'EXPECTED');
+  flightStatsCard='DEL flight arrival times Estimated 10:10 Scheduled 09:45 IST';
+  const revised=await trackSaudiaDirect(base.mawb);
+  assert.equal(revised.shipment.saudiaRcsScheduledTime,'10:10',
+    'FlightStats dated flight estimate must supersede old scheduled clock');
+  assert.equal(revised.shipment.saudiaRcsTimeSource,'FlightStats estimated arrival');
+  const revision=enforceSaudiaArrivalEvidence(revised.shipment);
+  assert.equal(revision.saudiaRcsScheduledTime,'10:10');
+  assert.equal(revision.arrivalTime,'');
+  assert.equal(revision.arrivalIsActual,false);
 }finally{globalThis.fetch=originalFetch;}
 const rcs=enforceSaudiaArrivalEvidence({...base,flightDate:salRaw});
 assert.equal(rcs.status,'EXPECTED');
