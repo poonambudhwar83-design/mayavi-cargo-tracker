@@ -30,9 +30,9 @@ try{
     return new Response('unavailable',{status:404});
   };
   const publicLive=await trackSaudiaViaSal(base.mawb);
-  console.log('RCS schedule source diagnostic',JSON.stringify({publicOk:publicLive.ok,flightNo:publicLive.shipment?.flightNo,flightDate:publicLive.shipment?.flightDate,arrivalTime:publicLive.shipment?.arrivalTime,source:publicLive.shipment?.arrivalTimeSource,reason:publicLive.reason}));
+  assert.equal(publicLive.shipment?.arrivalTime,'09:45','Existing Saudia flight source schedule');
   const live=await trackSaudiaDirect(base.mawb);
-  console.log('RCS direct schedule diagnostic',JSON.stringify({flightDate:live.shipment?.flightDate,scheduled:live.shipment?.saudiaRcsScheduledTime,planned:live.shipment?.plannedFlightDate}));
+
   assert.equal(live.ok,true);
   assert.equal(live.shipment.flightNo,'SV756');
   assert.equal(live.shipment.flightDate,future,'SAL full chronology must normalize Flight_Date');
