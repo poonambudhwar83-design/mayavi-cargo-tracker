@@ -110,7 +110,7 @@ for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['YYZ',
   ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
   assert.equal(importFreightRegion(origin,'PROTEIN'),region,origin);
   assert.equal(importFreightRate(origin,'PROTEIN'),rate,origin);
-  for(const other of ['CLOTHES','HH','BATTERY','', 'OTHER']){
+  for(const other of ['CLOTHES','HH','BATTERY','SWITCH','', 'OTHER']){
     assert.equal(importFreightRegion(origin,other),'',origin+' '+other+' no freight');
     assert.equal(importFreightRate(origin,other),0,origin+' '+other+' no freight');
   }
@@ -149,6 +149,7 @@ assert.equal(importNetProfit(500,100,clothesTotal),31900);
 assert.equal(importFreightRate('JFK','CLOTHES'),0);
 assert.equal(importFreightRate('YYZ','HH'),0);
 assert.equal(importFreightRate('FRA','BATTERY'),0);
+assert.equal(importFreightRate('DXB','SWITCH'),0);
 assert.equal(importNetProfit(500,100,dxbTotal),12600);
 assert.equal(importNetProfit(null,100,dxbTotal),null);
 assert.equal(importTotalCost({...dx,duty:null}),null);
@@ -218,9 +219,14 @@ assert.ok(!profitUi.includes('185*kg'));
 assert.ok(!profitUi.includes('Total Cost (before special deductions)'));
 assert.ok(profitUi.includes('const canadaFreightDeduction='));
 assert.ok(profitUi.includes('const germanyFreightDeduction='));
-// Battery Goods Charge = physical part bags × ₹1,500, with no manual override.
+// Battery and Switch Goods Charge = physical part bags × ₹1,500, with no manual override.
 // Other eligible goods still use the existing tariff and deduction rules.
-assert.ok(profitUi.includes("category==='CLOTHES'||category==='BATTERY'?1500:"));
+assert.ok(profitUi.includes("category==='CLOTHES'||category==='BATTERY'||category==='SWITCH'?1500:"));
+assert.ok(profitUi.includes('<option value="SWITCH">Switch</option>'));
+assert.ok(profitUi.includes('Clothes, Battery and Switch 1500/bag'));
+assert.ok(apiSource.includes("['HH','PROTEIN','CLOTHES','BATTERY','SWITCH'].includes(category)"));
+assert.ok(apiSource.includes("if(/\\bSWITCH(?:ES)?\\b/.test(raw))return 'SWITCH';"));
+assert.equal(5*1500,7500);
 assert.ok(profitUi.includes("const goodsCharge=bags===null||chargePerBag===null?null:bags*chargePerBag;"));
 assert.ok(!profitUi.includes("batteryMasterCharge"));
 assert.ok(!profitUi.includes("Battery charge\" value="));
