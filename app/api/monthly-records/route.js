@@ -1,5 +1,8 @@
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { ensureMonthlyArchiveTable, monthLabel, monthlyDb, snapshotClosedMonths } from '../../../lib/monthlyArchive.js';
+import { importArrivalMonth } from '../../../lib/monthlyArchive.js';
+import { confirmedPartArrival } from '../../../lib/arrivalWeights.js';
+import { confirmedExportHandoverMonth } from '../../../lib/exportHandoverAccounting.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -17,36 +20,45 @@ export async function GET(request){
     await ensureMonthlyArchiveTable(sql);
     const snapshot=await snapshotClosedMonths(sql);
 
-    const months=await sql`
-      SELECT
-        archive_month,
-        COUNT(*) FILTER (WHERE shipment_type='IMPORT')::int AS import_count,
-        COUNT(*) FILTER (WHERE shipment_type='EXPORT')::int AS export_count,
-        MAX(archived_at) AS archived_at
+    // Keep older archive snapshots untouched. Previously some Export masters
+    // were stored by flight departure month; only surface them in the correct
+    // confirmed Handover YES month. The snapshot job also backfills that month.
+    const archived=await sql`
+      SELECT archive_month,shipment_type,awb,data,archived_at
       FROM mayavi_monthly_archive
-      GROUP BY archive_month
-      ORDER BY archive_month DESC
+      ORDER BY archive_month DESC,awb ASC
     `;
+    const matchesAccountingMonth=record=>{
+      const data=record.data||{},period=String(record.archive_month||'');
+      if(record.shipment_type==='EXPORT')
+        return confirmedExportHandoverMonth(data)===period;
+      if(record.shipment_type!=='IMPORT')return false;
+      const parts=Array.isArray(data.partShipments)?data.partShipments.filter(Boolean):[];
+      if(parts.length)return parts.some(p=>confirmedPartArrival(p)&&importArrivalMonth(p.arrivalDate)===period);
+      return confirmedPartArrival(data)&&importArrivalMonth(data.arrivalDate)===period;
+    };
+    const validRecords=archived.filter(matchesAccountingMonth);
+    const summary=new Map();
+    for(const record of validRecords){
+      const key=record.archive_month;
+      if(!summary.has(key))summary.set(key,{
+        archive_month:key,import_count:0,export_count:0,archived_at:null
+      });
+      const item=summary.get(key);
+      if(record.shipment_type==='IMPORT')item.import_count++;
+      else if(record.shipment_type==='EXPORT')item.export_count++;
+      if(!item.archived_at||String(record.archived_at)>String(item.archived_at))
+        item.archived_at=record.archived_at;
+    }
+    const months=[...summary.values()].sort((a,b)=>b.archive_month.localeCompare(a.archive_month));
 
     const url=new URL(request.url);
     const month=validMonth(url.searchParams.get('month'));
     const type=validType(url.searchParams.get('type'));
-    let rows=[];
-    if(month&&type){
-      rows=await sql`
-        SELECT archive_month,shipment_type,awb,data,archived_at
-        FROM mayavi_monthly_archive
-        WHERE archive_month=${month} AND shipment_type=${type}
-        ORDER BY COALESCE(data->>'enteredAt','') ASC, awb ASC
-      `;
-    }else if(month){
-      rows=await sql`
-        SELECT archive_month,shipment_type,awb,data,archived_at
-        FROM mayavi_monthly_archive
-        WHERE archive_month=${month}
-        ORDER BY shipment_type,COALESCE(data->>'enteredAt','') ASC,awb ASC
-      `;
-    }
+    const rows=month?validRecords.filter(record=>
+      record.archive_month===month&&(!type||record.shipment_type===type))
+      .sort((a,b)=>String(a.data?.enteredAt||'').localeCompare(String(b.data?.enteredAt||''))||
+        String(a.awb||'').localeCompare(String(b.awb||''))):[];
 
     return Response.json({
       ok:true,
