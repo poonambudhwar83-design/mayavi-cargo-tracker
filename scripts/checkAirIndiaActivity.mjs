@@ -209,3 +209,17 @@ assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,masterPie
 assert.equal(parseAirIndiaTrackingView(trackingCard.replace('16:20(E)','--:--(E)'),trackingMaster),null,'Missing arrival clock must not be guessed');
 assert.equal(parseAirIndiaTrackingView('Booking Manage Login Sign Up 098-32251715 41 pcs 2020 kg Tracking View Activity View',
   {mawb:'098-32251715',origin:'DXB',destination:'DEL',status:'ACCEPTED',masterPieces:'41'}),null,'No Tracking View flight leg means no invented ETA');
+
+import { recentAirIndiaTrackingEta } from '../lib/airIndiaTrackingView.js';
+const cachedTrackingRow={
+  mawb:'098-32251704',origin:'DXB',destination:'DEL',flightNo:'AI0930',flightDate:'2026-11-01',
+  airIndiaEtaSource:'Air India Cargo AWB Tracking View',airIndiaEtaFlightNo:'AI0930',
+  airIndiaEtaFlightDate:'2026-11-01',arrivalDate:'2026-11-01',arrivalTime:'16:20',
+  arrivalEstimate:true,arrivalIsActual:false,airIndiaTrackingViewEvidence:officialTrackingEta.airIndiaTrackingViewEvidence,
+  airIndiaTrackingViewVerifiedAt:'2026-11-01T02:00:00.000Z'};
+const cachedNow=Date.parse('2026-11-01T02:15:00.000Z');
+assert.equal(recentAirIndiaTrackingEta(trackingMaster,cachedTrackingRow,cachedNow)?.arrivalTime,'16:20');
+assert.equal(recentAirIndiaTrackingEta({...trackingMaster,flightDate:'2026-11-02'},cachedTrackingRow,cachedNow),null);
+assert.equal(recentAirIndiaTrackingEta({...trackingMaster,flightNo:'AI0916'},cachedTrackingRow,cachedNow),null);
+assert.equal(recentAirIndiaTrackingEta({...trackingMaster,status:'OFFLOADED'},cachedTrackingRow,cachedNow),null);
+assert.equal(recentAirIndiaTrackingEta(trackingMaster,cachedTrackingRow,cachedNow+9*3600000),null);

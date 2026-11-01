@@ -45,7 +45,7 @@ import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
 import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta, latestAirIndiaEventDate } from '../../../lib/airIndiaScheduleEta.js';
-import { parseAirIndiaTrackingView } from '../../../lib/airIndiaTrackingView.js';
+import { parseAirIndiaTrackingView, recentAirIndiaTrackingEta } from '../../../lib/airIndiaTrackingView.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
@@ -1643,6 +1643,7 @@ async function handle(mawb,fallback={}){
       minFlightDate:direct.flightDate?'':latestActivityDay
     });
     if(airIndiaTrackingEta){
+      airIndiaTrackingEta.airIndiaTrackingViewVerifiedAt=new Date().toISOString();
       Object.assign(shipment,airIndiaTrackingEta);
       if(!direct.flightDate){
         shipment.flightNo=airIndiaTrackingEta.trackingViewFlightNo;
@@ -1651,6 +1652,20 @@ async function handle(mawb,fallback={}){
       shipment.status=direct.status;
       shipment.arrivalIsActual=false;
       shipment.mailTime='';
+    }
+  }
+  if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&direct.arrivalIsActual!==true&&
+     direct.status!=='OFFLOADED'&&direct.flightNo&&direct.flightDate){
+    // Keep only an exact recent Tracking View ETA until that same tab
+    // publishes a newer flight update. A new manifest flight/date clears it.
+    const saved=await loadStoredTrackingFallback(mawb);
+    const recent=recentAirIndiaTrackingEta({
+      ...shipment,mawb,flightNo:direct.flightNo,flightDate:direct.flightDate,
+      status:direct.status,arrivalIsActual:false
+    },saved);
+    if(recent){
+      airIndiaTrackingEta=recent;
+      Object.assign(shipment,recent,{status:direct.status,arrivalIsActual:false,mailTime:''});
     }
   }
   if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&direct.arrivalIsActual!==true&&
