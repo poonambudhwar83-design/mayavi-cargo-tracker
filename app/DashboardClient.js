@@ -169,7 +169,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   if(timingStatus==='EARLY'||s.includes('EARLY'))return'EARLY ARRIVAL';
   if(timingStatus==='DELAYED')return'DELAYED';
   if(s.includes('PRE-MANIFEST'))return'PRE-MANIFESTED';
-  if((n.startsWith('229-')||n.startsWith('098-'))&&s==='MANIFESTED')return'MANIFESTED';
+  if(n.startsWith('229-')&&s==='MANIFESTED')return'MANIFESTED';
   if(s.includes('MANIFEST')||s.includes('ACCEPT')||s.includes('BUILT')||s.includes('EXECUT')||s.includes('BOOK'))return'BOOKED';
   return'BOOKED';
 }
@@ -1023,7 +1023,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
     return total;
   },[visibleRows,activeTab]);
   const totalWeightMinus=useMemo(()=>{const seen=new Set();return visibleRows.reduce((sum,r)=>{const key=digits(r.mawb);if(!key||seen.has(key))return sum;seen.add(key);return sum+weightMinusForTotal(r)},0)},[visibleRows]);
-  const stats=useMemo(()=>({total:visibleRows.length,booked:visibleRows.filter(x=>x.status==='BOOKED'||x.status==='PRE-MANIFESTED'||x.status==='MANIFESTED').length,transit:visibleRows.filter(x=>x.status==='IN TRANSIT'||x.status==='PART ARRIVED').length,arrived:visibleRows.filter(x=>x.status==='ARRIVED'||x.status==='DELIVERED').length,attention:visibleRows.filter(x=>x.status==='DELAYED'||x.status==='RESCHEDULED'||x.status==='EARLY ARRIVAL').length}),[visibleRows]);
+  const stats=useMemo(()=>({total:visibleRows.length,booked:visibleRows.filter(x=>x.status==='BOOKED'||x.status==='PRE-MANIFESTED').length,transit:visibleRows.filter(x=>x.status==='IN TRANSIT'||x.status==='PART ARRIVED').length,arrived:visibleRows.filter(x=>x.status==='ARRIVED'||x.status==='DELIVERED').length,attention:visibleRows.filter(x=>x.status==='DELAYED'||x.status==='RESCHEDULED'||x.status==='EARLY ARRIVAL').length}),[visibleRows]);
   async function track(one,currentShipment={}){const n=normalize(one);if(!n)throw new Error('Enter valid 11-digit MAWB.');const fallback=normalize(n).startsWith('235-')?{flightNo:currentShipment.flightNo||'',flightDate:currentShipment.flightDate||'',departureDate:currentShipment.departureDate||'',departureTime:currentShipment.departureTime||'',origin:currentShipment.origin||'',destination:currentShipment.destination||'',departureFlightNo:currentShipment.departureFlightNo||'',departureOrigin:currentShipment.departureOrigin||'',departureDestination:currentShipment.departureDestination||'',scheduledDeparture:currentShipment.scheduledDeparture||''}:{};const res=await fetch('/api/track',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb:n,currentShipment:fallback})});const data=await res.json();if(!data.ok){const err=new Error(data.trackingError||data.apiError||data.error||'Tracking failed');err.payload=data;throw err}return {...data.shipment,provider:data.provider||data.shipment?.source||''}}
   async function importTurkishScreenshot(value,file){
     if(!file)return;
