@@ -149,6 +149,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
      &&row.kuwaitCargoDepartureConfirmed===true
      &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(n.startsWith('065-')&&String(row.sourceStatus||'').toUpperCase()==='FOW'&&row.arrivalIsActual!==true&&s==='IN TRANSIT')return'EXPECTED';
+  if(n.startsWith('065-')&&s==='EXPECTED'&&String(row.sourceStatus||'').toUpperCase()==='RCS'&&row.saudiaArrivalStage==='PLANNED'&&row.arrivalEstimate===true)return'EXPECTED';
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('DELIVER'))return'DELIVERED';
@@ -206,6 +207,7 @@ function expectedArrivalLabel(row={}){
   if(isSaudia){
     const stage=String(row.saudiaArrivalStage||'').toUpperCase();
     const event=String(row.sourceStatus||'').toUpperCase();
+    if(stage==='PLANNED'&&event==='RCS')return'EXPECTED FLIGHT DATE • RCS (ETA TIME PENDING)';
     if(stage==='CONFIRMED_ETA'||event==='DEP')return'FLIGHT DEPARTED • CONFIRMED ETA';
     if(stage==='ESTIMATED'||event==='FOW')return'ESTIMATED ARRIVAL • FOW';
   }
