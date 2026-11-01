@@ -203,6 +203,20 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     if(/OFFLOAD/.test(String(tracked.status||''))){
       // A newer partial offload supersedes any stale departure ETA/timestamp.
       patch.departureDate='';patch.departureTime='';patch.departureIsActual=false;
+    }else if(tracked.airIndiaPartReconciled===true&&
+      Array.isArray(tracked.partShipments)&&
+      tracked.partShipments.some(part=>String(part.status||'').toUpperCase()==='OFFLOADED')){
+      // PART DEPARTED can coexist with a separate verified OFFLOADED part.
+      // Preserve its physical quantity during storage; do not overwrite 6
+      // offloaded pieces with zero just because 35 other pieces departed.
+      patch.offloadedPieces=String(tracked.partShipments
+        .filter(part=>String(part.status||'').toUpperCase()==='OFFLOADED')
+        .reduce((n,part)=>n+Number(part.pieces||0),0));
+      patch.offloadedWeight='';
+      patch.offloadedWeightUnknown=true;
+      patch.offloadEvidence=tracked.partShipments
+        .filter(part=>String(part.status||'').toUpperCase()==='OFFLOADED')
+        .map(part=>part.activityEvidence||'').filter(Boolean).join(' || ');
     }else{
       // After a fresh manifest/departure/arrival, don't retain old offload flags.
       patch.offloadedPieces='0';patch.offloadedWeight='0';
