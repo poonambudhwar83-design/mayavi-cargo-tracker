@@ -88,10 +88,12 @@ assert.deepEqual(IMPORT_FREIGHT_RATES,{DXB:173,CANADA:450,USA:410,GERMANY:322});
 // includes JFK (old JFK ₹3,000 rule has been retired).
 for(const [origin,expectedBagRate] of [
   ['DXB',3000],['DUBAI',3000],['DWC',3000],['AL MAKTOUM',3000],
+  ['SHJ',3000],['SHARJAH',3000],['AUH',3000],['ABU DHABI',3000],
+  ['UAE',3000],['UNITED ARAB EMIRATES',3000],['RKT',3000],['RAS AL KHAIMAH',3000],['AAN',3000],['AL AIN',3000],['FJR',3000],
   ['JFK',1800],['USA',1800],['LAX',1800],['EWR',1800],['NEW YORK',1800],
   ['CANADA',1800],['YYZ',1800],['YVR',1800],['TORONTO',1800],
   ['GERMANY',1800],['FRA',1800],['MUC',1800],['FRANKFURT',1800],
-  ['HKG',1500],['JED',1500],['DOH',1500],['SHJ',1500],['LHR',1500]
+  ['HKG',1500],['JED',1500],['DOH',1500],['LHR',1500]
 ]){
   assert.equal(importProteinGoodsChargePerBag(origin),expectedBagRate,
     'Protein goods bag rate for '+origin);
@@ -100,12 +102,17 @@ assert.equal(importProteinGoodsChargePerBag(''),null);
 assert.equal(importProteinGoodsChargePerBag('   '),null);
 assert.equal(importProteinGoodsChargePerBag('JFK')*4,7200);
 assert.equal(importProteinGoodsChargePerBag('DXB')*4,12000);
+for(const origin of ['DXB','DWC','SHJ','AUH','ABU DHABI','SHARJAH','UAE']){
+  assert.equal(importProteinGoodsChargePerBag(origin)*4,12000,origin+' four bags cost 12000');
+  assert.equal(importFreightRate(origin,'PROTEIN')*100,17300,origin+' 100kg freight 17300');
+}
 assert.equal(importProteinGoodsChargePerBag('YYZ')*4,7200);
 assert.equal(importProteinGoodsChargePerBag('FRA')*4,7200);
 // Only goods charge is changed: for 4 JFK bags, Total Cost falls ₹4,800
 // relative to old ₹3,000/bag, increasing calculated Profit by ₹4,800.
 assert.equal(4*(3000-importProteinGoodsChargePerBag('JFK')),4800);
-for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['DWC','DXB',173],['YYZ','CANADA',450],
+for(const [origin,region,rate] of [['DXB','DXB',173],['DUBAI','DXB',173],['DWC','DXB',173],
+  ['SHJ','DXB',173],['SHARJAH','DXB',173],['AUH','DXB',173],['ABU DHABI','DXB',173],['UAE','DXB',173],['RKT','DXB',173],['FJR','DXB',173],['YYZ','CANADA',450],
   ['CANADA','CANADA',450],['JFK','USA',410],['USA','USA',410],['LAX','USA',410],
   ['FRA','GERMANY',322],['GERMANY','GERMANY',322],['HKG','',0]]){
   assert.equal(importFreightRegion(origin,'PROTEIN'),region,origin);
