@@ -30,6 +30,7 @@ async function ensureTable(sql) {
   await sql`CREATE TABLE IF NOT EXISTS mayavi_diwali_expenses (
     id TEXT PRIMARY KEY,
     officer_name TEXT NOT NULL,
+    expense_year INTEGER NOT NULL DEFAULT 2026 CHECK (expense_year BETWEEN 2000 AND 2100),
     metal TEXT NOT NULL,
     weight_grams NUMERIC(10,2) NOT NULL CHECK (weight_grams > 0),
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
@@ -40,15 +41,19 @@ async function ensureTable(sql) {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
+  // Older Diwali records were created in 2026 before a year field existed.
+  await sql`ALTER TABLE mayavi_diwali_expenses ADD COLUMN IF NOT EXISTS expense_year INTEGER NOT NULL DEFAULT 2026`;
 }
 function parseEntry(body) {
   const officerName = String(body?.officerName ?? '').trim();
+  const year = body?.year == null || body.year === '' ? new Date().getUTCFullYear() : Number(body.year);
   const metal = String(body?.metal ?? '').trim();
   const weight = Number(body?.weightGrams);
-  const quantity = Number(body?.quantity);
+  const quantity = body?.quantity == null || body.quantity === '' ? 1 : Number(body.quantity);
   const amount = body?.amount === '' || body?.amount == null ? 0 : Number(body.amount);
   const remarks = String(body?.remarks ?? '').trim();
   if (!officerName || officerName.length > 200) return { error: 'Enter an officer name (up to 200 characters).' };
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return { error: 'Choose a valid Diwali year.' };
   if (!metal || metal.length > 60 || !/^[\p{L}\p{N} .&/-]+$/u.test(metal)) return { error: 'Select Gold or Silver, or enter a valid custom metal.' };
   if (!Number.isFinite(weight) || weight <= 0 || weight > 100000 || Math.abs(weight * 100 - Math.round(weight * 100)) > 0.000001) {
     return { error: 'Enter a valid coin weight in grams (up to two decimals).' };
@@ -58,11 +63,12 @@ function parseEntry(body) {
     return { error: 'Total cost must be a valid amount in rupees.' };
   }
   if (remarks.length > 1000) return { error: 'Remarks must be under 1000 characters.' };
-  return { entry: { officerName, metal, weight, quantity, amount, remarks } };
+  return { entry: { officerName, year, metal, weight, quantity, amount, remarks } };
 }
 const mapRow = row => ({
   id: row.id,
   officerName: row.officer_name,
+  year: Number(row.expense_year || 2026),
   metal: row.metal,
   weightGrams: Number(row.weight_grams),
   quantity: Number(row.quantity),
@@ -81,7 +87,7 @@ export async function GET(request) {
     if (auth.error) return reply({ ok: false, error: auth.error }, auth.status);
     await ensureTable(sql);
     const rows = await sql`SELECT * FROM mayavi_diwali_expenses
-      ORDER BY created_at DESC, officer_name ASC LIMIT 2000`;
+      ORDER BY expense_year DESC, created_at DESC, officer_name ASC LIMIT 2000`;
     return reply({ ok: true, rows: rows.map(mapRow) });
   } catch {
     return reply({ ok: false, error: 'Unable to load Diwali expenses.' }, 503);
@@ -96,8 +102,8 @@ export async function POST(request) {
     await ensureTable(sql);
     const id = randomUUID(), by = auth.session.displayName || auth.session.username;
     await sql`INSERT INTO mayavi_diwali_expenses
-      (id, officer_name, metal, weight_grams, quantity, total_amount, remarks, created_by, updated_by)
-      VALUES (${id}, ${entry.officerName}, ${entry.metal}, ${entry.weight}, ${entry.quantity},
+      (id, officer_name, expense_year, metal, weight_grams, quantity, total_amount, remarks, created_by, updated_by)
+      VALUES (${id}, ${entry.officerName}, ${entry.year}, ${entry.metal}, ${entry.weight}, ${entry.quantity},
         ${entry.amount}, ${entry.remarks}, ${by}, ${by})`;
     return reply({ ok: true, row: await findOne(sql, id) }, 201);
   } catch {
@@ -116,7 +122,7 @@ export async function PATCH(request) {
     await ensureTable(sql);
     const by = auth.session.displayName || auth.session.username;
     const updated = await sql`UPDATE mayavi_diwali_expenses
-      SET officer_name = ${entry.officerName}, metal = ${entry.metal},
+      SET officer_name = ${entry.officerName}, expense_year = ${entry.year}, metal = ${entry.metal},
         weight_grams = ${entry.weight}, quantity = ${entry.quantity},
         total_amount = ${entry.amount}, remarks = ${entry.remarks},
         updated_by = ${by}, updated_at = NOW()
