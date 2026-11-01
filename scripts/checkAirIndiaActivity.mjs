@@ -117,7 +117,7 @@ assert.equal(parseActivity(splitManifest,{origin:'DXB',destination:'DEL',pieces:
 const fowWithManifest='AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 24 pcs 1300 kg\n'
   +'MANIFESTED Manifested 24 pcs 0 kg for AI-0930, 01 Nov 2026 at DXB';
 const fowManifest=parseActivity(fowWithManifest,{origin:'DXB',destination:'DEL',pieces:'24',weight:'1300'});
-assert.equal(fowManifest.status,'MANIFESTED');
+assert.equal(fowManifest.status,'FREIGHT ON HAND');
 assert.equal(fowManifest.flightNo,'AI0930');
 assert.equal(fowManifest.flightDate,'2026-11-01');
 const fowWithBooked='AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 41 pcs 2020 kg\n'

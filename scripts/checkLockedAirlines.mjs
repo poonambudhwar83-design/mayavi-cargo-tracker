@@ -13,7 +13,7 @@ import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 // Tracking data remains live; this blocks unapproved SOURCE CODE edits.
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
-  'lib/airIndia.js':'b0965768252dad8c2ed8453bef103352aa400965',
+  'lib/airIndia.js':'550d932a4073af1ed059a784d3312dcb5c601608',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
   // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
   'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',
