@@ -221,7 +221,24 @@ function recoverTurkishLocal(server={},local={}){
   return{row:out,changed};
 }
 function decorateTiming(existing={},incoming={}){
-  const raw=enforceSaudiaArrivalEvidence({...existing,...incoming});
+  const latest={...existing,...incoming};
+  const raw=enforceSaudiaArrivalEvidence(latest);
+  const isFinalSaudiaArrival=normalize(latest.mawb||latest.awb||'').startsWith('065-')
+    &&latest.status==='ARRIVED'&&latest.arrivalIsActual===true
+    &&/^(ARR|DLV)$/.test(String(latest.sourceStatus||'').toUpperCase())
+    &&airportCode(latest.airport)===airportCode(latest.destination)
+    &&Number(latest.totalPieces)>0&&Number(latest.arrivedPieces)>=Number(latest.totalPieces);
+  if(isFinalSaudiaArrival){
+    raw.status='ARRIVED';
+    raw.arrivalIsActual=true;
+    raw.arrivalVerifiedAbsent=false;
+    raw.arrivalEstimate=false;
+    raw.finalArrivalPending=false;
+    raw.finalFlightSourceStatus=latest.sourceStatus;
+    raw.currentLocation=latest.destination;
+    raw.transitAirport='';
+    raw.saudiaArrivalStage='ACTUAL';
+  }
   // Malaysia final-arrival absence is an explicit value, not a missing value.
   // Never let scheduled/legacy fields rebuild a stale arrival after refresh.
   if((normalize(incoming.mawb||existing.mawb||existing.awb||'').startsWith('232-')||normalize(incoming.mawb||existing.mawb||existing.awb||'').startsWith('098-'))&&incoming.arrivalVerifiedAbsent===true){
