@@ -150,6 +150,7 @@ assert.equal(parseActivity('AWB Activity Timeline\n'
   +'FREIGHT ON HAND Freight on hand 41 pcs 1015 kg at DXB',
   {origin:'DXB',destination:'DEL',pieces:'41',weight:'1015'}).status,'FREIGHT ON HAND');
 
+assert.equal(parseActivity('AWB Activity Timeline\nBOOKED Booked 41 pcs 1015 kg at AUH for IX-0132, 01 Nov 2026\nMANIFESTED Manifested 41 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH',example).status,'BOOKED');
 const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
 assert.equal(departed.status,'DEPARTED','Departure is not actual cargo arrival');
