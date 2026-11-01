@@ -181,6 +181,21 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
       ?'Previous ETA expired; waiting for confirmed revised Ethiopian final-flight ETA'
       :'Official refresh returned no current arrival; stale value cleared';
   }
+  // A confirmed complete Delhi cargo ARR replaces stale JED transit
+  // metadata in persistent storage. Empty transitAirport must be written
+  // explicitly; the generic patch sanitizer otherwise drops blank values.
+  if(mawb.startsWith('065-')&&tracked.status==='ARRIVED'&&
+    tracked.arrivalIsActual===true&&
+    /^(ARR|DLV)$/.test(String(tracked.sourceStatus||'').toUpperCase())&&
+    String(tracked.airport||'').toUpperCase()===String(tracked.destination||'').toUpperCase()&&
+    Number(tracked.totalPieces)>0&&Number(tracked.arrivedPieces)>=Number(tracked.totalPieces)){
+    patch.currentLocation=tracked.destination;
+    patch.transitAirport='';
+    patch.finalFlightSourceStatus=tracked.sourceStatus;
+    patch.arrivalVerifiedAbsent=false;
+    patch.finalArrivalPending=false;
+    patch.saudiaArrivalStage='ACTUAL';
+  }
   const rows=await sql`
     UPDATE mayavi_shipments
     SET data=data || ${JSON.stringify(patch)}::jsonb,
