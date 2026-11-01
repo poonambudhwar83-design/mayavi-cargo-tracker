@@ -202,6 +202,31 @@ export async function POST(request){
           }
         }
       }
+      // Air India: the client saves an entire row after Refresh. Never let an
+      // old PART OFFLOAD • VERIFY display label overwrite verified physical
+      // parts (e.g. 35 pcs departed + 6 pcs offloaded on the same MAWB).
+      if(incomingAwb.startsWith('098-')&&rowForSave.airIndiaPartReconciled===true&&
+        Array.isArray(rowForSave.partShipments)&&rowForSave.partShipments.length>=2){
+        const physical=rowForSave.partShipments.filter(p=>p&&Number(p.pieces)>0);
+        const master=Number(rowForSave.masterPieces||rowForSave.totalPieces||0);
+        if(master>0&&physical.length===rowForSave.partShipments.length&&
+          physical.reduce((n,p)=>n+Number(p.pieces||0),0)===master){
+          const arrived=physical.filter(p=>p.arrivalIsActual===true&&
+            String(p.status||'').toUpperCase()==='ARRIVED');
+          const departed=physical.filter(p=>p.departureIsActual===true&&
+            String(p.status||'').toUpperCase()==='DEPARTED');
+          const offloaded=physical.filter(p=>String(p.status||'').toUpperCase()==='OFFLOADED');
+          const count=physical.length;
+          rowForSave.status=arrived.length?(arrived.length===count?'ARRIVED':'PART ARRIVED'):
+            departed.length?(departed.length===count?'DEPARTED':'PART DEPARTED'):
+            offloaded.length?(offloaded.length===count?'OFFLOADED':'PART OFFLOADED'):
+            physical.some(p=>p.status==='MANIFESTED')?'MANIFESTED':'BOOKED';
+          rowForSave.offloadReconciliationPending=false;
+          rowForSave.arrivedPieces=String(arrived.reduce((n,p)=>n+Number(p.pieces||0),0));
+          rowForSave.departedPieces=String(departed.reduce((n,p)=>n+Number(p.pieces||0),0));
+          rowForSave.offloadedPieces=String(offloaded.reduce((n,p)=>n+Number(p.pieces||0),0));
+        }
+      }
        const hasWeightMinus=Object.prototype.hasOwnProperty.call(rowForSave,'weightMinus');
       if(!weightMinusAllowed||!hasWeightMinus){
         const existing=existingRow;
