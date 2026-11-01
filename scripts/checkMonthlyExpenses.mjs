@@ -48,6 +48,24 @@ assert.equal(summary.grossProfit,rounded(examples.map(actualImport)
  .filter(r=>r.profitPerKg!==null).reduce((sum,r)=>sum+r.grossProfit,0)));
 assert.equal(summary.goodsCharge15Percent,rounded(examples.map(actualImport)
  .reduce((sum,r)=>sum+(r.goodsCharge15Percent||0),0)));
+const eligibleFigures=examples.map(actualImport).filter((figure,i)=>Number(examples[i].weight)>0&&figure.profitPerKg!==null);
+const proteinExpected=rounded(eligibleFigures.reduce((total,figure)=>total+figure.proteinDeduction,0));
+const clothesExpected=rounded(eligibleFigures.reduce((total,figure)=>total+figure.siibDeduction,0));
+assert.equal(summary.proteinDeduction,proteinExpected);
+assert.equal(summary.clothesDeduction,clothesExpected);
+assert.equal(summary.proteinClothesDeduction,rounded(proteinExpected+clothesExpected));
+assert.equal(summary.importGrossWithDeductions,rounded(summary.grossProfit+proteinExpected+clothesExpected));
+assert.equal(sumMonthlyImport([examples[0]]).importGrossWithDeductions,monthlyImportFigures(examples[0]).grossProfit);
+const splitParts=[{...examples[2],weight:20,bags:1,allocationRatio:0.4},
+  {...examples[2],weight:30,bags:1,allocationRatio:0.6}];
+const splitTotal=sumMonthlyImport(splitParts);
+assert.equal(splitTotal.completed,2);
+assert.equal(splitTotal.proteinDeduction,50*50,'Protein handling once per physical part, never master + parts');
+assert.equal(splitTotal.importGrossWithDeductions,
+  rounded(splitParts.reduce((total,row)=>total+monthlyImportFigures(row).grossProfit+monthlyImportFigures(row).proteinDeduction,0)));
+assert.equal(sumMonthlyImport([{...examples[2],totalDuty:'',rate:500}]).proteinDeduction,0);
+assert.ok(api.includes('importGross:importTotals.importGrossWithDeductions'));
+assert.ok(ui.includes('Protein Deduction')&&ui.includes('Clothes Deduction'));
 const actualExport=sourceCalc(exportUI,'function profitFor(row={}){','function exportCsv(',{resolvedExportShipmentCharge,exportCategorySummary,Number,Math});
 const exports=[
  {weight:20,rate:6,shipmentCharge:2600},
