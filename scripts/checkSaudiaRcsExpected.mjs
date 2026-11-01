@@ -24,15 +24,21 @@ try{
       return new Response(JSON.stringify({success:true,message:JSON.stringify({
         Awb:base.mawb,Origin:'JED',Destination:'DEL',TotalPieces:39,TotalWeight:830,
         Parts:[{Events:[salEvent]}]})}),{status:200});
+    if(String(url).startsWith('https://www.flightstats.com/v2/flight-tracker/SV/756'))
+      return new Response('DEL flight arrival times Scheduled 09:45 IST',{status:200});
     return new Response('unavailable',{status:404});
   };
   const live=await trackSaudiaDirect(base.mawb);
   assert.equal(live.ok,true);
   assert.equal(live.shipment.flightNo,'SV756');
   assert.equal(live.shipment.flightDate,future,'SAL full chronology must normalize Flight_Date');
+  assert.equal(live.shipment.saudiaRcsScheduledTime,'09:45','Published dated flight schedule retained separately');
+  assert.equal(live.shipment.saudiaRcsScheduledDate,future);
   const projected=enforceSaudiaArrivalEvidence(live.shipment);
   assert.equal(projected.arrivalDate,future,'SAL raw Flight_Date must appear as expected');
   assert.equal(projected.arrivalTime,'');
+  assert.equal(projected.saudiaRcsScheduledTime,'09:45');
+  assert.equal(projected.mailTime,'');
   assert.equal(projected.arrivalIsActual,false);
   assert.equal(projected.status,'EXPECTED');
 }finally{globalThis.fetch=originalFetch;}
@@ -51,6 +57,10 @@ assert.equal(enforceSaudiaArrivalEvidence({...base,flightDate:isoAfterDays(-2)})
 assert.equal(enforceSaudiaArrivalEvidence({...base,flightNo:''}).arrivalDate,'');
 assert.equal(enforceSaudiaArrivalEvidence({...base,flightDestination:'RUH'}).arrivalDate,'');
 assert.equal(enforceSaudiaArrivalEvidence({...base,disAfterFow:true}).arrivalDate,'');
+assert.equal(enforceSaudiaArrivalEvidence({...base,
+  saudiaRcsScheduledTime:'09:45',saudiaRcsScheduledDate:isoAfterDays(-2)}).saudiaRcsScheduledTime,'');
+assert.equal(enforceSaudiaArrivalEvidence({...base,sourceStatus:'DEP',
+  saudiaRcsScheduledTime:'09:45',saudiaRcsScheduledDate:future}).saudiaRcsScheduledTime,'');
 const moving=enforceSaudiaArrivalEvidence({...base,sourceStatus:'FOW',status:'IN TRANSIT',
   arrivalDate:future,arrivalTime:'15:30'});
 assert.equal(moving.status,'IN TRANSIT');
