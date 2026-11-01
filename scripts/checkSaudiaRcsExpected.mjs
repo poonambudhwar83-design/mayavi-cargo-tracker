@@ -3,6 +3,7 @@ import { enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
 import { normalizeSalFlightDate } from '../lib/saudiaFlightDate.js';
 import { trackSaudiaDirect } from '../lib/saudiaDirect.js';
 import { trackSaudiaViaSal } from '../lib/saudiaSalPublic.js';
+import { saudiaRcsProvisionalMailTime } from '../lib/saudiaProvisionalMail.js';
 
 const isoAfterDays=days=>new Date(Date.now()+330*60000+days*86400000).toISOString().slice(0,10);
 const future=isoAfterDays(1);
@@ -43,7 +44,15 @@ try{
   assert.equal(projected.arrivalDate,future,'SAL raw Flight_Date must appear as expected');
   assert.equal(projected.arrivalTime,'');
   assert.equal(projected.saudiaRcsScheduledTime,'09:45');
-  assert.equal(projected.mailTime,'');
+  assert.equal(projected.mailTime,''); // Real cargo mail deadline is still unconfirmed.
+  assert.equal(saudiaRcsProvisionalMailTime(projected),
+    new Date(Date.parse(future+'T09:45:00Z')-6*3600000).toISOString().slice(0,16).replace('T',' '));
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,flightDate:'2026-12-20'}),'');
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,sourceStatus:'DEP'}),'');
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,flightDestination:'RUH'}),'');
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,_saudiaPendingVirtual:true}),'');
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,disAfterFow:true}),'');
+  assert.equal(saudiaRcsProvisionalMailTime({...projected,saudiaRcsTimeSource:'manual'}),'');
   assert.equal(projected.arrivalIsActual,false);
   assert.equal(projected.status,'EXPECTED');
   flightStatsCard='DEL flight arrival times Estimated 10:10 Scheduled 09:45 IST';
@@ -53,9 +62,15 @@ try{
   assert.equal(revised.shipment.saudiaRcsTimeSource,'FlightStats estimated arrival');
   const revision=enforceSaudiaArrivalEvidence(revised.shipment);
   assert.equal(revision.saudiaRcsScheduledTime,'10:10');
+  assert.equal(saudiaRcsProvisionalMailTime(revision),
+    new Date(Date.parse(future+'T10:10:00Z')-6*3600000).toISOString().slice(0,16).replace('T',' '));
   assert.equal(revision.arrivalTime,'');
   assert.equal(revision.arrivalIsActual,false);
 }finally{globalThis.fetch=originalFetch;}
+const testScheduled=saudiaRcsProvisionalMailTime({...base,flightDate:'2026-11-02',arrivalDate:'2026-11-02',
+  saudiaArrivalStage:'PLANNED',saudiaRcsScheduledDate:'2026-11-02',
+  saudiaRcsScheduledTime:'09:45',saudiaRcsTimeSource:'FlightStats scheduled arrival'});
+assert.equal(testScheduled,'2026-11-02 03:45','SV756 scheduled Mail Time (-6h) must show 03:45 IST');
 const rcs=enforceSaudiaArrivalEvidence({...base,flightDate:salRaw});
 assert.equal(rcs.status,'EXPECTED');
 assert.equal(rcs.arrivalDate,future);

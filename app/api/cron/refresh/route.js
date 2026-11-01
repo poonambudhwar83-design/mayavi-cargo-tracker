@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { refreshScope } from '../../../../lib/autoRefreshScope.js';
 import { enforceSaudiaArrivalEvidence } from '../../../../lib/saudiaTransitGuard.js';
 import { importMailSixHoursBefore } from '../../../../lib/importEtaTimeline.js';
+import { saudiaRcsProvisionalMailTime } from '../../../../lib/saudiaProvisionalMail.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
@@ -110,7 +111,7 @@ function decorateTiming(existing={},incoming={}){
   const combined={...existing,...incoming,mawb,shipmentType,arrivalDate,arrivalTime,arrivalIsActual};
   let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb,combined);
   if(!isAirIndia(mawb)&&isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
-  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
+  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?(mailTimeFrom(arrivalDate,arrivalTime)||saudiaRcsProvisionalMailTime({...combined,status})):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));

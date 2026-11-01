@@ -29,6 +29,10 @@ const cron=readFileSync('app/api/cron/refresh/route.js','utf8');
 assert.ok(dash.includes('const at=arrivalSortTime(a),bt=arrivalSortTime(b);'));
 assert.ok(dash.includes('const mailTime=isImportLikeType(shipmentType)?mailTimeFrom(mailArrivalDate,arrivalTime)'));
 assert.ok(dash.includes('return direct||safeAirAsia||provisional||'));
+assert.ok(dash.includes('saudiaRcsProvisionalMailTime(row)'),
+  'Saudia RCS published timetable must display a provisional -6h Mail Time');
+assert.ok(cron.includes('saudiaRcsProvisionalMailTime({...combined,status})'),
+  'Background refresh must not erase Saudia provisional Mail Time');
 assert.ok(dash.includes('return importMailSixHoursBefore(date,time)'));
 assert.ok(!dash.includes("if(digits(row.mawb).startsWith('098')&&row.arrivalEstimate===true&&row.arrivalIsActual!==true)return''"),
   'A dated 098 flight ETA must display the -6h Mail deadline');
