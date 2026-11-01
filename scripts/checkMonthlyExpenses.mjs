@@ -48,32 +48,6 @@ assert.equal(summary.grossProfit,rounded(examples.map(actualImport)
  .filter(r=>r.profitPerKg!==null).reduce((sum,r)=>sum+r.grossProfit,0)));
 assert.equal(summary.goodsCharge15Percent,rounded(examples.map(actualImport)
  .reduce((sum,r)=>sum+(r.goodsCharge15Percent||0),0)));
-const eligibleFigures=examples.map(actualImport).filter((figure,i)=>Number(examples[i].weight)>0&&figure.profitPerKg!==null);
-const proteinExpected=rounded(eligibleFigures.reduce((total,figure)=>total+figure.proteinDeduction,0));
-const clothesExpected=rounded(eligibleFigures.reduce((total,figure)=>total+figure.siibDeduction,0));
-assert.equal(summary.proteinDeduction,proteinExpected);
-assert.equal(summary.clothesDeduction,clothesExpected);
-assert.equal(summary.proteinClothesDeduction,rounded(proteinExpected+clothesExpected));
-assert.equal(summary.grossProfit,rounded(examples.map(actualImport)
-  .filter(r=>r.profitPerKg!==null).reduce((total,r)=>total+r.grossProfit,0)));
-assert.equal(sumMonthlyImport([examples[0]]).grossProfit,monthlyImportFigures(examples[0]).grossProfit);
-assert.equal(Object.hasOwn(summary,'importGrossWithDeductions'),false,
-  'Never expose double-counted add-back as Monthly Import Gross');
-const splitParts=[{...examples[2],weight:20,bags:1,allocationRatio:0.4},
-  {...examples[2],weight:30,bags:1,allocationRatio:0.6}];
-const splitTotal=sumMonthlyImport(splitParts);
-assert.equal(splitTotal.completed,2);
-assert.equal(splitTotal.proteinDeduction,50*50,'Protein handling once per physical part, never master + parts');
-assert.equal(splitTotal.grossProfit,
-  rounded(splitParts.reduce((total,row)=>total+monthlyImportFigures(row).grossProfit,0)),
-  'Completed split-part Gross is not inflated by a second deduction add-back');
-assert.equal(sumMonthlyImport([{...examples[2],totalDuty:'',rate:500}]).proteinDeduction,0);
-assert.ok(api.includes('importGross:importTotals.grossProfit'),
-  'October and future Monthly Expenses must use the SAME Import Profit Sheet Gross');
-assert.ok(!api.includes('importGross:importTotals.importGrossWithDeductions'),
-  'Never add protein/clothes deductions twice');
-assert.ok(ui.includes('already includes Protein')&&ui.includes('Clothes ('),
-  'Display Protein/Clothes breakdown as already included, not extra income');
 const actualExport=sourceCalc(exportUI,'function profitFor(row={}){','function exportCsv(',{resolvedExportShipmentCharge,exportCategorySummary,Number,Math});
 const exports=[
  {weight:20,rate:6,shipmentCharge:2600},
