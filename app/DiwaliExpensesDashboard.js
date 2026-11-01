@@ -102,7 +102,8 @@ export default function DiwaliExpensesDashboard() {
       if (!res.ok || !data.ok) throw new Error(data.error || 'Save failed.');
       const wasEditing = Boolean(editingId);
       const savedYear = Number(form.year);
-      reset();
+      setForm(blank(savedYear));
+      setEditingId(null);
       setViewYear(savedYear);
       await load();
       setMessage(wasEditing ? 'Diwali expense updated.' : 'Diwali expense saved.');
