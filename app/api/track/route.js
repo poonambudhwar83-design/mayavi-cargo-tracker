@@ -44,7 +44,7 @@ import { trackEtihad } from '../../../lib/etihad.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
-import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta } from '../../../lib/airIndiaScheduleEta.js';
+import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta, latestAirIndiaEventDate } from '../../../lib/airIndiaScheduleEta.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
@@ -1644,6 +1644,35 @@ async function handle(mawb,fallback={}){
       shipment.status=direct.status;
       shipment.airIndiaActivityStatus=direct.status;
       shipment.mailTime='';
+    }
+  }
+  if(airIndiaFastPath&&direct&&!direct.flightDate&&
+      ['ACCEPTED','EXECUTED','FREIGHT ON HAND','BOOKED'].includes(String(direct.status||''))&&
+      /^AI\d{2,4}$/i.test(String(shipment.flightNo||''))&&
+      shipment.destination==='DEL'){
+    // When Activity View has no FLIGHT assignment, we can show ONLY an
+    // explicitly marked provisional passenger timetable for the event day.
+    // This is not an AWB-matched ETA and never implies uplift or arrival.
+    const observed=latestAirIndiaEventDate(directResult?.debug?.activitySample||'');
+    const todayUtc=new Date().toISOString().slice(0,10);
+    const closeToCurrent=observed&&Math.abs(Date.parse(observed+'T00:00:00Z')-
+      Date.parse(todayUtc+'T00:00:00Z'))<=86400000;
+    if(closeToCurrent){
+      const tentative={...shipment,mawb,flightDate:observed};
+      const schedule=await trackFlightScheduleFast({
+        flightNo:tentative.flightNo,date:observed,origin:tentative.origin,destination:tentative.destination
+      }).catch(()=>null);
+      let provisional=acceptAirIndiaDatedEta(tentative,schedule);
+      if(!provisional)provisional=await flightInfoAirIndiaEta(tentative);
+      if(provisional){
+        Object.assign(shipment,provisional,{
+          airIndiaEtaAssignmentConfirmed:false,
+          airIndiaEtaProvisionalFlightDate:observed,
+          arrivalTimeSource:'PROVISIONAL FLIGHT TIMETABLE (IST) — AIR INDIA HAS NOT ASSIGNED THIS AWB TO A DATED FLIGHT; '+String(provisional.arrivalTimeSource||''),
+          arrivalIsActual:false,arrivalEstimate:true,
+          status:direct.status,flightDate:'',mailTime:''
+        });
+      }
     }
   }
   shipment=guardFinalDestinationArrival(shipment);

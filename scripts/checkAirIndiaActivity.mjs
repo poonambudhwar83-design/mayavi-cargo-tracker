@@ -186,3 +186,7 @@ assert.equal(acceptAirIndiaDatedEta({...currentScheduled,status:'OFFLOADED'},{ar
 assert.equal(acceptAirIndiaDatedEta({...currentScheduled,flightDate:''},{arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
 assert.equal(acceptAirIndiaDatedEta(currentScheduled,{departureDate:'2026-10-30',arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
 assert.equal(acceptAirIndiaDatedEta(currentScheduled,{departureOrigin:'DXB',arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
+
+import { latestAirIndiaEventDate } from '../lib/airIndiaScheduleEta.js';
+assert.equal(latestAirIndiaEventDate('AWB Activity Timeline Station: Flight: Status: ACCEPTED Accepted 41 pcs 2020 kg at DXB DXB • 01 Nov 2026, 02:06:00 EXECUTED'), '2026-11-01');
+assert.equal(latestAirIndiaEventDate('Activity unavailable'), '');

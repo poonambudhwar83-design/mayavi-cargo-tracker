@@ -178,6 +178,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
 // must never inherit the "EXPECTED (FOW)" label on the shared dashboard.
 function expectedArrivalLabel(row={}){
   if(row.arrivalEstimate!==true)return'';
+  if(digits(row.mawb).startsWith('098')&&row.airIndiaEtaAssignmentConfirmed===false)return'PROVISIONAL FLIGHT SCHEDULE • AWB NOT MANIFESTED';
   if(digits(row.mawb).startsWith('098'))return'SCHEDULED FLIGHT ETA • CARGO NOT ARRIVED';
   const isSaudia=digits(row.mawb).startsWith('065');
   if(isSaudia){
