@@ -1818,7 +1818,54 @@ async function handle(mawb,fallback={}){
       directResult?.debug?.trackingViewSample||directResult?.debug?.summarySample||'',
       directResult.debug.activitySample
     );
-    if(parts)shipment=guardFinalDestinationArrival(parts);
+    if(parts){
+      // The locked official cargo reader can hydrate the activity timeline
+      // before Tracking View exposes its 35-piece flight ETA. A missing ETA
+      // must not erase the verified DEPARTED part. Resolve a dated flight ETA
+      // separately, never promote the aircraft's landing to cargo ARRIVED.
+      const updated=[];
+      for(const physical of parts.partShipments||[]){
+        let p={...physical};
+        if(p.status==='DEPARTED'&&p.departureIsActual===true&&
+          p.arrivalIsActual!==true&&!p.arrivalTime&&
+          /^(AI|IX)\d{2,4}$/.test(String(p.flightNo||''))&&
+          /^20\d{2}-\d{2}-\d{2}$/.test(String(p.flightDate||''))){
+          const input={mawb,origin:p.origin||parts.origin,destination:p.destination||parts.destination,
+            flightNo:p.flightNo,flightDate:p.flightDate,status:'DEPARTED',arrivalIsActual:false};
+          const published=await trackFlightScheduleFast({
+            flightNo:p.flightNo,date:p.flightDate,origin:input.origin,destination:input.destination
+          }).catch(()=>null);
+          let eta=acceptAirIndiaDatedEta(input,published);
+          if(!eta)eta=await flightInfoAirIndiaEta(input);
+          if(!eta){
+            const other=await trackFlightArrivalEstimate({
+              flightNo:p.flightNo,date:p.flightDate,destination:input.destination
+            }).catch(()=>null);
+            eta=acceptAirIndiaDatedEta(input,other);
+          }
+          if(eta){
+            p={...p,arrivalDate:eta.arrivalDate,arrivalTime:eta.arrivalTime,
+              arrivalEstimate:true,arrivalIsActual:false,arrivalTimeZone:'IST',
+              arrivalTimeSource:eta.arrivalTimeSource,scheduledArrivalDate:eta.arrivalDate,
+              scheduledArrivalTime:eta.arrivalTime};
+          }
+        }
+        updated.push(p);
+      }
+      parts.partShipments=updated;
+      const scheduled=updated.filter(p=>p.arrivalIsActual!==true&&p.arrivalEstimate===true&&p.arrivalDate&&p.arrivalTime);
+      if(scheduled.length===1&&parts.arrivalIsActual!==true){
+        const one=scheduled[0];
+        Object.assign(parts,{arrivalDate:one.arrivalDate,arrivalTime:one.arrivalTime,
+          scheduledArrivalDate:one.arrivalDate,scheduledArrivalTime:one.arrivalTime,
+          arrivalIsActual:false,arrivalEstimate:true,arrivalVerifiedAbsent:false,
+          arrivalTimeZone:'IST',arrivalTimeSource:one.arrivalTimeSource});
+      }
+      // The 6-piece OFFLOAD is a separate part, not a reason to remove the
+      // other 35-piece flight ETA or to set offload verification pending.
+      parts.offloadReconciliationPending=false;
+      shipment=guardFinalDestinationArrival(parts);
+    }
   }
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
