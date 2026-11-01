@@ -1782,7 +1782,7 @@ async function handle(mawb,fallback={}){
       // manual refresh that can leave two stale 8-piece flight-history rows.
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.warn('saudia_verified_split_db_save_failed',mawb,e?.message||String(e));}
-    }else if(airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath){
+    }else if((saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology'))||airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
