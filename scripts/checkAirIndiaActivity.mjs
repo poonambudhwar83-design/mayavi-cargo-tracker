@@ -86,6 +86,32 @@ assert.equal(currentOffload.status,'OFFLOADED');
 assert.equal(currentOffload.offloadedPieces,'41','Historical 28 Oct offload must not double count current 30 Oct 41 pcs');
 assert.equal(currentOffload.arrivalDate,'','An OFFLOADED master must not enter next-day arrival list');
 
+
+const freshReManifest='AWB Activity Timeline\n'
+  +'MANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +historicalOffloads.replace('AWB Activity Timeline\n','');
+const remanifested=parseActivity(freshReManifest,example);
+assert.equal(remanifested.status,'MANIFESTED','New manifest must supersede prior offload');
+assert.equal(remanifested.activityMilestone,'MANIFESTED');
+assert.equal(remanifested.flightNo,'IX0132');
+assert.equal(remanifested.flightDate,'2026-11-01');
+assert.equal(remanifested.masterPieces,'41');
+assert.equal(remanifested.masterWeight,'1015');
+assert.equal(remanifested.offloadedPieces,'0');
+assert.equal(remanifested.departureIsActual,false,'Manifest is not departure');
+assert.equal(remanifested.arrivalIsActual,false);
+assert.equal(remanifested.arrivalDate,'');
+assert.ok(remanifested.manifestEvidence.includes('41 pcs 0 kg'));
+assert.equal(parseActivity('AWB Activity Timeline\n'+historicalOffloads.replace('AWB Activity Timeline\n','')
+  +'\nMANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH',example).status,
+  'OFFLOADED','Old manifest must not override recent offload');
+const incompleteManifest='AWB Activity Timeline\nMANIFESTED Manifested 6 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +historicalOffloads.replace('AWB Activity Timeline\n','');
+assert.equal(parseActivity(incompleteManifest,example).status,'OFFLOADED',
+  'Partial manifest cannot supersede whole-master offload');
+const preDepartureManifest='AWB Activity Timeline\nMANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH';
+assert.equal(parseActivity(preDepartureManifest,example).status,'MANIFESTED');
+
 const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
 assert.equal(departed.status,'IN TRANSIT','Departure is not actual cargo arrival');
