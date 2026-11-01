@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { importArrivalOrder, importIstMoment, importMailSixHoursBefore } from '../lib/importEtaTimeline.js';
-const row=(awb,date,time,status,mailSent=false)=>({mawb,arrivalDate:date,arrivalTime:time,status,mailSent});
+const row=(awb,date,time,status,mailSent=false)=>({mawb:awb,arrivalDate:date,arrivalTime:time,status,mailSent});
 const flights=[
   row('098-32251715','2026-11-02','01:50','ACCEPTED'),
   row('098-30448456','2026-11-01','17:10','MANIFESTED'),
