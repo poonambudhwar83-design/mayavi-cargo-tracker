@@ -115,6 +115,7 @@ for(const [label,fragment] of saudiaRouteLock){
     changed=true;
   }
 }
+const saudiaDashboardSource=readFileSync('app/DashboardClient.js','utf8');
 const saudiaDashboardLock=[
   ['Saudia provisional Mail calculation',"mailTimeFrom(mailArrivalDate,arrivalTime)||saudiaRcsProvisionalMailTime(merged)"],
   ['Saudia RCS live schedule and time display','saudiaRcsScheduledTime(r)'],
@@ -124,7 +125,7 @@ const saudiaDashboardLock=[
   ['Saudia no false cargo RCS overdue blink',"if(event==='FOW'||!(movement==='DEPARTED'"],
 ];
 for(const [label,fragment] of saudiaDashboardLock){
-  if(!kuwaitDashboardSource.includes(fragment)){
+  if(!saudiaDashboardSource.includes(fragment)){
     console.error('LOCKED SAUDIA DISPLAY/MAIL CONTRACT MODIFIED: '+label+'. Explicit owner-approved unlock required.');
     changed=true;
   }
@@ -168,8 +169,7 @@ for(const [label,fragment] of userLockedRoute){
     changed=true;
   }
 }
-const kuwaitDashboardSource=readFileSync('app/DashboardClient.js','utf8');
-const kuwaitDashboard=kuwaitDashboardSource;
+const kuwaitDashboard=readFileSync('app/DashboardClient.js','utf8');
 for(const [label,fragment] of [
   ['Full Kuwait DEP master consolidation','const one=consolidatedKuwaitDeparture(row);'],
   ['Kuwait 229 full-load Mail operation',"operation:unified?'kuwaitMasterMail':undefined"],
