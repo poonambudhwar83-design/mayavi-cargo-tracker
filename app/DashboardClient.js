@@ -178,6 +178,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
 // must never inherit the "EXPECTED (FOW)" label on the shared dashboard.
 function expectedArrivalLabel(row={}){
   if(row.arrivalEstimate!==true)return'';
+  if(digits(row.mawb).startsWith('098'))return'SCHEDULED FLIGHT ETA • CARGO NOT ARRIVED';
   const isSaudia=digits(row.mawb).startsWith('065');
   if(isSaudia){
     const stage=String(row.saudiaArrivalStage||'').toUpperCase();
@@ -271,7 +272,8 @@ function decorateTiming(existing={},incoming={}){
   const bookingDate=incoming.bookingDate||existing.bookingDate||'';
   const bookingTime=incoming.bookingTime||existing.bookingTime||'';
   const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
-  const mailTime=isImportLikeType(shipmentType)?mailTimeFrom(mailArrivalDate,arrivalTime):'';
+  const onlyAirIndiaFlightEta=rowMawb.startsWith('098-')&&merged.arrivalEstimate===true&&merged.arrivalIsActual!==true;
+  const mailTime=isImportLikeType(shipmentType)&&!onlyAirIndiaFlightEta?mailTimeFrom(mailArrivalDate,arrivalTime):'';
   const mailSent=isImportLikeType(shipmentType)?merged.mailSent===true:undefined;
   const customsCleared=isImportLikeType(shipmentType)?merged.customsCleared===true:undefined;
   const masterCopyReceived=exportLike?merged.masterCopyReceived===true:undefined;

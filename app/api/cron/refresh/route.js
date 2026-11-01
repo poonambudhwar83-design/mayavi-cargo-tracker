@@ -110,7 +110,8 @@ function decorateTiming(existing={},incoming={}){
   const combined={...existing,...incoming,mawb,shipmentType,arrivalDate,arrivalTime,arrivalIsActual};
   let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb,combined);
   if(!isAirIndia(mawb)&&isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
-  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
+  const onlyAirIndiaFlightEta=isAirIndia(mawb)&&incoming.arrivalEstimate===true&&arrivalIsActual!==true;
+  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)&&!onlyAirIndiaFlightEta?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));

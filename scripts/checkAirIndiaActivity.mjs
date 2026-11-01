@@ -162,3 +162,27 @@ assert.equal(arrived.status,'ARRIVED','Destination arrival in Activity View conf
 assert.equal(arrived.arrivalIsActual,true);
 
 console.log('Air India Activity View movement tests passed: OFFLOADED, DEPARTED, ARRIVED and quantity.');
+
+
+import { acceptAirIndiaDatedEta } from '../lib/airIndiaScheduleEta.js';
+const currentScheduled={mawb:'098-30448456',origin:'AUH',destination:'DEL',
+  flightNo:'IX0124',flightDate:'2026-11-01',status:'MANIFESTED',arrivalIsActual:false};
+const flightEta=acceptAirIndiaDatedEta(currentScheduled,{
+  ok:true,departureDate:'2026-11-01',departureTime:'11:55',
+  departureOrigin:'AUH',departureDestination:'DEL',
+  arrivalDate:'2026-11-01',arrivalTime:'17:10',arrivalTimeZone:'LOCAL',source:'Flight timetable'});
+assert.equal(flightEta.arrivalDate,'2026-11-01');
+assert.equal(flightEta.arrivalTime,'17:10');
+assert.equal(flightEta.arrivalEstimate,true);
+assert.equal(flightEta.arrivalIsActual,false);
+assert.equal(flightEta.arrivalVerifiedAbsent,false);
+const dxBovernight=acceptAirIndiaDatedEta({mawb:'098-32251715',origin:'DXB',destination:'DEL',
+  flightNo:'AI0916',flightDate:'2026-11-01',status:'MANIFESTED'},{
+  departureDate:'2026-11-01',departureTime:'20:40',departureOrigin:'DXB',
+  departureDestination:'DEL',arrivalDate:'2026-11-01',arrivalTime:'01:50',arrivalTimeZone:'LOCAL'});
+assert.equal(dxBovernight.arrivalDate,'2026-11-02');
+assert.equal(dxBovernight.arrivalTime,'01:50');
+assert.equal(acceptAirIndiaDatedEta({...currentScheduled,status:'OFFLOADED'},{arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
+assert.equal(acceptAirIndiaDatedEta({...currentScheduled,flightDate:''},{arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
+assert.equal(acceptAirIndiaDatedEta(currentScheduled,{departureDate:'2026-10-30',arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);
+assert.equal(acceptAirIndiaDatedEta(currentScheduled,{departureOrigin:'DXB',arrivalDate:'2026-11-01',arrivalTime:'17:10'}),null);

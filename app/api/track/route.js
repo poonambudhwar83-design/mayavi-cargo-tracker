@@ -44,6 +44,7 @@ import { trackEtihad } from '../../../lib/etihad.js';
 import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
+import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta } from '../../../lib/airIndiaScheduleEta.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
@@ -1620,6 +1621,30 @@ async function handle(mawb,fallback={}){
     if(['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND','DEPARTED'].includes(direct.status))shipment.status=direct.status;
     if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
       shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
+  }
+  if(airIndiaFastPath&&direct&&direct.arrivalIsActual!==true&&
+    direct.status!=='OFFLOADED'&&
+    /^(20\d{2})-\d{2}-\d{2}$/.test(String(direct.flightDate||''))&&
+    /^(AI|IX)\d{2,4}$/.test(String(direct.flightNo||'').toUpperCase())&&
+    shipment.destination==='DEL'){
+    // The Activity View is authoritative for cargo status and assigned
+    // flight/date. A matching dated flight timetable may supply only the
+    // planned/estimated arrival (IST). Never convert it into cargo ARRIVED.
+    const input={...shipment,mawb,flightNo:direct.flightNo,flightDate:direct.flightDate,
+      origin:direct.origin||shipment.origin,destination:direct.destination||shipment.destination};
+    const schedule=await trackFlightScheduleFast({
+      flightNo:input.flightNo,date:input.flightDate,
+      origin:input.origin,destination:input.destination
+    }).catch(()=>null);
+    let eta=acceptAirIndiaDatedEta(input,schedule);
+    if(!eta)eta=await flightInfoAirIndiaEta(input);
+    if(eta){
+      Object.assign(shipment,eta);
+      shipment.arrivalIsActual=false;
+      shipment.status=direct.status;
+      shipment.airIndiaActivityStatus=direct.status;
+      shipment.mailTime='';
+    }
   }
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final
