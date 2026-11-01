@@ -136,6 +136,13 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   if(s.includes('PART ARRIVED'))return'PART ARRIVED';
   if(s.includes('PART DEPARTED')||s.includes('PART SHIPMENT')||s.includes('PART LOAD'))return'PART LOAD';
   if(s.includes('DELIVER'))return'DELIVERED';
+  // Saudia's verified final cargo ARR supersedes old JED/RUH transit fields.
+  // On an incomplete split load, the master remains PART ARRIVED above.
+  if(n.startsWith('065-')&&s==='ARRIVED'&&row.arrivalIsActual===true
+    &&/^(ARR|DLV)$/.test(String(row.sourceStatus||'').toUpperCase())
+    &&airportCode(row.airport)===airportCode(row.destination)
+    &&Number(row.totalPieces)>0&&Number(row.arrivedPieces)>=Number(row.totalPieces))
+    return'ARRIVED';
   // Thai CHORUS destination RCF is an actual arrival even when a BKK via leg
   // remains in saved departureDestination. Do not let the via heuristic undo it.
   if(n.startsWith('217-')&&row.arrivalIsActual===true&&
