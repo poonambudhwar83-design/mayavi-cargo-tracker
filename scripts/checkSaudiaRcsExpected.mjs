@@ -4,6 +4,7 @@ import { normalizeSalFlightDate } from '../lib/saudiaFlightDate.js';
 import { trackSaudiaDirect } from '../lib/saudiaDirect.js';
 import { trackSaudiaViaSal } from '../lib/saudiaSalPublic.js';
 import { saudiaRcsProvisionalMailTime } from '../lib/saudiaProvisionalMail.js';
+import { lastVerifiedSaudiaSchedule } from '../lib/saudiaPublishedSchedule.js';
 
 const isoAfterDays=days=>new Date(Date.now()+330*60000+days*86400000).toISOString().slice(0,10);
 const future=isoAfterDays(1);
@@ -18,9 +19,12 @@ assert.equal(normalizeSalFlightDate(salRaw),future);
 assert.equal(normalizeSalFlightDate('02NOV26'),'2026-11-02');
 assert.equal(normalizeSalFlightDate('2026-11-02'),'2026-11-02');
 assert.equal(normalizeSalFlightDate('02/30/2026 12:00:00 AM'),'');
+assert.equal(lastVerifiedSaudiaSchedule({flightNo:'SV756',flightDate:'2026-11-02',origin:'JED',destination:'DEL'}).arrivalTime,'09:45');
+assert.equal(lastVerifiedSaudiaSchedule({flightNo:'SV756',flightDate:'2026-11-03',origin:'JED',destination:'DEL'}),null);
 const salEvent={Status:'RCS',Airport:'JED',Flight_Dest:'DEL',Flight_Number:'756',
   Flight_Date:salRaw,DateTime_LT:'11/1/2026 4:46:00 PM',Pieces:39,Weight:830};
 let flightStatsCard='DEL flight arrival times Scheduled 09:45 IST';
+let flighteraAvailable=true;
 const originalFetch=globalThis.fetch;
 try{
   globalThis.fetch=async url=>{
@@ -31,7 +35,7 @@ try{
     if(String(url).startsWith('https://www.flightstats.com/v2/flight-tracker/SV/756'))
       return new Response(flightStatsCard,{status:200});
     if(String(url).startsWith('https://useast.flightera.net/en/flight_details/Saudi%2BArabian%2BAirlines/SV756/OEJN/'))
-      return new Response(`Saudi Arabian Airlines SV756 JED DEL ${day}. ${salMonth} ${year} DEPARTURE ${day} ${salMonth} 02:15 UTC+03 ARRIVAL ${day} ${salMonth} 09:45 IST 04:15 UTC`,{status:200});
+      return new Response(flighteraAvailable?`Saudi Arabian Airlines SV756 JED DEL ${day}. ${salMonth} ${year} DEPARTURE ${day} ${salMonth} 02:15 UTC+03 ARRIVAL ${day} ${salMonth} 09:45 IST 04:15 UTC`:'Unavailable',{status:flighteraAvailable?200:503});
     return new Response('unavailable',{status:404});
   };
   const publicLive=await trackSaudiaViaSal(base.mawb);
@@ -79,6 +83,16 @@ try{
     new Date(Date.parse(future+'T09:45:00Z')-6*3600000).toISOString().slice(0,16).replace('T',' '));
   assert.equal(backupRcs.arrivalTime,'');
   assert.equal(backupRcs.arrivalIsActual,false);
+  flighteraAvailable=false;
+  const saved=await trackSaudiaDirect(base.mawb);
+  if(future==='2026-11-02'){
+    assert.equal(saved.shipment.saudiaRcsScheduledTime,'09:45');
+    assert.equal(saved.shipment.saudiaRcsTimeSource,'Last-verified FlightStats published schedule');
+    assert.equal(saudiaRcsProvisionalMailTime(enforceSaudiaArrivalEvidence(saved.shipment)),'2026-11-02 03:45');
+  }else{
+    assert.equal(saved.shipment.saudiaRcsScheduledTime,'',
+      'Old flight schedule snapshot cannot be used on another date');
+  }
 }finally{globalThis.fetch=originalFetch;}
 const testScheduled=saudiaRcsProvisionalMailTime({...base,flightDate:'2026-11-02',arrivalDate:'2026-11-02',
   saudiaArrivalStage:'PLANNED',saudiaRcsScheduledDate:'2026-11-02',
