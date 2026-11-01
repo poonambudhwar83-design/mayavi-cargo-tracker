@@ -4,6 +4,7 @@ import { airlineForMawb, CONFIGURED_PREFIXES } from '../lib/airlines.js';
 import { normalizeExportTimesToIst } from '../lib/exportIst.js';
 import { partIdentity, mergePartMail, mergePartCustoms } from '../lib/partMail.js';
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
+import { importArrivalOrder, importMailSixHoursBefore } from '../lib/importEtaTimeline.js';
 import { averageWeightPerBag } from '../lib/averageBagWeight.js';
 import { consolidatedKuwaitDeparture } from '../lib/kuwaitUnifiedView.js';
 import { refreshScope } from '../lib/autoRefreshScope.js';
@@ -67,10 +68,7 @@ function istDateTimeValue(date='',time=''){
 }
 function dateTimeValue(date='',time=''){const dm=String(date).match(/^(\d{4})-(\d{2})-(\d{2})$/),tm=String(time).match(/^(\d{1,2}):(\d{2})/);if(!dm||!tm)return null;const d=new Date(Number(dm[1]),Number(dm[2])-1,Number(dm[3]),Number(tm[1]),Number(tm[2]),0,0);return Number.isFinite(d.getTime())?d:null}
 function previousDate(date=''){const m=String(date||'').match(/^(20\d{2})-(\d{2})-(\d{2})$/);if(!m)return false;const now=new Date(),today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;return String(date)<today}
-function mailTimeFrom(date='',time=''){
-  const d=istDateTimeValue(date,time);if(!d)return'';
-  return new Date(d.getTime()-6*60*60*1000).toISOString().slice(0,16).replace('T',' ');
-}
+function mailTimeFrom(date='',time=''){return importMailSixHoursBefore(date,time)}
 function handoverTimeFrom(date='',time=''){
   const d=istDateTimeValue(date,time);if(!d)return'';
   return new Date(d.getTime()-5*60*60*1000).toISOString().slice(0,16).replace('T',' ');
@@ -274,8 +272,9 @@ function decorateTiming(existing={},incoming={}){
   const bookingDate=incoming.bookingDate||existing.bookingDate||'';
   const bookingTime=incoming.bookingTime||existing.bookingTime||'';
   const mailArrivalDate=String(arrivalDate||'').split('/').map(x=>x.trim()).filter(Boolean).at(-1)||'';
-  const onlyAirIndiaFlightEta=rowMawb.startsWith('098-')&&merged.arrivalEstimate===true&&merged.arrivalIsActual!==true;
-  const mailTime=isImportLikeType(shipmentType)&&!onlyAirIndiaFlightEta?mailTimeFrom(mailArrivalDate,arrivalTime):'';
+  // A verified final-destination ETA is actionable for -6h Mail even when
+  // the aircraft has not arrived. ETA is never cargo-arrival confirmation.
+  const mailTime=isImportLikeType(shipmentType)?mailTimeFrom(mailArrivalDate,arrivalTime):'';
   const mailSent=isImportLikeType(shipmentType)?merged.mailSent===true:undefined;
   const customsCleared=isImportLikeType(shipmentType)?merged.customsCleared===true:undefined;
   const masterCopyReceived=exportLike?merged.masterCopyReceived===true:undefined;
@@ -383,23 +382,25 @@ function airAsiaScheduledFinalArrival(row={}){
   return{date,time};
 }
 function arrivalSortTime(row={}){
- const scheduled=airAsiaScheduledFinalArrival(row);
- const d=dateTimeValue(row.arrivalDate||scheduled?.date,row.arrivalTime||scheduled?.time);
- return d?d.getTime():Number.POSITIVE_INFINITY;
+  return importArrivalOrder(row,airAsiaScheduledFinalArrival(row));
 }
 function mailTimeForRow(row={}){
-  if(digits(row.mawb).startsWith('098')&&row.arrivalEstimate===true&&row.arrivalIsActual!==true)return'';
-  // Match the Mail Time column, including a provisional Emirates MAWB-level ETA.
-  // No part-specific arrival is inferred when the connecting part is unconfirmed.
-  return formatDateTime24(row.mailTime)||
-    mailTimeFrom(row.arrivalDate,row.arrivalTime)||
-    ((airAsiaScheduledFinalArrival(row)?.time)?mailTimeFrom(airAsiaScheduledFinalArrival(row).date,airAsiaScheduledFinalArrival(row).time):'')||
-    (row._emiratesMasterEta?mailTimeFrom(row._emiratesMasterEta.date,row._emiratesMasterEta.time):'');
+  if(row._saudiaPendingVirtual===true)return'';
+  // Use the current verified final-destination arrival/ETA FIRST, not a
+  // stale six-hour deadline saved for the previous flight. Transit JED/RUH
+  // forecasts must never generate Delhi Mail deadlines.
+  const direct=mailTimeFrom(row.arrivalDate,row.arrivalTime);
+  const airAsia=airAsiaScheduledFinalArrival(row);
+  const safeAirAsia=airAsia?.time?mailTimeFrom(airAsia.date,airAsia.time):'';
+  const emirates=row._emiratesMasterEta;
+  const provisional=emirates?mailTimeFrom(emirates.date,emirates.time):'';
+  return direct||safeAirAsia||provisional||(!row.arrivalVerifiedAbsent?formatDateTime24(row.mailTime):'');
 }
 // Flash only overdue, unmailed Import entries. The displayed Mail Time is IST.
 function importMailOverdue(row={},nowMs=Date.now()){
   if(row.mailSent===true||row._saudiaPendingVirtual===true)return false;
-  if(digits(row.mawb).startsWith('098')&&row.arrivalEstimate===true&&row.arrivalIsActual!==true)return false;
+  // Air India dated Tracking View ETA and confirmed flight schedules are
+  // actionable -6h Mail reminders, not proof that the cargo arrived.
   // Saudia only: FOW/EXPECTED is not departure. Blink NO only after DEP or
   // AWB-verified actual arrival, while retaining the existing overdue clock.
   if(digits(row.mawb).startsWith('065')){
@@ -514,10 +515,12 @@ function saudiaDisplayPriority(row={}){
 function sortForDashboard(list=[],activeTab='IMPORT'){
   if(isExportLikeType(activeTab))return [...list].sort((a,b)=>{const ah=handoverSortTime(a),bh=handoverSortTime(b);if(ah!==bh)return ah-bh;return (Date.parse(b.lastChecked||b._dbUpdatedAt||0)||0)-(Date.parse(a.lastChecked||a._dbUpdatedAt||0)||0)});
   return [...list].sort((a,b)=>{
+    // FIRST: the arrival date/time shown in the table (IST). Status, carrier,
+    // and Mail YES/NO must not displace an earlier arriving flight.
+    const at=arrivalSortTime(a),bt=arrivalSortTime(b);
+    if(at!==bt)return at-bt;
+    // For the same arrival time, Saudia departed/fow priority is retained.
     if(digits(a.mawb).startsWith('065')&&digits(b.mawb).startsWith('065')){
-      // Pre-arrival mail deadlines take precedence over older arrived parts.
-      const at=mailSortTime(a),bt=mailSortTime(b);
-      if(at!==bt&&(Number.isFinite(at)||Number.isFinite(bt)))return at-bt;
       const rank=saudiaDisplayPriority(a)-saudiaDisplayPriority(b);
       if(rank)return rank;
     }
@@ -1110,7 +1113,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
      if(s[field]===undefined||s[field]===null||s[field]==='')
        live[field]=field==='flightSchedule'?[]:'';
    }
- }if(digits(row.mawb).startsWith('160'))live=preserveCathayFlight(row,live,row.mawb);next=decorateTiming(row,{...live,shipmentType:row.shipmentType,clientName:row.clientName,companyType:row.companyType||'',companyName:row.companyName||'',goodsDescription:row.goodsDescription||'',enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:isImportLikeType(row.shipmentType)?row.mailSent:undefined,mailUpdatedAt:isImportLikeType(row.shipmentType)?(row.mailUpdatedAt||''):undefined,customsCleared:isImportLikeType(row.shipmentType)?row.customsCleared===true:undefined,masterCopyReceived:isExportLikeType(row.shipmentType)?row.masterCopyReceived===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});if(normalize(row.mawb).startsWith('098-')){if(s.arrivalVerifiedAbsent===true){next.arrivalDate='';next.arrivalTime='';next.scheduledArrivalDate='';next.scheduledArrivalTime='';next.mailTime='';next.arrivalIsActual=false;}if(s.arrivalDate)next.arrivalDate=s.arrivalDate;if(s.arrivalTime)next.arrivalTime=s.arrivalTime;next.arrivalIsActual=s.arrivalIsActual===true;if(s.arrivalTimeZone)next.arrivalTimeZone=s.arrivalTimeZone;if(s.arrivalTimeSource)next.arrivalTimeSource=s.arrivalTimeSource;next.mailTime=next.shipmentType==='IMPORT'?mailTimeFrom(next.arrivalDate,next.arrivalTime):next.mailTime;}if(normalize(row.mawb).startsWith('065-')){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}if(saudiaDis){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.arrivalIsActual=false;next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';next.remarks=live.remarks||'Offloaded / not loaded to flight';}else if(normalize(row.mawb).startsWith('065-')&&!s.flightNo&&!s.arrivalDate&&!s.arrivalTime){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}else if(s.arrivalIsActual===true){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}setRows(r=>r.map((x,i)=>i===index?next:x))}catch(e){const p=e.payload||{};const retained=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?retained:x));if(!silent)setNote(p.manualHint?`${row.mawb}: ${p.manualHint}`:'Auto refresh had an issue; last verified details and status were retained.');return}try{await persistRow(next);setShared(true);if(!silent)setNote(`${row.mawb} refreshed and shared.`)}catch(e){setShared(false);if(!silent)setNote(`${row.mawb} refreshed. Live details retained; shared save needs a valid login session.`)}}
+ }if(digits(row.mawb).startsWith('160'))live=preserveCathayFlight(row,live,row.mawb);next=decorateTiming(row,{...live,shipmentType:row.shipmentType,clientName:row.clientName,companyType:row.companyType||'',companyName:row.companyName||'',goodsDescription:row.goodsDescription||'',enteredBy:row.enteredBy,enteredByUsername:row.enteredByUsername,enteredAt:row.enteredAt,mailSent:isImportLikeType(row.shipmentType)?row.mailSent:undefined,mailUpdatedAt:isImportLikeType(row.shipmentType)?(row.mailUpdatedAt||''):undefined,customsCleared:isImportLikeType(row.shipmentType)?row.customsCleared===true:undefined,masterCopyReceived:isExportLikeType(row.shipmentType)?row.masterCopyReceived===true:undefined,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''});if(normalize(row.mawb).startsWith('098-')){if(s.arrivalVerifiedAbsent===true){next.arrivalDate='';next.arrivalTime='';next.scheduledArrivalDate='';next.scheduledArrivalTime='';next.mailTime='';next.arrivalIsActual=false;}if(s.arrivalDate)next.arrivalDate=s.arrivalDate;if(s.arrivalTime)next.arrivalTime=s.arrivalTime;next.arrivalIsActual=s.arrivalIsActual===true;if(s.arrivalTimeZone)next.arrivalTimeZone=s.arrivalTimeZone;if(s.arrivalTimeSource)next.arrivalTimeSource=s.arrivalTimeSource;next.mailTime=isImportLikeType(next.shipmentType)?mailTimeFrom(next.arrivalDate,next.arrivalTime):next.mailTime;}if(normalize(row.mawb).startsWith('065-')){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}if(saudiaDis){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.arrivalIsActual=false;next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';next.remarks=live.remarks||'Offloaded / not loaded to flight';}else if(normalize(row.mawb).startsWith('065-')&&!s.flightNo&&!s.arrivalDate&&!s.arrivalTime){next.flightNo='';next.flightDate='';next.arrivalDate='';next.arrivalTime='';next.mailTime='';next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}else if(s.arrivalIsActual===true){next.saudiaExpectedArrivalLocked=false;next.expectedDateOverrideSource='';}setRows(r=>r.map((x,i)=>i===index?next:x))}catch(e){const p=e.payload||{};const retained=decorateTiming(row,{status:row.status||'BOOKED',officialTracker:airlineForMawb(row.mawb)?.url||p.officialTracker||row.officialTracker,manualHint:p.manualHint||row.manualHint,trackingError:e.message,lastChecked:new Date().toISOString()});setRows(r=>r.map((x,i)=>i===index?retained:x));if(!silent)setNote(p.manualHint?`${row.mawb}: ${p.manualHint}`:'Auto refresh had an issue; last verified details and status were retained.');return}try{await persistRow(next);setShared(true);if(!silent)setNote(`${row.mawb} refreshed and shared.`)}catch(e){setShared(false);if(!silent)setNote(`${row.mawb} refreshed. Live details retained; shared save needs a valid login session.`)}}
   async function refreshAll(){setBusy(true);try{const masters=[...new Set(visibleRows.map(r=>normalize(r.mawb)).filter(Boolean))];for(const m of masters)await refreshByMawb(m)}finally{setBusy(false)}}
   // One-tap mobile refresh for existing Air India masters only. Mail/Customs
   // choices are kept by refreshByMawb; locked airline adapters are untouched.

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { refreshScope } from '../../../../lib/autoRefreshScope.js';
 import { enforceSaudiaArrivalEvidence } from '../../../../lib/saudiaTransitGuard.js';
+import { importMailSixHoursBefore } from '../../../../lib/importEtaTimeline.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
@@ -19,11 +20,7 @@ function formatTime12(value=''){
   const m=String(value||'').match(/^(\d{1,2}):([0-5]\d)$/);if(!m)return value||'';
   const h=Number(m[1]);return `${pad(h%12||12)}:${m[2]} ${h>=12?'PM':'AM'}`;
 }
-function mailTimeFrom(date='',time=''){
-  const d=dateTimeValue(date,time);if(!d)return'';
-  d.setHours(d.getHours()-6);
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${formatTime12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`;
-}
+function mailTimeFrom(date='',time=''){return importMailSixHoursBefore(date,time)}
 function isFiveAirline(mawb=''){return /^(098|157|160|176|910)-/.test(String(mawb||''));}
 function isAirIndia(mawb=''){return /^098-/.test(String(mawb||''));}
 function airportCode(value=''){const m=String(value||'').toUpperCase().match(/\b([A-Z]{3})\b/);return m?.[1]||''}
@@ -110,8 +107,7 @@ function decorateTiming(existing={},incoming={}){
   const combined={...existing,...incoming,mawb,shipmentType,arrivalDate,arrivalTime,arrivalIsActual};
   let status=businessStatus(incoming.status||existing.status||'',timingStatus,arrivalIsActual,mawb,combined);
   if(!isAirIndia(mawb)&&isFiveAirline(mawb)&&!arrivalIsActual&&(arrivalDate||arrivalTime)&&status==='BOOKED')status='IN TRANSIT';
-  const onlyAirIndiaFlightEta=isAirIndia(mawb)&&incoming.arrivalEstimate===true&&arrivalIsActual!==true;
-  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)&&!onlyAirIndiaFlightEta?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
+  return {...existing,...incoming,mawb,shipmentType,scheduledArrivalDate,scheduledArrivalTime,arrivalDate,arrivalTime,arrivalIsActual,timingDeltaMinutes,timingStatus,status,mailTime:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?mailTimeFrom(arrivalDate,arrivalTime):'',mailSent:['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType)?Boolean((incoming.mailSent??existing.mailSent)===true):undefined};
 }
 async function readJson(res){try{return await res.json()}catch{return null}}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
