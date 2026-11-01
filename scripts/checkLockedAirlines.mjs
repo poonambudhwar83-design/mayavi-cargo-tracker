@@ -1,4 +1,4 @@
-// Air India (098) Activity View baseline updated 2026-10-31 for owner-requested OFFLOADED/departure fix; re-locked at new SHA.
+// Air India (098) Activity View baseline updated 2026-11-01 for owner-approved flight/date and re-manifest correction; re-locked at new SHA.
 // Working-carrier freeze requested 2026-10-08.
 // Cathay Pacific (160): ZIP baseline retained; on 2026-10-27 the owner requested\n// correction of recurring CX failures. Revised Booking Status/cron sources are re-locked.
 // Restore the original ZIP Booking Status/browser fallback and lock its exact source hashes.
@@ -13,7 +13,7 @@ import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 // Tracking data remains live; this blocks unapproved SOURCE CODE edits.
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
-  'lib/airIndia.js':'18aa90fc9e3596636d93f67c95e05424902b9073',
+  'lib/airIndia.js':'a8f187f189da38195b4ea860d1cad3bc6168a3b0',
   // Kuwait (229) working live ETA + IST rollover, verified in Mayavi on 2026-10-13.
   // Freeze only its own parser; shared flight-time helpers remain available to other carriers.
   'lib/kuwait.js':'0b8fd5d3290c5b48b5dcc601de6337ea0e7530c0',

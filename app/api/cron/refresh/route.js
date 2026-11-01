@@ -56,6 +56,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
     &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(isAirIndia(mawb)){
     if(s.includes('OFFLOAD'))return'OFFLOADED';
+    if(s==='MANIFESTED')return'MANIFESTED';
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
     if(s.includes('DELIVER'))return'DELIVERED';
     if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){

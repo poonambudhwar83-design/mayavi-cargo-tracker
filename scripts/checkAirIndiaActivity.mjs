@@ -86,6 +86,44 @@ assert.equal(currentOffload.status,'OFFLOADED');
 assert.equal(currentOffload.offloadedPieces,'41','Historical 28 Oct offload must not double count current 30 Oct 41 pcs');
 assert.equal(currentOffload.arrivalDate,'','An OFFLOADED master must not enter next-day arrival list');
 
+
+const newerManifest='AWB Activity Timeline\n'
+  +'MANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +historicalOffloads.replace('AWB Activity Timeline\n','');
+const latestManifest=parseActivity(newerManifest,example);
+assert.equal(latestManifest.status,'MANIFESTED');
+assert.equal(latestManifest.activityMilestone,'MANIFESTED');
+assert.equal(latestManifest.flightNo,'IX0132');
+assert.equal(latestManifest.flightDate,'2026-11-01');
+assert.equal(latestManifest.masterPieces,'41');
+assert.equal(latestManifest.masterWeight,'1015');
+assert.equal(latestManifest.departureIsActual,false);
+assert.equal(latestManifest.arrivalIsActual,false);
+assert.equal(latestManifest.arrivalDate,'');
+assert.equal(latestManifest.offloadedPieces,'0');
+assert.ok(latestManifest.manifestEvidence.includes('IX-0132'));
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +historicalOffloads.replace('AWB Activity Timeline\n','')
+  +'\nMANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH',example).status,
+  'OFFLOADED','Old manifest must not overrule latest offload');
+assert.equal(parseActivity('AWB Activity Timeline\nMANIFESTED Manifested 10 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +historicalOffloads.replace('AWB Activity Timeline\n',''),example).status,'OFFLOADED',
+  'A partial manifest is not full-master confirmation');
+const splitManifest='AWB Activity Timeline\n'
+  +'MANIFESTED Manifested 21 pcs 0 kg for AI-0930, 01 Nov 2026 at DXB\n'
+  +'MANIFESTED Manifested 20 pcs 0 kg for AI-0930, 01 Nov 2026 at DXB\n';
+assert.equal(parseActivity(splitManifest,{origin:'DXB',destination:'DEL',pieces:'41',weight:'2020'}).status,'MANIFESTED');
+assert.equal(parseActivity(splitManifest,{origin:'DXB',destination:'DEL',pieces:'41',weight:'2020'}).flightDate,'2026-11-01');
+const fowWithManifest='AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 24 pcs 1300 kg\n'
+  +'MANIFESTED Manifested 24 pcs 0 kg for AI-0930, 01 Nov 2026 at DXB';
+const fowManifest=parseActivity(fowWithManifest,{origin:'DXB',destination:'DEL',pieces:'24',weight:'1300'});
+assert.equal(fowManifest.status,'MANIFESTED');
+assert.equal(fowManifest.flightNo,'AI0930');
+assert.equal(fowManifest.flightDate,'2026-11-01');
+const fowWithBooked='AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 41 pcs 2020 kg\n'
+  +'BOOKED Booked 41 pcs 2020 kg at DXB for AI-0916, 01 Nov 2026';
+assert.equal(parseActivity(fowWithBooked,{origin:'DXB',destination:'DEL',pieces:'41',weight:'2020'}).flightDate,'2026-11-01');
+
 const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
 assert.equal(departed.status,'IN TRANSIT','Departure is not actual cargo arrival');

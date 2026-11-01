@@ -146,11 +146,13 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
   }
   const clearStaleArrival=tracked.arrivalVerifiedAbsent===true;
   const patch={...tracked,mawb,lastChecked:new Date().toISOString(),trackingError:'',manualHint:''};
+  const airIndiaClearableFields=new Set(['departureDate','departureTime','departureEvidence','offloadEvidence','offloadStation','arrivalDate','arrivalTime','scheduledArrivalDate','scheduledArrivalTime']);
   for(const key of Object.keys(patch)){
     const value=patch[key];
     // A successful, verified CX lookup must clear a previous failed lookup.
     // Keep deliberate empty strings for these two CX-only operational fields.
     if(value===''||value===null||value===undefined){
+      if(mawb.startsWith('098-')&&tracked.status==='MANIFESTED'&&airIndiaClearableFields.has(key)&&value==='')continue;
       if(mawb.startsWith('160-')&&(key==='trackingError'||key==='manualHint')&&value==='')continue;
       delete patch[key];
     }
@@ -1615,6 +1617,7 @@ async function handle(mawb,fallback={}){
       shipment.mailTime='';
     }
     if(direct.status==='OFFLOADED')shipment.status='OFFLOADED';
+    if(direct.status==='MANIFESTED')shipment.status='MANIFESTED';
     if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
       shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
   }
