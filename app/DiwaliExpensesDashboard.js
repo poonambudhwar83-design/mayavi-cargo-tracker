@@ -144,9 +144,12 @@ export default function DiwaliExpensesDashboard() {
       <section style={{ background: '#fff', borderRadius: 14, border: '1px solid #e0e7f0', padding: 18, marginBottom: 16 }}>
         <h2 style={{ fontSize: 17, margin: '0 0 17px' }}>{editingId ? 'Edit officer gift' : 'Add officer gift'}</h2>
         <form onSubmit={save}>
+          <div style={{ marginBottom: 17, background: '#eef4ff', border: '1px solid #d6e4fb', borderRadius: 11, padding: 13 }}>
+            <label style={{ ...label, fontSize: 13, color: '#194786' }}>DIWALI YEAR *</label>
+            <select style={{ ...input, width: 'min(240px,100%)', fontSize: 16, fontWeight: 800 }} value={form.year} onChange={e => set('year', e.target.value)} required>{years.map(year => <option key={year} value={year}>{year}</option>)}</select>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 14 }}>
             <div><label style={label}>OFFICER NAME *</label><input style={input} value={form.officerName} onChange={e => set('officerName', e.target.value)} maxLength={200} placeholder="Officer name" required /></div>
-            <div><label style={label}>YEAR *</label><select style={input} value={form.year} onChange={e => set('year', e.target.value)} required>{years.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
             <div><label style={label}>GOLD / SILVER *</label>
               <select style={input} value={form.metalChoice} onChange={e => set('metalChoice', e.target.value)}>
                 <option value="Gold">Gold Coin</option>
