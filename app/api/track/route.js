@@ -17,6 +17,7 @@ import { trackLufthansa } from '../../../lib/lufthansa.js';
 import { trackQatar } from '../../../lib/qatar.js';
 import { trackEmirates } from '../../../lib/emirates.js';
 import { trackAirIndia } from '../../../lib/airIndia.js';
+import { reconcileAirIndiaPartialOffload } from '../../../lib/airIndiaOffloadReconcile.js';
 import { trackAirArabia } from '../../../lib/airArabia.js';
 import { trackOman } from '../../../lib/oman.js';
 import { trackFlydubai } from '../../../lib/flydubai.js';
@@ -1747,6 +1748,16 @@ async function handle(mawb,fallback={}){
         });
       }
     }
+  }
+  // Reconcile verified Air India partial offloads outside the locked carrier parser.
+  // The most recent official 6-piece OFFLOAD never marks a 41-piece master
+  // entirely offloaded; a preceding 41-piece DEP remains separate evidence.
+  if(airIndiaFastPath&&direct?.status==='OFFLOADED'){
+    const partialOffload=reconcileAirIndiaPartialOffload(
+      {...direct,mawb},
+      directResult?.debug?.activitySample||''
+    );
+    if(partialOffload)Object.assign(shipment,partialOffload);
   }
   shipment=guardFinalDestinationArrival(shipment);
   // SAL may report a domestic SV flight ARR at JED while the MAWB's final
