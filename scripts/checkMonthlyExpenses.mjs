@@ -72,8 +72,15 @@ assert.ok(api.includes('importGross:importTotals.grossProfit'),
   'October and future Monthly Expenses must use the SAME Import Profit Sheet Gross');
 assert.ok(!api.includes('importGross:importTotals.importGrossWithDeductions'),
   'Never add protein/clothes deductions twice');
-assert.ok(ui.includes('already includes Protein')&&ui.includes('Clothes ('),
-  'Display Protein/Clothes breakdown as already included, not extra income');
+assert.ok(ui.includes("label:'Protein Deduction'")&&ui.includes("label:'Clothes Deduction'"),
+  'Protein and Clothes must have separate reporting heads in Monthly Expenses');
+assert.ok(ui.includes('included:true')&&ui.includes('INCLUDED IN GROSS • NOT ADDED AGAIN'),
+  'Show deduction heads as INCLUDED, never additional income');
+assert.ok(ui.includes('record.source?.import?.proteinDeduction')&&ui.includes('record.source?.import?.clothesDeduction'),
+  'Protein and Clothes heads must come from the live monthly Import Profit summary');
+assert.ok(api.includes('importGross:importTotals.grossProfit')&&
+  !api.includes('importGross:importTotals.importGrossWithDeductions'),
+  'Separate heads must not modify October or future Total Income and Final Profit');
 const actualExport=sourceCalc(exportUI,'function profitFor(row={}){','function exportCsv(',{resolvedExportShipmentCharge,exportCategorySummary,Number,Math});
 const exports=[
  {weight:20,rate:6,shipmentCharge:2600},
