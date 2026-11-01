@@ -12,6 +12,7 @@ const base={mawb:'065-18432864',origin:'JED',destination:'DEL',
   totalPieces:39,totalWeight:830,status:'BOOKED',
   arrivalDate:'',arrivalTime:'',arrivalIsActual:false};
 const [year,month,day]=future.split('-');
+const salMonth=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(month)];
 const salRaw=Number(month)+'/'+Number(day)+'/'+year+' 12:00:00 AM';
 assert.equal(normalizeSalFlightDate(salRaw),future);
 assert.equal(normalizeSalFlightDate('02NOV26'),'2026-11-02');
@@ -30,7 +31,7 @@ try{
     if(String(url).startsWith('https://www.flightstats.com/v2/flight-tracker/SV/756'))
       return new Response(flightStatsCard,{status:200});
     if(String(url).startsWith('https://useast.flightera.net/en/flight_details/Saudi%2BArabian%2BAirlines/SV756/OEJN/'))
-      return new Response('Saudi Arabian Airlines SV756 JED DEL 02. Nov 2026 DEPARTURE 02 Nov 02:15 UTC+03 ARRIVAL 02 Nov 09:45 IST 04:15 UTC',{status:200});
+      return new Response(`Saudi Arabian Airlines SV756 JED DEL ${day}. ${salMonth} ${year} DEPARTURE ${day} ${salMonth} 02:15 UTC+03 ARRIVAL ${day} ${salMonth} 09:45 IST 04:15 UTC`,{status:200});
     return new Response('unavailable',{status:404});
   };
   const publicLive=await trackSaudiaViaSal(base.mawb);
