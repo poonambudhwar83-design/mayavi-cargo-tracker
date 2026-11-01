@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
+import { normalizeSalFlightDate } from '../lib/saudiaFlightDate.js';
+import { trackSaudiaDirect } from '../lib/saudiaDirect.js';
 
 const isoAfterDays=days=>new Date(Date.now()+330*60000+days*86400000).toISOString().slice(0,10);
 const future=isoAfterDays(1);
@@ -7,9 +9,37 @@ const base={mawb:'065-18432864',origin:'JED',destination:'DEL',
   sourceStatus:'RCS',flightNo:'SV756',flightDate:future,flightDestination:'DEL',
   totalPieces:39,totalWeight:830,status:'BOOKED',
   arrivalDate:'',arrivalTime:'',arrivalIsActual:false};
-const rcs=enforceSaudiaArrivalEvidence(base);
+const [year,month,day]=future.split('-');
+const salRaw=Number(month)+'/'+Number(day)+'/'+year+' 12:00:00 AM';
+assert.equal(normalizeSalFlightDate(salRaw),future);
+assert.equal(normalizeSalFlightDate('02NOV26'),'2026-11-02');
+assert.equal(normalizeSalFlightDate('2026-11-02'),'2026-11-02');
+assert.equal(normalizeSalFlightDate('02/30/2026 12:00:00 AM'),'');
+const salEvent={Status:'RCS',Airport:'JED',Flight_Dest:'DEL',Flight_Number:'756',
+  Flight_Date:salRaw,DateTime_LT:'11/1/2026 4:46:00 PM',Pieces:39,Weight:830};
+const originalFetch=globalThis.fetch;
+try{
+  globalThis.fetch=async url=>{
+    if(String(url).startsWith('https://sal.sa/TrackShipment/TrackingApi'))
+      return new Response(JSON.stringify({success:true,message:JSON.stringify({
+        Awb:base.mawb,Origin:'JED',Destination:'DEL',TotalPieces:39,TotalWeight:830,
+        Parts:[{Events:[salEvent]}]})}),{status:200});
+    return new Response('unavailable',{status:404});
+  };
+  const live=await trackSaudiaDirect(base.mawb);
+  assert.equal(live.ok,true);
+  assert.equal(live.shipment.flightNo,'SV756');
+  assert.equal(live.shipment.flightDate,future,'SAL full chronology must normalize Flight_Date');
+  const projected=enforceSaudiaArrivalEvidence(live.shipment);
+  assert.equal(projected.arrivalDate,future,'SAL raw Flight_Date must appear as expected');
+  assert.equal(projected.arrivalTime,'');
+  assert.equal(projected.arrivalIsActual,false);
+  assert.equal(projected.status,'EXPECTED');
+}finally{globalThis.fetch=originalFetch;}
+const rcs=enforceSaudiaArrivalEvidence({...base,flightDate:salRaw});
 assert.equal(rcs.status,'EXPECTED');
 assert.equal(rcs.arrivalDate,future);
+assert.equal(rcs.flightDate,future);
 assert.equal(rcs.scheduledArrivalDate,future);
 assert.equal(rcs.arrivalTime,'');
 assert.equal(rcs.arrivalEstimate,true);
