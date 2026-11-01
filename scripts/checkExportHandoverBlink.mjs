@@ -107,13 +107,15 @@ console.log('Export master-MAWB editable shipment charge regression passed: defa
 import { includeExportMasterInProfit, exportProfitRegister } from '../lib/exportProfitSource.js';
 const currentExportMonth='2026-10', oldExportMonth='2026-09';
 const activeExport={shipmentType:'EXPORT',masterCopyReceived:false,handoverDone:false,departureDate:''};
-const completeExport={shipmentType:'EXPORT',masterCopyReceived:true,handoverDone:true,departureDate:'2026-10-26'};
-const oldComplete={...completeExport,departureDate:'2026-09-26'};
+const completeExport={shipmentType:'EXPORT',masterCopyReceived:true,handoverDone:true,departureDate:'2026-11-01',handoverUpdatedAt:'2026-10-31T15:00:00Z'};
+const oldComplete={...completeExport,departureDate:'2026-10-01',handoverUpdatedAt:'2026-09-30T15:00:00Z'};
 assertExportCharge.equal(includeExportMasterInProfit(activeExport,currentExportMonth,currentExportMonth),true);
 assertExportCharge.equal(includeExportMasterInProfit(completeExport,currentExportMonth,currentExportMonth),true);
 assertExportCharge.equal(includeExportMasterInProfit(oldComplete,currentExportMonth,currentExportMonth),false);
 assertExportCharge.equal(includeExportMasterInProfit(oldComplete,oldExportMonth,currentExportMonth),true);
 assertExportCharge.equal(includeExportMasterInProfit({...activeExport,departureDate:'2026-09-20'},oldExportMonth,currentExportMonth),false);
+assertExportCharge.equal(includeExportMasterInProfit({...completeExport,handoverDone:false},oldExportMonth,currentExportMonth),false,'Handover NO never closes past export month');
+assertExportCharge.equal(includeExportMasterInProfit({...completeExport,masterCopyReceived:false},oldExportMonth,currentExportMonth),false,'Active export cannot appear in closed profit month');
 assertExportCharge.equal(exportProfitRegister(completeExport),'MASTER COPY RECEIVED');
 assertExportCharge.equal(exportProfitRegister(activeExport),'ACTIVE');
 assertExportCharge.ok(exportChargeApi.includes("WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'"));
