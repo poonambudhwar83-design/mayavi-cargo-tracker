@@ -18,6 +18,7 @@ import { trackQatar } from '../../../lib/qatar.js';
 import { trackEmirates } from '../../../lib/emirates.js';
 import { trackAirIndia } from '../../../lib/airIndia.js';
 import { reconcileAirIndiaPartialOffload } from '../../../lib/airIndiaOffloadReconcile.js';
+import { reconcileAirIndiaPartLoads } from '../../../lib/airIndiaPartLoads.js';
 import { trackAirArabia } from '../../../lib/airArabia.js';
 import { trackOman } from '../../../lib/oman.js';
 import { trackFlydubai } from '../../../lib/flydubai.js';
@@ -1792,6 +1793,19 @@ async function handle(mawb,fallback={}){
   }
   // ET only: a passed final ETA plus no verified final-leg departure needs rescheduling.
   if(ethiopianFastPath&&direct)shipment=markEthiopianReschedulePending(shipment);
+
+  // Air India: apply independent physical parts LAST, after generic flight-ETA
+  // fallbacks and offload guards. A 35-piece cargo DEP and a separate 6-piece
+  // OFFLOAD belong to one master, not two duplicate accounting loads.
+  if(airIndiaFastPath&&direct&&directResult?.debug?.activitySample){
+    const parts=reconcileAirIndiaPartLoads(
+      {...shipment,mawb,masterPieces:direct.masterPieces||shipment.masterPieces,
+        masterWeight:direct.masterWeight||shipment.masterWeight},
+      directResult?.debug?.trackingViewSample||directResult?.debug?.summarySample||'',
+      directResult.debug.activitySample
+    );
+    if(parts)shipment=guardFinalDestinationArrival(parts);
+  }
 
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
   const directScreenshot=Boolean(directResult?.screenshotCaptured);
