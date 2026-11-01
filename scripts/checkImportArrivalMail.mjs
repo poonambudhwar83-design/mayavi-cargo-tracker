@@ -39,3 +39,23 @@ assert.ok(!cron.includes("!onlyAirIndiaFlightEta?mailTimeFrom"));
 assert.ok(dash.includes("if(row._saudiaPendingVirtual===true)return'';"),
   'Unassigned Saudia balance cannot receive an imaginary Mail deadline');
 console.log('Arrival order IST and Mail -6h tests passed, including prior-day rollover and all three Air India flights.');
+
+
+// A customer-requested operational date is displayed but never represents
+// a confirmed cargo ETA, physical arrival or mail deadline.
+const manualAirIndiaPlan={
+  mawb:'098-30448456',status:'PART OFFLOAD • VERIFY',
+  operatorPlannedArrivalDate:'2026-11-01',arrivalDate:'',arrivalTime:'',
+  arrivalIsActual:false,arrivalVerifiedAbsent:true,offloadedPieces:'6',masterPieces:'41'
+};
+assert.equal(importArrivalOrder(manualAirIndiaPlan),importIstMoment('2026-11-01','23:59'));
+assert.equal(importArrivalOrder({...manualAirIndiaPlan,operatorPlannedArrivalDate:''}),Infinity);
+assert.equal(importArrivalOrder({...manualAirIndiaPlan,status:'MANIFESTED'}),Infinity,
+  'An outdated operator plan must not override a later actual airline milestone');
+assert.equal(importArrivalOrder({...manualAirIndiaPlan,arrivalDate:'2026-11-02',arrivalTime:'01:50',status:'ARRIVED',arrivalIsActual:true}),
+  importIstMoment('2026-11-02','01:50'));
+assert.equal(importMailSixHoursBefore(manualAirIndiaPlan.arrivalDate,manualAirIndiaPlan.arrivalTime),'');
+const manualPlanDashboard=readFileSync('app/DashboardClient.js','utf8');
+assert.ok(manualPlanDashboard.includes('OPERATOR PLAN • OFFLOAD NOT CLEARED'),
+  'The operator plan must be clearly labeled, never marked ARRIVED');
+console.log('Operator-planned Air India offload arrival date appears on the correct day without false cargo arrival or email alerts.');
