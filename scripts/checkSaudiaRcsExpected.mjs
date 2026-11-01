@@ -29,6 +29,8 @@ try{
         Parts:[{Events:[salEvent]}]})}),{status:200});
     if(String(url).startsWith('https://www.flightstats.com/v2/flight-tracker/SV/756'))
       return new Response(flightStatsCard,{status:200});
+    if(String(url).startsWith('https://useast.flightera.net/en/flight_details/Saudi%2BArabian%2BAirlines/SV756/OEJN/'))
+      return new Response('Saudi Arabian Airlines SV756 JED DEL 02. Nov 2026 DEPARTURE 02 Nov 02:15 UTC+03 ARRIVAL 02 Nov 09:45 IST 04:15 UTC',{status:200});
     return new Response('unavailable',{status:404});
   };
   const publicLive=await trackSaudiaViaSal(base.mawb);
@@ -66,6 +68,16 @@ try{
     new Date(Date.parse(future+'T10:10:00Z')-6*3600000).toISOString().slice(0,16).replace('T',' '));
   assert.equal(revision.arrivalTime,'');
   assert.equal(revision.arrivalIsActual,false);
+  flightStatsCard='FLIGHT INFO UNAVAILABLE';
+  const backup=await trackSaudiaDirect(base.mawb);
+  assert.equal(backup.shipment.saudiaRcsScheduledTime,'09:45',
+    'Second dated flight timetable must recover RCS clock when FlightStats is blank');
+  assert.equal(backup.shipment.saudiaRcsTimeSource,'Flightera scheduled arrival');
+  const backupRcs=enforceSaudiaArrivalEvidence(backup.shipment);
+  assert.equal(saudiaRcsProvisionalMailTime(backupRcs),
+    new Date(Date.parse(future+'T09:45:00Z')-6*3600000).toISOString().slice(0,16).replace('T',' '));
+  assert.equal(backupRcs.arrivalTime,'');
+  assert.equal(backupRcs.arrivalIsActual,false);
 }finally{globalThis.fetch=originalFetch;}
 const testScheduled=saudiaRcsProvisionalMailTime({...base,flightDate:'2026-11-02',arrivalDate:'2026-11-02',
   saudiaArrivalStage:'PLANNED',saudiaRcsScheduledDate:'2026-11-02',
