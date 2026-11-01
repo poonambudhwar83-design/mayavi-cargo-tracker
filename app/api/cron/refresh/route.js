@@ -52,6 +52,9 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
     &&!explicitViaForStatus(row)
     &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(isAirIndia(mawb)){
+    if(s.includes('PART ARRIVED'))return'PART ARRIVED';
+    if(s.includes('PART DEPARTED'))return'PART DEPARTED';
+    if(s.includes('PART OFFLOADED'))return'PART OFFLOADED';
     if(s.includes('OFFLOAD'))return'OFFLOADED';
     if(['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND','DEPARTED'].includes(s))return s;
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
