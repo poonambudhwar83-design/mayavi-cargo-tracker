@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
+import { confirmedExportHandoverDate, confirmedExportHandoverMonth } from '../lib/exportHandoverAccounting.js';
 
 function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function pad(v){return String(v).padStart(2,'0')}
@@ -39,7 +40,7 @@ function archiveVisibleRows(records=[]){
   return records.flatMap(record=>{
     const d=record.data||{},month=record.archiveMonth;
     if(record.shipmentType==='EXPORT')
-      return archiveDateMonth(d.departureDate||d.flightDate)===month?[record]:[];
+      return confirmedExportHandoverMonth(d)===month?[record]:[];
     if(record.shipmentType!=='IMPORT')return[];
     const parts=Array.isArray(d.partShipments)?d.partShipments.filter(Boolean):[];
     // One MAWB can have part arrivals in two different calendar months.
@@ -157,12 +158,12 @@ export default function MonthlyDashboard(){
 
   return <main style={{paddingBottom:24}}>
     <section className="hero">
-      <div><div className="eyebrow">MAYAVI CARGO • ADMIN ARCHIVE</div><h1>Monthly Records Dashboard</h1><small style={{display:'inline-block',margin:'8px 0 0',padding:'5px 9px',background:'rgba(255,255,255,.15)',borderRadius:8,fontWeight:800}}>Goods • Client • Company filters available in table headings</small><p>Closed months are saved separately. Import uses Arrival Date; Export uses Departure Date. Split Import parts are shown in their own arrival month.</p></div>
+      <div><div className="eyebrow">MAYAVI CARGO • ADMIN ARCHIVE</div><h1>Monthly Records Dashboard</h1><small style={{display:'inline-block',margin:'8px 0 0',padding:'5px 9px',background:'rgba(255,255,255,.15)',borderRadius:8,fontWeight:800}}>Goods • Client • Company filters available in table headings</small><p>Closed months are saved separately. Import follows confirmed Arrival Date; Export follows the recorded Handover YES date (IST). Split Import parts appear in their own arrival month.</p></div>
       <div className="userPanel"><button className="logoutBtn" onClick={()=>{window.location.href='/'}}>← LIVE DASHBOARD</button></div>
     </section>
 
     {!authorized?<div className="note">{note||'Admin authorization required.'}</div>:<>
-      <section className="adminBar"><div><b>MONTH-END ARCHIVE</b><span>Each closed calendar month is archived automatically. Import follows Arrival Date; Export follows Departure Date. Missing dates or missing source weights are not guessed.</span></div></section>
+      <section className="adminBar"><div><b>MONTH-END ARCHIVE</b><span>Each closed calendar month is archived automatically. Import follows verified Arrival Date; Export follows the actual Handover YES date in IST (not Departure Date). Pending handovers are not archived.</span></div></section>
 
       <section className="filters" style={{alignItems:'end'}}>
         <div><label>MONTH</label><select value={month} onChange={e=>{setMonth(e.target.value);clearFilters()}}>{months.length?months.map(m=><option key={m.key} value={m.key}>{String(m.label||m.key).toUpperCase()}</option>):<option value="">No closed month yet</option>}</select></div>
@@ -222,14 +223,14 @@ export default function MonthlyDashboard(){
             </div>
           </th>
           <th>Entered By</th><th>Booking Date</th><th>Airline</th><th>Origin</th><th>Via</th><th>Destination</th><th>Bags/Pieces</th><th>Weight</th><th>Flight</th>
-          {type==='EXPORT'&&<><th>Departure Date</th><th>Departure Time</th><th>Handover</th><th>Master Copy</th></>}
+          {type==='EXPORT'&&<><th>Departure Date</th><th>Departure Time</th><th>Handover Date (IST)</th><th>Handover</th><th>Master Copy</th></>}
           <th>Arrival Date</th><th>Arrival Time</th>{type==='IMPORT'&&<><th>Mail</th><th>Customs Clear</th></>}<th>Status</th><th>Remarks</th>
         </tr></thead>
         <tbody>{visible.length?visible.map((record,index)=>{const r=record.data||{};return <tr key={record.archiveMonth+'-'+record.shipmentType+'-'+record.awb+'-'+(record.archivePartIndex??'master')}>
           <td><strong>{index+1}</strong></td><td>{formatDate(r.enteredAt)}</td><td><strong>{r.mawb||(`${String(record.awb).slice(0,3)}-${String(record.awb).slice(3)}`)}</strong></td>{type==='IMPORT'&&<td>{r.goodsDescription||r.goods||'—'}</td>}<td>{r.clientName||r.client||'—'}</td><td>{r.companyName||r.companyType||'—'}</td><td>{r.enteredBy||'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{viaForRow(r)}</td><td>{r.destination||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{weightValue(r,record.isArchivePart)!==null?`${weightValue(r,record.isArchivePart)} kg`:'—'}</td><td>{r.flightNo||'—'}</td>
-          {type==='EXPORT'&&<><td>{r.departureDate||r.flightDate||'—'}</td><td>{formatTime(r.departureTime)}</td><td>{r.handoverDone===true?'YES':'NO'}</td><td>{r.masterCopyReceived===true?'RECEIVED':'PENDING'}</td></>}
+          {type==='EXPORT'&&<><td>{r.departureDate||r.flightDate||'—'}</td><td>{formatTime(r.departureTime)}</td><td>{formatDate(confirmedExportHandoverDate(r))}</td><td>{r.handoverDone===true?'YES':'NO'}</td><td>{r.masterCopyReceived===true?'RECEIVED':'PENDING'}</td></>}
           <td>{r.arrivalDate||'—'}</td><td>{formatTime(r.arrivalTime)}</td>{type==='IMPORT'&&<><td>{r.mailSent===true?'YES':'NO'}</td><td>{r.customsCleared===true?'CLEARED':'PENDING'}</td></>}<td><span className={`badge ${statusTone(r.status)}`}>{r.status||'BOOKED'}</span></td><td>{r.remarks||'—'}</td>
-        </tr>}):<tr><td className="empty" colSpan={type==='IMPORT'?24:23}>{(search||goodsFilter||clientFilter||companyFilter)?'No records match the selected filters.':month?'No '+type.toLowerCase()+' records in this month.':'No closed-month records yet.'}</td></tr>}</tbody>
+        </tr>}):<tr><td className="empty" colSpan={24}>{(search||goodsFilter||clientFilter||companyFilter)?'No records match the selected filters.':month?'No '+type.toLowerCase()+' records in this month.':'No closed-month records yet.'}</td></tr>}</tbody>
       </table></section>
       <section className="tableSummary"><span>{visible.length} master{visible.length===1?'':'s'} shown</span><strong>Total recorded Weight: {totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})} kg{unknownWeights>0?` • ${unknownWeights} row(s) without recorded weight`:''}</strong></section>
     </>}
