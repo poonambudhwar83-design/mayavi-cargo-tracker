@@ -50,11 +50,11 @@ function parseEntry(body) {
   const remarks = String(body?.remarks ?? '').trim();
   if (!officerName || officerName.length > 200) return { error: 'Enter an officer name (up to 200 characters).' };
   if (!metal || metal.length > 60 || !/^[\p{L}\p{N} .&/-]+$/u.test(metal)) return { error: 'Select Gold or Silver, or enter a valid custom metal.' };
-  if (!Number.isFinite(weight) || weight <= 0 || weight > 100000 || Math.round(weight * 100) !== weight * 100) {
+  if (!Number.isFinite(weight) || weight <= 0 || weight > 100000 || Math.abs(weight * 100 - Math.round(weight * 100)) > 0.000001) {
     return { error: 'Enter a valid coin weight in grams (up to two decimals).' };
   }
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) return { error: 'Quantity must be a positive whole number.' };
-  if (!Number.isFinite(amount) || amount < 0 || amount > 999999999999 || Math.round(amount * 100) !== amount * 100) {
+  if (!Number.isFinite(amount) || amount < 0 || amount > 999999999999 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
     return { error: 'Total cost must be a valid amount in rupees.' };
   }
   if (remarks.length > 1000) return { error: 'Remarks must be under 1000 characters.' };
