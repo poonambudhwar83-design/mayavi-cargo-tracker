@@ -44,7 +44,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
   const s=String(raw||'').toUpperCase();
 
   // AIR INDIA: official Activity View movement always wins over ETA/timing calculations.
-  // Manifested/Accepted/Built Up/Executed/Booked = BOOKED
+  // Keep actual Activity View stages: Manifested, Build Up, FOW, Accepted, Executed, Booked
   // Departed = IN TRANSIT
   // Arrived/Delivered = ARRIVED
   if(mawb.startsWith('229-')&&s.includes('PART LOAD'))return'PART LOAD';
@@ -56,7 +56,7 @@ function businessStatus(raw='',timingStatus='',arrivalIsActual=false,mawb='',row
     &&(s==='DEPARTED'||s==='IN TRANSIT'||s==='DEP'))return'DEPARTED';
   if(isAirIndia(mawb)){
     if(s.includes('OFFLOAD'))return'OFFLOADED';
-    if(s==='MANIFESTED')return'MANIFESTED';
+    if(['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND','DEPARTED'].includes(s))return s;
     if(s.includes('PART ARRIVED'))return'PART ARRIVED';
     if(s.includes('DELIVER'))return'DELIVERED';
     if(s.includes('ARRIVED')||s.includes('DESTINATION')||s.includes('LANDED')||s.includes('RCF')){

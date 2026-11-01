@@ -72,7 +72,7 @@ assert.equal(offloaded.arrivalDate,'');
 assert.equal(offloaded.departureIsActual,false);
 const priorDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH\n'+newOffload.replace('AWB Activity Timeline\n','');
 assert.equal(parseActivity(newOffload+'\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'OFFLOADED','Latest offload must override an older departure');
-assert.equal(parseActivity(priorDeparture,example).status,'IN TRANSIT','A later verified departure restores transit');
+assert.equal(parseActivity(priorDeparture,example).status,'DEPARTED','A later verified departure restores transit');
 // This AWB was offloaded on two separate dates; the older 28 Oct full
 // offload is history. Count the latest 30 Oct 6+15+20 only once.
 const historicalOffloads='AWB Activity Timeline\n'
@@ -124,9 +124,35 @@ const fowWithBooked='AWB Activity Timeline\nFREIGHT ON HAND Freight on hand 41 p
   +'BOOKED Booked 41 pcs 2020 kg at DXB for AI-0916, 01 Nov 2026';
 assert.equal(parseActivity(fowWithBooked,{origin:'DXB',destination:'DEL',pieces:'41',weight:'2020'}).flightDate,'2026-11-01');
 
+
+const buildUp='AWB Activity Timeline\n'
+  +'BUILD UP Built Up 41 pcs 1015 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +'OFFLOADED Offloaded 41 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH';
+const built=parseActivity(buildUp,example);
+assert.equal(built.status,'BUILD UP');
+assert.equal(built.flightNo,'IX0132');
+assert.equal(built.flightDate,'2026-11-01');
+assert.equal(built.arrivalDate,'');
+assert.equal(built.departureIsActual,false);
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +'MANIFESTED Manifested 41 pcs 0 kg for IX-0132, 01 Nov 2026 at AUH\n'
+  +buildUp.replace('AWB Activity Timeline\n',''),example).status,'MANIFESTED',
+  'Later manifest must replace older Build Up');
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +'BUILT UP Built Up 41 pcs 1015 kg for IX-0132, 01 Nov 2026 at AUH',example).status,'BUILD UP');
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +'EXECUTED Executed 41 pcs 1015 kg for AI-0930, 01 Nov 2026 at DXB',
+  {origin:'DXB',destination:'DEL',pieces:'41',weight:'1015'}).status,'EXECUTED');
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +'ACCEPTED Accepted 41 pcs 1015 kg for AI-0916, 01 Nov 2026 at DXB',
+  {origin:'DXB',destination:'DEL',pieces:'41',weight:'1015'}).status,'ACCEPTED');
+assert.equal(parseActivity('AWB Activity Timeline\n'
+  +'FREIGHT ON HAND Freight on hand 41 pcs 1015 kg at DXB',
+  {origin:'DXB',destination:'DEL',pieces:'41',weight:'1015'}).status,'FREIGHT ON HAND');
+
 const actualDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 18:20 (A) at AUH';
 const departed=parseActivity(actualDeparture,example);
-assert.equal(departed.status,'IN TRANSIT','Departure is not actual cargo arrival');
+assert.equal(departed.status,'DEPARTED','Departure is not actual cargo arrival');
 assert.equal(departed.departureIsActual,true);
 assert.equal(departed.arrivalIsActual,false);
 const actualArrival='AWB Activity Timeline\nARRIVAL Arrived 41 pcs 1015 kg on IX-0124, 31 Oct 2026 10:30 (A) at DEL';

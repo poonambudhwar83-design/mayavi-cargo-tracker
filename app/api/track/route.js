@@ -152,7 +152,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     // A successful, verified CX lookup must clear a previous failed lookup.
     // Keep deliberate empty strings for these two CX-only operational fields.
     if(value===''||value===null||value===undefined){
-      if(mawb.startsWith('098-')&&tracked.status==='MANIFESTED'&&airIndiaClearableFields.has(key)&&value==='')continue;
+      if(mawb.startsWith('098-')&&['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND'].includes(tracked.status)&&airIndiaClearableFields.has(key)&&value==='')continue;
       if(mawb.startsWith('160-')&&(key==='trackingError'||key==='manualHint')&&value==='')continue;
       delete patch[key];
     }
@@ -1617,7 +1617,7 @@ async function handle(mawb,fallback={}){
       shipment.mailTime='';
     }
     if(direct.status==='OFFLOADED')shipment.status='OFFLOADED';
-    if(direct.status==='MANIFESTED')shipment.status='MANIFESTED';
+    if(['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND','DEPARTED'].includes(direct.status))shipment.status=direct.status;
     if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
       shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
   }
