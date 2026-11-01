@@ -7,10 +7,12 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { preserveCathayFlight } from '../lib/cathayPreserve.js';
 
-// Saudia 065 unlocked on 2026-11-01 at owner's request; Kuwait 229 remains locked
-// carrier-specific readers, physical parts, final ARR guards, and unified
-// Kuwait tracking/ETA. The user may explicitly authorize a future unlock.
-// Tracking data remains live; this blocks unapproved SOURCE CODE edits.
+// Saudia (065) re-locked 2026-11-01 on the owner's request after the SV756
+// dated live flight-source, RCS expected date and provisional Mail -6h fix.
+// Freeze carrier-only parsers, physical-part guards and the verified mail logic;
+// other airlines' shared route, dashboard and cron files stay editable.
+// Future flight updates remain LIVE; this guards only SOURCE CODE changes.
+// The user may explicitly request an unlock for future Saudia fixes.
 const locked = Object.freeze({
   // Air India (098) official Activity View parser, FOW and movement tracking.
   'lib/airIndia.js':'4227d853694cfc3f615c8d828152decc7c9a9225',
@@ -24,7 +26,21 @@ const locked = Object.freeze({
   'lib/kuwaitFlightEta.js':'34c9d11df7055d5c441f7d75f1f0f9488d6d1148',
   'lib/kuwaitMasterEvents.js':'eb66b2fb73f86b0898263cce756c3e5d58a3406f',
   'lib/kuwaitAircraftDeparture.js':'7cc94d007f8ab31cbb0bf4cd42c6b53c65d756c6',
-  // Saudia 065 SHA checks removed by owner request; functional regression checks remain.
+  // Saudia 065: protected working live SAL chronology, part loads, RCS/ETA
+  // timing, scheduled fallback and -6h provisional Mail. Explicit unlock required.
+  'lib/saudia.js':'db7739b0860ad49ac762fded8b82654e6c05ff31',
+  'lib/saudiaStrong.js':'32ba65e2da6f98beb3ab025b215cd12b4fbaa13b',
+  'lib/saudiaDirect.js':'4220f15ef4aaf8e346e98dfd82a7eaa97250a39f',
+  'lib/saudiaTransitGuard.js':'146c9ebfdd5f3920718a5bde964c0b1c1f46d867',
+  'lib/saudiaPhysicalParts.js':'bdd9f796e52b352aeef0ddb662e858c85da0b681',
+  'lib/saudiaArrivedMasterFlight.js':'5fd3ac0ebf36d0302a10b2ef68839413ea9cdbf8',
+  'lib/saudiaRcfParts.js':'17d5c82b8933676063a0f445d0166cc2707e5d4c',
+  'lib/saudiaSalPublic.js':'37413b5d36037483ed963d8599940a4837a97bcc',
+  'lib/saudiaFlightDate.js':'5e85ba9841989891dedb1f89125c2739de19dc00',
+  'lib/saudiaProvisionalMail.js':'682ca98d12e369604c98dc4eee70530d35789394',
+  'lib/saudiaPublishedSchedule.js':'8d735fdb01b288fdaace574da53a4fe85985b72c',
+  'lib/saudiaPartEta.js':'fb4b2341cbde569992cdcac392b867ad607ecf80',
+  'scripts/checkSaudiaRcsExpected.mjs':'132f2569ceb97c9ba8e4592cc3e9d565d1c05b6a',
   // IndiGo is now working on the live V2 deployment; freeze its official adapter,
   // part-load form extraction, sync API and sync component as of 2026-10-11.
   'lib/indigo.js':'3b56a630f809db8dddf2428739bba25c1c6beffc',
@@ -86,7 +102,51 @@ for(const [label,fragment] of airIndiaRouteContract){
     changed=true;
   }
 }
-// Saudia shared-route and dashboard source-code locks removed at owner's request.
+// Saudia shared multi-airline integrations are protected by narrow functional
+// contracts: other carriers and unrelated features may still be edited.
+const saudiaRouteLock=[
+  ['SAL strong chronology source','trackSaudiaDirect(mawb)'],
+  ['Saudia verified final-arrival evidence','shipment=enforceSaudiaArrivalEvidence(shipment);'],
+  ['Saudia independent physical part chronology','shipment=resolveSaudiaArrivedMasterFlight(reconcileSaudiaPhysicalParts(shipment));']
+];
+for(const [label,fragment] of saudiaRouteLock){
+  if(!sharedRoute.includes(fragment)){
+    console.error('LOCKED SAUDIA TRACKING CONTRACT MODIFIED: '+label+'. Explicit owner-approved unlock required.');
+    changed=true;
+  }
+}
+const saudiaDashboardLock=[
+  ['Saudia provisional Mail calculation',"mailTimeFrom(mailArrivalDate,arrivalTime)||saudiaRcsProvisionalMailTime(merged)"],
+  ['Saudia RCS live schedule and time display','saudiaRcsScheduledTime(r)'],
+  ['Saudia provisional Mail calculation for rows','const saudiaPlanningMail=saudiaRcsProvisionalMailTime(row);'],
+  ['Saudia provisional Mail visible label','{saudiaRcsProvisionalMailTime(r)&&'],
+  ['Saudia RCS Mail provisional warning','PROVISIONAL •'],
+  ['Saudia no false cargo RCS overdue blink',"if(event==='FOW'||!(movement==='DEPARTED'"],
+];
+for(const [label,fragment] of saudiaDashboardLock){
+  if(!kuwaitDashboardSource.includes(fragment)){
+    console.error('LOCKED SAUDIA DISPLAY/MAIL CONTRACT MODIFIED: '+label+'. Explicit owner-approved unlock required.');
+    changed=true;
+  }
+}
+const saudiaCronSource=readFileSync('app/api/cron/refresh/route.js','utf8');
+for(const [label,fragment] of [
+  ['Saudia provisional Mail helper',"import { saudiaRcsProvisionalMailTime } from '../../../../lib/saudiaProvisionalMail.js';"],
+  ['Saudia background provisional Mail',"saudiaRcsProvisionalMailTime({...combined,status})"],
+  ['Saudia background cargo-arrival guard','incoming=enforceSaudiaArrivalEvidence({...existing,...incoming});']
+]){
+  if(!saudiaCronSource.includes(fragment)){
+    console.error('LOCKED SAUDIA BACKGROUND REFRESH CONTRACT MODIFIED: '+label+'. Explicit unlock required.');
+    changed=true;
+  }
+}
+const saudiaPackage=JSON.parse(readFileSync('package.json','utf8'));
+for(const script of ['checkSaudiaRcsExpected.mjs','checkImportArrivalMail.mjs','checkLockedAirlines.mjs']){
+  if(!String(saudiaPackage.scripts?.prebuild||'').includes('node scripts/'+script)){
+    console.error('LOCKED SAUDIA VERIFICATION DISABLED: '+script+'. Explicit owner-approved unlock required.');
+    changed=true;
+  }
+}
 // Kuwait live-lock: preserve its integrations without
 // freezing shared files which other airlines legitimately need to edit.
 // Every deploy checks these gates AND immutable carrier-specific Git blob SHAs.
@@ -108,7 +168,8 @@ for(const [label,fragment] of userLockedRoute){
     changed=true;
   }
 }
-const kuwaitDashboard=readFileSync('app/DashboardClient.js','utf8');
+const kuwaitDashboardSource=readFileSync('app/DashboardClient.js','utf8');
+const kuwaitDashboard=kuwaitDashboardSource;
 for(const [label,fragment] of [
   ['Full Kuwait DEP master consolidation','const one=consolidatedKuwaitDeparture(row);'],
   ['Kuwait 229 full-load Mail operation',"operation:unified?'kuwaitMasterMail':undefined"],
@@ -348,4 +409,4 @@ for(const [name,source,expected] of [
   }
 }
 if(changed)process.exit(1);
-console.log('Airline lock check passed: Air India (098), IndiGo (312), Ethiopian (071), Cathay (160, including booking reader, refresh policy, IST handling, final-arrival guard and 5-min cron), Emirates (176), Kuwait (229), and Thai AirAsia (900) remain SHA-LOCKED; Saudia (065) is unlocked with live-movement regression checks retained.');
+console.log('Airline lock check passed: Saudia (065) live SAL, dated SV flight schedule, RCS planned arrival, -6h provisional Mail and physical parts are SOURCE-CODE SHA-LOCKED; shared Saudia dashboard, route and cron contracts protected. Kuwait (229), Air India (098), Cathay (160), Emirates (176), IndiGo (312), Ethiopian (071), and Thai AirAsia (900) locks remain active. Live tracking and refresh remain enabled.');
