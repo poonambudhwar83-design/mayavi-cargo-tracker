@@ -178,6 +178,7 @@ function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
 // must never inherit the "EXPECTED (FOW)" label on the shared dashboard.
 function expectedArrivalLabel(row={}){
   if(row.arrivalEstimate!==true)return'';
+  if(digits(row.mawb).startsWith('098')&&String(row.arrivalTimeSource||'').includes('Air India AWB Tracking View'))return'TRACKING VIEW FLIGHT ETA • CARGO NOT ARRIVED';
   if(digits(row.mawb).startsWith('098')&&row.airIndiaEtaAssignmentConfirmed===false)return'PROVISIONAL FLIGHT SCHEDULE • AWB NOT MANIFESTED';
   if(digits(row.mawb).startsWith('098'))return'SCHEDULED FLIGHT ETA • CARGO NOT ARRIVED';
   const isSaudia=digits(row.mawb).startsWith('065');
@@ -387,6 +388,7 @@ function arrivalSortTime(row={}){
  return d?d.getTime():Number.POSITIVE_INFINITY;
 }
 function mailTimeForRow(row={}){
+  if(digits(row.mawb).startsWith('098')&&row.arrivalEstimate===true&&row.arrivalIsActual!==true)return'';
   // Match the Mail Time column, including a provisional Emirates MAWB-level ETA.
   // No part-specific arrival is inferred when the connecting part is unconfirmed.
   return formatDateTime24(row.mailTime)||
@@ -397,6 +399,7 @@ function mailTimeForRow(row={}){
 // Flash only overdue, unmailed Import entries. The displayed Mail Time is IST.
 function importMailOverdue(row={},nowMs=Date.now()){
   if(row.mailSent===true||row._saudiaPendingVirtual===true)return false;
+  if(digits(row.mawb).startsWith('098')&&row.arrivalEstimate===true&&row.arrivalIsActual!==true)return false;
   // Saudia only: FOW/EXPECTED is not departure. Blink NO only after DEP or
   // AWB-verified actual arrival, while retaining the existing overdue clock.
   if(digits(row.mawb).startsWith('065')){

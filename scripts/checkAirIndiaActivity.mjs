@@ -190,3 +190,22 @@ assert.equal(acceptAirIndiaDatedEta(currentScheduled,{departureOrigin:'DXB',arri
 import { latestAirIndiaEventDate } from '../lib/airIndiaScheduleEta.js';
 assert.equal(latestAirIndiaEventDate('AWB Activity Timeline Station: Flight: Status: ACCEPTED Accepted 41 pcs 2020 kg at DXB DXB • 01 Nov 2026, 02:06:00 EXECUTED'), '2026-11-01');
 assert.equal(latestAirIndiaEventDate('Activity unavailable'), '');
+
+
+import { parseAirIndiaTrackingView } from '../lib/airIndiaTrackingView.js';
+const trackingCard='Booking Manage Login Sign Up 098-32251704 24 pcs 1,300 kg 5.08 cbm BKG +1 AGC COURIER MATERIAL DXB - Accepted Departed Arrived Delivered 0 Stops , 0 Flights DEL - Tracking View Activity View AI-0930 Departure:01 Nov 2026 11:45(S) DXB – DEL Arrival:01 Nov 2026 16:20(E) 24 pcs';
+const trackingMaster={mawb:'098-32251704',origin:'DXB',destination:'DEL',masterPieces:'24',flightNo:'AI0930',flightDate:'2026-11-01',status:'BUILD UP'};
+const officialTrackingEta=parseAirIndiaTrackingView(trackingCard,trackingMaster);
+assert.equal(officialTrackingEta?.arrivalDate,'2026-11-01');
+assert.equal(officialTrackingEta?.arrivalTime,'16:20');
+assert.equal(officialTrackingEta?.arrivalIsActual,false);
+assert.equal(officialTrackingEta?.arrivalEstimate,true);
+assert.match(officialTrackingEta?.arrivalTimeSource||'',/Tracking View/);
+assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,flightDate:'2026-10-30'}),null,'Historic flight date cannot replace latest cargo manifest date');
+assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,flightNo:'AI0916'}),null,'Wrong flight cannot supply an ETA');
+assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,mawb:'098-30448456'}),null,'Wrong AWB cannot supply an ETA');
+assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,status:'OFFLOADED'}),null,'An offloaded master cannot display the old departure flight ETA');
+assert.equal(parseAirIndiaTrackingView(trackingCard,{...trackingMaster,masterPieces:'41'}),null,'Whole-master pieces must match');
+assert.equal(parseAirIndiaTrackingView(trackingCard.replace('16:20(E)','--:--(E)'),trackingMaster),null,'Missing arrival clock must not be guessed');
+assert.equal(parseAirIndiaTrackingView('Booking Manage Login Sign Up 098-32251715 41 pcs 2020 kg Tracking View Activity View',
+  {mawb:'098-32251715',origin:'DXB',destination:'DEL',status:'ACCEPTED',masterPieces:'41'}),null,'No Tracking View flight leg means no invented ETA');

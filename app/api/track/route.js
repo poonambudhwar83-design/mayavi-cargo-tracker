@@ -45,6 +45,7 @@ import { readTrackingScreenshot } from '../../../lib/screenshotOcr.js';
 import { normalizeMawb, airlineForMawb, CONFIGURED_PREFIXES } from '../../../lib/airlines.js';
 import { trackFlightStatusSnapshot, trackFlightArrivalEstimate, trackFlightScheduleFast } from '../../../lib/flightStatusSnapshot.js';
 import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta, latestAirIndiaEventDate } from '../../../lib/airIndiaScheduleEta.js';
+import { parseAirIndiaTrackingView } from '../../../lib/airIndiaTrackingView.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
 
@@ -1622,7 +1623,37 @@ async function handle(mawb,fallback={}){
     if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
       shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
   }
-  if(airIndiaFastPath&&direct&&direct.arrivalIsActual!==true&&
+
+  // Air India source priority:
+  // 1. AWB Activity View for physical status/actual arrival.
+  // 2. Same-AWB Tracking View for a matching flight's ETA (S/E/A).
+  // 3. Dated external flight timetable only if the portal has no matching ETA.
+  let airIndiaTrackingEta=null;
+  if(airIndiaFastPath&&direct&&direct.arrivalIsActual!==true){
+    const latestActivityDay=latestAirIndiaEventDate(directResult?.debug?.activitySample||'');
+    const trackingSource=directResult?.debug?.trackingViewSample||
+      directResult?.debug?.summarySample||'';
+    airIndiaTrackingEta=parseAirIndiaTrackingView(trackingSource,{
+      ...shipment,mawb,
+      flightNo:direct.flightNo||'',
+      flightDate:direct.flightDate||'',
+      origin:direct.origin||shipment.origin,
+      destination:direct.destination||shipment.destination,
+      status:direct.status,
+      minFlightDate:direct.flightDate?'':latestActivityDay
+    });
+    if(airIndiaTrackingEta){
+      Object.assign(shipment,airIndiaTrackingEta);
+      if(!direct.flightDate){
+        shipment.flightNo=airIndiaTrackingEta.trackingViewFlightNo;
+        shipment.flightDate=airIndiaTrackingEta.trackingViewFlightDate;
+      }
+      shipment.status=direct.status;
+      shipment.arrivalIsActual=false;
+      shipment.mailTime='';
+    }
+  }
+  if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&direct.arrivalIsActual!==true&&
     direct.status!=='OFFLOADED'&&
     /^(20\d{2})-\d{2}-\d{2}$/.test(String(direct.flightDate||''))&&
     /^(AI|IX)\d{2,4}$/.test(String(direct.flightNo||'').toUpperCase())&&
@@ -1646,7 +1677,7 @@ async function handle(mawb,fallback={}){
       shipment.mailTime='';
     }
   }
-  if(airIndiaFastPath&&direct&&!direct.flightDate&&
+  if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&!direct.flightDate&&
       ['ACCEPTED','EXECUTED','FREIGHT ON HAND','BOOKED'].includes(String(direct.status||''))&&
       /^AI\d{2,4}$/i.test(String(shipment.flightNo||''))&&
       shipment.destination==='DEL'){
