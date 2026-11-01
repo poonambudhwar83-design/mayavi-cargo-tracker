@@ -93,6 +93,15 @@ try{
     assert.equal(saved.shipment.saudiaRcsScheduledTime,'',
       'Old flight schedule snapshot cannot be used on another date');
   }
+  // SAL's optional SIM information event must not suppress the flight schedule
+  // already assigned under the RCS chronology.
+  salEvent.Status='SIM';
+  const sim=await trackSaudiaViaSal(base.mawb);
+  if(future==='2026-11-02'){
+    assert.equal(sim.shipment.arrivalTime,'09:45',
+      'SIM header must still permit a dated published scheduled flight clock');
+  }
+  salEvent.Status='RCS';
 }finally{globalThis.fetch=originalFetch;}
 const testScheduled=saudiaRcsProvisionalMailTime({...base,flightDate:'2026-11-02',arrivalDate:'2026-11-02',
   saudiaArrivalStage:'PLANNED',saudiaRcsScheduledDate:'2026-11-02',
