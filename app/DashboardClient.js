@@ -123,6 +123,9 @@ function viaForRow(row={}){
 function businessStatus(raw='',timingStatus='',arrivalDate='',mawb='',row={}){
   const s=String(raw||'').toUpperCase();
   const n=normalize(mawb);
+  // A 6-piece offload against a 41-piece Air India master is not a 41-piece offload.
+  if(n.startsWith('098-')&&(s==='PART OFFLOADED'||row.offloadReconciliationPending===true))
+    return 'PART OFFLOAD • VERIFY';
   const via=viaForRow(row).toUpperCase();
   const origin=String(row.origin||'').toUpperCase(),destination=String(row.destination||'').toUpperCase();
   const directDelhi=destination==='DEL'&&!via;

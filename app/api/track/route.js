@@ -196,6 +196,18 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     patch.finalArrivalPending=false;
     patch.saudiaArrivalStage='ACTUAL';
   }
+  if(mawb.startsWith('098-')){
+    patch.offloadReconciliationPending=tracked.status==='PART OFFLOADED';
+    if(/OFFLOAD/.test(String(tracked.status||''))){
+      // A newer partial offload supersedes any stale departure ETA/timestamp.
+      patch.departureDate='';patch.departureTime='';patch.departureIsActual=false;
+    }else{
+      // After a fresh manifest/departure/arrival, don't retain old offload flags.
+      patch.offloadedPieces='0';patch.offloadedWeight='0';
+      patch.offloadedWeightUnknown=false;patch.departureReportedPieces='';
+      patch.offloadEvidence='';patch.offloadStation='';
+    }
+  }
   const rows=await sql`
     UPDATE mayavi_shipments
     SET data=data || ${JSON.stringify(patch)}::jsonb,
@@ -1139,7 +1151,7 @@ async function handle(mawb,fallback={}){
   }
   // Air India: once the flight has departed, show verified scheduled/estimated
   // destination arrival instead of leaving Arrival blank. This is ETA, not ATA.
-  if(airIndiaFastPath&&shipment.departureIsActual===true&&shipment.flightNo&&shipment.departureDate&&shipment.origin&&shipment.destination&&shipment.arrivalIsActual!==true){
+  if(airIndiaFastPath&&shipment.offloadReconciliationPending!==true&&shipment.departureIsActual===true&&shipment.flightNo&&shipment.departureDate&&shipment.origin&&shipment.destination&&shipment.arrivalIsActual!==true){
     const eta=await trackFlightArrivalEstimate({
       flightNo:shipment.flightNo,
       date:shipment.departureDate,
@@ -1168,7 +1180,7 @@ async function handle(mawb,fallback={}){
   // Preserve Air India split-load display fields from the dedicated Activity View
   // adapter. Generic merging/arrival selection must not collapse 20/33 back to 33.
   if(airIndiaFastPath&&direct){
-    for(const k of ['bags','pieces','weight','masterPieces','masterWeight','arrivedPieces','arrivedWeight','arrivedPiecesDisplay','arrivedWeightDisplay','departedPieces','departedWeight','remainingPieces','remainingWeight','nextFlightNo','nextFlightDate','nextPieces','nextWeight','partShipments','remarks']){
+    for(const k of ['bags','pieces','weight','masterPieces','masterWeight','arrivedPieces','arrivedWeight','arrivedPiecesDisplay','arrivedWeightDisplay','departedPieces','departedWeight','offloadedPieces','offloadedWeight','offloadStation','offloadEvidence','offloadReconciliationPending','departureReportedPieces','departureEvidence','remainingPieces','remainingWeight','nextFlightNo','nextFlightDate','nextPieces','nextWeight','partShipments','remarks']){
       if(direct[k]!==''&&direct[k]!==null&&direct[k]!==undefined)shipment[k]=direct[k];
     }
   }
@@ -1633,7 +1645,7 @@ async function handle(mawb,fallback={}){
       shipment.arrivalVerifiedAbsent=true;
       shipment.mailTime='';
     }
-    if(direct.status==='OFFLOADED')shipment.status='OFFLOADED';
+    if(['OFFLOADED','PART OFFLOADED'].includes(direct.status)){shipment.status=direct.status;shipment.offloadReconciliationPending=direct.status==='PART OFFLOADED';shipment.departureIsActual=false;}
     if(['MANIFESTED','BUILD UP','EXECUTED','ACCEPTED','FREIGHT ON HAND','DEPARTED'].includes(direct.status))shipment.status=direct.status;
     if(direct.arrivalIsActual!==true&&shipment.status==='ARRIVED')
       shipment.status=direct.departureIsActual===true?'IN TRANSIT':'BOOKED';
@@ -1670,7 +1682,7 @@ async function handle(mawb,fallback={}){
     }
   }
   if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&direct.arrivalIsActual!==true&&
-     direct.status!=='OFFLOADED'&&direct.flightNo&&direct.flightDate){
+     !/OFFLOAD/.test(String(direct.status||''))&&direct.flightNo&&direct.flightDate){
     // Keep only an exact recent Tracking View ETA until that same tab
     // publishes a newer flight update. A new manifest flight/date clears it.
     const saved=await loadStoredTrackingFallback(mawb);
@@ -1684,7 +1696,7 @@ async function handle(mawb,fallback={}){
     }
   }
   if(airIndiaFastPath&&direct&&!airIndiaTrackingEta&&direct.arrivalIsActual!==true&&
-    direct.status!=='OFFLOADED'&&
+    !/OFFLOAD/.test(String(direct.status||''))&&
     /^(20\d{2})-\d{2}-\d{2}$/.test(String(direct.flightDate||''))&&
     /^(AI|IX)\d{2,4}$/.test(String(direct.flightNo||'').toUpperCase())&&
     shipment.destination==='DEL'){

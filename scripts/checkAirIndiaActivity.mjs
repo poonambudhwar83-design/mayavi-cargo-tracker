@@ -64,15 +64,35 @@ assert.equal(extractActivityMaster(
 const newOffload='AWB Activity Timeline\nOFFLOADED Offloaded 6 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\nAUH • 30 Oct 2026, 15:27:00\nOFFLOADED Offloaded 15 pcs 0 kg for IX-0124, 30 Oct 2026 at AUH\nAUH • 30 Oct 2026, 15:26:00\nBOOKED Booked 41 pcs 1,015 kg at AUH for IX-0124, 30 Oct 2026';
 const example={origin:'AUH',destination:'DEL',pieces:'41',bags:'41',weight:'1015'};
 const offloaded=parseActivity(newOffload,example);
-assert.equal(offloaded.status,'OFFLOADED','Newer offloads must override future summary-card ETA');
+assert.equal(offloaded.status,'PART OFFLOADED','21 of 41 offloaded must not become a whole-master offload');
 assert.equal(offloaded.offloadedPieces,'21','Both 6 and 15 piece offloads must be counted');
 assert.equal(offloaded.masterPieces,'41','41-piece total remains unchanged');
 assert.equal(offloaded.arrivalVerifiedAbsent,true);
 assert.equal(offloaded.arrivalDate,'');
 assert.equal(offloaded.departureIsActual,false);
 const priorDeparture='AWB Activity Timeline\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH\n'+newOffload.replace('AWB Activity Timeline\n','');
-assert.equal(parseActivity(newOffload+'\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'OFFLOADED','Latest offload must override an older departure');
+assert.equal(parseActivity(newOffload+'\nDEPARTURE Departed 41 pcs 1015 kg on IX-0124, 30 Oct 2026 14:00 (A) at AUH',example).status,'PART OFFLOADED','Latest partial offload must preserve older departure evidence');
 assert.equal(parseActivity(priorDeparture,example).status,'DEPARTED','A later verified departure restores transit');
+// Air India screenshot 1 Nov: departure of 41 pcs is reported at AUH before
+// a newer 6 pcs offload; zero kilograms is an unknown event weight, not zero cargo.
+const auhScreenshot='AWB Activity Timeline\n'
+  +'OFFLOADED Offloaded 6 pcs 0 kg for IX-0124, 1 Nov 2026 at AUH\n'
+  +'AUH • 01 Nov 2026, 12:37:00\n'
+  +'DEPARTURE Departed 41 pcs 0 kg on IX-0124, 01 Nov 2026 11:55 (A) at AUH\n'
+  +'AUH • 01 Nov 2026, 12:15:00\n'
+  +'MANIFESTED Manifested 41 pcs 0 kg for IX-0124, 1 Nov 2026 at AUH';
+const discrepancy=parseActivity(auhScreenshot,example);
+assert.equal(discrepancy.status,'PART OFFLOADED');
+assert.equal(discrepancy.offloadedPieces,'6');
+assert.equal(discrepancy.departureReportedPieces,'41');
+assert.equal(discrepancy.masterPieces,'41');
+assert.equal(discrepancy.offloadReconciliationPending,true);
+assert.equal(discrepancy.offloadedWeightUnknown,true);
+assert.equal(discrepancy.departureIsActual,false,'Conflicting departure/offload events must not confirm remaining cargo uplift');
+assert.equal(discrepancy.arrivalDate,'');
+assert.equal(discrepancy.remainingPieces,'','Do not guess that 35 pieces stayed behind or took off');
+assert.match(discrepancy.remarks,/41 pcs DEPARTED/);
+assert.match(discrepancy.remarks,/6\/41 pcs offloaded/);
 // This AWB was offloaded on two separate dates; the older 28 Oct full
 // offload is history. Count the latest 30 Oct 6+15+20 only once.
 const historicalOffloads='AWB Activity Timeline\n'
