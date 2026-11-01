@@ -42,6 +42,10 @@ function fractionIsPartial(v=''){
 function saudiaIsPartLoad(data={},awbValue=''){
   const awb=normalize(awbValue||data.mawb||data.awb);
   if(!awb.startsWith('065'))return false;
+  // A completely arrived SAL master must not be rewritten as PART ARRIVED
+  // merely because it had a historical split-load flag while in transit.
+  const verifiedArrived=Number(data.arrivedPieces),verifiedTotal=Number(data.totalPieces);
+  if(Number.isFinite(verifiedArrived)&&Number.isFinite(verifiedTotal)&&verifiedTotal>0&&verifiedArrived>=verifiedTotal&&data.arrivalIsActual===true&&String(data.status||'').toUpperCase()==='ARRIVED')return false;
   if(data.isPartLoad===true)return true;
   const arrivedPieces=Number(data.arrivedPieces),totalPieces=Number(data.totalPieces);
   if(Number.isFinite(arrivedPieces)&&Number.isFinite(totalPieces)&&totalPieces>0&&arrivedPieces>0&&arrivedPieces<totalPieces)return true;
