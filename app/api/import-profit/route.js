@@ -62,7 +62,7 @@ function totalBags(record={}){
 }
 function normalizeGoods(value=''){
   const category=String(value||'').trim().toUpperCase();
-  return ['HH','PROTEIN','CLOTHES','BATTERY'].includes(category)?category:'';
+  return ['HH','PROTEIN','CLOTHES','BATTERY','SWITCH'].includes(category)?category:'';
 }
 function inferGoods(value=''){
   const raw=String(value||'').toUpperCase();
@@ -70,6 +70,7 @@ function inferGoods(value=''){
   if(/\bCLOTH(?:ES|ING)?\b|\bGARMENTS?\b|\bAPPAREL\b/.test(raw))return 'CLOTHES';
   if(/\bHH\b|\bHOUSE\s*HOLD\b|\bHOUSEHOLD\b/.test(raw))return 'HH';
   if(/\bBATTER(?:Y|IES)\b/.test(raw))return 'BATTERY';
+  if(/\bSWITCH(?:ES)?\b/.test(raw))return 'SWITCH';
   return '';
 }
 function numberField(value){
@@ -182,7 +183,7 @@ export async function PATCH(request){
       return Response.json({ok:false,error:'Invalid profit-sheet update.'},{status:400});
     const value=field==='goodsCategory'?normalizeGoods(body?.value):numberField(body?.value);
     if(field==='goodsCategory'&&String(body?.value||'').trim()&&!value)
-      return Response.json({ok:false,error:'Choose HH, Protein, Clothes, or Battery.'},{status:400});
+      return Response.json({ok:false,error:'Choose HH, Protein, Clothes, Battery, or Switch.'},{status:400});
     const sql=sqlClient();
     await ensureStore(sql);
     const [shipment]=await sql`SELECT awb,data FROM mayavi_shipments WHERE awb=${awb}
