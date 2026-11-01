@@ -141,12 +141,12 @@ export async function GET(request){
     const rooms=Number(stored[0]?.rooms_expenses||0);
     const misc=Number(stored[0]?.misc_expenses||0);
     const results=calculateMonthlyExpenses({
-      importGross:importTotals.importGrossWithDeductions,exportGross:exportTotals.grossProfit,
+      importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
       jind,karnal,goods15:importTotals.goodsCharge15Percent,speedPost,
       salaryCash,salaryAccount,rent,office,rooms,misc
     });
     return json({ok:true,month,values:{
-      importGross:importTotals.importGrossWithDeductions,exportGross:exportTotals.grossProfit,
+      importGross:importTotals.grossProfit,exportGross:exportTotals.grossProfit,
       jind,karnal,goods15:importTotals.goodsCharge15Percent,speedPost,
       salaryCash,salaryAccount,salaryBudget:Number(salaries.totals?.monthlySalary||0),
       rent,office,rooms,misc

@@ -237,9 +237,9 @@ export default function MonthlyExpensesDashboard(){
     }]:[])
   ],[miscEntries,legacyMisc]);
   const income=record?[{label:'Import Gross Profit',value:record.values.importGross,
-    detail:'Profit Sheet Gross '+show(record.source?.import?.grossProfit||0)+
-      ' + Protein Deduction '+show(record.source?.import?.proteinDeduction||0)+
-      ' + Clothes Deduction '+show(record.source?.import?.clothesDeduction||0)},
+    detail:'Matches Import Profit Sheet Gross; already includes Protein ('+
+      show(record.source?.import?.proteinDeduction||0)+') and Clothes ('+
+      show(record.source?.import?.clothesDeduction||0)+') deduction add-backs. Not added again.'},
     {label:'Export Gross Profit (Export Profit Sheet total)',value:record.values.exportGross},
     {label:'Jind Branch — Amount Paid to Branch',value:record.values.jind},
     {label:'Karnal Branch — Amount Paid to Branch',value:record.values.karnal},
@@ -418,7 +418,7 @@ export default function MonthlyExpensesDashboard(){
           <strong style={{fontSize:24,color:metrics.finalProfit<0?'#b91c1c':'#166534'}}>{show(metrics.finalProfit)}</strong>
         </div>
         <p style={{fontSize:12,color:'#60738a',lineHeight:1.7}}>
-          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit is calculated as the Import Profit Sheet Gross Profit plus a further Protein handling and Clothes SIIB deduction add-back, using each completed physical-part row once. The Profit Sheet Gross Profit already contains one add-back of these deductions; the additional add-back in Monthly Expenses is applied as requested. The 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved and accumulated by month. Their entry boxes clear after a verified save. Import/Export totals match the unfiltered monthly Profit Sheets. Speed Post Net Profit is automatically included in Total Income for the same month, using the saved EMS entry dates. Its Tariff, Cash Cost and Packing/Transportation have already been deducted within Speed Post, so they are not subtracted again here.
+          Jind and Karnal income matches their Amount Paid to Branch (including the Branch share of Extra Cost), not Total Booking Amount. Import Gross Profit matches the Import Profit Sheet Gross Profit exactly, using each completed physical-part row once. The Gross Profit already includes the Protein handling and Clothes SIIB deduction add-backs, so Monthly Expenses must NOT add them a second time. The 15% Goods Charge is added separately, excluding HH ₹340/bag. Export uses the current Export Profit Sheet Profit total. Salary expense is Cash Paid + Account Paid, once each. Rent, Office Expenses, Rooms Expenses and Miscellaneous are independently saved and accumulated by month. Their entry boxes clear after a verified save. Import/Export totals match the unfiltered monthly Profit Sheets. Speed Post Net Profit is automatically included in Total Income for the same month, using the saved EMS entry dates. Its Tariff, Cash Cost and Packing/Transportation have already been deducted within Speed Post, so they are not subtracted again here.
         </p>
         {record.source.speedPost?.missing>0&&
           <p style={{padding:11,borderRadius:9,background:'#fff6df',color:'#7c5300',fontSize:12,fontWeight:750}}>
