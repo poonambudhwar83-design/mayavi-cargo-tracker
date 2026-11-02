@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { STUDY_SUBJECTS, studyTotals, pending, marksPercentage } from '../lib/studyNotes.js';
+import { STUDY_SUBJECTS, studyTotals, pending, marksPercentage, studyTopicNumber } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
@@ -41,7 +41,14 @@ export default function StudyNotesDashboard(){
       map.get(key).push(row);
     }
     return [...map].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true,sensitivity:'base'}))
-      .map(([chapter,topics])=>({chapter,topics:topics.sort((a,b)=>a.topic.localeCompare(b.topic,undefined,{numeric:true,sensitivity:'base'})),totals:studyTotals(topics)}));
+      .map(([chapter,topics],chapterIndex)=>({
+        chapter,chapterIndex:chapterIndex+1,
+        // Original entry order: editing a topic must NOT change its 1.1/1.2 number.
+        topics:topics.sort((a,b)=>
+          (Date.parse(a.createdAt||'')||0)-(Date.parse(b.createdAt||'')||0)||
+          a.topic.localeCompare(b.topic,undefined,{numeric:true,sensitivity:'base'})),
+        totals:studyTotals(topics)
+      }));
   },[filtered]);
 
   function choose(next){
@@ -119,7 +126,7 @@ export default function StudyNotesDashboard(){
       <div>
         <small>PRIVATE • ADMIN</small>
         <h1>NOTES</h1>
-        <p>Chapter-wise study record. Add each topic and update question counts whenever needed.</p>
+        <p>Chapter-wise study record. Topics are numbered automatically (1.1, 1.2, 1.3…).</p>
       </div>
     </header>
     <nav className={styles.subjects} aria-label="Study subjects">
@@ -189,10 +196,11 @@ export default function StudyNotesDashboard(){
             {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}</small>
         </div>
         <div className={styles.tableWrap}><table>
-          <thead><tr><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
+          <thead><tr><th>No.</th><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
             <th>Theory Done / Total</th><th>Theory Pending</th>
             <th>Marks Obtained / Total</th><th>Percentage</th><th>Actions</th></tr></thead>
-          <tbody>{section.topics.map(row=><tr key={row.id}>
+          <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
+            <td className={styles.serial}>{studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)}</td>
             <td className={styles.topic}>{row.topic}</td>
             <td>{row.mcqDone} / {row.mcqTotal}</td>
             <td>{pending(row.mcqTotal,row.mcqDone)}</td>
