@@ -62,6 +62,7 @@ const browserMock={
 const submission=await submitGulfAirParcelsForm(browserMock,awb);
 assert.equal(submission.ok,true);
 assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
-assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Control+A','TYPE:07295056684','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
+assert.ok(!flow.some(step=>step.includes('Control+A')), 'Gulf Air browser must not use an unsupported chord');
+assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
 
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
