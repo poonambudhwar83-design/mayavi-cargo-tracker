@@ -139,9 +139,9 @@ export default function StudyNotesDashboard(){
     <section className={styles.stats} aria-label="Selected subject summary">
       <div><span>TOPICS</span><b>{totals.topics}</b></div>
       <div><span>MCQs DONE</span><b>{totals.mcqDone} / {totals.mcqTotal}</b></div>
-      <div><span>MCQs PENDING</span><b>{totals.mcqPending}</b></div>
+      <div className={styles.pendingCard}><span>MCQs PENDING</span><b>{totals.mcqPending}</b></div>
       <div><span>THEORY DONE</span><b>{totals.theoryDone} / {totals.theoryTotal}</b></div>
-      <div><span>THEORY PENDING</span><b>{totals.theoryPending}</b></div>
+      <div className={styles.pendingCard}><span>THEORY PENDING</span><b>{totals.theoryPending}</b></div>
       <div><span>MARKS OBTAINED / TOTAL</span><b>{totals.markedTopics?totals.marksObtained+' / '+totals.totalMarks:'—'}</b></div>
       <div><span>PERCENTAGE</span><b>{totals.percentage===null?'—':totals.percentage.toFixed(2)+'%'}</b></div>
     </section>
@@ -206,7 +206,7 @@ export default function StudyNotesDashboard(){
       chapters.map(section=><article className={styles.chapter} key={section.chapter}>
         <div className={styles.chapterHeading}>
           <h3>{section.chapter}</h3>
-          <small>{section.topics.length} topics • MCQ pending {section.totals.mcqPending} • Theory pending {section.totals.theoryPending}
+          <small>{section.topics.length} topics • <span className={styles.pendingCount}>MCQ pending {section.totals.mcqPending}</span> • <span className={styles.pendingCount}>Theory pending {section.totals.theoryPending}</span>
             {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}</small>
         </div>
         <div className={styles.tableWrap}><table>
@@ -218,9 +218,9 @@ export default function StudyNotesDashboard(){
             <td className={styles.serial}>{studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)}</td>
             <td className={styles.topic}>{row.topic}</td>
             <td>{row.mcqDone} / {row.mcqTotal}</td>
-            <td>{pending(row.mcqTotal,row.mcqDone)}</td>
+            <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
             <td>{row.theoryDone} / {row.theoryTotal}</td>
-            <td>{pending(row.theoryTotal,row.theoryDone)}</td>
+            <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
             <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
             <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
             <td>{row.totalMarks===null||row.totalMarks===undefined?'—':row.marksObtained+' / '+row.totalMarks}</td>
