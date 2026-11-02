@@ -55,3 +55,11 @@
 
 /* Pending MCQ and theory questions remain unmistakably red in summaries and topic rows. */
 .stats .pendingCard span,.stats .pendingCard b,.pendingCount{color:#b91c1c;font-weight:800}
+
+.marksSection{margin-top:14px;padding:14px;background:#f8fbff;border:1px solid #d9e8f4;border-radius:10px}
+.marksSection h3{margin:2px 0 9px;font-size:13px;font-weight:800;color:#194f7b}
+.marksSection .marksFields{margin-top:0;margin-bottom:13px}
+.legacyMarks{font-size:12px;color:#7a5b2c;background:#fff9e8;border:1px solid #f2e0b6;border-radius:8px;padding:9px 11px}
+.overallMarks{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#e8f2fb;border-radius:8px;font-size:13px;color:#164576}
+.overallMarks strong{font-weight:800}
+.overallMarks span{font-weight:800}
