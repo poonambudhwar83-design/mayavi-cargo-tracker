@@ -5,7 +5,7 @@ import { STUDY_SUBJECTS, studyTotals, pending, marksPercentage, studyTopicNumber
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
-const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',totalMarks:'',marksObtained:''});
+const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',totalMarks:'',marksObtained:'',incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const number=v=>v===''?0:Number(v);
 const friendly=subject=>subject==='Mathematics'?'Maths':subject;
 
@@ -63,7 +63,9 @@ export default function StudyNotesDashboard(){
     setDraft({chapter:row.chapter,topic:row.topic,mcqTotal:String(row.mcqTotal),
       mcqDone:String(row.mcqDone),theoryTotal:String(row.theoryTotal),theoryDone:String(row.theoryDone),
       totalMarks:row.totalMarks===null?'':String(row.totalMarks),
-      marksObtained:row.marksObtained===null?'':String(row.marksObtained)});
+      marksObtained:row.marksObtained===null?'':String(row.marksObtained),
+      incorrectMcqNumbers:row.incorrectMcqNumbers||'',
+      incorrectTheoryNumbers:row.incorrectTheoryNumbers||''});
     setMessage('Editing '+row.topic+'.');
     window.scrollTo({top:0,behavior:'smooth'});
   }
@@ -161,6 +163,18 @@ export default function StudyNotesDashboard(){
               placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
           </label>)}
         </div>
+        <div className={styles.textFields} style={{marginTop:13}}>
+          <label>Incorrect MCQ Question Numbers
+            <input type="text" maxLength={600} placeholder="e.g. 2, 5, 9"
+              value={draft.incorrectMcqNumbers}
+              onChange={e=>update('incorrectMcqNumbers',e.target.value)}/>
+          </label>
+          <label>Incorrect Theory Question Numbers
+            <input type="text" maxLength={600} placeholder="e.g. 3, 7"
+              value={draft.incorrectTheoryNumbers}
+              onChange={e=>update('incorrectTheoryNumbers',e.target.value)}/>
+          </label>
+        </div>
         <div className={styles.marksFields}>
           <label>Total Marks
             <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
@@ -198,6 +212,7 @@ export default function StudyNotesDashboard(){
         <div className={styles.tableWrap}><table>
           <thead><tr><th>No.</th><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
             <th>Theory Done / Total</th><th>Theory Pending</th>
+            <th>Incorrect MCQ Nos.</th><th>Incorrect Theory Nos.</th>
             <th>Marks Obtained / Total</th><th>Percentage</th><th>Actions</th></tr></thead>
           <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
             <td className={styles.serial}>{studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)}</td>
@@ -206,6 +221,8 @@ export default function StudyNotesDashboard(){
             <td>{pending(row.mcqTotal,row.mcqDone)}</td>
             <td>{row.theoryDone} / {row.theoryTotal}</td>
             <td>{pending(row.theoryTotal,row.theoryDone)}</td>
+            <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
+            <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
             <td>{row.totalMarks===null||row.totalMarks===undefined?'—':row.marksObtained+' / '+row.totalMarks}</td>
             <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
             <td><div className={styles.rowActions}>
