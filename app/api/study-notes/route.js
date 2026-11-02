@@ -37,11 +37,18 @@ async function ensureTable(sql){
     CONSTRAINT gudiya_mcq_valid CHECK (mcq_total>=0 AND mcq_done>=0 AND mcq_done<=mcq_total),
     CONSTRAINT gudiya_theory_valid CHECK (theory_total>=0 AND theory_done>=0 AND theory_done<=theory_total)
   )`;
+  // Existing notes are preserved. Marks are optional and default to NULL.
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS total_marks NUMERIC(12,2)`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS marks_obtained NUMERIC(12,2)`;
 }
 const format=row=>({
   id:row.id,subject:row.subject,chapter:row.chapter,topic:row.topic,
   mcqTotal:row.mcq_total,mcqDone:row.mcq_done,
   theoryTotal:row.theory_total,theoryDone:row.theory_done,
+  totalMarks:row.total_marks===null?null:Number(row.total_marks),
+  marksObtained:row.marks_obtained===null?null:Number(row.marks_obtained),
   updatedAt:row.updated_at
 });
 const validId=id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id||'');
@@ -69,9 +76,10 @@ export async function POST(request){
     await ensureTable(sql);
     const id=randomUUID();
     await sql`INSERT INTO mayavi_study_notes
-      (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done)
+      (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done,total_marks,marks_obtained)
       VALUES (${id},${entry.subject},${entry.chapter},${entry.topic},
-        ${entry.mcqTotal},${entry.mcqDone},${entry.theoryTotal},${entry.theoryDone})`;
+        ${entry.mcqTotal},${entry.mcqDone},${entry.theoryTotal},${entry.theoryDone},
+        ${entry.totalMarks},${entry.marksObtained})`;
     return reply({ok:true,row:await find(sql,id)},201);
   }catch(e){console.error('study_notes_save',e?.message);return reply({ok:false,error:'Unable to save study record.'},503);}
 }
@@ -86,7 +94,8 @@ export async function PATCH(request){
     const rows=await sql`UPDATE mayavi_study_notes SET subject=${entry.subject},
       chapter=${entry.chapter},topic=${entry.topic},mcq_total=${entry.mcqTotal},
       mcq_done=${entry.mcqDone},theory_total=${entry.theoryTotal},
-      theory_done=${entry.theoryDone},updated_at=NOW() WHERE id=${body.id}
+      theory_done=${entry.theoryDone},total_marks=${entry.totalMarks},
+      marks_obtained=${entry.marksObtained},updated_at=NOW() WHERE id=${body.id}
       RETURNING id`;
     if(!rows.length)return reply({ok:false,error:'Study record not found.'},404);
     return reply({ok:true,row:await find(sql,body.id)});
