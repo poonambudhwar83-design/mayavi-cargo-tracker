@@ -52,3 +52,6 @@
 .serial{font-weight:900;color:#1d5694;white-space:nowrap;min-width:45px}
 
 .questionNumbers{min-width:100px;max-width:220px;white-space:pre-wrap;overflow-wrap:anywhere;color:#3a5775}
+
+/* Pending MCQ and theory questions remain unmistakably red in summaries and topic rows. */
+.stats .pendingCard span,.stats .pendingCard b,.pendingCount{color:#b91c1c;font-weight:800}
