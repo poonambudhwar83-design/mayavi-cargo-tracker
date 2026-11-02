@@ -42,6 +42,9 @@
     },
     "app/api/cron/client-ledger/route.js": {
       "maxDuration": 120
+    },
+    "app/api/cron/active-airlines/route.js": {
+      "maxDuration": 260
     }
   },
   "crons": [
@@ -72,6 +75,10 @@
     {
       "path": "/api/cron/client-ledger",
       "schedule": "12 */2 * * *"
+    },
+    {
+      "path": "/api/cron/active-airlines",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
