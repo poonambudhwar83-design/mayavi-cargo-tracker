@@ -1617,18 +1617,18 @@ async function handle(mawb,fallback={}){
   // passenger flight timetable is a forecast, never cargo arrival evidence.
   if(flydubaiFastPath&&direct?.flydubaiLiveVerifiedAt&&
      direct.arrivalIsActual!==true&&!direct.arrivalTime&&
-     /^FZ\\d{2,4}[A-Z]?$/i.test(String(direct.finalFlightNo||direct.flightNo||''))){
+     /^FZ\d{2,4}[A-Z]?$/i.test(String(direct.finalFlightNo||direct.flightNo||''))){
     const expectedDate=direct.scheduledArrivalDate||direct.arrivalDate||'';
     const expectedDestination=String(direct.finalFlightDestination||direct.destination||'').toUpperCase();
     const expectedOrigin=String(direct.finalFlightOrigin||
       (['DXB','DWC'].includes(String(direct.origin||'').toUpperCase())?direct.origin:'')).toUpperCase();
-    const exactDate=/^20\\d{2}-\\d{2}-\\d{2}$/.test(expectedDate);
+    const exactDate=/^20\d{2}-\d{2}-\d{2}$/.test(expectedDate);
     if(exactDate&&/^[A-Z]{3}$/.test(expectedDestination)){
       const flightNo=String(direct.finalFlightNo||direct.flightNo).toUpperCase();
       // The cargo site's 3 Nov *arrival* may belong to a flight departing
       // DXB late on 2 Nov; check both dates, matching the published arrival.
       const assigned=String(direct.finalFlightDate||direct.flightDate||'');
-      const candidates=/^20\\d{2}-\\d{2}-\\d{2}$/.test(assigned)
+      const candidates=/^20\d{2}-\d{2}-\d{2}$/.test(assigned)
         ?[assigned]:[expectedDate,plusIsoDays(expectedDate,-1)];
       for(const flightDate of candidates){
         const schedule=await trackFlightScheduleFast({
@@ -1637,7 +1637,7 @@ async function handle(mawb,fallback={}){
         const arrivalDate=schedule?.arrivalDate||schedule?.scheduledArrivalDate||'';
         const arrivalTime=schedule?.arrivalTime||schedule?.scheduledArrivalTime||'';
         const isExact=Boolean(schedule?.ok&&arrivalDate===expectedDate&&
-          /^([01]\\d|2[0-3]):[0-5]\\d$/.test(arrivalTime)&&
+          /^([01]\d|2[0-3]):[0-5]\d$/.test(arrivalTime)&&
           (!schedule.departureDate||schedule.departureDate===flightDate)&&
           (!schedule.departureOrigin||!expectedOrigin||schedule.departureOrigin===expectedOrigin)&&
           (!schedule.departureDestination||schedule.departureDestination===expectedDestination));
