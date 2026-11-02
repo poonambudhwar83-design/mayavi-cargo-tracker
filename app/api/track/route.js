@@ -54,7 +54,7 @@ import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../..
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const VERSION='3.9.41-fz141';
+const VERSION='3.9.42-fz141-flight-eta';
 const MONTH={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
 const pad=v=>String(v).padStart(2,'0');
 const INDIGO_VERIFIED_FLIGHT_ARRIVALS={
@@ -1612,6 +1612,58 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeZone=direct.arrivalTimeZone;
   }
   shipment=normalizeShipmentTimesToIst(shipment);
+  // FZ/141: Accelya can show an exact expected arrival DATE and final FZ
+  // flight but omit the time. Resolve only that dated final flight; a
+  // passenger flight timetable is a forecast, never cargo arrival evidence.
+  if(flydubaiFastPath&&direct?.flydubaiLiveVerifiedAt&&
+     direct.arrivalIsActual!==true&&!direct.arrivalTime&&
+     /^FZ\d{2,4}[A-Z]?$/i.test(String(direct.finalFlightNo||direct.flightNo||''))){
+    const expectedDate=direct.scheduledArrivalDate||direct.arrivalDate||'';
+    const expectedDestination=String(direct.finalFlightDestination||direct.destination||'').toUpperCase();
+    const expectedOrigin=String(direct.finalFlightOrigin||
+      (['DXB','DWC'].includes(String(direct.origin||'').toUpperCase())?direct.origin:'')).toUpperCase();
+    const exactDate=/^20\d{2}-\d{2}-\d{2}$/.test(expectedDate);
+    if(exactDate&&/^[A-Z]{3}$/.test(expectedDestination)){
+      const flightNo=String(direct.finalFlightNo||direct.flightNo).toUpperCase();
+      // The cargo site's 3 Nov *arrival* may belong to a flight departing
+      // DXB late on 2 Nov; check both dates, matching the published arrival.
+      const assigned=String(direct.finalFlightDate||direct.flightDate||'');
+      const candidates=/^20\d{2}-\d{2}-\d{2}$/.test(assigned)
+        ?[assigned]:[expectedDate,plusIsoDays(expectedDate,-1)];
+      for(const flightDate of candidates){
+        const schedule=await trackFlightScheduleFast({
+          flightNo,date:flightDate,origin:expectedOrigin,destination:expectedDestination
+        }).catch(()=>null);
+        const arrivalDate=schedule?.arrivalDate||schedule?.scheduledArrivalDate||'';
+        const arrivalTime=schedule?.arrivalTime||schedule?.scheduledArrivalTime||'';
+        const isExact=Boolean(schedule?.ok&&arrivalDate===expectedDate&&
+          /^([01]\d|2[0-3]):[0-5]\d$/.test(arrivalTime)&&
+          (!schedule.departureDate||schedule.departureDate===flightDate)&&
+          (!schedule.departureOrigin||!expectedOrigin||schedule.departureOrigin===expectedOrigin)&&
+          (!schedule.departureDestination||schedule.departureDestination===expectedDestination));
+        if(!isExact)continue;
+        const ist=normalizeShipmentTimesToIst({
+          destination:expectedDestination,arrivalDate,arrivalTime,
+          scheduledArrivalDate:arrivalDate,scheduledArrivalTime:arrivalTime,
+          arrivalTimeZone:schedule.arrivalTimeZone||schedule.scheduledArrivalTimeZone||'LOCAL',
+          scheduledArrivalTimeZone:schedule.arrivalTimeZone||schedule.scheduledArrivalTimeZone||'LOCAL',
+          arrivalTimeSource:schedule.arrivalTimeSource||schedule.source||'Dated FZ flight schedule'
+        });
+        if(!ist.arrivalDate||!ist.arrivalTime)continue;
+        Object.assign(shipment,{
+          flightDate,finalFlightDate:flightDate,
+          arrivalDate:ist.arrivalDate,arrivalTime:ist.arrivalTime,
+          scheduledArrivalDate:ist.arrivalDate,scheduledArrivalTime:ist.arrivalTime,
+          scheduledArrivalTimeZone:'IST',arrivalTimeZone:'IST',
+          arrivalIsActual:false,arrivalEstimate:true,
+          arrivalTimeSource:'Estimated flight arrival '+flightNo+' (verified date/route schedule, cargo unconfirmed); IST',
+          flydubaiEtaSource:schedule.source||schedule.arrivalTimeSource||'Dated flight schedule',
+          mailTime:''
+        });
+        break;
+      }
+    }
+  }
   if(kuwaitFastPath&&direct?.partShipments?.length>1){
     // A flight timetable is not proof that the separately manifested parts
     // departed KWI or arrived DEL. Only physical RCF/DEP per part counts.
