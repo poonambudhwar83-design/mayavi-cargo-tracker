@@ -24,6 +24,29 @@ assert.equal(a.theoryTotal,10);
 assert.equal(a.theoryDone,3);
 assert.equal(a.totalMarks,null);
 assert.equal(a.marksObtained,null);
+assert.equal(a.mcqMarksTotal,null);
+assert.equal(a.mcqMarksObtained,null);
+assert.equal(a.theoryMarksTotal,null);
+assert.equal(a.theoryMarksObtained,null);
+const split=parseStudyEntry({...input,
+  mcqMarksTotal:40,mcqMarksObtained:32,theoryMarksTotal:60,theoryMarksObtained:48});
+assert.equal(split.totalMarks,100);
+assert.equal(split.marksObtained,80);
+assert.equal(marksPercentage(split.mcqMarksTotal,split.mcqMarksObtained),80);
+assert.equal(marksPercentage(split.theoryMarksTotal,split.theoryMarksObtained),80);
+assert.equal(marksPercentage(split.totalMarks,split.marksObtained),80);
+const onlyMcq=parseStudyEntry({...input,mcqMarksTotal:20,mcqMarksObtained:15});
+assert.equal(onlyMcq.totalMarks,20);
+assert.equal(onlyMcq.marksObtained,15);
+assert.equal(onlyMcq.theoryMarksTotal,null);
+const convertLegacy=parseStudyEntry({...input,totalMarks:100,marksObtained:95,
+  mcqMarksTotal:40,mcqMarksObtained:32,theoryMarksTotal:60,theoryMarksObtained:48});
+assert.equal(convertLegacy.totalMarks,100);
+assert.equal(convertLegacy.marksObtained,80);
+assert.throws(()=>parseStudyEntry({...input,mcqMarksTotal:40}),/both MCQ/);
+assert.throws(()=>parseStudyEntry({...input,theoryMarksObtained:5}),/both Theory/);
+assert.throws(()=>parseStudyEntry({...input,mcqMarksTotal:10,mcqMarksObtained:11}),/MCQ Marks Obtained cannot exceed/);
+assert.throws(()=>parseStudyEntry({...input,theoryMarksTotal:10,theoryMarksObtained:11}),/Theory Marks Obtained cannot exceed/);
 assert.equal(a.incorrectMcqNumbers,'');
 assert.equal(a.incorrectTheoryNumbers,'');
 const incorrect=parseStudyEntry({...input,incorrectMcqNumbers:' 2, 5, 9 ',
@@ -53,11 +76,23 @@ assert.equal(scoredTotals.totalMarks,200);
 assert.equal(scoredTotals.marksObtained,130);
 assert.equal(scoredTotals.percentage,65);
 assert.equal(scoredTotals.markedTopics,2);
+const mixed=studyTotals([score,split,onlyMcq]);
+assert.equal(mixed.totalMarks,200);
+assert.equal(mixed.marksObtained,162.5);
+assert.equal(mixed.percentage,81.25);
+assert.equal(mixed.mcqMarksTotal,60);
+assert.equal(mixed.mcqMarksObtained,47);
+assert.equal(mixed.mcqPercentage,78.33);
+assert.equal(mixed.theoryMarksTotal,60);
+assert.equal(mixed.theoryMarksObtained,48);
+assert.equal(mixed.theoryPercentage,80);
 assert.deepEqual(studyTotals([a,{...a,topic:'Velocity',mcqTotal:5,mcqDone:5,
   theoryTotal:3,theoryDone:3}]),{
   topics:2,mcqTotal:25,mcqDone:17,mcqPending:8,
   theoryTotal:13,theoryDone:6,theoryPending:7,
-  totalMarks:0,marksObtained:0,percentage:null,markedTopics:0
+  totalMarks:0,marksObtained:0,percentage:null,markedTopics:0,
+  mcqMarksTotal:0,mcqMarksObtained:0,mcqPercentage:null,mcqMarkedTopics:0,
+  theoryMarksTotal:0,theoryMarksObtained:0,theoryPercentage:null,theoryMarkedTopics:0
 });
 assert.throws(()=>parseStudyEntry({...input,subject:'Unknown'}),/valid subject/);
 assert.throws(()=>parseStudyEntry({...input,chapter:' '}),/chapter/);
@@ -68,7 +103,7 @@ assert.throws(()=>parseStudyEntry({...input,mcqTotal:-1}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:1.5}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:100001}),/range/);
 assert.deepEqual(parseStudyEntry({...input,mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:''}),
-  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',mcqTotal:0,mcqDone:0,theoryTotal:0,theoryDone:0,totalMarks:null,marksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
+  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',mcqTotal:0,mcqDone:0,theoryTotal:0,theoryDone:0,totalMarks:null,marksObtained:null,mcqMarksTotal:null,mcqMarksObtained:null,theoryMarksTotal:null,theoryMarksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 assert.ok(nav.includes("selectedDashboard==='NOTES'\n      ?<StudyNotesDashboard/>"));
 assert.ok(nav.includes("selectedDashboard==='ADMIN_NOTES'\n      ?<AdminNotesDashboard currentUser={session}/>"));
@@ -80,6 +115,16 @@ assert.ok(page.includes('Incorrect MCQ Question Numbers'));
 assert.ok(page.includes('Incorrect Theory Question Numbers'));
 assert.ok(page.includes("row.incorrectMcqNumbers||'—'"));
 assert.ok(page.includes("row.incorrectTheoryNumbers||'—'"));
+assert.ok(page.includes('MCQ Total Marks'));
+assert.ok(page.includes('MCQ Marks Obtained'));
+assert.ok(page.includes('Theory Total Marks'));
+assert.ok(page.includes('Theory Marks Obtained'));
+assert.ok(page.includes('Overall Marks'));
+assert.ok(page.includes('<th>MCQ Marks</th>'));
+assert.ok(page.includes('<th>Theory Marks</th>'));
+assert.ok(page.includes('<th>Overall Marks</th>'));
+assert.ok(page.includes('className={styles.pendingCard}'));
+assert.ok(page.includes('className={styles.pendingCount}'));
 assert.ok(page.includes('Total Marks'));
 assert.ok(page.includes('Marks Obtained'));
 assert.ok(page.includes('marksPercentage(row.totalMarks,row.marksObtained)'));
@@ -103,6 +148,10 @@ assert.ok(api.includes('ADD COLUMN IF NOT EXISTS total_marks'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS marks_obtained'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS incorrect_mcq_numbers'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS incorrect_theory_numbers'));
+for(const field of ['mcq_marks_total','mcq_marks_obtained','theory_marks_total','theory_marks_obtained']){
+  assert.ok(api.includes('ADD COLUMN IF NOT EXISTS '+field));
+  assert.ok(api.includes(field+'='));
+}
 assert.ok(api.includes('incorrect_mcq_numbers=${entry.incorrectMcqNumbers}'));
 assert.ok(api.includes('incorrect_theory_numbers=${entry.incorrectTheoryNumbers}'));
 assert.ok(api.includes("incorrectMcqNumbers:row.incorrect_mcq_numbers||''"));
