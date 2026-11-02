@@ -47,6 +47,15 @@ async function ensureTable(sql){
     ADD COLUMN IF NOT EXISTS incorrect_mcq_numbers TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_study_notes
     ADD COLUMN IF NOT EXISTS incorrect_theory_numbers TEXT NOT NULL DEFAULT ''`;
+  // Separate, optional MCQ/Theory scoring; old combined totals remain untouched.
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS mcq_marks_total NUMERIC(12,2)`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS mcq_marks_obtained NUMERIC(12,2)`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS theory_marks_total NUMERIC(12,2)`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS theory_marks_obtained NUMERIC(12,2)`;
 }
 const format=row=>({
   id:row.id,subject:row.subject,chapter:row.chapter,topic:row.topic,
@@ -54,6 +63,10 @@ const format=row=>({
   theoryTotal:row.theory_total,theoryDone:row.theory_done,
   totalMarks:row.total_marks===null?null:Number(row.total_marks),
   marksObtained:row.marks_obtained===null?null:Number(row.marks_obtained),
+  mcqMarksTotal:row.mcq_marks_total===null?null:Number(row.mcq_marks_total),
+  mcqMarksObtained:row.mcq_marks_obtained===null?null:Number(row.mcq_marks_obtained),
+  theoryMarksTotal:row.theory_marks_total===null?null:Number(row.theory_marks_total),
+  theoryMarksObtained:row.theory_marks_obtained===null?null:Number(row.theory_marks_obtained),
   incorrectMcqNumbers:row.incorrect_mcq_numbers||'',
   incorrectTheoryNumbers:row.incorrect_theory_numbers||'',
   createdAt:row.created_at,
@@ -85,11 +98,14 @@ export async function POST(request){
     const id=randomUUID();
     await sql`INSERT INTO mayavi_study_notes
       (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done,
-       total_marks,marks_obtained,incorrect_mcq_numbers,incorrect_theory_numbers)
+       total_marks,marks_obtained,incorrect_mcq_numbers,incorrect_theory_numbers,
+       mcq_marks_total,mcq_marks_obtained,theory_marks_total,theory_marks_obtained)
       VALUES (${id},${entry.subject},${entry.chapter},${entry.topic},
         ${entry.mcqTotal},${entry.mcqDone},${entry.theoryTotal},${entry.theoryDone},
         ${entry.totalMarks},${entry.marksObtained},
-        ${entry.incorrectMcqNumbers},${entry.incorrectTheoryNumbers})`;
+        ${entry.incorrectMcqNumbers},${entry.incorrectTheoryNumbers},
+        ${entry.mcqMarksTotal},${entry.mcqMarksObtained},
+        ${entry.theoryMarksTotal},${entry.theoryMarksObtained})`;
     return reply({ok:true,row:await find(sql,id)},201);
   }catch(e){console.error('study_notes_save',e?.message);return reply({ok:false,error:'Unable to save study record.'},503);}
 }
@@ -108,6 +124,10 @@ export async function PATCH(request){
       marks_obtained=${entry.marksObtained},
       incorrect_mcq_numbers=${entry.incorrectMcqNumbers},
       incorrect_theory_numbers=${entry.incorrectTheoryNumbers},
+      mcq_marks_total=${entry.mcqMarksTotal},
+      mcq_marks_obtained=${entry.mcqMarksObtained},
+      theory_marks_total=${entry.theoryMarksTotal},
+      theory_marks_obtained=${entry.theoryMarksObtained},
       updated_at=NOW() WHERE id=${body.id}
       RETURNING id`;
     if(!rows.length)return reply({ok:false,error:'Study record not found.'},404);
