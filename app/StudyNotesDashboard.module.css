@@ -41,3 +41,10 @@
 .empty{color:#71839b;text-align:center;padding:24px 12px;background:#fff;border:1px dashed #d5e1ed;border-radius:11px}
 @media(max-width:850px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:560px){.page{padding:12px 10px 32px}.heading{padding:17px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.stats b{font-size:16px}.formPanel{padding:13px}.textFields{grid-template-columns:1fr}.countFields{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.subjects button{padding:9px 12px}.chapterHeading{padding:12px}}
+
+.marksFields{display:grid;grid-template-columns:1fr 1fr minmax(120px,.6fr);gap:12px;margin-top:13px;align-items:end}
+.percentagePreview{min-height:41px;display:flex;align-items:center;gap:12px;justify-content:center;
+  background:#eef6fd;border:1px solid #c7dff0;border-radius:8px;padding:8px;box-sizing:border-box}
+.percentagePreview small{font-size:11px;font-weight:800;color:#5a7492}
+.percentagePreview b{font-size:19px;color:#174e82;font-variant-numeric:tabular-nums}
+@media(max-width:560px){.marksFields{grid-template-columns:1fr 1fr}.percentagePreview{grid-column:1/-1}}
