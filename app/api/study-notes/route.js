@@ -49,6 +49,7 @@ const format=row=>({
   theoryTotal:row.theory_total,theoryDone:row.theory_done,
   totalMarks:row.total_marks===null?null:Number(row.total_marks),
   marksObtained:row.marks_obtained===null?null:Number(row.marks_obtained),
+  createdAt:row.created_at,
   updatedAt:row.updated_at
 });
 const validId=id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id||'');
