@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
 import SpeedPostDashboard from './SpeedPostDashboard.js';
 import AdminNotesDashboard from './AdminNotesDashboard.js';
+import StudyNotesDashboard from './StudyNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import SalaryDashboard from './SalaryDashboard.js';
@@ -210,14 +211,16 @@ export default function UnifiedDashboard(){
       ?<SalaryDashboard/>
     :session?.role==='admin'&&selectedDashboard==='MONTHLY_EXPENSES'
       ?<MonthlyExpensesDashboard/>
-    :session?.role==='admin'&&selectedDashboard==='NOTES'
+    :session?.role==='admin'&&selectedDashboard==='ADMIN_NOTES'
       ?<AdminNotesDashboard currentUser={session}/>
+    :session?.role==='admin'&&selectedDashboard==='NOTES'
+      ?<StudyNotesDashboard/>
     :speedPostAllowed&&selectedDashboard==='SPEED_POST'
       ?<SpeedPostDashboard currentUser={session}/>
     :<DashboardClient isAdmin={session?.role==='admin'} currentUser={session}
         onLogout={logout}
         onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null}
-        onOpenAdminNotes={session?.role==='admin'?()=>setSelectedDashboard('NOTES'):null}/>;
+        onOpenAdminNotes={session?.role==='admin'?()=>setSelectedDashboard('ADMIN_NOTES'):null}/>;
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
@@ -228,6 +231,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
+       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('NOTES')} style={{...topAccountButton,background:selectedDashboard==='NOTES'?'#dbeafe':'#fff',color:'#17419b'}}>NOTES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
