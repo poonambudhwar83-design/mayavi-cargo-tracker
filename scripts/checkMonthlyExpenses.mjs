@@ -6,7 +6,7 @@ import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
 import {resolvedExportShipmentCharge} from '../lib/exportShipmentCharge.js';
 import {exportCategorySummary} from '../lib/exportCategoryBags.js';
 import {branchPayoutForRecord} from '../lib/branchLoads.js';
-import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
+import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importTotalIncome,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 const importUI=readFileSync('app/ImportProfitSheet.js','utf8');
 const exportUI=readFileSync('app/ExportProfitSheet.js','utf8');
 const api=readFileSync('app/api/monthly-expenses/route.js','utf8');
@@ -20,7 +20,7 @@ const sourceCalc=(text,begin,end,ctx)=>{
 const actualImport=sourceCalc(importUI,'function figures(row={}){','function displayMoney(',{
  dataNumber:v=>v===null||v===undefined||v===''?null:Number(v),
  DRIVER_EXPENSE_PER_MAWB:2600,proteinHandlingRate,
- importFreightRegion,importFreightRate,importTotalCost,importNetProfit,
+ importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importTotalIncome,
  importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,
  importGoodsCharge15Percent,importGrossProfit,Number,Math,String
 });
@@ -36,6 +36,7 @@ const examples=[
  {goodsCategory:'PROTEIN',origin:'GERMANY',weight:90,bags:4,totalDuty:450,rate:700},
  {goodsCategory:'CLOTHES',origin:'DXB',weight:80,bags:2,totalDuty:950,rate:320},
  {goodsCategory:'BATTERY',origin:'HKG',weight:80,bags:2,totalDuty:950,rate:320},
+ {goodsCategory:'SWITCH',origin:'HKG',weight:80,bags:2,totalDuty:950,rate:320},
  {goodsCategory:'CLOTHES',origin:'DXB',weight:80,bags:2,totalDuty:'',rate:320},
  {goodsCategory:'PROTEIN',origin:'DXB',weight:80,bags:2,totalDuty:950,rate:''},
  {goodsCategory:'HH',origin:'DEL',weight:0,bags:2,totalDuty:200,rate:320}
@@ -45,6 +46,16 @@ for(const row of examples){
  for(const field of ['profit','grossProfit','goodsCharge15Percent'])
    assert.equal(b[field],a[field],field+' matches for '+row.goodsCategory+'/'+row.origin);
 }
+// Excess Weight is deliberately NOT included in the main Import profit,
+// and monthly summary must mirror that separation exactly.
+const normal=actualImport(examples[2]);
+const withoutExcess=actualImport({...examples[2],excessWeight:''});
+assert.equal(normal.totalIncome,50*500);
+assert.equal(normal.excessProfit,2500);
+assert.equal(normal.profit,withoutExcess.profit);
+assert.equal(normal.grossProfit,withoutExcess.grossProfit);
+assert.equal(monthlyImportFigures(examples[2]).profit,normal.profit);
+assert.equal(monthlyImportFigures(examples[2]).grossProfit,normal.grossProfit);
 const summary=sumMonthlyImport(examples);
 const rounded=v=>Math.round(v*100)/100;
 assert.equal(summary.grossProfit,rounded(examples.map(actualImport)
