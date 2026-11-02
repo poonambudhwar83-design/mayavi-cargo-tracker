@@ -198,7 +198,7 @@ export default function ImportProfitSheet(){
       weight+=n.kg||0;
       excessWeight+=n.excessWeight||0;
       if(n.excessProfit!==null)excessProfit+=n.excessProfit;
-      if(n.totalIncome!==null)totalIncome+=n.totalIncome;
+      if(n.totalIncome!==null&&n.profitPerKg!==null)totalIncome+=n.totalIncome;
       if(n.averageWeightPerBag!==null){averageWeightTotal+=n.kg;averageBagsTotal+=n.bags;}
       if(n.eici!==null)eici+=n.eici;
       if(n.goodsCharge!==null)goodsCharge+=n.goodsCharge;
@@ -207,7 +207,7 @@ export default function ImportProfitSheet(){
       if(n.duty!==null){duty+=n.duty;dutyKnown++}
       if(n.dutyPerKg!==null){dutyPerKgSum+=n.dutyPerKg;dutyPerKgKnown++}
       if(n.rate!==null){rateSum+=n.rate;rateKnown++}
-      if(n.totalCost!==null)cost+=n.totalCost;
+      if(n.totalCost!==null&&n.profitPerKg!==null)cost+=n.totalCost;
       driverExpense+=n.driverExpense;
       if(n.profitPerKg!==null){profit+=n.profit;grossProfit+=n.grossProfit;completedWeight+=n.kg;completed++}
     }
@@ -300,7 +300,7 @@ export default function ImportProfitSheet(){
                 <td style={{...cell,fontWeight:800}} title="Total weight divided by total master bags; also shown in the final column">{displayAmount(n.averageWeightPerBag)}</td>
                 <td style={{...cell,fontWeight:700}}>{displayAmount(n.kg)}</td>
                 <td style={{...cell,background:'#edfff5'}}>
-                  <input title="Extra actual kg above MAWB weight. No additional costs; saved per physical part."
+                  <input title="Separate Excess Weight: no additional cost and excluded from main Total Income / Profit; saved per physical part."
                     aria-label={'Excess Weight for '+row.mawb+(row.partLabel?' '+row.partLabel:'')}
                     type="number" inputMode="decimal" min="0" step="0.01"
                     value={row.excessWeight??''}
@@ -369,7 +369,7 @@ export default function ImportProfitSheet(){
             <td style={{...cell,color:'#6b21a8',background:'#faf5ff'}} title="Total 15% of eligible Goods Charge, excluding HH ₹340/bag">{displayMoney(totals.goodsCharge15Percent)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}}>{displayMoney(totals.profit)}</td>
             <td style={{...cell,color:'#047857',fontWeight:900}}>{displayMoney(totals.excessProfit)}</td>
-            <td style={cell}>{displayMoney(totals.cost)}</td>
+            <td style={cell}>{totals.completed?displayMoney(totals.cost):'—'}</td>
             <td style={{...cell,color:'#9a3412'}}>{displayMoney(totals.driverExpense)}</td>
             <td style={{...cell,color:totals.profit<0?'#b91c1c':'#14804b'}} title="Total profit divided by the weight of rows with calculated profit">{totals.completedWeight>0?displayMoney(totals.profit/totals.completedWeight):'—'}</td>
             <td style={{...cell,color:'#9a3412'}} title="Combined Protein (₹50/kg) and Clothes (₹30/kg) deductions already applied to Profit">{displayMoney(totals.proteinClothesDeduction)}</td>
