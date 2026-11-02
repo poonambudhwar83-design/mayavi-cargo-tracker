@@ -943,7 +943,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
         const isPhone=window.matchMedia?.('(max-width:640px)')?.matches===true;
         const now=Date.now();
         const list=dedupeRowsByMawb(rowsRef.current)
-          .filter(r=>refreshScope(r)!=='SKIP')
+          .filter(r=>refreshScope(r)==='ACTIVE')
           .filter(r=>{
             const checked=Date.parse(r.lastChecked||r._dbUpdatedAt||'');
             const cxMissing=digits(r.mawb).startsWith('160')&&(!r.flightNo||!r.arrivalDate||!r.arrivalTime);
