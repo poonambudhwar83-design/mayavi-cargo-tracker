@@ -51,8 +51,8 @@ const locked = Object.freeze({
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
-  'lib/cathay.js':'5dba64edc085c943205fe12613f654c2cc943294',
-  'lib/cathay-browser-fallback.js':'0ca1b323ef6ef0c4b55d1c67bbde46f22d9dad6d',
+  'lib/cathay.js':'9575b5a272fc08667ab4905f0739c05afe89953f',
+  'lib/cathay-browser-fallback.js':'c94956718d16d5faf88320c0436a14e9f69858d6',
   'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
   // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
   'lib/cathayFinalArrival.js':'dd5df361b50618a6788e0768fffb3dc0b1d19831',
