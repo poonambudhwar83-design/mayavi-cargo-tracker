@@ -84,7 +84,7 @@ export async function GET(request){
         row.tracking_checked_at||row.updated_at);
       const recent=Date.parse(data.enteredAt||row.updated_at||'')>=now-48*60*60*1000;
       return {row,scope,recent,...decision};
-    }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.scope==='ACTIVE'&&x.due)
+    }).filter(x=>PREFIX.test(digits(x.row.awb))&&x.due)
       .sort((a,b)=>Number(b.missing)-Number(a.missing)||
         Number(b.unresolved)-Number(a.unresolved)||
         Number(b.recent)-Number(a.recent)||a.checkedAt-b.checkedAt)
@@ -105,7 +105,7 @@ export async function GET(request){
     const summary={ok:true,carrier:'CX',frequency:'every 5 minutes',
       mode:fastRefresh?'terminal-fast':'terminal-and-booking-details',
       inspected:rows.length,
-      activeMasters:rows.filter(row=>refreshScope(row.data||{},new Date(now))==='ACTIVE').length,
+      activeOrRecentlyCleared:rows.filter(row=>refreshScope(row.data||{},new Date(now))!=='SKIP').length,
       missingFlightOrArrival:rows.filter(row=>!row.data?.flightNo||!row.data?.arrivalDate||!row.data?.arrivalTime).length,
       candidates:candidate.length,refreshed:results.filter(r=>r.ok).length,
       incomplete:results.filter(r=>r.incomplete).length,
