@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { readSession } from '../../../../lib/mayaviAuth.js';
-import { parseStudyEntry } from '../../../../lib/studyNotes.js';
+import { readSession } from '../../../lib/mayaviAuth.js';
+import { parseStudyEntry } from '../../../lib/studyNotes.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
