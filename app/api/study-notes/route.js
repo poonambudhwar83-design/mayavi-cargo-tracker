@@ -42,6 +42,11 @@ async function ensureTable(sql){
     ADD COLUMN IF NOT EXISTS total_marks NUMERIC(12,2)`;
   await sql`ALTER TABLE mayavi_study_notes
     ADD COLUMN IF NOT EXISTS marks_obtained NUMERIC(12,2)`;
+  // Add-only migration. Existing questions and study scores are never reset.
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS incorrect_mcq_numbers TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS incorrect_theory_numbers TEXT NOT NULL DEFAULT ''`;
 }
 const format=row=>({
   id:row.id,subject:row.subject,chapter:row.chapter,topic:row.topic,
@@ -49,6 +54,8 @@ const format=row=>({
   theoryTotal:row.theory_total,theoryDone:row.theory_done,
   totalMarks:row.total_marks===null?null:Number(row.total_marks),
   marksObtained:row.marks_obtained===null?null:Number(row.marks_obtained),
+  incorrectMcqNumbers:row.incorrect_mcq_numbers||'',
+  incorrectTheoryNumbers:row.incorrect_theory_numbers||'',
   createdAt:row.created_at,
   updatedAt:row.updated_at
 });
@@ -77,10 +84,12 @@ export async function POST(request){
     await ensureTable(sql);
     const id=randomUUID();
     await sql`INSERT INTO mayavi_study_notes
-      (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done,total_marks,marks_obtained)
+      (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done,
+       total_marks,marks_obtained,incorrect_mcq_numbers,incorrect_theory_numbers)
       VALUES (${id},${entry.subject},${entry.chapter},${entry.topic},
         ${entry.mcqTotal},${entry.mcqDone},${entry.theoryTotal},${entry.theoryDone},
-        ${entry.totalMarks},${entry.marksObtained})`;
+        ${entry.totalMarks},${entry.marksObtained},
+        ${entry.incorrectMcqNumbers},${entry.incorrectTheoryNumbers})`;
     return reply({ok:true,row:await find(sql,id)},201);
   }catch(e){console.error('study_notes_save',e?.message);return reply({ok:false,error:'Unable to save study record.'},503);}
 }
@@ -96,7 +105,10 @@ export async function PATCH(request){
       chapter=${entry.chapter},topic=${entry.topic},mcq_total=${entry.mcqTotal},
       mcq_done=${entry.mcqDone},theory_total=${entry.theoryTotal},
       theory_done=${entry.theoryDone},total_marks=${entry.totalMarks},
-      marks_obtained=${entry.marksObtained},updated_at=NOW() WHERE id=${body.id}
+      marks_obtained=${entry.marksObtained},
+      incorrect_mcq_numbers=${entry.incorrectMcqNumbers},
+      incorrect_theory_numbers=${entry.incorrectTheoryNumbers},
+      updated_at=NOW() WHERE id=${body.id}
       RETURNING id`;
     if(!rows.length)return reply({ok:false,error:'Study record not found.'},404);
     return reply({ok:true,row:await find(sql,body.id)});
