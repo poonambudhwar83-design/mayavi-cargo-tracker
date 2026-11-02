@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importTotalIncome,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -130,6 +130,9 @@ assert.equal(dxbTotal,37400);
 // Cost, so removing a surcharge reduces cost and increases profit.
 assert.equal(importTotalCost({...dx,goodsCharge15Percent:99999}),37400);
 assert.equal(importNetProfit(500,100,37400),12600);
+assert.equal(importTotalIncome(500,100),50000);
+assert.equal(importTotalIncome(500,110),55000);
+assert.equal(importTotalIncome(null,100),null);
 // Free extra kg must NEVER alter EICI, duty, freight, bags, driver or any cost.
 // Base MAWB 100 kg × ₹500 minus ₹37,400 expenses = ₹12,600.
 // An extra 10 kg earns ₹5,000 WITHOUT expenses -> final Profit ₹17,600.
@@ -172,7 +175,7 @@ assert.ok(profitUi.includes("const columns=['MAWB','Client','Goods'"));
 assert.ok(profitUi.includes("return [row.mawb,row.clientName"));
 assert.ok(!profitUi.includes("'Part / Register'"));
 assert.ok(!profitUi.includes("'Arrival Date','Client'"));
-assert.ok(profitUi.includes('colSpan={22}'),'22 Import Profit columns including 15% and Gross Profit');
+assert.ok(profitUi.includes('colSpan={23}'),'23 Import Profit columns including Total Income and Gross Profit');
 assert.ok(profitUi.includes('colSpan={4}'));
 assert.ok(profitUi.includes('key={row.rowKey||row.mawb}'));
 assert.ok(profitUi.includes('const active=row.isActiveMaster===true;'));
@@ -193,12 +196,24 @@ assert.ok(profitUi.includes('row.rowKey===rowKey'));
 assert.ok(profitUi.includes('const usaFreightDeduction='));
 assert.ok(profitUi.includes('const totalCost=importTotalCost('));
 assert.ok(profitUi.includes('const baseProfit=importNetProfit(rate,kg,totalCost);'));
+assert.ok(profitUi.includes('const totalIncome=importTotalIncome(rate,kg);'));
+assert.ok(profitUi.includes('const profit=baseProfit;'),'Main Profit excludes separate Excess Profit');
 assert.ok(profitUi.includes('const excessProfit=importExcessProfit(rate,excessWeight);'));
-assert.ok(profitUi.includes('const profit=importProfitIncludingExcess(baseProfit,excessProfit);'));
+assert.ok(!profitUi.includes('const profit=importProfitIncludingExcess(baseProfit,excessProfit);'));
+assert.ok(profitUi.includes("'Total Income (₹)'"));
+assert.ok(profitUi.includes('displayMoney(n.totalIncome)'));
+assert.ok(profitUi.includes('row.rate,n.totalIncome,n.eici'));
+assert.ok(profitUi.includes('displayMoney(totals.totalIncome)'));
+assert.ok(profitUi.includes('Excess Weight / Excess Profit remain separate.'));
+assert.ok(profitUi.includes('Profit = Total Income − Total Cost.'));
+// For 100kg × ₹500 less ₹37,400, main Profit is ₹12,600 even
+// if a SEPARATE excess-weight entry of 10kg earns ₹5,000.
+assert.equal(importNetProfit(500,100,37400),12600);
+assert.notEqual(importNetProfit(500,100,37400),17600);
 assert.ok(profitUi.includes('title={totalCostDetails(n)}'));
 // Per-part Excess Weight must persist independently and appear in totals/CSV.
 assert.ok(profitUi.includes("'Excess Weight (kg)'"));
-assert.ok(profitUi.includes("'Excess Profit (₹)'"));
+assert.ok(profitUi.includes("'Excess Profit (₹; separate)'"));
 assert.ok(profitUi.includes("'Excess Weight (kg; no additional cost)'"));
 assert.ok(profitUi.includes("'Excess Profit (Excess Weight x Rate; no costs)'"));
 assert.ok(profitUi.includes("save(row.mawb,'excessWeight',e.target.value,row.rowKey)"));
