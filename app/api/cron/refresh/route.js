@@ -171,7 +171,9 @@ export async function GET(request){
   const checkedAt=new Date();
   const selected=allRows.map(row=>({row,scope:refreshScope(row,checkedAt)}));
   const saudiaRapid=new URL(request.url).pathname==='/api/cron/saudia';
-  const rows=selected.filter(item=>item.scope!=='SKIP'&&(!saudiaRapid||normalize(item.row.mawb||item.row.awb).startsWith('065-'))).map(item=>item.row);
+  // Airline polling is limited to the Active sheet; cleared/archived masters
+  // continue to be displayed and remain editable but do not trigger carrier calls.
+  const rows=selected.filter(item=>item.scope==='ACTIVE'&&(!saudiaRapid||normalize(item.row.mawb||item.row.awb).startsWith('065-'))).map(item=>item.row);
   const scopeCounts={
     active:selected.filter(item=>item.scope==='ACTIVE').length,
     clearedLast72Hours:selected.filter(item=>item.scope==='CLEARED_RECENT').length,
