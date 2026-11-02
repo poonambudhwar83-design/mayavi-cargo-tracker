@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { STUDY_SUBJECTS, studyTotals, pending } from '../lib/studyNotes.js';
+import { STUDY_SUBJECTS, studyTotals, pending, marksPercentage } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
-const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:''});
+const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',totalMarks:'',marksObtained:''});
 const number=v=>v===''?0:Number(v);
 const friendly=subject=>subject==='Mathematics'?'Maths':subject;
 
@@ -54,7 +54,9 @@ export default function StudyNotesDashboard(){
   function edit(row){
     setSubject(row.subject);setEditId(row.id);
     setDraft({chapter:row.chapter,topic:row.topic,mcqTotal:String(row.mcqTotal),
-      mcqDone:String(row.mcqDone),theoryTotal:String(row.theoryTotal),theoryDone:String(row.theoryDone)});
+      mcqDone:String(row.mcqDone),theoryTotal:String(row.theoryTotal),theoryDone:String(row.theoryDone),
+      totalMarks:row.totalMarks===null?'':String(row.totalMarks),
+      marksObtained:row.marksObtained===null?'':String(row.marksObtained)});
     setMessage('Editing '+row.topic+'.');
     window.scrollTo({top:0,behavior:'smooth'});
   }
@@ -65,13 +67,26 @@ export default function StudyNotesDashboard(){
     setMessage('');
     const payload={...draft,subject,mcqTotal:number(draft.mcqTotal),
       mcqDone:number(draft.mcqDone),theoryTotal:number(draft.theoryTotal),
-      theoryDone:number(draft.theoryDone),...(editId?{id:editId}:{})};
+      theoryDone:number(draft.theoryDone),
+      totalMarks:draft.totalMarks===''?null:draft.totalMarks,
+      marksObtained:draft.marksObtained===''?null:draft.marksObtained,
+      ...(editId?{id:editId}:{})};
     if([payload.mcqTotal,payload.mcqDone,payload.theoryTotal,payload.theoryDone]
       .some(x=>!Number.isInteger(x)||x<0||x>100000)){
       setMessage('Please enter valid whole-number counts.');return;
     }
     if(payload.mcqDone>payload.mcqTotal||payload.theoryDone>payload.theoryTotal){
       setMessage('Completed questions cannot exceed total questions.');return;
+    }
+    if((draft.totalMarks==='')!==(draft.marksObtained==='')){
+      setMessage('Enter both Total Marks and Marks Obtained, or leave both blank.');return;
+    }
+    if(draft.totalMarks!==''&&(
+      !/^\d+(?:\.\d{1,2})?$/.test(draft.totalMarks)||
+      !/^\d+(?:\.\d{1,2})?$/.test(draft.marksObtained)||
+      Number(draft.totalMarks)>1000000||
+      Number(draft.marksObtained)>Number(draft.totalMarks))){
+      setMessage('Marks must be valid and Marks Obtained cannot exceed Total Marks.');return;
     }
     setBusy(true);
     try{
@@ -118,6 +133,8 @@ export default function StudyNotesDashboard(){
       <div><span>MCQs PENDING</span><b>{totals.mcqPending}</b></div>
       <div><span>THEORY DONE</span><b>{totals.theoryDone} / {totals.theoryTotal}</b></div>
       <div><span>THEORY PENDING</span><b>{totals.theoryPending}</b></div>
+      <div><span>MARKS OBTAINED / TOTAL</span><b>{totals.markedTopics?totals.marksObtained+' / '+totals.totalMarks:'—'}</b></div>
+      <div><span>PERCENTAGE</span><b>{totals.percentage===null?'—':totals.percentage.toFixed(2)+'%'}</b></div>
     </section>
     <section className={styles.formPanel}>
       <h2>{editId?'Edit Topic':'Add Topic'} <span>· {friendly(subject)}</span></h2>
@@ -137,6 +154,22 @@ export default function StudyNotesDashboard(){
               placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
           </label>)}
         </div>
+        <div className={styles.marksFields}>
+          <label>Total Marks
+            <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
+              placeholder="e.g. 100" value={draft.totalMarks}
+              onChange={e=>update('totalMarks',e.target.value)}/>
+          </label>
+          <label>Marks Obtained
+            <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
+              placeholder="e.g. 85" value={draft.marksObtained}
+              onChange={e=>update('marksObtained',e.target.value)}/>
+          </label>
+          <div className={styles.percentagePreview}><small>PERCENTAGE</small>
+            <b>{marksPercentage(draft.totalMarks,draft.marksObtained)===null?
+              '—':marksPercentage(draft.totalMarks,draft.marksObtained).toFixed(2)+'%'}</b>
+          </div>
+        </div>
         <div className={styles.actions}>
           <button type="submit" disabled={busy}>{busy?'Saving…':editId?'Save Changes':'+ Save Topic'}</button>
           {editId&&<button type="button" className={styles.cancel} disabled={busy} onClick={reset}>Cancel</button>}
@@ -152,17 +185,21 @@ export default function StudyNotesDashboard(){
       chapters.map(section=><article className={styles.chapter} key={section.chapter}>
         <div className={styles.chapterHeading}>
           <h3>{section.chapter}</h3>
-          <small>{section.topics.length} topics • MCQ pending {section.totals.mcqPending} • Theory pending {section.totals.theoryPending}</small>
+          <small>{section.topics.length} topics • MCQ pending {section.totals.mcqPending} • Theory pending {section.totals.theoryPending}
+            {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}</small>
         </div>
         <div className={styles.tableWrap}><table>
           <thead><tr><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
-            <th>Theory Done / Total</th><th>Theory Pending</th><th>Actions</th></tr></thead>
+            <th>Theory Done / Total</th><th>Theory Pending</th>
+            <th>Marks Obtained / Total</th><th>Percentage</th><th>Actions</th></tr></thead>
           <tbody>{section.topics.map(row=><tr key={row.id}>
             <td className={styles.topic}>{row.topic}</td>
             <td>{row.mcqDone} / {row.mcqTotal}</td>
             <td>{pending(row.mcqTotal,row.mcqDone)}</td>
             <td>{row.theoryDone} / {row.theoryTotal}</td>
             <td>{pending(row.theoryTotal,row.theoryDone)}</td>
+            <td>{row.totalMarks===null||row.totalMarks===undefined?'—':row.marksObtained+' / '+row.totalMarks}</td>
+            <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
             <td><div className={styles.rowActions}>
               <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
               <button type="button" className={styles.delete} disabled={busy}
