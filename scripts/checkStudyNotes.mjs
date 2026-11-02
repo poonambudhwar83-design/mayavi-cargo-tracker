@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {STUDY_SUBJECTS,parseStudyEntry,studyTotals,pending,marksPercentage} from '../lib/studyNotes.js';
+import {STUDY_SUBJECTS,parseStudyEntry,studyTotals,pending,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
 assert.deepEqual(STUDY_SUBJECTS,[
  'Physics','Mathematics','Chemistry','Biology','Sociology','English','Hindi'
 ]);
 assert.equal(pending(25,7),18);
 assert.equal(pending(3,9),0);
+assert.equal(studyTopicNumber('Chapter 1',0), '1.1');
+assert.equal(studyTopicNumber('Chapter 1 – Motion',1), '1.2');
+assert.equal(studyTopicNumber('Chapter 1',2), '1.3');
+assert.equal(studyTopicNumber('Chapter 2',0), '2.1');
+assert.equal(studyTopicNumber('Ch 3: Physics',1), '3.2');
+assert.equal(chapterSerial('Chapter 10',2),10);
+assert.equal(studyTopicNumber('Introduction',0,4),'4.1');
+assert.equal(studyTopicNumber('Chapter 11',0), '11.1');
 const input={subject:'Physics',chapter:'Chapter 1',topic:'Motion',
   mcqTotal:'20',mcqDone:'12',theoryTotal:'10',theoryDone:'3'};
 const a=parseStudyEntry(input);
@@ -68,11 +76,18 @@ assert.ok(page.includes('marksPercentage(row.totalMarks,row.marksObtained)'));
 assert.ok(page.includes("totals.percentage.toFixed(2)+'%'"));
 assert.ok(page.includes("const API='/api/study-notes'"));
 assert.ok(page.includes('chapters.map(section=>'));
+assert.ok(page.includes("studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)"));
+assert.ok(page.includes("a.createdAt||''"));
+assert.ok(page.includes("section.topics.map((row,topicIndex)"));
+assert.ok(page.includes('<th>No.</th>'));
+assert.ok(!page.includes('row.serialNumber'),'Serial numbers are calculated, not manually stored');
 assert.ok(page.includes('pending(row.mcqTotal,row.mcqDone)'));
 assert.ok(page.includes('pending(row.theoryTotal,row.theoryDone)'));
 const api=readFileSync('app/api/study-notes/route.js','utf8');
 assert.ok(api.includes('session.role!==\'admin\''));
 assert.ok(api.includes('mayavi_study_notes'));
+assert.ok(api.includes('createdAt:row.created_at'),
+  'Use immutable creation time so edits do not reorder topic serials');
 assert.ok(api.includes('CREATE TABLE IF NOT EXISTS'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS total_marks'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS marks_obtained'));
