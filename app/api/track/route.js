@@ -1878,12 +1878,16 @@ async function handle(mawb,fallback={}){
       const updated=[];
       for(const physical of parts.partShipments||[]){
         let p={...physical};
-        if(p.status==='DEPARTED'&&p.departureIsActual===true&&
+        // A rebooked 6-piece balance can have a published flight ETA even
+        // before actual departure. Keep SCHEDULED separate from cargo DEP/ARR.
+        const isDeparted=p.status==='DEPARTED'&&p.departureIsActual===true;
+        const isPendingFlight=['SCHEDULED','MANIFESTED'].includes(p.status)&&p.departureIsActual!==true;
+        if((isDeparted||isPendingFlight)&&
           p.arrivalIsActual!==true&&!p.arrivalTime&&
           /^(AI|IX)\d{2,4}$/.test(String(p.flightNo||''))&&
           /^20\d{2}-\d{2}-\d{2}$/.test(String(p.flightDate||''))){
           const input={mawb,origin:p.origin||parts.origin,destination:p.destination||parts.destination,
-            flightNo:p.flightNo,flightDate:p.flightDate,status:'DEPARTED',arrivalIsActual:false};
+            flightNo:p.flightNo,flightDate:p.flightDate,status:p.status,arrivalIsActual:false};
           const published=await trackFlightScheduleFast({
             flightNo:p.flightNo,date:p.flightDate,origin:input.origin,destination:input.destination
           }).catch(()=>null);
@@ -1906,8 +1910,11 @@ async function handle(mawb,fallback={}){
       }
       parts.partShipments=updated;
       const scheduled=updated.filter(p=>p.arrivalIsActual!==true&&p.arrivalEstimate===true&&p.arrivalDate&&p.arrivalTime);
-      if(scheduled.length===1&&parts.arrivalIsActual!==true){
-        const one=scheduled[0];
+      const preferred=scheduled.filter(p=>['SCHEDULED','MANIFESTED'].includes(p.status))
+        .sort((a,b)=>String(a.arrivalDate+' '+a.arrivalTime).localeCompare(String(b.arrivalDate+' '+b.arrivalTime))).at(-1)
+        ||scheduled.sort((a,b)=>String(a.arrivalDate+' '+a.arrivalTime).localeCompare(String(b.arrivalDate+' '+b.arrivalTime))).at(-1);
+      if(preferred&&parts.arrivalIsActual!==true){
+        const one=preferred;
         Object.assign(parts,{arrivalDate:one.arrivalDate,arrivalTime:one.arrivalTime,
           scheduledArrivalDate:one.arrivalDate,scheduledArrivalTime:one.arrivalTime,
           arrivalIsActual:false,arrivalEstimate:true,arrivalVerifiedAbsent:false,
