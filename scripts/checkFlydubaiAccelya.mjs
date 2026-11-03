@@ -130,4 +130,22 @@ const hubOnlyDate=parseFlydubaiText(
 assert.equal(hubOnlyDate?.arrivalDate,'',
   'Never use an intermediate-hub ETA as final Delhi arrival');
 
+// The current SHJ-DWC-DEL shipment can list only the booked FZ3097 date.
+const bookedDateOnly=timeline
+  .replace('Expected to arrive at DEL on Sun, 18 Oct 2026 03:15','')
+  .replace('Booked on Flight FZ-3097, 17 Oct 2026, DWC-DEL',
+           'Booked on Flight FZ-3097, 3 Nov 2026, DWC-DEL');
+const bookedFinal=parseFlydubaiText(bookedDateOnly,[],awb);
+assert.equal(bookedFinal?.flightNo,'FZ3097');
+assert.equal(bookedFinal?.finalFlightOrigin,'DWC');
+assert.equal(bookedFinal?.finalFlightDestination,'DEL');
+assert.equal(bookedFinal?.finalFlightDate,'2026-11-03');
+assert.equal(bookedFinal?.arrivalDate,'','Booked flight date alone is NOT an arrival');
+assert.equal(bookedFinal?.arrivalIsActual,false);
+const labelledEta=parseFlydubaiText(
+  bookedDateOnly.replace('Tracking Details','Expected Arrival DEL: 3 Nov 2026 09:20\\nTracking Details'),[],awb);
+assert.equal(labelledEta?.arrivalDate,'2026-11-03');
+assert.equal(labelledEta?.arrivalTime,'09:20');
+assert.equal(labelledEta?.arrivalIsActual,false);
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
