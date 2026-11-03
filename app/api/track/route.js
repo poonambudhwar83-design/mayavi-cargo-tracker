@@ -1612,34 +1612,43 @@ async function handle(mawb,fallback={}){
     shipment.arrivalTimeZone=direct.arrivalTimeZone;
   }
   shipment=normalizeShipmentTimesToIst(shipment);
-  // FZ/141: Accelya can show an exact expected arrival DATE and final FZ
-  // flight but omit the time. Resolve only that dated final flight; a
-  // passenger flight timetable is a forecast, never cargo arrival evidence.
+  // Flydubai FZ/141: the AWB's verified last leg may be booked for a
+  // specific FZ flight/date even when Accelya omits Expected Arrival.
+  // Resolve its route-matched timetable without treating flight ETA as cargo ARR.
   if(flydubaiFastPath&&direct?.flydubaiLiveVerifiedAt&&
-     direct.arrivalIsActual!==true&&!direct.arrivalTime&&
-     /^FZ\d{2,4}[A-Z]?$/i.test(String(direct.finalFlightNo||direct.flightNo||''))){
+      direct.arrivalIsActual!==true&&!direct.arrivalTime&&
+      /^FZ\d{2,4}[A-Z]?$/i.test(String(direct.finalFlightNo||direct.flightNo||''))){
     const expectedDate=direct.scheduledArrivalDate||direct.arrivalDate||'';
     const expectedDestination=String(direct.finalFlightDestination||direct.destination||'').toUpperCase();
     const expectedOrigin=String(direct.finalFlightOrigin||
       (['DXB','DWC'].includes(String(direct.origin||'').toUpperCase())?direct.origin:'')).toUpperCase();
-    const exactDate=/^20\d{2}-\d{2}-\d{2}$/.test(expectedDate);
-    if(exactDate&&/^[A-Z]{3}$/.test(expectedDestination)){
+    const assigned=String(direct.finalFlightDate||direct.flightDate||'');
+    const validDate=d=>/^20\d{2}-\d{2}-\d{2}$/.test(String(d||''));
+    const candidates=validDate(assigned)?[assigned]:
+      validDate(expectedDate)?[expectedDate,plusIsoDays(expectedDate,-1)]:[];
+    if(candidates.length&&/^[A-Z]{3}$/.test(expectedDestination)&&
+       /^[A-Z]{3}$/.test(expectedOrigin)){
       const flightNo=String(direct.finalFlightNo||direct.flightNo).toUpperCase();
-      // The cargo site's 3 Nov *arrival* may belong to a flight departing
-      // DXB late on 2 Nov; check both dates, matching the published arrival.
-      const assigned=String(direct.finalFlightDate||direct.flightDate||'');
-      const candidates=/^20\d{2}-\d{2}-\d{2}$/.test(assigned)
-        ?[assigned]:[expectedDate,plusIsoDays(expectedDate,-1)];
       for(const flightDate of candidates){
-        const schedule=await trackFlightScheduleFast({
+        const fast=await trackFlightScheduleFast({
           flightNo,date:flightDate,origin:expectedOrigin,destination:expectedDestination
         }).catch(()=>null);
+        const schedule=fast?.ok&&(fast?.arrivalTime||fast?.scheduledArrivalTime)
+          ?fast:await trackFlightArrivalEstimate({
+            flightNo,date:flightDate,destination:expectedDestination
+          }).catch(()=>null);
         const arrivalDate=schedule?.arrivalDate||schedule?.scheduledArrivalDate||'';
         const arrivalTime=schedule?.arrivalTime||schedule?.scheduledArrivalTime||'';
-        const isExact=Boolean(schedule?.ok&&arrivalDate===expectedDate&&
-          /^([01]\d|2[0-3]):[0-5]\d$/.test(arrivalTime)&&
+        const timeOk=/^([01]\d|2[0-3]):[0-5]\d$/.test(arrivalTime);
+        const assignmentMs=Date.parse(flightDate+'T00:00:00Z');
+        const arrivalMs=Date.parse(arrivalDate+'T00:00:00Z');
+        const dateOk=validDate(expectedDate)?arrivalDate===expectedDate:
+          validDate(assigned)&&Number.isFinite(assignmentMs)&&Number.isFinite(arrivalMs)&&
+            arrivalMs>=assignmentMs&&arrivalMs<=assignmentMs+86400000;
+        const isExact=Boolean(schedule?.ok&&dateOk&&timeOk&&
+          (!schedule.flightNo||canonicalFlightNo(schedule.flightNo)===canonicalFlightNo(flightNo))&&
           (!schedule.departureDate||schedule.departureDate===flightDate)&&
-          (!schedule.departureOrigin||!expectedOrigin||schedule.departureOrigin===expectedOrigin)&&
+          (!schedule.departureOrigin||schedule.departureOrigin===expectedOrigin)&&
           (!schedule.departureDestination||schedule.departureDestination===expectedDestination));
         if(!isExact)continue;
         const ist=normalizeShipmentTimesToIst({
@@ -1655,8 +1664,10 @@ async function handle(mawb,fallback={}){
           arrivalDate:ist.arrivalDate,arrivalTime:ist.arrivalTime,
           scheduledArrivalDate:ist.arrivalDate,scheduledArrivalTime:ist.arrivalTime,
           scheduledArrivalTimeZone:'IST',arrivalTimeZone:'IST',
-          arrivalIsActual:false,arrivalEstimate:true,
-          arrivalTimeSource:'Estimated flight arrival '+flightNo+' (verified date/route schedule, cargo unconfirmed); IST',
+          arrivalIsActual:false,arrivalEstimate:true,arrivalVerifiedAbsent:false,
+          arrivalTimeSource:'Estimated flight arrival '+flightNo+
+            ' (matched final leg '+expectedOrigin+'-'+expectedDestination+
+            ', dated flight timetable; cargo unconfirmed); IST',
           flydubaiEtaSource:schedule.source||schedule.arrivalTimeSource||'Dated flight schedule',
           mailTime:''
         });
