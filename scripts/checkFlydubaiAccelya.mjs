@@ -110,4 +110,24 @@ assert.equal(arrivalWithoutClock?.status,'ARRIVED');
 assert.equal(arrivalWithoutClock?.arrivalIsActual,true);
 assert.equal(arrivalWithoutClock?.arrivalTime,'');
 
+// A fresh final-station date without a clock must no longer vanish.
+// Arrival remains an estimate, not a confirmed Delhi cargo receipt.
+const dateOnlyTimeline=timeline
+  .replace('Expected to arrive at DEL on Sun, 18 Oct 2026 03:15',
+           'Expected to arrive at DEL on Tue, 3 Nov 2026')
+  .replaceAll('16 Oct 2026','2 Nov 2026')
+  .replaceAll('17 Oct 2026','2 Nov 2026');
+const dateOnly=parseFlydubaiText(dateOnlyTimeline,[],awb);
+assert.equal(dateOnly?.arrivalDate,'2026-11-03');
+assert.equal(dateOnly?.scheduledArrivalDate,'2026-11-03');
+assert.equal(dateOnly?.arrivalTime,'');
+assert.equal(dateOnly?.status,'IN TRANSIT');
+assert.equal(dateOnly?.arrivalIsActual,false);
+assert.equal(dateOnly?.flightNo,'FZ3097');
+assert.match(dateOnly?.arrivalTimeSource||'',/time pending/i);
+const hubOnlyDate=parseFlydubaiText(
+  dateOnlyTimeline.replace('Expected to arrive at DEL','Expected to arrive at DWC'),[],awb);
+assert.equal(hubOnlyDate?.arrivalDate,'',
+  'Never use an intermediate-hub ETA as final Delhi arrival');
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
