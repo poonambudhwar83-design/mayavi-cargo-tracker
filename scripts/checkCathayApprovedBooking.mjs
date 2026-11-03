@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {parseCathayApprovedBooking,trackCathayApprovedBooking,
   cathayApprovedApiConfigured} from '../lib/cathayBookingApi.js';
 import {annotateCathaySources} from '../lib/cathaySourceMap.js';
+import {mergeApprovedCathayBooking} from '../lib/cathay.js';
 
 const mawb='160-18860310';
 const record={
@@ -69,4 +70,23 @@ assert.equal(forbidden.reason,'CATHAY_APPROVED_API_CREDENTIALS_REJECTED');
 const noConfig=await trackCathayApprovedBooking(mawb,{env:{},
   request:async()=>{throw Error('must not call unauthorized provider')}});
 assert.equal(noConfig.reason,'CATHAY_APPROVED_API_NOT_CONFIGURED');
-console.log('Cathay approved booking API: AWB, final destination, IST and authorization tests passed.');
+// CX resiliency: use the partner result only for this exact AWB and flight.
+const terminalBase={mawb,origin:'HKG',destination:'DEL',flightNo:'CX679',pieces:'3',
+  weight:'65',arrivalDate:'',arrivalTime:'',arrivalIsActual:false,status:'IN TRANSIT'};
+const merged=mergeApprovedCathayBooking(terminalBase,parsed);
+assert.equal(merged.flightNo,'CX679');
+assert.equal(merged.arrivalDate,'2026-11-01');
+assert.equal(merged.arrivalTime,'00:10');
+assert.equal(merged.arrivalIsActual,false);
+assert.equal(merged.status,'IN TRANSIT');
+assert.deepEqual(mergeApprovedCathayBooking({...terminalBase,flightNo:'CX665'},parsed),
+  {...terminalBase,flightNo:'CX665'});
+assert.deepEqual(mergeApprovedCathayBooking({...terminalBase,mawb:'160-18860311'},parsed),
+  {...terminalBase,mawb:'160-18860311'});
+const actual={...terminalBase,arrivalDate:'2026-11-01',arrivalTime:'00:21',
+  arrivalIsActual:true,status:'ARRIVED'};
+assert.equal(mergeApprovedCathayBooking(actual,parsed).arrivalTime,'00:21');
+const partial={...terminalBase,arrivalDate:'2026-11-02',arrivalTime:''};
+assert.equal(mergeApprovedCathayBooking(partial,parsed).arrivalTime,'');
+assert.equal(mergeApprovedCathayBooking(terminalBase,{ok:false,reason:'HTTP 403'}).arrivalDate,'');
+console.log('Cathay approved booking API and 403 recovery: AWB, flight, IST and actual-arrival safety tests passed.');

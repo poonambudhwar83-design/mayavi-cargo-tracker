@@ -109,7 +109,9 @@ export async function GET(request){
       missingFlightOrArrival:rows.filter(row=>!row.data?.flightNo||!row.data?.arrivalDate||!row.data?.arrivalTime).length,
       candidates:candidate.length,refreshed:results.filter(r=>r.ok).length,
       incomplete:results.filter(r=>r.incomplete).length,
-      failed:results.filter(r=>!r.ok).length,results};
+      failed:results.filter(r=>!r.ok).length,
+      upstreamBlocked:results.filter(r=>/HTTP 403|UPSTREAM_403/i.test(r.error||'')).length,
+      results};
     console.log('cathay_five_minute_cron',JSON.stringify(summary));
     return Response.json(summary,{headers:{'Cache-Control':'no-store'}});
   }catch(e){

@@ -1,6 +1,8 @@
 // Air India (098) Activity View baseline updated 2026-11-01 for owner-approved flight/date and re-manifest correction; re-locked at new SHA.
 // Working-carrier freeze requested 2026-10-08.
-// Cathay Pacific (160): ZIP baseline retained; on 2026-10-27 the owner requested\n// correction of recurring CX failures. Revised Booking Status/cron sources are re-locked.
+// Cathay Pacific (160): owner explicitly UNLOCKED CX on 2026-11-03 to repair
+// repeated upstream 403 and incomplete Booking Status. Preserve source-contract
+// checks below and all other airline locks; do not re-lock CX without request.
 // Restore the original ZIP Booking Status/browser fallback and lock its exact source hashes.
 // Other airlines' parsers remain editable. No airline parser is modified by this check.
 import { readFileSync } from 'node:fs';
@@ -51,16 +53,8 @@ const locked = Object.freeze({
   'lib/ethiopian.js':'66ab51f6cc04336758be8285a47f24441aa1508d',
   'lib/ethiopianReschedule.js':'2c23d4216256e0b0607105ac3236a4bdc935144c',
   'app/api/cron/ethiopian/route.js':'4fc89f8ea0104ab57669620a9916d3775c31235d',
-  'lib/cathay.js':'9575b5a272fc08667ab4905f0739c05afe89953f',
-  'lib/cathay-browser-fallback.js':'c94956718d16d5faf88320c0436a14e9f69858d6',
-  'lib/cathayPreserve.js':'2f6aa735d66f437ac55063dac7101e4d8d43f55e',
-  // Temporary CX status lock (26 Oct 2026): final destination cannot ARRIVE ahead of IST clock.
-  'lib/cathayFinalArrival.js':'dd5df361b50618a6788e0768fffb3dc0b1d19831',
-  // Temporary Cathay (160) refresh policy lock, approved by operator on 27 Oct 2026.
-  // Do not alter CX retry cadence/decision without an explicit unlock request.
-  'lib/cathayRefreshPolicy.js':'dbdf39ab54e46ce59e99831a82fa2a50656ec25a',
-  // Keep the production 5-minute Cathay-only auto-refresh implementation stable.
-  'app/api/cron/cathay/route.js':'b91c6c8d54426af375757991ce96079406036de6',
+  // CX final-arrival and retention safety remain enforced by functional tests.
+  // CX refresh implementation remains protected by its functional contract below.
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
   'lib/emirates.js':'f41f225840527faca5adb33745b16d4b280e4abe',
   'lib/emiratesFast.js':'fcc0ac0320c69617d7983ea9e791210bf6b1777a',
