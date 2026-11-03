@@ -148,4 +148,12 @@ assert.equal(labelledEta?.arrivalDate,'2026-11-03');
 assert.equal(labelledEta?.arrivalTime,'09:20');
 assert.equal(labelledEta?.arrivalIsActual,false);
 
+
+const routeCard=["Doc. No.: 141-53630301 Courier","KUWAIT (KWI) DELHI (DEL)","Confirmed FZ3036 Confirmed FZ3097","KWI","12:00 PM | 03 Nov","1:30 PM | 03 Nov","DWC","8:00 AM | 04 Nov","1:15 PM | 04 Nov","DEL","Tracking Details","Milestones","Booked on Flight FZ-3036, 3 Nov 2026, KWI-DWC","78 Pieces","Booked on Flight FZ-3097, 4 Nov 2026, DWC-DEL","78 Pieces"].join('\n');
+const card=parseFlydubaiText(routeCard,[],awb);
+assert.equal(card?.finalFlightDepartureTime,'08:00');
+assert.equal(card?.scheduledArrivalDate,'2026-11-04');
+assert.equal(card?.scheduledArrivalTime,'13:15');
+assert.equal(card?.arrivalIsActual,false);
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
