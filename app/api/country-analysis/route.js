@@ -291,9 +291,17 @@ export async function GET(request){
     if(download==='details')return detailsFile(sql,flow,month,country);
     if(download==='original'){
       if(month==='ALL')return respond({ok:false,error:'Select a month to download the saved original Excel.'},400);
-      const data=await sql`SELECT file_name,encode(file_bytes,'base64') AS content FROM mayavi_other_country_uploads
-        WHERE ready=true AND flow=${flow} AND report_month=${month}
-        ORDER BY created_at DESC,id DESC LIMIT 1`;
+      // A November shipment may belong to an Excel workbook uploaded under
+      // October. Offer the original source workbook containing that date.
+      const data=await sql`SELECT u.file_name,encode(u.file_bytes,'base64') AS content
+        FROM mayavi_other_country_uploads u
+        JOIN mayavi_other_country_rows r ON r.upload_id=u.id
+        WHERE u.ready=true AND u.flow=${flow}
+          AND COALESCE(NULLIF(r.shipment_month,''),u.report_month)=${month}
+          AND u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
+            WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
+        GROUP BY u.id
+        ORDER BY COUNT(*) DESC,MAX(u.created_at) DESC LIMIT 1`;
       if(!data.length)return respond({ok:false,error:'Original Excel not found for that month.'},404);
       return excelResponse(Buffer.from(data[0].content,'base64'),data[0].file_name);
     }
