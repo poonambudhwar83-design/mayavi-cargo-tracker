@@ -37,4 +37,28 @@ const mapped=parseCountryWorkbook({worksheets:[sheet('Other format',[
 ])]}, {courier:'Logistics Partner',weight:'Net Mass',bags:'Count',country:'Market'});
 assert.equal(mapped.rows[0].avgBagKg,30);
 assert.equal(mapped.rows[0].country,'Canada');
+// Actual user-uploaded airline Excel headings observed in production runtime logs.
+const actualExcel={worksheets:[sheet('Sheet1',[
+  ['Sr','FLT NO','FLT DATE','IGM','MAWBNO','CourierCoName','Bags','Weight','Origin'],
+  [1,'AI101','2026-11-04','IGM1','098-12345678','Courier A',10,360,'DXB'],
+  [2,'AI101','2026-11-04','IGM1','098-12345679','Courier B',8,280,'JFK'],
+  [3,'AI101','2026-11-04','IGM1','098-12345680','Courier A',5,200,'DXB'],
+  [4,'AI101','2026-11-04','IGM1','098-12345681','Courier C',2,50,'DEL'],
+  [5,'AI101','2026-11-04','IGM1','098-12345682','Courier B',1,20,'JFK']
+])]};
+const actual=parseCountryWorkbook(actualExcel);
+assert.equal(actual.rows.length,5,'Parse actual CourierCoName/Bags/Weight Excel format.');
+assert.equal(actual.rows[0].courierName,'Courier A');
+assert.equal(actual.rows[0].country,'DXB');
+const sorted=summarizeCountryRows(actual.rows);
+assert.deepEqual(sorted.map(r=>r.courierName),['Courier A','Courier B','Courier C'],
+  'Couriers must sort by total imported kg from highest to lowest.');
+assert.deepEqual(sorted.map(r=>r.totalWeight),[560,300,50]);
+assert.equal(sorted[0].totalBags,15);
+assert.equal(sorted[0].avgBagKg,560/15);
+assert.equal(sorted[0].from30To35,0);
+assert.equal(sorted[0].over35,560);
+assert.equal(sorted[1].from30To35,280);
+assert.equal(sorted[1].under30,20);
+console.log('Country analysis: real CourierCoName airline Excel format and descending Import totals passed.');
 console.log('Country analysis: Import/Export parser, weighted average, bucket boundaries and custom mapping passed.');
