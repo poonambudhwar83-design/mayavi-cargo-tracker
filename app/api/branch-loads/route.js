@@ -198,6 +198,8 @@ export async function POST(request){
     // The branch scope is checked again before confirming the saved row.
     const providedId=String(body.clientRequestId||'').trim();
     const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providedId)?providedId:randomUUID();
+    if(entry.trackingNo&&body.ackDuplicateTracking!==true&&await hasDuplicateJepoTracking(sql,entry.trackingNo,id))
+      return json({ok:false,duplicate:true,error:'Duplicate JEPO Tracking No. already saved. Acknowledge the duplicate before saving again.'},409);
     await sql`INSERT INTO mayavi_branch_loads
       (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
       VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
