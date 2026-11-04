@@ -22,6 +22,12 @@ assert.ok(pdf.toString('latin1').trimEnd().endsWith('%%EOF'));
 const source=pdf.toString('latin1');
 assert.match(source,/\/Count 4 >>/);
 assert.ok(source.includes('October 2026'),'Selected month must appear in PDF.');
+assert.ok(source.includes('SUMMARY OCTOBER 2026 IMPORT'),'PDF must show dynamic Summary Month Year Import header.');
+assert.ok(!source.includes('MAYAVI 360'),'Old Mayavi 360 banner must be absent.');
+const exportPdf=createCourierAnalysisPdf({flow:'EXPORT',month:'2026-09',country:'DOH',rows:rows.slice(0,1),sectors:[],totals});
+assert.ok(exportPdf.toString('latin1').includes('SUMMARY SEPTEMBER 2026 EXPORT'),
+  'Export PDF banner must show selected month and Export.');
+assert.ok(exportPdf.toString('latin1').includes('ORIGIN DOH'),'Subtitle should show selected origin.');
 assert.ok(source.includes('HKG'),'HKG sector must be in the PDF.');
 assert.ok(source.includes('AUH'),'All continuation sectors must be in the PDF.');
 assert.match(source,/GRAND TOTAL/);
