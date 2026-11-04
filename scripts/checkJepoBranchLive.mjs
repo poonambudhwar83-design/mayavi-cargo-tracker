@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {cleanJepoTrackingNo,sourceStatusToBranch,validateJepoLiveResult} from '../lib/jepoBranchTracking.js';
+import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import {parseJepoDeliveryDate} from '../lib/jepoDeliveryDate.js';
 assert.equal(cleanJepoTrackingNo(' 1z12b6f40334321920 '),'1Z12B6F40334321920');
 assert.equal(cleanJepoTrackingNo('wrong/awb'),'');
@@ -93,4 +94,21 @@ assert.ok(api.includes('duplicateNotice'), 'Duplicate acknowledgment must includ
 assert.ok(ui.includes('DUPLICATE JEPO NO.'), 'Show duplicate warning during JEPO number entry.');
 assert.ok(ui.includes('duplicateTrackingNumbers'), 'Highlight existing duplicate tracking numbers.');
 assert.ok(ui.includes('duplicateBadge'), 'Show duplicate label in saved JEPO tracking rows.');
+assert.equal(isJindJepoTimeout({branch:'JIND',liveError:'Waiting failed: 25000ms exceeded'}),true,
+  'The actual JEPO Jind waiting error must blink.');
+assert.equal(isJindJepoTimeout({branch:'JIND',liveError:'Navigation timeout of 27000ms exceeded'}),true);
+assert.equal(isJindJepoTimeout({branch:'JIND',liveError:'Timed out while waiting for result'}),true);
+assert.equal(isJindJepoTimeout({branch:'KARNAL',liveError:'Waiting failed: 25000ms exceeded'}),false,
+  'The Jind-only alert must not recolor Karnal entries.');
+assert.equal(isJindJepoTimeout({branch:'JIND',liveError:'Unknown key: Control+A'}),false,
+  'Unrelated tracking errors must not be mislabeled as timeouts.');
+assert.equal(isJindJepoTimeout({branch:'JIND',liveError:''}),false,
+  'The alert must disappear on a successful automatic refresh.');
+const jindCss=readFileSync('app/BranchLoadsDashboard.module.css','utf8');
+assert.ok(jindCss.includes('jindJepoTimeoutCells'), 'Amber timeout blinking animation must exist.');
+assert.ok(jindCss.includes('prefers-reduced-motion'), 'Accessibility animation opt out required.');
+assert.ok(ui.includes('isJindJepoTimeout(row)?styles.jindTimeoutRow'), 'Highlight Jind timeout table rows.');
+assert.ok(ui.includes('JEPO TIMEOUT · AUTO RETRY'), 'Show which Jind shipments timed out.');
+assert.ok(ui.includes('https://jepoexpress.com/track'), 'Keep direct tracking website link.');
+assert.ok(ui.includes('>Track JEPO</button>'), 'Keep existing manual JEPO tracking button.');
 console.log('JEPO branch live status, Progress, AWB guards, tracking scheduler and Live Remarks UI checks passed.');
