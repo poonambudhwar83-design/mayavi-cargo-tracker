@@ -94,6 +94,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const [excelBusy,setExcelBusy]=useState(false);
   const [liveBusy,setLiveBusy]=useState(false);
   const [duplicateAcknowledged,setDuplicateAcknowledged]=useState(false);
+  const [serverDuplicateNo,setServerDuplicateNo]=useState('');
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -188,8 +189,9 @@ export default function BranchLoadsDashboard({currentUser}){
   const normalizedTracking=String(draft.trackingNo||'').trim().toUpperCase();
   const duplicateTrackingRows=normalizedTracking?rows.filter(r=>
     r.id!==editing&&String(r.trackingNo||'').trim().toUpperCase()===normalizedTracking):[];
+  const duplicateVisible=duplicateTrackingRows.length>0||serverDuplicateNo===normalizedTracking;
   const set=(field,value)=>{
-    if(field==='trackingNo')setDuplicateAcknowledged(false);
+    if(field==='trackingNo'){setDuplicateAcknowledged(false);setServerDuplicateNo('');}
     setDraft(d=>({...d,[field]:value}));
   };
   function showSaveFailure(reason){
@@ -219,7 +221,7 @@ export default function BranchLoadsDashboard({currentUser}){
     event?.preventDefault?.();
     if(busy||!editing)return;
     setSaveError('');
-    if(duplicateTrackingRows.length&&!duplicateAcknowledged){
+    if(duplicateVisible&&!duplicateAcknowledged){
       showSaveFailure('Duplicate JEPO Tracking No. '+normalizedTracking+' already exists. Acknowledge the duplicate below the tracking field before saving.');
       return;
     }
@@ -266,7 +268,7 @@ export default function BranchLoadsDashboard({currentUser}){
     const expectedBranch=isAdmin?draft.branch:userBranch;
     // Retry only transient network/server failures; the server deduplicates POST
     // with clientRequestId, so a successful first attempt cannot be entered twice.
-    const payload={...draft,...(currentId==='new'?{clientRequestId:saveRequestId}:{id:currentId})};
+    const payload={...draft,ackDuplicateTracking:duplicateAcknowledged,...(currentId==='new'?{clientRequestId:saveRequestId}:{id:currentId})};
     setBusy(true);setMessage('Saving to Mayavi database…');
     try{
       let saved=null;
@@ -278,7 +280,8 @@ export default function BranchLoadsDashboard({currentUser}){
           });
           const data=await res.json().catch(()=>({ok:false,error:'Server did not return a valid save confirmation.'}));
           if(!res.ok||!data.ok){
-            if(res.status===401)throw new Error('Session expired. Please sign in again; your entry has not been cleared.');
+            if(data.duplicate)setServerDuplicateNo(normalizedTracking);
+             if(res.status===401)throw new Error('Session expired. Please sign in again; your entry has not been cleared.');
             if(res.status===403)throw new Error('Account access denied. Please contact Admin; your entry has not been cleared.');
             if(res.status>=500&&attempt===0)continue;
             throw new Error(data.error||'Save failed. Please check all fields.');
@@ -468,8 +471,8 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=minimumJepoExtraCost(d.commodity,count);return {...d,bottleCount:count,extraCost:count&&minimum!==null&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100}
         value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}
-        style={duplicateTrackingRows.length?{border:'2px solid #9333ea',background:'#faf5ff'}:undefined}/>
-        {!!duplicateTrackingRows.length&&<div role="alert" style={{background:'#f3e8ff',padding:7,marginTop:5,borderRadius:7,color:'#6b21a8',fontSize:10}}>
+        style={duplicateVisible?{border:'2px solid #9333ea',background:'#faf5ff'}:undefined}/>
+        {duplicateVisible&&<div role="alert" style={{background:'#f3e8ff',padding:7,marginTop:5,borderRadius:7,color:'#6b21a8',fontSize:10}}>
           <strong>⚠ Duplicate JEPO Tracking No. {normalizedTracking}</strong>
           <div>Previously saved in {duplicateTrackingRows.map(x=>x.branch).join(', ')}.</div>
           <label><input type="checkbox" checked={duplicateAcknowledged}
