@@ -119,7 +119,8 @@ assert.ok(route.includes('const basePaidToBranch=branchPayment(weight,rate,body.
 assert.ok(route.includes('paidToBranch:String(totalBranchForLoad(r.amount,r.paid_to_jepo,r.commodity,r.extra_cost,r.bottle_count,{legacy:true})??0)'));
 assert.ok(!route.includes('decimal(body.paidToBranch'));
 assert.ok(route.includes("if(body.statusOnly===true){"));
-assert.ok(route.includes('UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
+assert.ok(route.includes('delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id'));
+assert.ok(route.includes('delivery_date_source=CASE'), 'Status-only changes should record their actual manual delivery date.');
 const ui=readFileSync('app/BranchLoadsDashboard.js','utf8');
 assert.ok(ui.includes('if(!isAdmin)return;'));
 assert.ok(ui.includes("{isAdmin&&<button type=\"button\" aria-label={'Delete '+record.branch+' entry '"));
