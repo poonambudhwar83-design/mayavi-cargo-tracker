@@ -272,7 +272,7 @@ export default function AccountDashboard(){
           color:'#26528a',fontSize:12,border:'1px solid #d4e5ff',borderRadius:9}}>{notice}</div>}
         <div style={{overflowX:'auto',maxHeight:'min(70vh,680px)',border:'1px solid #dfe8f4',borderRadius:10}}>
           <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:1050}}>
-            <thead><tr>{['DATE','CREDIT (₹)','DEBIT (₹)','MODE OF TRANSACTION','BALANCE (₹)','REMARKS','ACTIONS'].map((title,i)=>
+            <thead><tr>{['DATE ↓ (LATEST FIRST)','CREDIT (₹)','DEBIT (₹)','MODE OF TRANSACTION','BALANCE (₹)','REMARKS','ACTIONS'].map((title,i)=>
               <th key={title} style={{...th,textAlign:[1,2,4].includes(i)?'right':'left'}}>{title}</th>)}</tr></thead>
             <tbody>
               {loading&&<tr><td colSpan={7} style={{padding:25,textAlign:'center',color:'#74859e'}}>Loading saved ledger…</td></tr>}
@@ -320,7 +320,7 @@ export default function AccountDashboard(){
           </table>
         </div>
         <div style={{fontSize:11,color:'#7a8ba4',padding:'10px 5px 0'}}>
-          {shown.length} entries visible. Transactions are sorted by date; editing or deleting an older entry recalculates every later balance.
+          {shown.length} entries visible. Latest transaction date first. Running balances are still calculated in chronological order, including earlier transactions.
         </div>
       </section>
     </>}
