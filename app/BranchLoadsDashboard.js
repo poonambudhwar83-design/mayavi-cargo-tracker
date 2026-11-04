@@ -177,6 +177,12 @@ export default function BranchLoadsDashboard({currentUser}){
     }
     return new Set([...counts].filter(([,count])=>count>1).map(([key])=>key));
   },[rows]);
+  // Highlight the existing shipment immediately as someone types its
+  // tracking number, even when the database contains only one existing copy.
+  const flaggedJepoNumber=value=>{
+    const key=String(value||'').trim().toUpperCase().replace(/\s+/g,'');
+    return Boolean(key&&(duplicateTrackingNumbers.has(key)||(duplicateInfo?.duplicate&&duplicateInfo.trackingNo===key)));
+  };
   // Branch and search filters apply everywhere. Status affects ONLY the table,
   // never the overview cards: Active + Delivered are always counted together.
   const matchingRows=useMemo(()=>rows.filter(r=>
@@ -543,7 +549,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
     <td key="tracking"><b>{record.trackingNo||'—'}</b>
-      {duplicateTrackingNumbers.has(String(record.trackingNo||'').trim().toUpperCase())&&<span className={styles.duplicateBadge}>DUPLICATE</span>}
+      {flaggedJepoNumber(record.trackingNo)&&<span className={styles.duplicateBadge}>DUPLICATE / ALREADY SAVED</span>}
       {record.trackingNo&&<button type="button"
       className={styles.secondary} disabled={liveBusy||busy} style={{marginTop:5,padding:'4px 8px',display:'block',fontSize:10}}
       onClick={()=>void refreshJepo([record])}>Track JEPO</button>}</td>,
@@ -676,7 +682,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
-          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',duplicateTrackingNumbers.has(String(row.trackingNo||'').trim().toUpperCase())?styles.duplicateRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
+          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',flaggedJepoNumber(row.trackingNo)?styles.duplicateRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
           {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
