@@ -3,6 +3,7 @@ module.exports = {
   outputFileTracingIncludes: {
     '/api/branch-loads/jepo-live': ['./node_modules/@sparticuz/chromium/bin/**/*'],
     '/api/cron/jepo-branches': ['./node_modules/@sparticuz/chromium/bin/**/*'],
+    '/api/cron/jepo-branches/[shard]': ['./node_modules/@sparticuz/chromium/bin/**/*'],
     '/api/klm-live': [
       './node_modules/@sparticuz/chromium/bin/**/*'
     ],
