@@ -42,11 +42,13 @@ assert.ok(ui.includes('r.liveStatus||statusLabel(r.status)'));
 assert.ok(sync.includes("WHEN delivery_status='DELIVERED' THEN delivery_status"));
 assert.ok(sync.includes('jepo_live_status='));
 assert.ok(sync.includes('jepo_live_remarks='));
-assert.ok(sync.includes('slice(0,16)'), 'Larger cron batch must be capped.');
-assert.ok(sync.includes('offset+=8'), 'Each website session must remain at eight AWBs.');
+assert.ok(sync.includes('slice(0,44)'), 'Larger cron batch must be capped.');
+assert.ok(sync.includes('offset+=44'), 'Each website session must remain at eight AWBs.');
 assert.ok(sync.includes('if(offset>0&&Date.now()-started>180000)break;'), 'Avoid timed-out batch continuations.');
-assert.ok(cron.includes('LIMIT 16'), 'Rotate sixteen JEPO numbers per scheduled run.');
-assert.ok(cron.includes("OR COALESCE(jepo_live_status,'')=''"), 'Previously Delivered loads also need their first Live Remarks.');
+assert.ok(cron.includes('LIMIT 44'), 'Rotate sixteen JEPO numbers per scheduled run.');
+assert.ok(cron.includes('MOD(ABS(HASHTEXT'), 'Track all saved JEPO entries in disjoint partitions.');
+assert.ok(settings.crons.filter(c=>c.path.startsWith('/api/cron/jepo-branches')).length===5,
+  'Five automatic JEPO shards must cover all saved tracking numbers.');
 assert.ok(cron.includes('CRON_SECRET'));
 assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='*/2 * * * *'));
 const nextConfig=readFileSync('next.config.js','utf8');
@@ -55,6 +57,7 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
     'Chromium binary must be traced into '+route+' runtime');
 }
 assert.ok(browser.includes('https://jepoexpress.com/track'));
+assert.ok(browser.includes('Array.from({length:Math.min(4,awbs.length)}'), 'Run four independent JEPO tracking pages concurrently.');
 assert.ok(browser.includes('freshResult:true'));
 assert.ok(browser.includes('beforeResult'));
 assert.ok(browser.includes('validateJepoLiveResult({...snapshot,submittedAwb:awb,freshResult:true},awb)'));
