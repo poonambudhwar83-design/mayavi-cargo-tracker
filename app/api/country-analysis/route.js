@@ -190,10 +190,20 @@ export async function GET(request){
     if(auth.error)return respond({ok:false,error:auth.error},auth.status);
     await ensureTables(sql);
     const url=new URL(request.url),flow=flowValue(url.searchParams.get('flow')||'IMPORT');
-    const month=url.searchParams.get('month')||'ALL';
+    const requestedMonth=url.searchParams.get('month')||'LATEST';
     const country=String(url.searchParams.get('country')||'ALL').slice(0,120);
     const download=url.searchParams.get('download')||'';
-    if(!flow||!validMonth(month))return respond({ok:false,error:'Choose valid Import/Export and month.'},400);
+    if(!flow||!(requestedMonth==='LATEST'||monthValue(requestedMonth)))
+      return respond({ok:false,error:'Choose a saved report month.'},400);
+    // Pick the most recently saved month for this flow; never aggregate all
+    // months implicitly. Import and Export have independent month selections.
+    const files=await activeFiles(sql);
+    const months=[...new Set(files.filter(f=>f.flow===flow).map(f=>f.report_month))].sort().reverse();
+    const month=requestedMonth==='LATEST'?(months[0]||''):requestedMonth;
+    if(!month){
+      if(download)return respond({ok:false,error:'No saved monthly workbook found for this selection.'},404);
+      return respond({ok:true,flow,month:'LATEST',country,files:[],months,countries:[],sectors:[],rows:[],totals:overall([])});
+    }
     if(download==='summary')return summaryFile(sql,flow,month,country);
     if(download==='details')return detailsFile(sql,flow,month,country);
     if(download==='original'){
@@ -204,11 +214,11 @@ export async function GET(request){
       if(!data.length)return respond({ok:false,error:'Original Excel not found for that month.'},404);
       return excelResponse(Buffer.from(data[0].content,'base64'),data[0].file_name);
     }
-    const [files,rows,countries,pivot]=await Promise.all([activeFiles(sql),breakdown(sql,flow,month,country),countriesFor(sql,flow,month),sectorBreakdown(sql,flow,month,country)]);
+    const [rows,countries,pivot]=await Promise.all([breakdown(sql,flow,month,country),countriesFor(sql,flow,month),sectorBreakdown(sql,flow,month,country)]);
     return respond({ok:true,flow,month,country,files:files.map(f=>({
       id:f.id,flow:f.flow,month:f.report_month,fileName:f.file_name,
       sheets:f.sheets,rows:Number(f.parsed_rows),skipped:Number(f.skipped_rows),uploadedAt:f.created_at
-    })),months:[...new Set(files.filter(f=>f.flow===flow).map(f=>f.report_month))].sort().reverse(),
+    })),months,
     countries,sectors:pivot.sectors,rows:addSectorLoads(rows,pivot),totals:overall(rows)});
   }catch(e){console.error('country_analysis_get',e?.message);
     return respond({ok:false,error:'Unable to load Country Analysis. '+(e?.message||'')},503);}
