@@ -132,8 +132,8 @@ async function breakdown(sql,flow,month,country){
     COUNT(*)::int AS entries, SUM(r.bags)::bigint AS total_bags,
     SUM(r.weight_kg)::numeric AS total_weight,
     SUM(CASE WHEN r.weight_kg/r.bags < 30 THEN r.weight_kg ELSE 0 END)::numeric AS under30,
-    SUM(CASE WHEN r.weight_kg/r.bags >= 30 AND r.weight_kg/r.bags <= 35 THEN r.weight_kg ELSE 0 END)::numeric AS from30to35,
-    SUM(CASE WHEN r.weight_kg/r.bags > 35 AND r.weight_kg/r.bags <= 40 THEN r.weight_kg ELSE 0 END)::numeric AS from35to40,
+    SUM(CASE WHEN r.weight_kg/r.bags >= 30 AND r.weight_kg/r.bags < 35 THEN r.weight_kg ELSE 0 END)::numeric AS from30to35,
+    SUM(CASE WHEN r.weight_kg/r.bags >= 35 AND r.weight_kg/r.bags <= 40 THEN r.weight_kg ELSE 0 END)::numeric AS from35to40,
     SUM(CASE WHEN r.weight_kg/r.bags > 40 THEN r.weight_kg ELSE 0 END)::numeric AS over40
     FROM mayavi_other_country_rows r
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
@@ -223,7 +223,7 @@ async function summaryFile(sql,flow,month,country){
   note.addRow(['Source','Latest successfully uploaded Excel per flow/month']);
   note.addRow(['Order','Courier with highest total weight (kg) appears first']);
   note.addRow(['Average kg/bag','Total Load / Total Bags (weighted average)']);
-  note.addRow(['35–40 kg','Sum of shipment weight where weight divided by bags is more than 35 and at most 40 kg.']);
+  note.addRow(['35–40 kg','Sum of shipment weight where weight divided by bags is at least 35 and at most 40 kg.']);
   note.addRow(['More than 40 kg','Sum of weights where shipment weight divided by bags is strictly more than 40 kg.']);
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_Courier_Summary_${month}.xlsx`);
 }
@@ -260,7 +260,7 @@ async function detailsFile(sql,flow,month,country){
   for(const r of rows){
     const weight=Number(r.weight_kg),bags=Number(r.bags),avg=weight/bags;
     sheet.addRow([r.shipment_date?r.shipment_date.toISOString?.().slice(0,10)||String(r.shipment_date):'',r.report_month,r.courier_name,r.country,weight,bags,round(avg),
-      avg<30?'Below 30':avg<=35?'30 to 35':avg<=40?'35 to 40':'Above 40',r.sheet_name,r.source_row]);
+      avg<30?'Below 30':avg<35?'30 to 35':avg<=40?'35 to 40':'Above 40',r.sheet_name,r.source_row]);
   }
   sheetStyle(sheet);sheet.getColumn(9).width=25;
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_All_Entries_${month}.xlsx`);
