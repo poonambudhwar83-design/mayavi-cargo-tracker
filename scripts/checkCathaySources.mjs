@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { annotateCathaySources } from '../lib/cathaySourceMap.js';
+import {parseCathayTrackingApi} from '../lib/cathay-browser-fallback.js';
 const mawb='160-18860310';
 const terminal={shipment:{mawb,origin:'HKG',destination:'DEL',
   pieces:'3',bags:'3',weight:'65.0',bookingDate:'2026-10-31',status:'BOOKED'}};
@@ -47,4 +48,30 @@ const blocked=annotateCathaySources(base,{mawb,terminal,bookingReason:'403'});
 assert.equal(blocked.cxTrackingSources.bookingDetails.status,'ACCESS_DENIED');
 assert.deepEqual(annotateCathaySources({mawb:'065-11493775',weight:'99'},
   {mawb:'065-11493775',terminal}),{mawb:'065-11493775',weight:'99'});
+// October 20 ZIP's JSON Booking Status parser is restored beside today's
+// Cathay browser extractor. It must only accept the exact tracking number.
+const octBooking={
+  AWBNumber:'16018860310',date:'31OCT26',
+  routing:[{origin:'HKG',destination:'DEL'}],
+  pieces:3,weight:{value:65},
+  bookingStatus:[{flight:'CX679',STD:'2026-10-31T20:15:00',
+    STA:'2026-10-31T23:50:00',status:'BOOKED'}]
+};
+const parsedOct=parseCathayTrackingApi(JSON.stringify(octBooking),mawb);
+assert.ok(parsedOct,'October archive parser must recognize verified Cathay JSON');
+assert.equal(parsedOct.flightNo,'CX679');
+assert.equal(parsedOct.destination,'DEL');
+assert.equal(parsedOct.pieces,'3');
+assert.equal(parsedOct.weight,'65');
+assert.equal(parsedOct.arrivalDate,'2026-10-31');
+assert.equal(parsedOct.arrivalTime,'23:50');
+assert.equal(parsedOct.arrivalIsActual,false);
+assert.equal(parseCathayTrackingApi(JSON.stringify(octBooking),'160-18860311'),null,
+  'Never borrow another shipment arrival time');
+assert.equal(parseCathayTrackingApi('{"error":"Access Denied"}',mawb),null);
+const octActual=parseCathayTrackingApi(JSON.stringify({
+  ...octBooking,bookingStatus:[{...octBooking.bookingStatus[0],ATA:'2026-10-31T23:58:00'}]
+}),mawb);
+assert.equal(octActual.arrivalIsActual,true);
+assert.equal(octActual.arrivalTime,'23:58');
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
