@@ -11,13 +11,14 @@ export async function GET(request){
   const sql=neon(process.env.DATABASE_URL||process.env.POSTGRES_URL||
     process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED);
   await ensureJepoBranchColumns(sql);
-  // Rotate old and unchecked ACTIVE JEPO numbers first; never reclassify an
-  // already Delivered entry on a stale website "Pre Transit" response.
+  // Refresh active rows and fetch one verified scan for older Delivered
+  // rows whose Live Remarks are still blank. Never roll a Delivered status
+  // backward on a stale or incomplete provider response.
   const candidates=await sql`SELECT UPPER(BTRIM(tracking_no)) AS tracking_no,
     MIN(jepo_live_checked_at) AS last_checked FROM mayavi_branch_loads
-    WHERE BTRIM(tracking_no)<>'' AND delivery_status<>'DELIVERED'
+    WHERE BTRIM(tracking_no)<>'' AND (delivery_status<>'DELIVERED' OR COALESCE(jepo_live_status,'')='')
     GROUP BY UPPER(BTRIM(tracking_no))
-    ORDER BY last_checked ASC NULLS FIRST LIMIT 8`;
+    ORDER BY last_checked ASC NULLS FIRST LIMIT 16`;
   const summary=await syncJepoBranchAwbs(sql,candidates.map(x=>x.tracking_no));
   console.log('jepo_branch_cron',JSON.stringify({checked:summary.checked,updated:summary.updated,failed:summary.failed}));
   return Response.json({ok:true,checked:summary.checked,updated:summary.updated,failed:summary.failed});
