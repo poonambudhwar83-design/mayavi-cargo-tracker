@@ -42,6 +42,10 @@ assert.ok(gulfCode.includes("GULF_AIR_PUBLIC_CARGO_URL='https://www.gulfair.com/
   'Use first-party Gulf Air Falcon Cargo tracking form.');
 assert.ok(gulfCode.includes('const publicCargo=await searchGulfAirPublicCargo(page,mawb)'),
   'Try first-party Gulf cargo before CHAMP fallback.');
+assert.ok(gulfCode.includes('const inputHandle=await frame.evaluateHandle('),
+  'Gulf Air AWB form reader must use an ElementHandle rather than looping over a single element.');
+assert.ok(!gulfCode.includes('for(const candidate of inputs)'),
+  'Puppeteer frame.$ returns one handle and must never be treated as iterable.');
 assert.ok(gulfCode.includes('await button.click({delay:100})'),
   'Public Gulf page must click its actual Track your cargo control.');
 assert.ok(gulfCode.includes('parseGulfAirTrackingPage({...lastDom,officialTracker:GULF_AIR_PUBLIC_CARGO_URL},mawb)'),
