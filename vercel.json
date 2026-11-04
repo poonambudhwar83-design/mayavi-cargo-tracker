@@ -51,6 +51,9 @@
     },
     "app/api/branch-loads/jepo-live/route.js": {
       "maxDuration": 180
+    },
+    "app/api/cron/courier-month-backfill/route.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -89,6 +92,10 @@
     {
       "path": "/api/cron/jepo-branches",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/courier-month-backfill",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
