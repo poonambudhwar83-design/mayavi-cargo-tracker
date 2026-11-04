@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseCountryWorkbook, summarizeCountryRows, bucketFor } from '../lib/countryLoadAnalysis.js';
+import { parseCountryWorkbook, summarizeCountryRows, bucketFor, normalizeSector, buildCourierSectorPivot } from '../lib/countryLoadAnalysis.js';
 const row=values=>({
   hasValues:values.some(x=>x!==''&&x!==null&&x!==undefined),
   cellCount:values.length,
@@ -62,3 +62,25 @@ assert.equal(sorted[1].from30To35,280);
 assert.equal(sorted[1].under30,20);
 console.log('Country analysis: real CourierCoName airline Excel format and descending Import totals passed.');
 console.log('Country analysis: Import/Export parser, weighted average, bucket boundaries and custom mapping passed.');
+
+// Sector-weight pivot must preserve every courier's original load and normalize Doha/HKG/JFK.
+const sectorData=buildCourierSectorPivot([
+  {courierName:'DHL',country:'HKG',weightKg:150},
+  {courierName:'DHL',country:'Hong Kong',weightKg:50},
+  {courierName:'DHL',country:'JFK',weightKg:120},
+  {courierName:'FedEx',country:'Doha',weightKg:220},
+  {courierName:'FedEx',country:'DOH',weightKg:30},
+  {courierName:'FedEx',country:'HKG',weightKg:10}
+]);
+assert.equal(normalizeSector(' Doha '),'DOH');
+assert.equal(normalizeSector('Hong Kong'),'HKG');
+assert.equal(normalizeSector('JFK'),'JFK');
+assert.equal(normalizeSector('USA'),'USA'); // Don't invent a flight sector from a country
+assert.deepEqual(sectorData.sectors.map(s=>s.name),['DOH','HKG','JFK']);
+assert.deepEqual(sectorData.sectors.map(s=>s.totalWeight),[250,210,120]);
+assert.equal(sectorData.byCourier['dhl'].HKG,200);
+assert.equal(sectorData.byCourier['dhl'].JFK,120);
+assert.equal(sectorData.byCourier['fedex'].DOH,250);
+assert.equal(sectorData.byCourier['fedex'].HKG,10);
+assert.equal(sectorData.byCourier['dhl'].DOH??0,0);
+console.log('Origin-wise courier load matrix: HKG, JFK, DOH aliases, totals and no country guessing passed.');
