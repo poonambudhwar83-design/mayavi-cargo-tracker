@@ -121,12 +121,12 @@ async function summaryFile(sql,flow,month,country){
   const rows=await breakdown(sql,flow,month,country);
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
-  sheet.addRow(['Courier Name','Total Load (kg)','Total Bags','Average kg / bag','Entries',
+  sheet.addRow(['Courier Name','Total Load (kg)','Average kg / bag',
     'Below 30 kg - Load (kg)','30-35 kg - Load (kg)','Above 35 kg - Load (kg)']);
-  for(const row of rows)sheet.addRow([row.courierName,row.totalWeight,row.totalBags,row.avgBagKg,row.entries,
+  for(const row of rows)sheet.addRow([row.courierName,row.totalWeight,row.avgBagKg,
     row.under30,row.from30To35,row.over35]);
   const totals=overall(rows);
-  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.totalBags,totals.avgBagKg,totals.entries,
+  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.avgBagKg,
     totals.under30,totals.from30To35,totals.over35]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
