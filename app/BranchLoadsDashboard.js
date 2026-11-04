@@ -93,6 +93,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const [saveError,setSaveError]=useState('');
   const [excelBusy,setExcelBusy]=useState(false);
   const [liveBusy,setLiveBusy]=useState(false);
+  const [duplicateAcknowledged,setDuplicateAcknowledged]=useState(false);
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -184,7 +185,13 @@ export default function BranchLoadsDashboard({currentUser}){
   const cashJepoPreview=totalJepoPreview===null?null:jepoCashPart(draft.commodity,draft.extraCost,draft.bottleCount);
   const branchCashPreview=branchPreview===null?null:branchCashPart(draft.commodity,draft.extraCost,draft.bottleCount);
   const extraJepoMinimum=minimumJepoExtraCost(draft.commodity,draft.bottleCount);
-  const set=(field,value)=>setDraft(d=>({...d,[field]:value}));
+  const normalizedTracking=String(draft.trackingNo||'').trim().toUpperCase();
+  const duplicateTrackingRows=normalizedTracking?rows.filter(r=>
+    r.id!==editing&&String(r.trackingNo||'').trim().toUpperCase()===normalizedTracking):[];
+  const set=(field,value)=>{
+    if(field==='trackingNo')setDuplicateAcknowledged(false);
+    setDraft(d=>({...d,[field]:value}));
+  };
   function showSaveFailure(reason){
     const message='Save nahi hua: '+String(reason||'Please check the entry.');
     setMessage(message);
@@ -193,7 +200,7 @@ export default function BranchLoadsDashboard({currentUser}){
 
   function add(){
     setSheet('ACTIVE');setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:todayIST()});
-    setEditing('new');setSaveRequestId(newSaveRequestId());setMessage('');setSaveError('');
+    setEditing('new');setSaveRequestId(newSaveRequestId());setMessage('');setSaveError('');setDuplicateAcknowledged(false);
   }
   function edit(row){
     setEditing(row.id);
@@ -205,13 +212,17 @@ export default function BranchLoadsDashboard({currentUser}){
       destination:row.destination||'',service:row.service||'',commodity:row.commodity||'',
       trackingNo:row.trackingNo||'',remarks:row.remarks||'',confirmationNo:row.confirmationNo||'',confirmationName:row.confirmationName||'',confirmationMode:confirmationModeFor(row),status:row.status||initialBranchStatus(row.branch)
     });
-    setMessage('');setSaveError('');
+    setMessage('');setSaveError('');setDuplicateAcknowledged(false);
   }
   function cancel(){setEditing(sheet==='ACTIVE'?'new':'');setSaveRequestId(newSaveRequestId());setDraft({...fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'),date:todayIST()});setMessage('');setSaveError('');}
   async function save(event){
     event?.preventDefault?.();
     if(busy||!editing)return;
     setSaveError('');
+    if(duplicateTrackingRows.length&&!duplicateAcknowledged){
+      showSaveFailure('Duplicate JEPO Tracking No. '+normalizedTracking+' already exists. Acknowledge the duplicate below the tracking field before saving.');
+      return;
+    }
     // Native HTML form validation silently blocks submit for far-right fields
     // inside the horizontally-scrolling ledger. Validate here and show feedback.
     if(!dateValid(draft.date)){showSaveFailure('select a valid Entry Date.');return;}
