@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import ExcelJS from 'exceljs';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import { parseCountryWorkbook, buildCourierSectorPivot } from '../../../lib/countryLoadAnalysis.js';
+import { createCourierAnalysisPdf } from '../../../lib/courierAnalysisPdf.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -163,6 +164,23 @@ async function summaryFile(sql,flow,month,country){
   note.addRow(['Above 35','Shipment weight where average is >35']);
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_Courier_Summary_${month}.xlsx`);
 }
+async function pdfSummaryFile(sql,flow,month,country){
+  const [rows,pivot]=await Promise.all([
+    breakdown(sql,flow,month,country),sectorBreakdown(sql,flow,month,country)
+  ]);
+  if(!rows.length)return respond({ok:false,error:'No saved data for this selected month and origin.'},404);
+  const pdf=createCourierAnalysisPdf({
+    flow,month,country,rows:addSectorLoads(rows,pivot),sectors:pivot.sectors,totals:overall(rows)
+  });
+  const safeCountry=country==='ALL'?'All_Origins':safeFileName(country).replace(/[^A-Za-z0-9_-]/g,'_');
+  return new Response(pdf,{status:200,headers:{
+    'Content-Type':'application/pdf',
+    'Content-Disposition':'attachment; filename="Mayavi_'+flow+'_Courier_Summary_'+month+'_'+safeCountry+'.pdf"',
+    'Content-Length':String(pdf.length),
+    'Cache-Control':'private, no-store',
+    'X-Content-Type-Options':'nosniff'
+  }});
+}
 async function detailsFile(sql,flow,month,country){
   const rows=await sql`SELECT u.report_month,r.courier_name,r.country,r.weight_kg,r.bags,
     r.sheet_name,r.source_row FROM mayavi_other_country_rows r
@@ -205,6 +223,7 @@ export async function GET(request){
       return respond({ok:true,flow,month:'LATEST',country,files:[],months,countries:[],sectors:[],rows:[],totals:overall([])});
     }
     if(download==='summary')return summaryFile(sql,flow,month,country);
+    if(download==='pdf')return pdfSummaryFile(sql,flow,month,country);
     if(download==='details')return detailsFile(sql,flow,month,country);
     if(download==='original'){
       if(month==='ALL')return respond({ok:false,error:'Select a month to download the saved original Excel.'},400);
