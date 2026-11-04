@@ -144,13 +144,13 @@ async function summaryFile(sql,flow,month,country){
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   const fullRows=addSectorLoads(rows,pivot);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
-  sheet.addRow(['Courier Name','Total Load (kg)',...pivot.sectors.map(s=>s.name+' (kg)'),
-    'Average kg / bag','Above 35 kg - Load (kg)']);
-  for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,
-    ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg,row.over35]);
+  sheet.addRow(['Courier Name','Total Load (kg)','Above 35 kg - Load (kg)',
+    ...pivot.sectors.map(s=>s.name+' (kg)'),'Average kg / bag']);
+  for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,row.over35,
+    ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg]);
   const totals=overall(rows);
-  sheet.addRow(['GRAND TOTAL',totals.totalWeight,
-    ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg,totals.over35]);
+  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.over35,
+    ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
   note.addRow(['Analysis','Other Countries - '+flow]);
