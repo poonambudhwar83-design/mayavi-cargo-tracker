@@ -25,12 +25,17 @@ assert.equal(dhl.totalWeight,289);
 assert.equal(dhl.totalBags,9);
 assert.equal(dhl.under30,87);
 assert.equal(dhl.from30To35,130);
-assert.equal(dhl.over35,72);
+assert.equal(dhl.from35To40,72);
+assert.equal(dhl.over40,0);
 assert.equal(bucketFor(29.9,1),'under30');
 assert.equal(bucketFor(30,1),'from30To35');
 assert.equal(bucketFor(35,1),'from30To35');
-assert.equal(bucketFor(35.01,1),'over35');
-assert.equal(summary.find(x=>x.courierName==='FedEx').over35,200);
+assert.equal(bucketFor(35.01,1),'from35To40');
+assert.equal(bucketFor(40,1),'from35To40');
+assert.equal(bucketFor(40.01,1),'over40');
+assert.equal(summarizeCountryRows([{courierName:'Over 40',weightKg:123,bags:3}])[0].over40,123);
+assert.equal(summary.find(x=>x.courierName==='FedEx').from35To40,200);
+assert.equal(summary.find(x=>x.courierName==='FedEx').over40,0);
 const mapped=parseCountryWorkbook({worksheets:[sheet('Other format',[
   ['Logistics Partner','Net Mass','Count','Market'],
   ['Atlas Cargo',120,4,'Canada']
@@ -57,7 +62,8 @@ assert.deepEqual(sorted.map(r=>r.totalWeight),[560,300,50]);
 assert.equal(sorted[0].totalBags,15);
 assert.equal(sorted[0].avgBagKg,560/15);
 assert.equal(sorted[0].from30To35,0);
-assert.equal(sorted[0].over35,560);
+assert.equal(sorted[0].from35To40,560);
+assert.equal(sorted[0].over40,0);
 assert.equal(sorted[1].from30To35,280);
 assert.equal(sorted[1].under30,20);
 console.log('Country analysis: real CourierCoName airline Excel format and descending Import totals passed.');
