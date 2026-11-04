@@ -182,7 +182,7 @@ assert.ok(!ui.includes('saveNotice'));
  // without any employee/admin date filter; the entry-date input remains.
 assert.ok(ui.includes("r.status!=='DELIVERED'"));
 assert.ok(ui.includes("const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);"));
-assert.ok(ui.includes("<th>Date</th>"));
+assert.ok(ui.includes("sheet==='DELIVERED'?'Delivery Date ↓':'Date'"));
 assert.ok(ui.includes('aria-label="Date" required type="date"'));
 assert.ok(ui.includes("sheet==='ACTIVE'?'No active loads yet."));
 assert.ok(!ui.includes('Filter by date'));
