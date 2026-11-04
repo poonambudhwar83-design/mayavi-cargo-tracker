@@ -74,7 +74,7 @@ export default function CountryLoadAnalysisDashboard(){
       const res=await fetch(API,{method:'POST',credentials:'include',body:form});
       const data=await res.json();
       if(!res.ok||!data.ok)throw Error(data.error||'Could not save Excel.');
-      setNotice(data.message+' '+(data.skipped?'Skipped '+data.skipped+' blank/invalid/total rows.':''));
+      setNotice('Excel saved successfully. Courier-wise weight summary updated.');
       setFile(null);
       const fileInput=document.getElementById('country-analysis-excel');
       if(fileInput)fileInput.value='';
@@ -187,7 +187,6 @@ export default function CountryLoadAnalysisDashboard(){
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginBottom:16}}>
       {stat('Couriers',result.totals?.couriers||0)}
       {stat('Total Load',result.totals?.totalWeight||0,'kg')}
-      {stat('Total Bags',result.totals?.totalBags||0)}
       {stat('Average',result.totals?.avgBagKg||0,'kg/bag')}
       {stat('Below 30 kg/bag',result.totals?.under30||0,'kg')}
       {stat('30–35 kg/bag',result.totals?.from30To35||0,'kg')}
@@ -196,24 +195,24 @@ export default function CountryLoadAnalysisDashboard(){
     <section style={{...panel,padding:'15px 11px',marginBottom:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',margin:'0 6px 13px'}}>
         <div><h2 style={{fontSize:16,margin:0}}>{flow} — Courier-Wise Excel Summary</h2>
-          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • {result.totals?.entries||0} entries • Sorted highest to lowest total load (kg) • Latest active workbook per month</div>
+          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • Sorted highest to lowest total load (kg) • Latest active workbook per month</div>
         </div>
         <input style={{...input,width:230}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search courier…"/>
       </div>
       <div style={{overflowX:'auto',maxHeight:'min(65vh,620px)',borderRadius:8,border:'1px solid #e1e8f1'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:960,width:'100%'}}>
+        <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:730,width:'100%'}}>
           <thead><tr>
-            {['Courier Name','Total Import / Export Load (kg)','Total Bags','Average kg / bag','Entries','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
+            {['Courier Name','Total Load (kg)','Average kg / bag','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
               <th key={label} style={{...th,textAlign:i?'right':'left',left:i===0?0:undefined,zIndex:i===0?3:2}}>{label}</th>)}
           </tr></thead>
           <tbody>
-            {loading&&<tr><td colSpan={8} style={{padding:30,textAlign:'center',color:'#7186a2'}}>Loading saved analysis…</td></tr>}
-            {!loading&&!entries.length&&<tr><td colSpan={8} style={{padding:30,textAlign:'center',color:'#7186a2'}}>
+            {loading&&<tr><td colSpan={6} style={{padding:30,textAlign:'center',color:'#7186a2'}}>Loading saved analysis…</td></tr>}
+            {!loading&&!entries.length&&<tr><td colSpan={6} style={{padding:30,textAlign:'center',color:'#7186a2'}}>
               No Excel records for this filter. Upload an Import or Export workbook to begin.
             </td></tr>}
             {!loading&&entries.map((r,i)=><tr key={r.courierName} style={{background:i%2?'#f8faff':'#fff'}}>
               <td style={{...td,textAlign:'left',fontWeight:800,position:'sticky',left:0,background:i%2?'#f8faff':'#fff',color:'#233f69'}}>{r.courierName}</td>
-              {[r.totalWeight,r.totalBags,r.avgBagKg,r.entries,r.under30,r.from30To35,r.over35].map((v,j)=>
+              {[r.totalWeight,r.avgBagKg,r.under30,r.from30To35,r.over35].map((v,j)=>
                 <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
@@ -228,10 +227,10 @@ export default function CountryLoadAnalysisDashboard(){
       <h2 style={{fontSize:15,margin:'0 0 11px'}}>Stored Monthly Workbooks</h2>
       <div style={{overflowX:'auto'}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:630}}>
-          <thead><tr>{['Month','Type','Active File','Saved Entries','Skipped','Saved On'].map(h=>
+          <thead><tr>{['Month','Type','Active File','Saved On'].map(h=>
             <th key={h} style={{...th,textAlign:'left',position:'static'}}>{h}</th>)}</tr></thead>
           <tbody>{(result.files||[]).filter(f=>f.flow===flow).sort((a,b)=>b.month.localeCompare(a.month)).map(f=>
-            <tr key={f.id}>{[monthLabel(f.month),f.flow,f.fileName,numeric(f.rows),numeric(f.skipped),
+            <tr key={f.id}>{[monthLabel(f.month),f.flow,f.fileName,
               new Date(f.uploadedAt).toLocaleDateString('en-IN')].map((v,i)=>
               <td key={i} style={{...td,textAlign:'left',whiteSpace:i===2?'normal':'nowrap'}}>{v}</td>)}</tr>)}
           </tbody>
