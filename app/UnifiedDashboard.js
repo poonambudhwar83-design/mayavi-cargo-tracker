@@ -8,6 +8,7 @@ import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import SalaryDashboard from './SalaryDashboard.js';
 import MonthlyExpensesDashboard from './MonthlyExpensesDashboard.js';
+import CountryLoadAnalysisDashboard from './CountryLoadAnalysisDashboard.js';
 import ExportFinanceSection from './ExportFinanceSection.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 import HaryanaAdminDashboard from './HaryanaAdminDashboard.js';
@@ -211,6 +212,8 @@ export default function UnifiedDashboard(){
       ?<SalaryDashboard/>
     :session?.role==='admin'&&selectedDashboard==='MONTHLY_EXPENSES'
       ?<MonthlyExpensesDashboard/>
+    :session?.role==='admin'&&selectedDashboard==='OTHER_COUNTRIES'
+      ?<CountryLoadAnalysisDashboard/>
     :session?.role==='admin'&&selectedDashboard==='ADMIN_NOTES'
       ?<AdminNotesDashboard currentUser={session}/>
     :session?.role==='admin'&&selectedDashboard==='NOTES'
@@ -231,6 +234,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('OTHER_COUNTRIES')} style={{...topAccountButton,background:selectedDashboard==='OTHER_COUNTRIES'?'#dbeafe':'#fff',color:'#17419b'}}>OTHER COUNTRIES ANALYSIS</button>}
        {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('NOTES')} style={{...topAccountButton,background:selectedDashboard==='NOTES'?'#dbeafe':'#fff',color:'#17419b'}}>NOTES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
