@@ -58,6 +58,15 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
 }
 assert.ok(browser.includes('https://jepoexpress.com/track'));
 assert.ok(browser.includes('Array.from({length:Math.min(4,awbs.length)}'), 'Run four independent JEPO tracking pages concurrently.');
+assert.ok(api.includes('hasDuplicateJepoTracking'), 'Server must check existing JEPO numbers before saving.');
+assert.ok(api.includes('body.ackDuplicateTracking'), 'Duplicate entries require explicit acknowledgement.');
+assert.ok(ui.includes('duplicateAcknowledged'), 'Branch editor needs duplicate acknowledgement state.');
+assert.ok(ui.includes('duplicateVisible'), 'Duplicate warning must appear beside JEPO tracking field.');
+assert.ok(ui.includes('Acknowledge duplicate before saving.'), 'Warning must not be silently ignored.');
+assert.ok(cron.includes('HASHTEXT'), 'Every JEPO number belongs to a stable tracking shard.');
+assert.ok(cron.includes('LIMIT 44'), 'Each shard should cover up to 44 JEPO numbers.');
+assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches/4'), 'Fifth shard must be scheduled.');
+assert.ok(nextConfig.includes("'/api/cron/jepo-branches/[shard]'"), 'Sharded route must include Chromium binaries.');
 assert.ok(browser.includes('freshResult:true'));
 assert.ok(browser.includes('beforeResult'));
 assert.ok(browser.includes('validateJepoLiveResult({...snapshot,submittedAwb:awb,freshResult:true},awb)'));
