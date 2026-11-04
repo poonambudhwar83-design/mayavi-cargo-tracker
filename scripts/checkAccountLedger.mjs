@@ -34,4 +34,9 @@ assert.ok(api.includes('ALTER TABLE mayavi_bank_entries ADD COLUMN IF NOT EXISTS
   'Existing ledger rows must migrate without data deletion.');
 assert.ok(api.includes('r.transaction_mode||'), 'Existing and new entry modes must be returned.');
 assert.ok(api.includes("'Mode of Transaction'"), 'Excel exports must include transaction mode.');
+assert.ok(api.includes('ORDER BY entry_date DESC,created_at DESC,id DESC LIMIT 10001'),
+  'Account statements and downloaded Excel must show latest transaction date first.');
+assert.ok(api.includes('OVER (PARTITION BY e.account_id ORDER BY e.entry_date,e.created_at,e.id'),
+  'Running balances must be calculated oldest-to-newest even when displayed newest first.');
+assert.ok(ui.includes('DATE ↓ (LATEST FIRST)'),'Account date heading must show newest-first sorting.');
 console.log('Account ledger validation, date order and rolling balance regression checks passed.');
