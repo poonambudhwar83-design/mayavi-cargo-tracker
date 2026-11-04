@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
+import {TRANSACTION_MODES} from '../lib/accountLedger.js';
 
 const API='/api/accounts';
 const panel={background:'#fff',border:'1px solid #dce5f0',borderRadius:14,padding:17,
@@ -19,7 +20,7 @@ function localDay(){
   const get=type=>parts.find(part=>part.type===type)?.value||'';
   return get('year')+'-'+get('month')+'-'+get('day');
 }
-const blankEntry=()=>({date:localDay(),credit:'',debit:'',remarks:''});
+const blankEntry=()=>({date:localDay(),credit:'',debit:'',mode:'',remarks:''});
 const monthLabel=value=>{
   if(value==='ALL')return 'All Dates';
   const [year,month]=String(value).split('-').map(Number);
@@ -77,7 +78,7 @@ export default function AccountDashboard(){
   },[accountId,month,refresh]);
   const shown=useMemo(()=>{
     const q=search.toLowerCase().trim();
-    return q?data.entries.filter(r=>(r.remarks||'').toLowerCase().includes(q)||String(r.date).includes(q)):data.entries;
+    return q?data.entries.filter(r=>(r.remarks||'').toLowerCase().includes(q)||(r.mode||'').toLowerCase().includes(q)||String(r.date).includes(q)):data.entries;
   },[data.entries,search]);
   function switchAccount(id){
     setAccountId(id);setMonth('ALL');setEditAccount(false);setCreating(false);
@@ -121,7 +122,7 @@ export default function AccountDashboard(){
   function startEdit(row){
     setEditId(row.id);
     setEditDraft({date:row.date,credit:row.credit?String(row.credit):'',
-      debit:row.debit?String(row.debit):'',remarks:row.remarks||''});
+      debit:row.debit?String(row.debit):'',mode:row.mode||'',remarks:row.remarks||''});
     setNotice('');
   }
   async function updateEntry(event){
@@ -168,7 +169,7 @@ export default function AccountDashboard(){
       <div>
         <div style={{fontSize:11,letterSpacing:2,color:'#587ca8',fontWeight:900}}>MAYAVI • ADMIN FINANCE</div>
         <h1 style={{fontSize:29,margin:'4px 0'}}>ACCOUNT</h1>
-        <p style={{margin:'5px 0 0',fontSize:13,color:'#71829b'}}>Bank-wise Excel-style Credit / Debit ledger. Every entry is saved in Mayavi backend.</p>
+        <p style={{margin:'5px 0 0',fontSize:13,color:'#71829b'}}>Bank-wise Credit / Debit ledger with Mode of Transaction and Remarks. Every entry is saved in Mayavi backend.</p>
       </div>
       <button type="button" style={{...button,background:'#1d58a2',color:'#fff'}} onClick={()=>{
         setCreating(v=>!v);setEditAccount(false);setAccountDraft(blankAccount());setNotice('');
@@ -234,6 +235,13 @@ export default function AccountDashboard(){
           {field('DATE',entryDraft.date,v=>setEntryDraft(a=>({...a,date:v})),'date',{required:true})}
           {field('CREDIT (₹)',entryDraft.credit,v=>setEntryDraft(a=>({...a,credit:v})),'text',{placeholder:'0.00',inputMode:'decimal'})}
           {field('DEBIT (₹)',entryDraft.debit,v=>setEntryDraft(a=>({...a,debit:v})),'text',{placeholder:'0.00',inputMode:'decimal'})}
+          <label style={{display:'grid',gap:5,fontSize:11,fontWeight:800,color:'#3e526d',minWidth:160,flex:'1 1 190px'}}>
+            MODE OF TRANSACTION
+            <select required style={input} value={entryDraft.mode} onChange={e=>setEntryDraft(a=>({...a,mode:e.target.value}))}>
+              <option value="">Select mode</option>
+              {TRANSACTION_MODES.map(mode=><option key={mode} value={mode}>{mode}</option>)}
+            </select>
+          </label>
           {field('REMARKS',entryDraft.remarks,v=>setEntryDraft(a=>({...a,remarks:v})),'text',{placeholder:'Transaction details'})}
         </div>
         <button disabled={busy} style={{...button,marginTop:12,background:'#1d58a2',color:'#fff'}} type="submit">
@@ -254,7 +262,7 @@ export default function AccountDashboard(){
               </select>
             </label>
             <label style={{display:'grid',gap:3,fontSize:11,fontWeight:800}}>SEARCH REMARKS
-              <input style={{...input,width:180}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter by remark/date"/>
+              <input style={{...input,width:180}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter by mode/remark/date"/>
             </label>
             <button type="button" disabled={downloadBusy} style={{...button,background:'#e3f2ee',color:'#176447'}}
               onClick={download}>{downloadBusy?'PREPARING…':'↓ DOWNLOAD EXCEL'}</button>
@@ -263,12 +271,12 @@ export default function AccountDashboard(){
         {notice&&<div role="status" style={{margin:'0 6px 10px',padding:'10px 12px',background:'#eef5ff',
           color:'#26528a',fontSize:12,border:'1px solid #d4e5ff',borderRadius:9}}>{notice}</div>}
         <div style={{overflowX:'auto',maxHeight:'min(70vh,680px)',border:'1px solid #dfe8f4',borderRadius:10}}>
-          <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:850}}>
-            <thead><tr>{['DATE','CREDIT (₹)','DEBIT (₹)','BALANCE (₹)','REMARKS','ACTIONS'].map((title,i)=>
-              <th key={title} style={{...th,textAlign:i>0&&i<4?'right':'left'}}>{title}</th>)}</tr></thead>
+          <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:1050}}>
+            <thead><tr>{['DATE','CREDIT (₹)','DEBIT (₹)','MODE OF TRANSACTION','BALANCE (₹)','REMARKS','ACTIONS'].map((title,i)=>
+              <th key={title} style={{...th,textAlign:[1,2,4].includes(i)?'right':'left'}}>{title}</th>)}</tr></thead>
             <tbody>
-              {loading&&<tr><td colSpan={6} style={{padding:25,textAlign:'center',color:'#74859e'}}>Loading saved ledger…</td></tr>}
-              {!loading&&!shown.length&&<tr><td colSpan={6} style={{padding:25,textAlign:'center',color:'#74859e'}}>
+              {loading&&<tr><td colSpan={7} style={{padding:25,textAlign:'center',color:'#74859e'}}>Loading saved ledger…</td></tr>}
+              {!loading&&!shown.length&&<tr><td colSpan={7} style={{padding:25,textAlign:'center',color:'#74859e'}}>
                 No transactions for this selection.
               </td></tr>}
               {!loading&&shown.map((r,i)=><tr key={r.id} style={{background:i%2?'#f9fbff':'#fff'}}>
@@ -279,6 +287,10 @@ export default function AccountDashboard(){
                     onChange={e=>setEditDraft(a=>({...a,credit:e.target.value}))} style={{...input,width:105,textAlign:'right'}} placeholder="0.00"/></td>
                   <td style={td}><input form="edit-bank-entry" inputMode="decimal" value={editDraft.debit}
                     onChange={e=>setEditDraft(a=>({...a,debit:e.target.value}))} style={{...input,width:105,textAlign:'right'}} placeholder="0.00"/></td>
+                  <td style={td}><select form="edit-bank-entry" required style={{...input,minWidth:140}} value={editDraft.mode} onChange={e=>setEditDraft(a=>({...a,mode:e.target.value}))}>
+                    <option value="">Select mode</option>
+                    {TRANSACTION_MODES.map(mode=><option key={mode} value={mode}>{mode}</option>)}
+                  </select></td>
                   <td style={{...td,textAlign:'right',fontWeight:800,color:'#1a5b9f'}}>{cash(r.balance)}</td>
                   <td style={td}><input form="edit-bank-entry" style={{...input,minWidth:225}} value={editDraft.remarks}
                     onChange={e=>setEditDraft(a=>({...a,remarks:e.target.value}))}/></td>
@@ -292,6 +304,7 @@ export default function AccountDashboard(){
                   <td style={{...td,fontWeight:700}}>{r.date}</td>
                   <td style={{...td,textAlign:'right',color:'#167d59',fontWeight:r.credit?800:400}}>{r.credit?cash(r.credit):'—'}</td>
                   <td style={{...td,textAlign:'right',color:'#b35554',fontWeight:r.debit?800:400}}>{r.debit?cash(r.debit):'—'}</td>
+                  <td style={{...td,color:'#475569',fontWeight:650}}>{r.mode||'—'}</td>
                   <td style={{...td,textAlign:'right',fontWeight:900,color:Number(r.balance)<0?'#b33d43':'#214e86'}}>{cash(r.balance)}</td>
                   <td style={{...td,whiteSpace:'normal',minWidth:220,overflowWrap:'anywhere'}}>{r.remarks||'—'}</td>
                   <td style={td}>
