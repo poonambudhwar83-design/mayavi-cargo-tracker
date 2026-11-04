@@ -21,7 +21,7 @@ assert.equal(pdf.subarray(0,8).toString('latin1'),'%PDF-1.4');
 assert.ok(pdf.toString('latin1').trimEnd().endsWith('%%EOF'));
 const source=pdf.toString('latin1');
 assert.match(source,/\/Count 4 >>/);
-assert.ok(source.includes('October 2026'),'Selected month must appear in PDF.');
+assert.ok(source.includes('OCTOBER 2026'),'Selected month must appear in the PDF heading.');
 assert.ok(source.includes('SUMMARY OCTOBER 2026 IMPORT'),'PDF must show dynamic Summary Month Year Import header.');
 assert.ok(!source.includes('MAYAVI 360'),'Old Mayavi 360 banner must be absent.');
 const exportPdf=createCourierAnalysisPdf({flow:'EXPORT',month:'2026-09',country:'DOH',rows:rows.slice(0,1),sectors:[],totals});
