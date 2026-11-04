@@ -73,7 +73,7 @@ const activeSql=`SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_coun
 // One-time, idempotent backfill for previously uploaded 2026 Excel workbooks.
 // Original Excel bytes and saved rows are retained. The Excel FLT DATE controls
 // the report month; only an unparseable/missing date falls back to upload month.
-async function backfillSavedShipmentDates(sql){
+export async function backfillSavedShipmentDates(sql){
   const pending=await sql`SELECT u.id,u.report_month,
     encode(u.file_bytes,'base64') AS workbook_bytes
     FROM mayavi_other_country_uploads u WHERE u.ready=true
