@@ -58,6 +58,7 @@ export default function CountryLoadAnalysisDashboard(){
     return (result.rows||[]).filter(row=>!q||row.courierName.toLowerCase().includes(q))
       .slice().sort((a,b)=>Number(b.totalWeight||0)-Number(a.totalWeight||0)||a.courierName.localeCompare(b.courierName));
   },[search,result.rows]);
+  const sectors=result.sectors||[];
   const selectedFile=(result.files||[]).find(f=>f.flow===flow&&f.month===month);
   const existingFile=(result.files||[]).find(f=>f.flow===flow&&f.month===uploadMonth);
   function switchFlow(next){setFlow(next);setMonth('ALL');setCountry('ALL');setSearch('');setNotice('');}
@@ -102,7 +103,7 @@ export default function CountryLoadAnalysisDashboard(){
       <div>
         <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:2,fontWeight:900,color:'#52719d'}}>MAYAVI 360 • ADMIN ANALYTICS</div>
         <h1 style={{fontSize:'clamp(22px,3vw,29px)',margin:'5px 0',color:'#17355d'}}>Other Countries — Load Analysis</h1>
-        <p style={{margin:'5px 0 0',fontSize:13,color:'#61728c'}}>Separate Import and Export Excel archive • Courier-wise monthly weight and bag analysis</p>
+        <p style={{margin:'5px 0 0',fontSize:13,color:'#61728c'}}>Import and Export • Courier-by-origin/sector load (kg) • Month-wise analysis</p>
       </div>
       <span style={{border:'1px solid #d1e2ff',background:'#eaf2ff',color:'#2452a3',padding:'8px 11px',
         borderRadius:30,fontSize:11,fontWeight:800}}>Saved in Mayavi Backend</span>
@@ -138,7 +139,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
           {advanced&&<div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8,
             padding:10,background:'#f5f8fd',borderRadius:10,marginBottom:10}}>
-            {Object.entries({courier:'Courier header',weight:'Weight header',bags:'Bags header',country:'Country header'}).map(([key,title])=>
+            {Object.entries({courier:'Courier header',weight:'Weight header',bags:'Bags header',country:'Origin / Sector header'}).map(([key,title])=>
               <label key={key} style={{display:'grid',gap:4,fontSize:11,fontWeight:750}}>
                 {title}<input value={mapping[key]} onChange={e=>setMapping(v=>({...v,[key]:e.target.value}))}
                   placeholder="Exact Excel heading" style={{...input,minWidth:0,width:'100%'}}/>
@@ -159,9 +160,9 @@ export default function CountryLoadAnalysisDashboard(){
               {(result.months||[]).map(m=><option value={m} key={m}>{monthLabel(m)}</option>)}
             </select>
           </label>
-          <label style={{display:'grid',gap:4,fontSize:11,fontWeight:800,flex:'1 1 130px'}}>COUNTRY
+          <label style={{display:'grid',gap:4,fontSize:11,fontWeight:800,flex:'1 1 130px'}}>ORIGIN / SECTOR
             <select style={{...input,width:'100%'}} value={country} onChange={e=>setCountry(e.target.value)}>
-              <option value="ALL">All Countries</option>
+              <option value="ALL">All Origins</option>
               {(result.countries||[]).map(c=><option value={c} key={c}>{c}</option>)}
             </select>
           </label>
@@ -194,31 +195,31 @@ export default function CountryLoadAnalysisDashboard(){
     </div>
     <section style={{...panel,padding:'15px 11px',marginBottom:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',margin:'0 6px 13px'}}>
-        <div><h2 style={{fontSize:16,margin:0}}>{flow} — Courier-Wise Excel Summary</h2>
+        <div><h2 style={{fontSize:16,margin:0}}>{flow} — Courier & Origin-Wise Load Summary</h2>
           <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • Sorted highest to lowest total load (kg) • Latest active workbook per month</div>
         </div>
         <input style={{...input,width:230}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search courier…"/>
       </div>
       <div style={{overflowX:'auto',maxHeight:'min(65vh,620px)',borderRadius:8,border:'1px solid #e1e8f1'}}>
-        <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:730,width:'100%'}}>
+        <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:Math.max(730,660+sectors.length*120),width:'100%'}}>
           <thead><tr>
-            {['Courier Name','Total Load (kg)','Average kg / bag','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
+            {['Courier Name','Total Load (kg)',...sectors.map(sector=>sector.name+' (kg)'),'Average kg / bag','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
               <th key={label} style={{...th,textAlign:i?'right':'left',left:i===0?0:undefined,zIndex:i===0?3:2}}>{label}</th>)}
           </tr></thead>
           <tbody>
-            {loading&&<tr><td colSpan={6} style={{padding:30,textAlign:'center',color:'#7186a2'}}>Loading saved analysis…</td></tr>}
-            {!loading&&!entries.length&&<tr><td colSpan={6} style={{padding:30,textAlign:'center',color:'#7186a2'}}>
+            {loading&&<tr><td colSpan={6+sectors.length} style={{padding:30,textAlign:'center',color:'#7186a2'}}>Loading saved analysis…</td></tr>}
+            {!loading&&!entries.length&&<tr><td colSpan={6+sectors.length} style={{padding:30,textAlign:'center',color:'#7186a2'}}>
               No Excel records for this filter. Upload an Import or Export workbook to begin.
             </td></tr>}
             {!loading&&entries.map((r,i)=><tr key={r.courierName} style={{background:i%2?'#f8faff':'#fff'}}>
               <td style={{...td,textAlign:'left',fontWeight:800,position:'sticky',left:0,background:i%2?'#f8faff':'#fff',color:'#233f69'}}>{r.courierName}</td>
-              {[r.totalWeight,r.avgBagKg,r.under30,r.from30To35,r.over35].map((v,j)=>
+              {[r.totalWeight,...sectors.map(sector=>r.sectorLoads?.[sector.name]||0),r.avgBagKg,r.under30,r.from30To35,r.over35].map((v,j)=>
                 <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:'#697e98',margin:'10px 7px 0'}}>
+      <p style={{fontSize:11,color:'#697e98',margin:'10px 7px 0'}}>Each sector column shows total kg loaded by that courier from that origin, such as HKG, JFK or DOH. 
         Category weight is the complete load (kg) of each entry, classified using that entry's weight ÷ bags.
         30.00 and 35.00 kg/bag are included in the middle group. Courier average = total load ÷ total bags.
       </p>
