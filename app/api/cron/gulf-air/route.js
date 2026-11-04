@@ -5,7 +5,7 @@ import {safeAirlineMovementPatch} from '../../../../lib/activeAirlineCron.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
-const digits=v=>String(v||'').replace(/\\D/g,'');
+const digits=v=>String(v||'').replace(/\D/g,'');
 const databaseUrl=()=>process.env.DATABASE_URL||process.env.POSTGRES_URL||
   process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
 const cronKey=()=>process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||
