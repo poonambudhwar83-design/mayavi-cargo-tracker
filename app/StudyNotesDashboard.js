@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { STUDY_SUBJECTS, studyTotals, pending, marksPercentage, studyTopicNumber } from '../lib/studyNotes.js';
+import { STUDY_SUBJECTS, studyTotals, pending, theoryIncorrect, marksPercentage, studyTopicNumber } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
-const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',totalMarks:'',marksObtained:'',
+const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',theoryCorrected:'',totalMarks:'',marksObtained:'',
   mcqMarksTotal:'',mcqMarksObtained:'',theoryMarksTotal:'',theoryMarksObtained:'',
   incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const number=v=>v===''?0:Number(v);
@@ -35,12 +35,19 @@ export default function StudyNotesDashboard(){
 
   const filtered=useMemo(()=>rows.filter(row=>row.subject===subject),[rows,subject]);
   const totals=useMemo(()=>studyTotals(filtered),[filtered]);
-  const hasSplitDraft=['mcqMarksTotal','mcqMarksObtained','theoryMarksTotal','theoryMarksObtained']
+  const theoryPreviewTotal=draft.theoryMarksTotal!==''?draft.theoryMarksTotal:
+    draft.theoryCorrected!==''?number(draft.theoryDone):'';
+  const theoryPreviewObtained=draft.theoryMarksObtained!==''?draft.theoryMarksObtained:
+    draft.theoryCorrected!==''?number(draft.theoryCorrected):'';
+  const manualSplitDraft=['mcqMarksTotal','mcqMarksObtained','theoryMarksTotal','theoryMarksObtained']
     .some(field=>draft[field]!=='');
+  // Older overall-only marks remain visible until a manually split score is entered.
+  const hasSplitDraft=manualSplitDraft||(draft.theoryCorrected!==''&&draft.totalMarks==='');
   const combinedDraftTotal=hasSplitDraft
-    ?Number(draft.mcqMarksTotal||0)+Number(draft.theoryMarksTotal||0):draft.totalMarks;
+    ?Number(draft.mcqMarksTotal||0)+Number(theoryPreviewTotal||0):draft.totalMarks;
   const combinedDraftObtained=hasSplitDraft
-    ?Number(draft.mcqMarksObtained||0)+Number(draft.theoryMarksObtained||0):draft.marksObtained;
+    ?Number(draft.mcqMarksObtained||0)+Number(theoryPreviewObtained||0):draft.marksObtained;
+  const previewIncorrect=theoryIncorrect(draft.theoryDone,draft.theoryCorrected);
   const chapters=useMemo(()=>{
     const map=new Map();
     for(const row of filtered){
@@ -70,6 +77,7 @@ export default function StudyNotesDashboard(){
     setSubject(row.subject);setEditId(row.id);
     setDraft({chapter:row.chapter,topic:row.topic,mcqTotal:String(row.mcqTotal),
       mcqDone:String(row.mcqDone),theoryTotal:String(row.theoryTotal),theoryDone:String(row.theoryDone),
+      theoryCorrected:row.theoryCorrected===null||row.theoryCorrected===undefined?'':String(row.theoryCorrected),
       totalMarks:row.totalMarks===null?'':String(row.totalMarks),
       marksObtained:row.marksObtained===null?'':String(row.marksObtained),
       mcqMarksTotal:row.mcqMarksTotal===null||row.mcqMarksTotal===undefined?'':String(row.mcqMarksTotal),
@@ -89,6 +97,7 @@ export default function StudyNotesDashboard(){
     const payload={...draft,subject,mcqTotal:number(draft.mcqTotal),
       mcqDone:number(draft.mcqDone),theoryTotal:number(draft.theoryTotal),
       theoryDone:number(draft.theoryDone),
+      theoryCorrected:draft.theoryCorrected===''?null:number(draft.theoryCorrected),
       totalMarks:draft.totalMarks===''?null:draft.totalMarks,
       marksObtained:draft.marksObtained===''?null:draft.marksObtained,
       mcqMarksTotal:draft.mcqMarksTotal===''?null:draft.mcqMarksTotal,
@@ -99,6 +108,9 @@ export default function StudyNotesDashboard(){
     if([payload.mcqTotal,payload.mcqDone,payload.theoryTotal,payload.theoryDone]
       .some(x=>!Number.isInteger(x)||x<0||x>100000)){
       setMessage('Please enter valid whole-number counts.');return;
+    }
+    if(payload.theoryCorrected!==null&&(!Number.isInteger(payload.theoryCorrected)||payload.theoryCorrected<0||payload.theoryCorrected>payload.theoryDone)){
+      setMessage('Theory Corrected must be between 0 and Theory Attempted.');return;
     }
     if(payload.mcqDone>payload.mcqTotal||payload.theoryDone>payload.theoryTotal){
       setMessage('Completed questions cannot exceed total questions.');return;
@@ -170,7 +182,9 @@ export default function StudyNotesDashboard(){
       <div><span>TOPICS</span><b>{totals.topics}</b></div>
       <div><span>MCQs DONE</span><b>{totals.mcqDone} / {totals.mcqTotal}</b></div>
       <div className={styles.pendingCard}><span>MCQs PENDING</span><b>{totals.mcqPending}</b></div>
-      <div><span>THEORY DONE</span><b>{totals.theoryDone} / {totals.theoryTotal}</b></div>
+      <div><span>THEORY ATTEMPTED</span><b>{totals.theoryDone} / {totals.theoryTotal}</b></div>
+      <div><span>THEORY CORRECTED</span><b>{totals.theoryGradedTopics?totals.theoryCorrected:'—'}</b></div>
+      <div><span>THEORY INCORRECT</span><b>{totals.theoryGradedTopics?totals.theoryIncorrect:'—'}</b></div>
       <div className={styles.pendingCard}><span>THEORY PENDING</span><b>{totals.theoryPending}</b></div>
       <div><span>MCQ MARKS</span><b>{totals.mcqMarkedTopics?totals.mcqMarksObtained+' / '+totals.mcqMarksTotal+' ('+totals.mcqPercentage.toFixed(2)+'%)':'—'}</b></div>
       <div><span>THEORY MARKS</span><b>{totals.theoryMarkedTopics?totals.theoryMarksObtained+' / '+totals.theoryMarksTotal+' ('+totals.theoryPercentage.toFixed(2)+'%)':'—'}</b></div>
@@ -189,11 +203,22 @@ export default function StudyNotesDashboard(){
         <div className={styles.countFields}>
           {[
             ['mcqTotal','MCQ Total'],['mcqDone','MCQ Done'],
-            ['theoryTotal','Theory Total'],['theoryDone','Theory Done']
+            ['theoryTotal','Total Theory Questions'],['theoryDone','Theory Attempted'],
+            ['theoryCorrected','Theory Corrected']
           ].map(([field,label])=><label key={field}>{label}
             <input type="number" inputMode="numeric" min="0" max="100000" step="1"
               placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
           </label>)}
+        </div>
+        <div className={styles.theoryCalculations} aria-label="Automatic theory calculations">
+          <div><small>Theory Pending = Total − Attempted</small>
+            <b className={styles.pendingCount}>{pending(draft.theoryTotal,draft.theoryDone)}</b></div>
+          <div><small>Theory Incorrect = Attempted − Corrected</small>
+            <b>{previewIncorrect===null?'—':previewIncorrect}</b></div>
+          <div><small>Theory Total Marks = Attempted (1 mark each)</small>
+            <b>{theoryPreviewTotal===''?'—':theoryPreviewTotal}</b></div>
+          <div><small>Marks Obtained = Corrected</small>
+            <b>{theoryPreviewObtained===''?'—':theoryPreviewObtained}</b></div>
         </div>
         <div className={styles.textFields} style={{marginTop:13}}>
           <label>Incorrect MCQ Question Numbers
@@ -225,21 +250,21 @@ export default function StudyNotesDashboard(){
                 marksPercentage(draft.mcqMarksTotal,draft.mcqMarksObtained).toFixed(2)+'%'}</b>
             </div>
           </div>
-          <h3>Theory Marks</h3>
+          <h3>Theory Marks <small>(1 mark per corrected question; optional manual entries below)</small></h3>
           <div className={styles.marksFields}>
-            <label>Theory Total Marks
+            <label>Theory Total Marks (optional manual entry)
               <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder="e.g. 60" value={draft.theoryMarksTotal}
+                placeholder={draft.theoryCorrected!==''?String(number(draft.theoryDone)):'Enter manually'} value={draft.theoryMarksTotal}
                 onChange={e=>update('theoryMarksTotal',e.target.value)}/>
             </label>
-            <label>Theory Marks Obtained
+            <label>Theory Marks Obtained (optional manual entry)
               <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder="e.g. 48" value={draft.theoryMarksObtained}
+                placeholder={draft.theoryCorrected!==''?String(number(draft.theoryCorrected)):'Enter manually'} value={draft.theoryMarksObtained}
                 onChange={e=>update('theoryMarksObtained',e.target.value)}/>
             </label>
             <div className={styles.percentagePreview}><small>THEORY %</small>
-              <b>{marksPercentage(draft.theoryMarksTotal,draft.theoryMarksObtained)===null?'—':
-                marksPercentage(draft.theoryMarksTotal,draft.theoryMarksObtained).toFixed(2)+'%'}</b>
+              <b>{marksPercentage(theoryPreviewTotal,theoryPreviewObtained)===null?'—':
+                marksPercentage(theoryPreviewTotal,theoryPreviewObtained).toFixed(2)+'%'}</b>
             </div>
           </div>
           {draft.totalMarks!==''&&!hasSplitDraft&&
@@ -257,7 +282,7 @@ export default function StudyNotesDashboard(){
         <div className={styles.actions}>
           <button type="submit" disabled={busy}>{busy?'Saving…':editId?'Save Changes':'+ Save Topic'}</button>
           {editId&&<button type="button" className={styles.cancel} disabled={busy} onClick={reset}>Cancel</button>}
-          <small>Pending counts are calculated automatically.</small>
+          <small>Pending, incorrect and one-mark theory scores are calculated automatically. Existing incorrect-question numbers stay editable.</small>
         </div>
       </form>
     </section>
@@ -274,22 +299,27 @@ export default function StudyNotesDashboard(){
         </div>
         <div className={styles.tableWrap}><table>
           <thead><tr><th>No.</th><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
-            <th>Theory Done / Total</th><th>Theory Pending</th>
+            <th>Theory Total</th><th>Theory Attempted</th><th>Theory Pending</th>
+            <th>Theory Corrected</th><th>Theory Incorrect</th>
             <th>Incorrect MCQ Nos.</th><th>Incorrect Theory Nos.</th>
-            <th>MCQ Marks</th><th>MCQ %</th><th>Theory Marks</th><th>Theory %</th>
+            <th>MCQ Marks</th><th>MCQ %</th><th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
             <th>Overall Marks</th><th>Overall %</th><th>Actions</th></tr></thead>
           <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
             <td className={styles.serial}>{studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)}</td>
             <td className={styles.topic}>{row.topic}</td>
             <td>{row.mcqDone} / {row.mcqTotal}</td>
             <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
-            <td>{row.theoryDone} / {row.theoryTotal}</td>
+            <td>{row.theoryTotal}</td>
+            <td>{row.theoryDone}</td>
             <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
+            <td>{row.theoryCorrected===null||row.theoryCorrected===undefined?'—':row.theoryCorrected}</td>
+            <td>{theoryIncorrect(row.theoryDone,row.theoryCorrected)===null?'—':theoryIncorrect(row.theoryDone,row.theoryCorrected)}</td>
             <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
             <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
             <td>{row.mcqMarksTotal===null||row.mcqMarksTotal===undefined?'—':row.mcqMarksObtained+' / '+row.mcqMarksTotal}</td>
             <td>{marksPercentage(row.mcqMarksTotal,row.mcqMarksObtained)===null?'—':marksPercentage(row.mcqMarksTotal,row.mcqMarksObtained).toFixed(2)+'%'}</td>
-            <td>{row.theoryMarksTotal===null||row.theoryMarksTotal===undefined?'—':row.theoryMarksObtained+' / '+row.theoryMarksTotal}</td>
+            <td>{row.theoryMarksTotal===null||row.theoryMarksTotal===undefined?'—':row.theoryMarksTotal}</td>
+            <td>{row.theoryMarksObtained===null||row.theoryMarksObtained===undefined?'—':row.theoryMarksObtained}</td>
             <td>{marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained)===null?'—':marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained).toFixed(2)+'%'}</td>
             <td>{row.totalMarks===null||row.totalMarks===undefined?'—':row.marksObtained+' / '+row.totalMarks}</td>
             <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
