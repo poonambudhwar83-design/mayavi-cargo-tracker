@@ -35,6 +35,11 @@ assert.ok(sync.includes('jepo_live_status='));
 assert.ok(sync.includes('jepo_live_remarks='));
 assert.ok(cron.includes('CRON_SECRET'));
 assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='*/15 * * * *'));
+const nextConfig=readFileSync('next.config.js','utf8');
+for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
+  assert.ok(nextConfig.includes("'"+route+"': ['./node_modules/@sparticuz/chromium/bin/**/*']"),
+    'Chromium binary must be traced into '+route+' runtime');
+}
 assert.ok(browser.includes('https://jepoexpress.com/track'));
 assert.ok(browser.includes('validateJepoLiveResult(snapshot,awb)'));
 console.log('JEPO branch live status, Progress, AWB guards, tracking scheduler and Live Remarks UI checks passed.');
