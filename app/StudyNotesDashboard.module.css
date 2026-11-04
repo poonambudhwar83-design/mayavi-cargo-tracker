@@ -63,3 +63,14 @@
 .overallMarks{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#e8f2fb;border-radius:8px;font-size:13px;color:#164576}
 .overallMarks strong{font-weight:800}
 .overallMarks span{font-weight:800}
+
+
+/* Theory formulas remain visible when adding or editing an existing topic. */
+.theoryCalculations{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}
+.theoryCalculations>div{display:flex;flex-direction:column;gap:5px;justify-content:center;background:#f4f8fd;border:1px solid #d8e5f3;border-radius:9px;padding:10px 12px;min-height:65px}
+.theoryCalculations small{color:#526b86;font-size:11px;line-height:1.35}
+.theoryCalculations b{color:#164978;font-size:19px;font-variant-numeric:tabular-nums}
+.theoryCalculations b.pendingCount{color:#b91c1c}
+.marksSection h3 small{font-size:11px;color:#678099;font-weight:500}
+@media(max-width:850px){.theoryCalculations{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.countFields{grid-template-columns:repeat(2,minmax(0,1fr))}.theoryCalculations{gap:7px}.theoryCalculations>div{padding:9px}}
