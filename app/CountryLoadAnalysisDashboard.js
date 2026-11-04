@@ -201,7 +201,7 @@ export default function CountryLoadAnalysisDashboard(){
       <div style={{overflowX:'auto',maxHeight:'min(65vh,620px)',borderRadius:8,border:'1px solid #e1e8f1'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:Math.max(600,500+sectors.length*120),width:'100%'}}>
           <thead><tr>
-            {['Courier Name','Total Load (kg)',...sectors.map(sector=>sector.name+' (kg)'),'Average kg / bag','Above 35 kg (load)'].map((label,i)=>
+            {['Courier Name','Total Load (kg)','Above 35 kg (load)',...sectors.map(sector=>sector.name+' (kg)'),'Average kg / bag'].map((label,i)=>
               <th key={label} style={{...th,textAlign:i?'right':'left',left:i===0?0:undefined,zIndex:i===0?3:2}}>{label}</th>)}
           </tr></thead>
           <tbody>
@@ -211,14 +211,14 @@ export default function CountryLoadAnalysisDashboard(){
             </td></tr>}
             {!loading&&entries.map((r,i)=><tr key={r.courierName} style={{background:i%2?'#f8faff':'#fff'}}>
               <td style={{...td,textAlign:'left',fontWeight:800,position:'sticky',left:0,background:i%2?'#f8faff':'#fff',color:'#233f69'}}>{r.courierName}</td>
-              {[r.totalWeight,...sectors.map(sector=>r.sectorLoads?.[sector.name]||0),r.avgBagKg,r.over35].map((v,j)=>
+              {[r.totalWeight,r.over35,...sectors.map(sector=>r.sectorLoads?.[sector.name]||0),r.avgBagKg].map((v,j)=>
                 <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
           {!loading&&entries.length>0&&!search.trim()&&<tfoot><tr style={{background:'#e8f0fc'}}>
             <td style={{...td,textAlign:'left',fontWeight:900,position:'sticky',left:0,background:'#e8f0fc'}}>GRAND TOTAL</td>
-            {[result.totals?.totalWeight||0,...sectors.map(sector=>sector.totalWeight||0),
-              result.totals?.avgBagKg||0,result.totals?.over35||0].map((v,i)=>
+            {[result.totals?.totalWeight||0,result.totals?.over35||0,
+              ...sectors.map(sector=>sector.totalWeight||0),result.totals?.avgBagKg||0].map((v,i)=>
               <td key={i} style={{...td,fontWeight:900}}>{numeric(v)}</td>)}
           </tr></tfoot>}
         </table>
