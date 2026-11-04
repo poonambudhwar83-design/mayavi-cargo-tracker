@@ -84,6 +84,26 @@ async function ensure(sql){
   await sql`CREATE INDEX IF NOT EXISTS mayavi_branch_loads_date_branch ON mayavi_branch_loads(branch,record_date DESC)`;
 }
 function textField(value,max=120){return String(value??'').trim().slice(0,max);}
+
+// Duplicate JEPO AWBs must be recognized across both Jind and Karnal, in
+// Active AND Delivered. Other-branch shipment details remain private.
+function normalizedJepoNo(value){return String(value??'').trim().toUpperCase().replace(/\\s+/g,'');}
+async function findDuplicateJepo(sql,trackingNo,excludeId=''){
+  const key=normalizedJepoNo(trackingNo);
+  if(!key||key.length<6)return null;
+  const matches=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,delivery_status
+    FROM mayavi_branch_loads WHERE UPPER(REPLACE(BTRIM(tracking_no),' ',''))=${key}
+      AND (${excludeId}='' OR id<>${excludeId})
+    ORDER BY created_at ASC LIMIT 1`;
+  return matches[0]||null;
+}
+function duplicateNotice(match,auth,trackingNo){
+  const canView=auth.admin||auth.branch===match.branch;
+  return {ok:false,duplicate:true,trackingNo:normalizedJepoNo(trackingNo),
+    error:'Duplicate JEPO Tracking No. '+normalizedJepoNo(trackingNo)+' is already saved. Please review the existing entry.',
+    existing:canView?{id:match.id,branch:match.branch,date:match.record_date,status:match.delivery_status}:null};
+}
+
 function parse(body,auth){
   const branch=auth.admin?allowedBranch(body.branch):auth.branch;
   const date=textField(body.date,10);
@@ -168,6 +188,17 @@ export async function GET(request){
     const sql=connection(),auth=await authenticate(request,sql);
     if(auth.error)return json({ok:false,error:auth.error},auth.status);
     await ensure(sql);
+    const url=new URL(request.url);
+    if(url.searchParams.has('checkTrackingNo')){
+      const trackingNo=normalizedJepoNo(url.searchParams.get('checkTrackingNo'));
+      const excludeId=textField(url.searchParams.get('excludeId'),80);
+      const duplicate=await findDuplicateJepo(sql,trackingNo,excludeId);
+      if(duplicate){
+        const notice=duplicateNotice(duplicate,auth,trackingNo);
+        return json({...notice,ok:true}); // Lookup succeeds: duplicate is a result, not a request error.
+      }
+      return json({ok:true,duplicate:false,trackingNo});
+    }
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
         jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
@@ -191,14 +222,23 @@ export async function POST(request){
     // The branch scope is checked again before confirming the saved row.
     const providedId=String(body.clientRequestId||'').trim();
     const id=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providedId)?providedId:randomUUID();
+    const duplicate=await findDuplicateJepo(sql,entry.trackingNo,id);
+    if(duplicate)return json(duplicateNotice(duplicate,auth,entry.trackingNo),409);
     await sql`INSERT INTO mayavi_branch_loads
       (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
-      VALUES (${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.remarks},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode})
+      SELECT ${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.remarks},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode}
+      WHERE ${normalizedJepoNo(entry.trackingNo)}='' OR NOT EXISTS (
+        SELECT 1 FROM mayavi_branch_loads existing
+        WHERE UPPER(REPLACE(BTRIM(existing.tracking_no),' ',''))=${normalizedJepoNo(entry.trackingNo)}
+      )
       ON CONFLICT (id) DO NOTHING`;
     const saved=await one(sql,id);
-    if(!saved||saved.branch!==entry.branch)
+    if(!saved||saved.branch!==entry.branch){
+      const duplicateAfter=await findDuplicateJepo(sql,entry.trackingNo,id);
+      if(duplicateAfter)return json(duplicateNotice(duplicateAfter,auth,entry.trackingNo),409);
       return json({ok:false,error:'Unable to verify the saved branch entry. Please contact Admin.'},409);
+    }
     return json({ok:true,row:saved},201);
   }catch(e){return json({ok:false,error:e?.message||'Save failed.'},503);}
 }
@@ -252,6 +292,8 @@ export async function PATCH(request){
     const {entry,error}=parse(body,auth);
     if(error)return json({ok:false,error},400);
     await ensure(sql);
+    const existingDuplicate=await findDuplicateJepo(sql,entry.trackingNo,id);
+    if(existingDuplicate)return json(duplicateNotice(existingDuplicate,auth,entry.trackingNo),409);
     const updated=auth.admin
       ?await sql`UPDATE mayavi_branch_loads SET branch=${entry.branch},record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
