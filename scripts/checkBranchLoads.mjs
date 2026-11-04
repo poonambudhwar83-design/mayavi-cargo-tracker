@@ -92,7 +92,7 @@ assert.equal(branchPayment('10','100','110'),-100);
 assert.equal(branchPayment('8.5','600','360.25'),2037.87);
 assert.equal(branchPayment('0','500','100'),null);
 assert.ok(SERVICES.includes('FedEx')&&SERVICES.includes('Aramex')&&SERVICES.includes('DHL')&&SERVICES.includes('Self'));
-assert.deepEqual(LOAD_STATUSES,['AT_JIND_OFFICE','AT_KARNAL_OFFICE','AT_JEPO_OFFICE','DISPATCHED','IN_TRANSIT','DELIVERED']);
+assert.deepEqual(LOAD_STATUSES,['AT_JIND_OFFICE','AT_KARNAL_OFFICE','AT_JEPO_OFFICE','PRE_TRANSIT','DISPATCHED','IN_TRANSIT','OUT_FOR_DELIVERY','DELIVERED']);
 assert.ok(SERVICES.includes('TPL')&&SERVICES.includes('KCC'));
 // Contract: branch workers see only their own records; Admin alone sees both.
 // Checking the live route in prebuild protects against future cross-branch leaks.
