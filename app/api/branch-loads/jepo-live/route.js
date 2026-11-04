@@ -1,6 +1,7 @@
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../../lib/mayaviAuth.js';
 import {syncJepoBranchAwbs} from '../../../../lib/jepoBranchSync.js';
+import {allowedBranch} from '../../../../lib/branchLoads.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=180;
@@ -18,7 +19,7 @@ export async function POST(request){
     return response({ok:false,error:'Session no longer active.'},401);
   const admin=user.role==='admin'&&session.role==='admin';
   const haryana=user.username==='haryanaadmin'&&session.role==='haryana_admin'&&user.branch_scope==='HARYANA';
-  const branch=String(user.branch_scope||'').toUpperCase();
+  const branch=allowedBranch(user.branch_scope)||allowedBranch(user.username);
   if(!admin&&!haryana&&!(user.role==='employee'&&session.role==='employee'&&['JIND','KARNAL'].includes(branch)))
     return response({ok:false,error:'Branch access denied.'},403);
   const body=await request.json().catch(()=>({}));
