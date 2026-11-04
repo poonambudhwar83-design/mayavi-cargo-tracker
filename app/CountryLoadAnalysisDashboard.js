@@ -91,7 +91,7 @@ export default function CountryLoadAnalysisDashboard(){
       if(!res.ok){const err=await res.json().catch(()=>({}));throw Error(err.error||'Download failed.');}
       const blob=await res.blob();
       const disposition=res.headers.get('content-disposition')||'';
-      const name=disposition.match(/filename="([^"]+)"/i)?.[1]||('Mayavi_'+flow+'_'+kind+'.xlsx');
+      const name=disposition.match(/filename="([^"]+)"/i)?.[1]||('Mayavi_'+flow+'_'+kind+(kind==='pdf'?'.pdf':'.xlsx'));
       const href=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=href;a.download=name;document.body.appendChild(a);
       a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(href),1500);
@@ -178,8 +178,12 @@ export default function CountryLoadAnalysisDashboard(){
           </label>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
-          <button type="button" disabled={!!downloadBusy||!result.rows?.length} onClick={()=>download('summary')} style={action}>
-            {downloadBusy==='summary'?'PREPARING…':'↓ COURIER SUMMARY'}
+          <button type="button" disabled={!!downloadBusy||loading||!result.rows?.length} onClick={()=>download('summary')} style={action}>
+            {downloadBusy==='summary'?'PREPARING…':'↓ COURIER SUMMARY — EXCEL'}
+          </button>
+          <button type="button" disabled={!!downloadBusy||loading||!result.rows?.length} onClick={()=>download('pdf')}
+            style={{...action,background:'#eaf0ff',color:'#214b95',borderColor:'#a9c0ed'}}>
+            {downloadBusy==='pdf'?'PREPARING PDF…':'↓ COURIER SUMMARY — PDF'}
           </button>
           <button type="button" disabled={!!downloadBusy||!result.rows?.length} onClick={()=>download('details')} style={action}>
             {downloadBusy==='details'?'PREPARING…':'↓ COMPLETE DATA'}
@@ -189,7 +193,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
         </div>
         <p style={{fontSize:11,color:'#71819a',margin:'12px 0 0'}}>
-          All downloads use the selected report month shown above; the original monthly workbook remains available.
+          Excel and PDF courier summaries contain the same selected month's totals, origin-wise load and above-35 kg analysis. Original monthly Excel remains available.
         </p>
       </section>
     </div>
