@@ -245,8 +245,8 @@ async function pdfSummaryFile(sql,flow,month,country){
   }});
 }
 async function detailsFile(sql,flow,month,country){
-  const rows=await sql`SELECT u.report_month,r.courier_name,r.country,r.weight_kg,r.bags,
-    r.sheet_name,r.source_row FROM mayavi_other_country_rows r
+  const rows=await sql`SELECT COALESCE(NULLIF(r.shipment_month,''),u.report_month) AS report_month,r.shipment_date,
+    r.courier_name,r.country,r.weight_kg,r.bags,r.sheet_name,r.source_row FROM mayavi_other_country_rows r
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
       WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
@@ -256,13 +256,13 @@ async function detailsFile(sql,flow,month,country){
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   if(rows.length>100000)return respond({ok:false,error:'Please choose one month to export all records without truncation.'},422);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('All Entries');
-  sheet.addRow(['Month','Courier Name','Origin / Sector','Weight (kg)','No. of Bags','Average kg / bag','Weight Category','Source Sheet','Excel Row']);
+  sheet.addRow(['Flight/Load Date','Month','Courier Name','Origin / Sector','Weight (kg)','No. of Bags','Average kg / bag','Weight Category','Source Sheet','Excel Row']);
   for(const r of rows){
     const weight=Number(r.weight_kg),bags=Number(r.bags),avg=weight/bags;
-    sheet.addRow([r.report_month,r.courier_name,r.country,weight,bags,round(avg),
+    sheet.addRow([r.shipment_date?r.shipment_date.toISOString?.().slice(0,10)||String(r.shipment_date):'',r.report_month,r.courier_name,r.country,weight,bags,round(avg),
       avg<30?'Below 30':avg<=35?'30 to 35':avg<=40?'35 to 40':'Above 40',r.sheet_name,r.source_row]);
   }
-  sheetStyle(sheet);sheet.getColumn(8).width=25;
+  sheetStyle(sheet);sheet.getColumn(9).width=25;
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_All_Entries_${month}.xlsx`);
 }
 export async function GET(request){
@@ -338,18 +338,20 @@ export async function POST(request){
     for(let i=0;i<extracted.rows.length;i+=250){
       const records=extracted.rows.slice(i,i+250).map(row=>({
         courier_name:row.courierName,country:row.country,weight_kg:row.weightKg,
-        bags:row.bags,sheet_name:row.sheet,source_row:row.rowNumber
+        bags:row.bags,sheet_name:row.sheet,source_row:row.rowNumber,
+        shipment_month:row.shipmentMonth||month,shipment_date:row.shipmentDate||null
       }));
       await sql`INSERT INTO mayavi_other_country_rows
-        (upload_id,courier_name,country,weight_kg,bags,sheet_name,source_row)
-        SELECT ${uploadId}::uuid,x.courier_name,x.country,x.weight_kg,x.bags,x.sheet_name,x.source_row
+        (upload_id,courier_name,country,weight_kg,bags,sheet_name,source_row,shipment_month,shipment_date)
+        SELECT ${uploadId}::uuid,x.courier_name,x.country,x.weight_kg,x.bags,x.sheet_name,x.source_row,
+          x.shipment_month,CAST(x.shipment_date AS DATE)
         FROM jsonb_to_recordset(${JSON.stringify(records)}::jsonb)
-        AS x(courier_name text,country text,weight_kg numeric,bags integer,sheet_name text,source_row integer)`;
+        AS x(courier_name text,country text,weight_kg numeric,bags integer,sheet_name text,source_row integer,shipment_month varchar(7),shipment_date text)`;
     }
     await sql`UPDATE mayavi_other_country_uploads SET ready=true WHERE id=${uploadId}::uuid`;
     return respond({ok:true,rows:extracted.rows.length,skipped:extracted.skipped,
       sheetNames:extracted.sheetNames,ignoredSheets:extracted.ignoredSheets,
-      message:'Workbook saved permanently. This is now the active '+flow+' workbook for '+month+'.'});
+      message:'Workbook saved. Courier load is grouped by each Excel flight date; upload month '+month+' is only the source workbook label.'});
   }catch(e){
     if(uploadId&&sql){try{await sql`DELETE FROM mayavi_other_country_uploads WHERE id=${uploadId}::uuid AND ready=false`;}catch{}}
     console.error('country_analysis_upload',e?.message);
