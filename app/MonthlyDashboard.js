@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { confirmedPartArrival, masterKg, partKg } from '../lib/arrivalWeights.js';
 import { confirmedExportHandoverDate, confirmedExportHandoverMonth } from '../lib/exportHandoverAccounting.js';
+import {monthlyPartKey,normalizedWeightMinus,netArchiveWeight} from '../lib/monthlyWeightMinus.js';
 
 function digits(v=''){return String(v||'').replace(/\D/g,'')}
 function pad(v){return String(v).padStart(2,'0')}
@@ -46,7 +47,7 @@ function archiveVisibleRows(records=[]){
     // One MAWB can have part arrivals in two different calendar months.
     // Each part must show its own received pieces/weight and arrival date.
     const matches=parts.filter(p=>confirmedPartArrival(p)&&archiveDateMonth(p.arrivalDate)===month);
-    if(matches.length)return matches.map((p,i)=>({...record,archivePartIndex:i,
+    if(matches.length)return matches.map((p,i)=>({...record,archivePartIndex:i,weightMinus:Number(record.weightMinusByPart?.['part:'+i]||0),
       isArchivePart:true,data:{...d,...p,weight:p.weight??'',totalWeight:'',
         masterWeight:'',bags:p.pieces||p.bags||'',pieces:p.pieces||p.bags||'',
         arrivalDate:p.arrivalDate||'',arrivalTime:p.arrivalTime||'',
@@ -59,7 +60,7 @@ function archiveVisibleRows(records=[]){
       /PART ARRIVED|PART LOAD|PART SHIPMENT/i.test(String(d.status||'')))&&
       String(d.weight||'').includes('/');
     if(archiveDateMonth(d.arrivalDate)!==month)return[];
-    return split?(confirmedPartArrival(d)?[{...record,isArchivePart:true}]:[]):[record];
+    return split?(confirmedPartArrival(d)?[{...record,isArchivePart:true,weightMinus:Number(record.weightMinusByPart?.master||0)}]:[]):[{...record,weightMinus:Number(record.weightMinusByPart?.master||0)}];
   });
 }
 function viaForRow(row={}){
@@ -85,6 +86,8 @@ export default function MonthlyDashboard(){
   const [type,setType]=useState('IMPORT');
   const [rows,setRows]=useState([]);
   const [note,setNote]=useState('');
+  const [minusDrafts,setMinusDrafts]=useState({});
+  const [minusSaving,setMinusSaving]=useState({});
   const [search,setSearch]=useState('');
   const [goodsFilter,setGoodsFilter]=useState('');
   const [clientFilter,setClientFilter]=useState('');
@@ -124,6 +127,39 @@ export default function MonthlyDashboard(){
     }catch(e){if(active)setNote(e.message||'Monthly rows could not be loaded.')}finally{if(active)setLoading(false)}
   })();return()=>{active=false}},[authorized,month,type]);
 
+  const minusRowKey=record=>record.archiveMonth+'|'+record.awb+'|'+monthlyPartKey(record);
+  async function saveWeightMinus(record){
+    const key=minusRowKey(record);
+    if(minusSaving[key])return;
+    if(!Object.hasOwn(minusDrafts,key))return;
+    const original=weightValue(record.data||{},record.isArchivePart);
+    const amount=normalizedWeightMinus(minusDrafts[key],original);
+    if(amount===null){
+      setNote('Weight Minus for '+record.awb+' must be between 0 and '+(original??0)+' kg.');
+      return;
+    }
+    if(amount===Number(record.weightMinus||0)){
+      setMinusDrafts(old=>{const next={...old};delete next[key];return next;});
+      return;
+    }
+    const partKey=monthlyPartKey(record);
+    setMinusSaving(old=>({...old,[key]:true}));
+    try{
+      const response=await fetch('/api/monthly-records',{
+        method:'PATCH',credentials:'include',cache:'no-store',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({month:record.archiveMonth,awb:record.awb,partKey,weightMinus:amount})
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||!result.ok)throw Error(result.error||'Weight Minus could not be saved.');
+      setRows(old=>old.map(row=>
+        row.archiveMonth===record.archiveMonth&&row.shipmentType==='IMPORT'&&row.awb===record.awb
+          ?{...row,weightMinusByPart:{...row.weightMinusByPart,[partKey]:result.weightMinus}}:row));
+      setMinusDrafts(old=>{const next={...old};if(String(next[key]??'')===String(amount)||Number(next[key]||0)===amount)delete next[key];return next;});
+      setNote('Saved Weight Minus '+amount+' kg for '+record.awb+'. Original weight remains unchanged.');
+    }catch(error){setNote(error.message||'Weight Minus save failed.');}
+    finally{setMinusSaving(old=>({...old,[key]:false}));}
+  }
   const selectedMeta=months.find(m=>m.key===month);
   // Filter archived arrival parts separately while keeping totals in sync with
   // the exact records visible in the monthly table.
@@ -151,6 +187,8 @@ export default function MonthlyDashboard(){
   },[archivedRows,search,goodsFilter,clientFilter,companyFilter]);
   const totalWeight=useMemo(()=>visible.reduce((sum,r)=>sum+(weightValue(r.data||{},r.isArchivePart)||0),0),[visible]);
   const unknownWeights=useMemo(()=>visible.filter(r=>weightValue(r.data||{},r.isArchivePart)===null).length,[visible]);
+  const totalMinus=useMemo(()=>type==='IMPORT'?visible.reduce((sum,r)=>sum+Number(r.weightMinus||0),0):0,[visible,type]);
+  const netWeight=netArchiveWeight(totalWeight,totalMinus);
   const clientCount=useMemo(()=>new Set(visible.map(r=>String(r.data?.clientName||r.data?.client||'').trim()).filter(Boolean)).size,[visible]);
   const arrivedCount=useMemo(()=>visible.filter(r=>/ARRIVED|DELIVERED/i.test(String(r.data?.status||''))).length,[visible]);
 
@@ -188,7 +226,8 @@ export default function MonthlyDashboard(){
 
       <section className="stats">
         <div><b>{visible.length}</b><span>{type} MAWB</span></div>
-        <div><b>{totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Total Weight kg</span></div>
+        <div><b>{totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Original Weight kg</span></div>
+        {type==='IMPORT'&&<><div><b>{totalMinus.toLocaleString(undefined,{maximumFractionDigits:3})}</b><span>Weight Minus kg</span></div><div><b>{(netWeight??0).toLocaleString(undefined,{maximumFractionDigits:3})}</b><span>Net Weight kg</span></div></>}
         <div><b>{clientCount}</b><span>Clients</span></div>
         <div><b>{arrivedCount}</b><span>Arrived / Delivered</span></div>
         <div><b>{selectedMeta?.label||'Closed Month'}</b><span>Archive Month</span></div>
@@ -222,17 +261,29 @@ export default function MonthlyDashboard(){
               </select>
             </div>
           </th>
-          <th>Entered By</th><th>Booking Date</th><th>Airline</th><th>Origin</th><th>Via</th><th>Destination</th><th>Bags/Pieces</th><th>Weight</th><th>Flight</th>
+          <th>Entered By</th><th>Booking Date</th><th>Airline</th><th>Origin</th><th>Via</th><th>Destination</th><th>Bags/Pieces</th><th>Weight</th>{type==='IMPORT'&&<><th style={{minWidth:145}}>Weight Minus (kg)</th><th>Net Weight (kg)</th></>}<th>Flight</th>
           {type==='EXPORT'&&<><th>Departure Date</th><th>Departure Time</th><th>Handover Date (IST)</th><th>Handover</th><th>Master Copy</th></>}
           <th>Arrival Date</th><th>Arrival Time</th>{type==='IMPORT'&&<><th>Mail</th><th>Customs Clear</th></>}<th>Status</th><th>Remarks</th>
         </tr></thead>
         <tbody>{visible.length?visible.map((record,index)=>{const r=record.data||{};return <tr key={record.archiveMonth+'-'+record.shipmentType+'-'+record.awb+'-'+(record.archivePartIndex??'master')}>
-          <td><strong>{index+1}</strong></td><td>{formatDate(r.enteredAt)}</td><td><strong>{r.mawb||(`${String(record.awb).slice(0,3)}-${String(record.awb).slice(3)}`)}</strong></td>{type==='IMPORT'&&<td>{r.goodsDescription||r.goods||'—'}</td>}<td>{r.clientName||r.client||'—'}</td><td>{r.companyName||r.companyType||'—'}</td><td>{r.enteredBy||'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{viaForRow(r)}</td><td>{r.destination||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{weightValue(r,record.isArchivePart)!==null?`${weightValue(r,record.isArchivePart)} kg`:'—'}</td><td>{r.flightNo||'—'}</td>
+          <td><strong>{index+1}</strong></td><td>{formatDate(r.enteredAt)}</td><td><strong>{r.mawb||(`${String(record.awb).slice(0,3)}-${String(record.awb).slice(3)}`)}</strong></td>{type==='IMPORT'&&<td>{r.goodsDescription||r.goods||'—'}</td>}<td>{r.clientName||r.client||'—'}</td><td>{r.companyName||r.companyType||'—'}</td><td>{r.enteredBy||'—'}</td><td>{r.bookingDate||'—'}</td><td>{r.airlineName||'—'}</td><td>{r.origin||'—'}</td><td>{viaForRow(r)}</td><td>{r.destination||'—'}</td><td>{r.bags||r.pieces||'—'}</td><td>{weightValue(r,record.isArchivePart)!==null?`${weightValue(r,record.isArchivePart)} kg`:'—'}</td>
+          {type==='IMPORT'&&<><td style={{minWidth:138}}>
+            <input type="number" min="0" max={weightValue(r,record.isArchivePart)??0} step="0.001"
+              aria-label={`Weight Minus for ${record.awb}${record.archivePartIndex!==undefined?' part '+(record.archivePartIndex+1):''}`}
+              style={{width:100,border:'1px solid #94a3b8',borderRadius:6,padding:'6px 5px',fontWeight:700}}
+              placeholder="0" disabled={Boolean(minusSaving[minusRowKey(record)])}
+              value={Object.hasOwn(minusDrafts,minusRowKey(record))?minusDrafts[minusRowKey(record)]:record.weightMinus?String(record.weightMinus):''}
+              onChange={e=>setMinusDrafts(old=>({...old,[minusRowKey(record)]:e.target.value}))}
+              onBlur={()=>void saveWeightMinus(record)}
+              onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}}/>
+            {minusSaving[minusRowKey(record)]&&<small style={{display:'block',fontSize:10,color:'#2563eb'}}>Saving…</small>}
+          </td><td><strong>{weightValue(r,record.isArchivePart)===null?'—':`${netArchiveWeight(weightValue(r,record.isArchivePart),record.weightMinus||0)} kg`}</strong></td></>}
+          <td>{r.flightNo||'—'}</td>
           {type==='EXPORT'&&<><td>{r.departureDate||r.flightDate||'—'}</td><td>{formatTime(r.departureTime)}</td><td>{formatDate(confirmedExportHandoverDate(r))}</td><td>{r.handoverDone===true?'YES':'NO'}</td><td>{r.masterCopyReceived===true?'RECEIVED':'PENDING'}</td></>}
           <td>{r.arrivalDate||'—'}</td><td>{formatTime(r.arrivalTime)}</td>{type==='IMPORT'&&<><td>{r.mailSent===true?'YES':'NO'}</td><td>{r.customsCleared===true?'CLEARED':'PENDING'}</td></>}<td><span className={`badge ${statusTone(r.status)}`}>{r.status||'BOOKED'}</span></td><td>{r.remarks||'—'}</td>
         </tr>}):<tr><td className="empty" colSpan={24}>{(search||goodsFilter||clientFilter||companyFilter)?'No records match the selected filters.':month?'No '+type.toLowerCase()+' records in this month.':'No closed-month records yet.'}</td></tr>}</tbody>
       </table></section>
-      <section className="tableSummary"><span>{visible.length} master{visible.length===1?'':'s'} shown</span><strong>Total recorded Weight: {totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})} kg{unknownWeights>0?` • ${unknownWeights} row(s) without recorded weight`:''}</strong></section>
+      <section className="tableSummary"><span>{visible.length} master{visible.length===1?'':'s'} shown</span><strong>Original Weight: {totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})} kg{type==='IMPORT'?` • Weight Minus: ${totalMinus.toLocaleString(undefined,{maximumFractionDigits:3})} kg • Net Weight: ${(netWeight??0).toLocaleString(undefined,{maximumFractionDigits:3})} kg`:''}{unknownWeights>0?` • ${unknownWeights} row(s) without recorded weight`:''}</strong></section>
     </>}
   </main>;
 }
