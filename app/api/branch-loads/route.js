@@ -59,6 +59,11 @@ async function ensure(sql){
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS tracking_no TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_status TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_awb TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_remarks TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_checked_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_error TEXT NOT NULL DEFAULT ''`;
   // Existing rows retain every field and get an empty optional Remarks value.
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS remarks TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'PENDING'`;
@@ -146,11 +151,15 @@ function display(r){return {
   confirmationDecidedAt:r.amount_confirmation_decided_at||null,confirmationDecidedBy:r.amount_confirmation_decided_by||'',
   confirmationApprovedAt:r.amount_confirmation_approved_at||null,confirmationApprovedBy:r.amount_confirmation_approved_by||'',
   trackingNo:r.tracking_no||'',remarks:r.remarks||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
+  liveStatus:String(r.jepo_live_awb||'').toUpperCase()===String(r.tracking_no||'').trim().toUpperCase()?r.jepo_live_status||'':'',
+  liveRemarks:String(r.jepo_live_awb||'').toUpperCase()===String(r.tracking_no||'').trim().toUpperCase()?r.jepo_live_remarks||'':'',
+  liveCheckedAt:r.jepo_live_checked_at||null,
+  liveError:r.jepo_live_error||'',
   createdBy:r.created_by,updatedBy:r.updated_by,updatedAt:r.updated_at
 };}
 async function one(sql,id){
   const rows=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
     FROM mayavi_branch_loads WHERE id=${id} LIMIT 1`;
   return rows[0]?display(rows[0]):null;
 }
@@ -161,10 +170,10 @@ export async function GET(request){
     await ensure(sql);
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads ORDER BY record_date DESC, created_at DESC LIMIT 10000`
       :await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads WHERE branch=${auth.branch} ORDER BY record_date DESC, created_at DESC LIMIT 10000`;
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
