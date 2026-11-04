@@ -48,14 +48,15 @@ export default function CountryLoadAnalysisDashboard(){
     const url=API+'?flow='+flow+'&month='+encodeURIComponent(month)+'&country='+encodeURIComponent(country);
     fetch(url,{credentials:'include',cache:'no-store'})
       .then(async res=>{const json=await res.json();if(!res.ok||!json.ok)throw Error(json.error||'Could not load analysis.');return json;})
-      .then(data=>{if(active){setResult(data);setNotice('');}})
+      .then(data=>{if(active){setResult(data);}})
       .catch(e=>{if(active){setNotice(e.message||'Cannot open analysis.');setResult({rows:[],files:[],months:[],countries:[],totals:{}});}})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[flow,month,country,refresh]);
   const entries=useMemo(()=>{
     const q=search.trim().toLowerCase();
-    return q?(result.rows||[]).filter(row=>row.courierName.toLowerCase().includes(q)):(result.rows||[]);
+    return (result.rows||[]).filter(row=>!q||row.courierName.toLowerCase().includes(q))
+      .slice().sort((a,b)=>Number(b.totalWeight||0)-Number(a.totalWeight||0)||a.courierName.localeCompare(b.courierName));
   },[search,result.rows]);
   const selectedFile=(result.files||[]).find(f=>f.flow===flow&&f.month===month);
   const existingFile=(result.files||[]).find(f=>f.flow===flow&&f.month===uploadMonth);
@@ -129,7 +130,7 @@ export default function CountryLoadAnalysisDashboard(){
             </label>
           </div>
           <div style={{fontSize:11,marginTop:9,color:'#687b95'}}>
-            Required headers: Courier Name, Weight (kg), No. of Bags. Country is optional. Maximum 3 MB / 40,000 entries per workbook.
+            Auto-detects CourierCoName, Bags, Weight and Origin (also standard Courier Name / No. of Bags headings). Maximum 3 MB / 40,000 entries per workbook.
           </div>
           <button type="button" onClick={()=>setAdvanced(v=>!v)}
             style={{border:0,padding:'9px 0',background:'none',color:'#2258ac',fontSize:11,fontWeight:800,cursor:'pointer'}}>
@@ -195,14 +196,14 @@ export default function CountryLoadAnalysisDashboard(){
     <section style={{...panel,padding:'15px 11px',marginBottom:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',margin:'0 6px 13px'}}>
         <div><h2 style={{fontSize:16,margin:0}}>{flow} — Courier-Wise Excel Summary</h2>
-          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • {result.totals?.entries||0} entries • Latest active workbook per month</div>
+          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • {result.totals?.entries||0} entries • Sorted highest to lowest total load (kg) • Latest active workbook per month</div>
         </div>
         <input style={{...input,width:230}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search courier…"/>
       </div>
       <div style={{overflowX:'auto',maxHeight:'min(65vh,620px)',borderRadius:8,border:'1px solid #e1e8f1'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:960,width:'100%'}}>
           <thead><tr>
-            {['Courier Name','Entries','No. of Bags','Total Load (kg)','Avg. kg/bag','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
+            {['Courier Name','Total Import / Export Load (kg)','Total Bags','Average kg / bag','Entries','Below 30 kg (load)','30–35 kg (load)','Above 35 kg (load)'].map((label,i)=>
               <th key={label} style={{...th,textAlign:i?'right':'left',left:i===0?0:undefined,zIndex:i===0?3:2}}>{label}</th>)}
           </tr></thead>
           <tbody>
@@ -212,8 +213,8 @@ export default function CountryLoadAnalysisDashboard(){
             </td></tr>}
             {!loading&&entries.map((r,i)=><tr key={r.courierName} style={{background:i%2?'#f8faff':'#fff'}}>
               <td style={{...td,textAlign:'left',fontWeight:800,position:'sticky',left:0,background:i%2?'#f8faff':'#fff',color:'#233f69'}}>{r.courierName}</td>
-              {[r.entries,r.totalBags,r.totalWeight,r.avgBagKg,r.under30,r.from30To35,r.over35].map((v,j)=>
-                <td key={j} style={{...td,fontWeight:j===2?800:500}}>{numeric(v)}</td>)}
+              {[r.totalWeight,r.totalBags,r.avgBagKg,r.entries,r.under30,r.from30To35,r.over35].map((v,j)=>
+                <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
         </table>
