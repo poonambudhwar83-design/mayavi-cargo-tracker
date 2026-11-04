@@ -88,7 +88,7 @@
     },
     {
       "path": "/api/cron/jepo-branches",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/2 * * * *"
     }
   ]
 }
