@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import ExcelJS from 'exceljs';
 import { readSession } from '../../../lib/mayaviAuth.js';
-import { parseCountryWorkbook } from '../../../lib/countryLoadAnalysis.js';
+import { parseCountryWorkbook, buildCourierSectorPivot } from '../../../lib/countryLoadAnalysis.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -96,6 +96,26 @@ async function countriesFor(sql,flow,month){
     ORDER BY r.country ASC`;
   return rows.map(row=>row.country);
 }
+async function sectorBreakdown(sql,flow,month,country){
+  // SQL aggregates only the active workbook per flow/month and groups by
+  // actual uploaded Origin. Existing saved sheets remain valid—no reupload.
+  const groups=await sql`SELECT MIN(r.courier_name) AS courier_name,
+    r.country AS sector, SUM(r.weight_kg)::numeric AS weight_kg
+    FROM mayavi_other_country_rows r
+    JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
+    WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
+      WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
+    AND u.flow=${flow} AND (${month}='ALL' OR u.report_month=${month})
+    AND (${country}='ALL' OR r.country=${country})
+    GROUP BY LOWER(TRIM(r.courier_name)),r.country`;
+  return buildCourierSectorPivot(groups.map(row=>({
+    courierName:row.courier_name,sector:row.sector,weightKg:Number(row.weight_kg)
+  })));
+}
+function addSectorLoads(rows,pivot){
+  return rows.map(row=>({...row,
+    sectorLoads:pivot.byCourier[row.courierName.trim().toLocaleLowerCase('en')]||{}}));
+}
 function overall(rows=[]){
   const total={entries:0,totalWeight:0,totalBags:0,under30:0,from30To35:0,over35:0,avgBagKg:0,couriers:rows.length};
   for(const row of rows)for(const key of ['entries','totalWeight','totalBags','under30','from30To35','over35'])total[key]+=Number(row[key]||0);
@@ -118,21 +138,27 @@ function sheetStyle(sheet){
   for(let i=1;i<=sheet.columnCount;i++)sheet.getColumn(i).width=i===1?27:18;
 }
 async function summaryFile(sql,flow,month,country){
-  const rows=await breakdown(sql,flow,month,country);
+  const [rows,pivot]=await Promise.all([
+    breakdown(sql,flow,month,country),sectorBreakdown(sql,flow,month,country)
+  ]);
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
+  const fullRows=addSectorLoads(rows,pivot);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
-  sheet.addRow(['Courier Name','Total Load (kg)','Average kg / bag',
-    'Below 30 kg - Load (kg)','30-35 kg - Load (kg)','Above 35 kg - Load (kg)']);
-  for(const row of rows)sheet.addRow([row.courierName,row.totalWeight,row.avgBagKg,
+  sheet.addRow(['Courier Name','Total Load (kg)',...pivot.sectors.map(s=>s.name+' (kg)'),
+    'Average kg / bag','Below 30 kg - Load (kg)','30-35 kg - Load (kg)','Above 35 kg - Load (kg)']);
+  for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,
+    ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg,
     row.under30,row.from30To35,row.over35]);
   const totals=overall(rows);
-  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.avgBagKg,
+  sheet.addRow(['GRAND TOTAL',totals.totalWeight,
+    ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg,
     totals.under30,totals.from30To35,totals.over35]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
   note.addRow(['Analysis','Other Countries - '+flow]);
   note.addRow(['Month',month==='ALL'?'All saved months':month]);
-  note.addRow(['Country',country==='ALL'?'All countries':country]);
+  note.addRow(['Origin / Sector',country==='ALL'?'All origins':country]);
+  note.addRow(['Sector Columns','Each origin column shows total uploaded weight for that courier from that origin.']);
   note.addRow(['Source','Latest successfully uploaded Excel per flow/month']);
   note.addRow(['Order','Courier with highest total weight (kg) appears first']);
   note.addRow(['Average kg/bag','Total Load / Total Bags (weighted average)']);
@@ -153,7 +179,7 @@ async function detailsFile(sql,flow,month,country){
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   if(rows.length>100000)return respond({ok:false,error:'Please choose one month to export all records without truncation.'},422);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('All Entries');
-  sheet.addRow(['Month','Courier Name','Country','Weight (kg)','No. of Bags','Average kg / bag','Weight Category','Source Sheet','Excel Row']);
+  sheet.addRow(['Month','Courier Name','Origin / Sector','Weight (kg)','No. of Bags','Average kg / bag','Weight Category','Source Sheet','Excel Row']);
   for(const r of rows){
     const weight=Number(r.weight_kg),bags=Number(r.bags),avg=weight/bags;
     sheet.addRow([r.report_month,r.courier_name,r.country,weight,bags,round(avg),
@@ -182,12 +208,12 @@ export async function GET(request){
       if(!data.length)return respond({ok:false,error:'Original Excel not found for that month.'},404);
       return excelResponse(Buffer.from(data[0].content,'base64'),data[0].file_name);
     }
-    const [files,rows,countries]=await Promise.all([activeFiles(sql),breakdown(sql,flow,month,country),countriesFor(sql,flow,month)]);
+    const [files,rows,countries,pivot]=await Promise.all([activeFiles(sql),breakdown(sql,flow,month,country),countriesFor(sql,flow,month),sectorBreakdown(sql,flow,month,country)]);
     return respond({ok:true,flow,month,country,files:files.map(f=>({
       id:f.id,flow:f.flow,month:f.report_month,fileName:f.file_name,
       sheets:f.sheets,rows:Number(f.parsed_rows),skipped:Number(f.skipped_rows),uploadedAt:f.created_at
     })),months:[...new Set(files.filter(f=>f.flow===flow).map(f=>f.report_month))].sort().reverse(),
-    countries,rows,totals:overall(rows)});
+    countries,sectors:pivot.sectors,rows:addSectorLoads(rows,pivot),totals:overall(rows)});
   }catch(e){console.error('country_analysis_get',e?.message);
     return respond({ok:false,error:'Unable to load Country Analysis. '+(e?.message||'')},503);}
 }
