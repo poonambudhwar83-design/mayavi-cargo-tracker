@@ -129,6 +129,22 @@ assert.ok(nav.includes('>NOTES</button>'));
 assert.ok(nav.includes("setSelectedDashboard('ADMIN_NOTES')"));
 const page=readFileSync('app/StudyNotesDashboard.js','utf8');
 assert.ok(page.includes('<h1>NOTES</h1>'));
+// The Add Topic editor has one horizontal, scrollable row; all original
+// fields survive and neither incorrect-question-number input is duplicated.
+assert.ok(page.includes('className={styles.compactEntryScroll}'));
+assert.ok(page.includes('className={styles.compactEntryRow}'));
+assert.equal(page.match(/Incorrect MCQ Question Numbers/g)?.length,1);
+assert.equal(page.match(/Incorrect Theory Question Numbers/g)?.length,1);
+for(const field of ['chapter','topic','mcqTotal','mcqDone','theoryTotal','theoryDone',
+  'theoryCorrected','mcqMarksTotal','mcqMarksObtained',
+  'theoryMarksTotal','theoryMarksObtained','incorrectMcqNumbers','incorrectTheoryNumbers']){
+  assert.ok(page.includes('draft.'+field),'Keep NOTES column '+field);
+}
+const css=readFileSync('app/StudyNotesDashboard.module.css','utf8');
+assert.ok(css.includes('.compactEntryRow{display:flex;align-items:flex-end;'));
+assert.ok(css.includes('.compactEntryScroll{max-width:100%;overflow-x:auto;'));
+assert.ok(!page.includes('className={styles.theoryCalculations}'));
+assert.ok(!page.includes('className={styles.marksSection}'));
 assert.ok(page.includes('Incorrect MCQ Question Numbers'));
 assert.ok(page.includes('Incorrect Theory Question Numbers'));
 assert.ok(page.includes('Theory Corrected'));
