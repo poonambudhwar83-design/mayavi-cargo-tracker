@@ -34,6 +34,8 @@ assert.ok(api.includes('jepo_live_remarks'));
 assert.ok(api.includes('jepo_live_awb'));
 assert.ok(ui.includes('key="liveRemarks"'));
 assert.equal((ui.match(/<th>Live Remarks<\/th>/g)||[]).length,2);
+assert.ok(ui.includes('setInterval(onFocus,20000)'), 'Visible branch page must refresh from saved live data every 20 seconds.');
+assert.ok(ui.includes('JEPO AUTO LIVE'), 'Show automatic live status without requiring clicks.');
 assert.ok(ui.includes('Refresh JEPO Live'));
 assert.ok(ui.includes('Track JEPO'));
 assert.ok(ui.includes('r.liveStatus||statusLabel(r.status)'));
@@ -46,7 +48,7 @@ assert.ok(sync.includes('if(offset>0&&Date.now()-started>180000)break;'), 'Avoid
 assert.ok(cron.includes('LIMIT 16'), 'Rotate sixteen JEPO numbers per scheduled run.');
 assert.ok(cron.includes("OR COALESCE(jepo_live_status,'')=''"), 'Previously Delivered loads also need their first Live Remarks.');
 assert.ok(cron.includes('CRON_SECRET'));
-assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='*/5 * * * *'));
+assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='*/2 * * * *'));
 const nextConfig=readFileSync('next.config.js','utf8');
 for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
   assert.ok(nextConfig.includes("'"+route+"': ['./node_modules/@sparticuz/chromium/bin/**/*']"),
