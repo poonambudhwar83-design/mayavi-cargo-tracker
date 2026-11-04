@@ -72,7 +72,7 @@ async function breakdown(sql,flow,month,country){
     SUM(r.weight_kg)::numeric AS total_weight,
     SUM(CASE WHEN r.weight_kg/r.bags < 30 THEN r.weight_kg ELSE 0 END)::numeric AS under30,
     SUM(CASE WHEN r.weight_kg/r.bags >= 30 AND r.weight_kg/r.bags <= 35 THEN r.weight_kg ELSE 0 END)::numeric AS from30to35,
-    SUM(CASE WHEN r.weight_kg/r.bags > 35 THEN r.weight_kg ELSE 0 END)::numeric AS over35
+    SUM(CASE WHEN r.weight_kg/r.bags > 40 THEN r.weight_kg ELSE 0 END)::numeric AS over40
     FROM mayavi_other_country_rows r
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
@@ -85,7 +85,7 @@ async function breakdown(sql,flow,month,country){
     const totalWeight=Number(r.total_weight),totalBags=Number(r.total_bags);
     return {courierName:r.courier_name,entries:Number(r.entries),totalWeight:round(totalWeight),
       totalBags,avgBagKg:totalBags?round(totalWeight/totalBags):0,
-      under30:round(r.under30),from30To35:round(r.from30to35),over35:round(r.over35)};
+      under30:round(r.under30),from30To35:round(r.from30to35),over40:round(r.over40)};
   });
 }
 async function countriesFor(sql,flow,month){
@@ -118,9 +118,9 @@ function addSectorLoads(rows,pivot){
     sectorLoads:pivot.byCourier[row.courierName.trim().toLocaleLowerCase('en')]||{}}));
 }
 function overall(rows=[]){
-  const total={entries:0,totalWeight:0,totalBags:0,under30:0,from30To35:0,over35:0,avgBagKg:0,couriers:rows.length};
-  for(const row of rows)for(const key of ['entries','totalWeight','totalBags','under30','from30To35','over35'])total[key]+=Number(row[key]||0);
-  for(const key of ['totalWeight','under30','from30To35','over35'])total[key]=round(total[key]);
+  const total={entries:0,totalWeight:0,totalBags:0,under30:0,from30To35:0,over40:0,avgBagKg:0,couriers:rows.length};
+  for(const row of rows)for(const key of ['entries','totalWeight','totalBags','under30','from30To35','over40'])total[key]+=Number(row[key]||0);
+  for(const key of ['totalWeight','under30','from30To35','over40'])total[key]=round(total[key]);
   total.avgBagKg=total.totalBags?round(total.totalWeight/total.totalBags):0;
   return total;
 }
@@ -145,12 +145,12 @@ async function summaryFile(sql,flow,month,country){
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   const fullRows=addSectorLoads(rows,pivot);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
-  sheet.addRow(['Courier Name','Total Load (kg)','Above 35 kg - Load (kg)',
+  sheet.addRow(['Courier Name','Total Load (kg)','More than 40 kg - Load (kg)',
     ...pivot.sectors.map(s=>s.name+' (kg)'),'Average kg / bag']);
-  for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,row.over35,
+  for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,row.over40,
     ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg]);
   const totals=overall(rows);
-  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.over35,
+  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.over40,
     ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
@@ -161,7 +161,7 @@ async function summaryFile(sql,flow,month,country){
   note.addRow(['Source','Latest successfully uploaded Excel per flow/month']);
   note.addRow(['Order','Courier with highest total weight (kg) appears first']);
   note.addRow(['Average kg/bag','Total Load / Total Bags (weighted average)']);
-  note.addRow(['Above 35','Shipment weight where average is >35']);
+  note.addRow(['More than 40 kg','Sum of weights where shipment weight divided by bags is strictly more than 40 kg.']);
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_Courier_Summary_${month}.xlsx`);
 }
 async function pdfSummaryFile(sql,flow,month,country){
@@ -197,7 +197,7 @@ async function detailsFile(sql,flow,month,country){
   for(const r of rows){
     const weight=Number(r.weight_kg),bags=Number(r.bags),avg=weight/bags;
     sheet.addRow([r.report_month,r.courier_name,r.country,weight,bags,round(avg),
-      avg<30?'Below 30':avg<=35?'30 to 35':'Above 35',r.sheet_name,r.source_row]);
+      avg<30?'Below 30':avg<=35?'30 to 35':avg<=40?'35 to 40':'Above 40',r.sheet_name,r.source_row]);
   }
   sheetStyle(sheet);sheet.getColumn(8).width=25;
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_All_Entries_${month}.xlsx`);
