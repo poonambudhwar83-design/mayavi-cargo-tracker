@@ -11,6 +11,7 @@ import { trackVietnamFreight } from '../../../lib/vietnamFreight.js';
 import { trackIndigoLive } from '../../../lib/adapters/indigo-live.js';
 import { trackMalaysia } from '../../../lib/adapters/malaysia-live.js';
 import { trackKlmLive } from '../../../lib/adapters/klm-live.js';
+import { trackGulfLive } from '../../../lib/adapters/gulf-live.js';
 import { trackMalaysiaTrackingOne } from '../../../lib/adapters/malaysia-trackingone.js';
 import { hasExactOfficialAdapter, trackExactOfficial } from '../../../lib/adapters/exact-official.js';
 import { fetchFlightEta } from '../../../lib/aerodatabox.js';
@@ -32,6 +33,8 @@ async function liveEtaOverlay(shipment={}){
   // Kuwait: flight-number timetable/live data must not create an arrival before
   // the cargo tracker confirms DEP. This prevents stale previous-flight ETAs.
   if(carrier==='KU' && !/IN TRANSIT|DEPARTED|ARRIVED/.test(status)) return shipment;
+  // Never invent a Gulf Air ETA from a booked or manifested flight.
+  if(carrier==='GF' && !/IN TRANSIT|DEPARTED|ARRIVED/.test(status)) return shipment;
   if(!shipment?.flightNo || shipment?.arrivalIsActual || shipment?.actualArrival) return shipment;
   let live=null; try{ live=await fetchFlightEta(shipment.flightNo); }catch{}
   if(!live?.eta) return shipment;
@@ -162,6 +165,16 @@ async function indigoFlightArrivalOverlay(shipment={}){
 async function handle(mawb){
   const airline=airlineForMawb(mawb);
   const prefix=mawb.replace(/\D/g,'').slice(0,3);
+
+  if(prefix==='072'){
+    const gulf=await trackGulfLive(mawb);
+    if(gulf.ok)return liveJson({ok:true,configured:true,provider:'Gulf Air Cargo official CHAMP tracking',source:gulf.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:false,noPaidApi:true,noTrackJet:true,shipment:gulf.shipment,trackingDebug:gulf.debug});
+    // A second carrier-form reader helps when the legacy CHAMP page changes its inputs.
+    const fallback=await trackExactOfficial(mawb);
+    if(fallback.ok)return liveJson({ok:true,configured:true,provider:'Gulf Air Cargo official CHAMP tracking',source:fallback.shipment.source,airlinePrimary:true,exactCarrierAdapter:true,officialNetworkCapture:true,noPaidApi:true,noTrackJet:true,shipment:fallback.shipment,trackingDebug:{primaryError:gulf.reason,fallback:fallback.debug}});
+    const reason=gulf.reason||fallback.reason||'Gulf Air live tracking unavailable';
+    return Response.json({ok:true,configured:true,provider:'Gulf Air Cargo official CHAMP tracking',source:'Gulf Air official cargo tracker',airlinePrimary:true,exactCarrierAdapter:true,noPaidApi:true,noTrackJet:true,trackingError:reason,trackingDebug:{gulf:gulf.debug,fallback:fallback.debug,fallbackError:fallback.reason},officialTracker:'https://ebooking.champ.aero/webtracking/gf/tracking.asp',shipment:waiting(mawb,airline,reason)});
+  }
 
   if(prefix==='074'){
     const result=await trackKlmLive(mawb);
@@ -313,7 +326,7 @@ async function handle(mawb){
 
 export async function GET(request){
   const url=new URL(request.url);const query=url.searchParams.get('mawb');
-  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)','312 IndiGo CarGo (part-load timeline)','232 Malaysia Airlines MASkargo'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
+  if(!query)return Response.json({configured:true,provider:'Official airline websites',apiKeyRequired:false,noPaidApi:true,noTrackJet:true,exactAdapters:['072 Gulf Air Cargo (CHAMP)','229 Kuwait Airways Cargo','910 Oman Air Cargo','235 Turkish Cargo','160 Cathay Cargo','157 Qatar Airways Cargo','065 Saudia Cargo (SAL full timeline)','176 Emirates SkyCargo','098 Air India Cargo','514 Air Arabia Cargo','738 Vietnam Airlines Cargo (CHAMP)','312 IndiGo CarGo (part-load timeline)','232 Malaysia Airlines MASkargo'],mode:'MAWB prefix → exact carrier adapter when mapped → official airline form + official network response'});
   const mawb=normalizeMawb(query);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});return handle(mawb);
 }
 export async function POST(request){
