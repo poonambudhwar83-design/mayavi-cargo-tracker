@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm} from '../lib/gulfAirParcels.js';
 const awb='072-95056684';
 const fixture={results:[{tracking_number:awb,shipment:{
@@ -93,5 +94,26 @@ assert.equal(dubaiResult.shipment.departureDate,'');
 assert.deepEqual(dubaiResult.shipment.bookedFlights,['GF131','GF500']);
 assert.equal(dubaiResult.shipment.flightLegs.length,2);
 assert.equal(dubaiResult.shipment.flightNo,'GF500');
+
+const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
+const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
+const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
+assert.ok(gulfSource.includes('const page=await publicPageLookup(mawb,GULF_PARCELS_URL);'),
+  'Gulf Air carrier-specific Track Cargo page must be tried first.');
+assert.ok(gulfSource.includes("reason:'PARCELS PUBLIC TRACKER API RETURNED NO_DATA'"),
+  'If ParcelsApp has no current data, report NO_DATA rather than invent a status.');
+assert.ok(!gulfSource.includes("keyboard.press('Control+A')"),
+  'Legacy browser Control+A error must not recur.');
+assert.ok(gulfSource.includes("await button.click({delay:100})"),
+  'The real ParcelsApp Track Cargo button must be clicked.');
+assert.ok(gulfCron.includes("awb LIKE '072%'"), 'Scheduled checks must include only Gulf Air 072 shipments.');
+assert.ok(gulfCron.includes("data=data||"), 'Refreshes must preserve existing shipment metadata and manual fields.');
+assert.ok(gulfCron.includes("backendGulfError"), 'Source failure must be saved as technical diagnostic.');
+assert.ok(gulfCron.includes("Promise.allSettled"), 'All current 072 AWBs should be checked in parallel.');
+assert.ok(gulfCron.includes("x-mayavi-internal-key"), 'Scheduled checks must use internal tracking authentication.');
+assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/gulf-air'&&r.schedule==='15 * * * *'),
+  'Run dedicated Gulf Air status checks each hour without changing JEPO refresh.');
+assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/jepo-branches'&&r.schedule==='0 */4 * * *'),
+  'JEPO must keep its user-requested four-hour interval.');
 
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
