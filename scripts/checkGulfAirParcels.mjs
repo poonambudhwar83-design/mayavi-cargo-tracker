@@ -64,4 +64,33 @@ assert.equal(submission.ok,true);
 assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
 assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
 
+
+// Regression from the actual ParcelsApp Gulf Air UI: two booked legs,
+// repeated KK/BKD events, but no physical departure or arrival yet.
+const awbDubai='072-95056371';
+const dubaiRows=[
+  '03 Nov 2026 15:11 Booked on Flight (BKD). Flight GF500 to Dubai Intl (DXB), Dubai, United Arab Emirates, pieces: 50, weight: 1400.0 Bahrain Intl (BAH), Bahrain, Bahrain',
+  '03 Nov 2026 15:11 Booked (KK). Flight GF500 to Dubai Intl (DXB), Dubai, United Arab Emirates, pieces: 50, weight: 1400.0 Bahrain Intl (BAH), Bahrain, Bahrain',
+  '03 Nov 2026 13:07 Booked on Flight (BKD). Flight GF131 to Bahrain Intl (BAH), Bahrain, pieces: 50, weight: 1400.0 Indira Gandhi Intl (DEL), Delhi, India',
+  '03 Nov 2026 13:07 Booked on Flight (BKD). Flight GF500 to Dubai Intl (DXB), Dubai, United Arab Emirates, pieces: 50, weight: 1400.0 Bahrain Intl (BAH), Bahrain, Bahrain',
+  '03 Nov 2026 13:07 Booked (KK). Flight GF131 to Bahrain Intl (BAH), Bahrain, pieces: 50, weight: 1400.0 Indira Gandhi Intl (DEL), Delhi, India'
+];
+const dubaiResult=parseGulfAirParcelsPage({
+  rightText:'Tracking number\n07295056371\nFrom\nIndira Gandhi Intl (DEL), Delhi\nTo\nDubai Intl (DXB), Dubai\nOrigin\nIndia\nDestination\nUnited Arab Emirates\nWeight\n1400.0\nPieces\n50',
+  leftText:'AWB 07295056371\n'+dubaiRows.join('\n'),
+  timelineRows:dubaiRows
+},awbDubai);
+assert.equal(dubaiResult.ok,true,dubaiResult.reason);
+assert.equal(dubaiResult.shipment.origin,'DEL');
+assert.equal(dubaiResult.shipment.destination,'DXB');
+assert.equal(dubaiResult.shipment.via,'BAH');
+assert.equal(dubaiResult.shipment.pieces,'50');
+assert.equal(dubaiResult.shipment.weight,'1400.0');
+assert.equal(dubaiResult.shipment.status,'BOOKED');
+assert.equal(dubaiResult.shipment.arrivalDate,'');
+assert.equal(dubaiResult.shipment.departureDate,'');
+assert.deepEqual(dubaiResult.shipment.bookedFlights,['GF131','GF500']);
+assert.equal(dubaiResult.shipment.flightLegs.length,2);
+assert.equal(dubaiResult.shipment.flightNo,'GF500');
+
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
