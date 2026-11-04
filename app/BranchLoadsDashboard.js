@@ -582,9 +582,10 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="status">{record.liveStatus&&<strong style={{display:'block',fontSize:11,color:'#1d5798',marginBottom:5}} title="JEPO Website Status">{record.liveStatus}</strong>}<select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
-    <td key="liveRemarks" className={styles.remarksCell}><span title={record.liveRemarks||record.liveError||'Not checked yet'}>{isJindJepoTimeout(record)
-      ?<strong className={styles.jindTimeoutText} title={record.liveError}>⚠ Tracking timed out — auto retrying</strong>
-      :record.liveRemarks||'—'}</span>
+    <td key="liveRemarks" className={styles.remarksCell}><span title={record.liveRemarks||record.liveError||'Not checked yet'}>
+      {record.liveRemarks||'—'}
+      {isJindJepoTimeout(record)&&<strong className={styles.jindTimeoutText} title={record.liveError}>⚠ Tracking timed out — auto retrying</strong>}
+    </span>
       {record.liveCheckedAt&&<small style={{display:'block',fontSize:9,color:'#63758d'}}>Last checked {new Date(record.liveCheckedAt).toLocaleString('en-IN')}</small>}</td>,
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
