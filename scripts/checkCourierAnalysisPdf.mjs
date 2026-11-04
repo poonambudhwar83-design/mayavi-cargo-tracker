@@ -8,11 +8,13 @@ const sectors=['HKG','JFK','DOH','DXB','LHR','JED','AUH']
 const rows=Array.from({length:27},(_,i)=>({
   courierName:'Courier '+String(i+1).padStart(2,'0'),
   totalWeight:10000-i*110,
+  from35To40:2200-i*15,
   over40:1500-i*10,
   avgBagKg:38.2,
   sectorLoads:Object.fromEntries(sectors.map((s,j)=>[s.name,10*(i+1)*(j+1)]))
 }));
 const totals={totalWeight:rows.reduce((a,b)=>a+b.totalWeight,0),
+  from35To40:rows.reduce((a,b)=>a+b.from35To40,0),
   over40:rows.reduce((a,b)=>a+b.over40,0),avgBagKg:34.2};
 const original=structuredClone(rows);
 const pdf=createCourierAnalysisPdf({flow:'IMPORT',month:'2026-10',country:'ALL',rows,sectors,totals});
@@ -32,10 +34,12 @@ assert.ok(source.includes('HKG'),'HKG sector must be in the PDF.');
 assert.ok(source.includes('AUH'),'All continuation sectors must be in the PDF.');
 assert.match(source,/GRAND TOTAL/);
 assert.match(source,/MORE THAN 40 KG/);
+assert.match(source,/35-40 KG/);
 assert.ok(!source.includes('Generated from saved Mayavi'),'Removed PDF footer must stay absent.');
 assert.ok(!source.includes('MORE THAN 35 KG'),'Old 35kg label must be absent.');
 assert.ok(!source.includes('Below 30 kg'));
 assert.ok(!source.includes('30-35 kg'));
+assert.ok(source.includes('35-40 KG'),'New courier bucket must appear in every exported PDF table.');
 assert.deepEqual(rows,original,'Generating the PDF must not mutate saved data.');
 assert.throws(()=>createCourierAnalysisPdf({flow:'IMPORT',month:'ALL',rows}),/valid report month/);
 assert.throws(()=>createCourierAnalysisPdf({flow:'EXPORT',month:'2026-09',rows:[]}),/no saved courier/);
