@@ -74,3 +74,31 @@
 .marksSection h3 small{font-size:11px;color:#678099;font-weight:500}
 @media(max-width:850px){.theoryCalculations{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.countFields{grid-template-columns:repeat(2,minmax(0,1fr))}.theoryCalculations{gap:7px}.theoryCalculations>div{padding:9px}}
+
+/* NOTES entry: exactly one horizontal line; no repeated calculation cards.
+   Wide fields remain readable and the row scrolls within the form. */
+.compactEntryScroll{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:1px 1px 9px;scrollbar-width:thin;scrollbar-color:#a9bfd5 #eaf0f6}
+.compactEntryScroll:focus-visible{outline:2px solid #2c73a8;outline-offset:2px;border-radius:6px}
+.compactEntryRow{display:flex;align-items:flex-end;gap:8px;width:max-content;min-width:100%;white-space:nowrap}
+.compactEntryRow>label,.compactEntryRow>.compactCalculated{display:flex;flex-direction:column;justify-content:flex-end;gap:5px;box-sizing:border-box;flex:none;min-width:0;font-size:11px;line-height:1.2;color:#415a74;font-weight:750;white-space:nowrap}
+.compactEntryRow input{height:36px;width:100%;padding:7px 9px;border-radius:6px;font-size:13px;min-width:0}
+.compactChapter{width:155px}
+.compactTopic{width:205px}
+.compactNumber{width:115px}
+.compactWrong{width:178px}
+.compactMarks{width:137px}
+.compactCalculated{width:112px}
+.compactEntryRow .compactCalculated span{font-size:11px;color:#526a83;font-weight:750}
+.compactEntryRow .compactCalculated output{display:flex;align-items:center;justify-content:center;height:36px;box-sizing:border-box;padding:4px 8px;border:1px solid #d5e3ee;border-radius:6px;background:#f2f7fc;font-variant-numeric:tabular-nums;color:#174979;font-size:13px;font-weight:800}
+.compactEntryRow .compactCalculated .pendingCount{color:#b91c1c}
+.compactLegacyHint{margin:5px 0 0;font-size:11px;color:#775b31}
+.formPanel{padding:12px 14px;margin-bottom:13px}
+.formPanel h2{margin-bottom:9px}
+.formPanel .actions{margin-top:8px;gap:7px}
+.formPanel .actions button{padding:8px 13px}
+.formPanel .actions small{font-size:11px}
+.stats{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:7px;margin-bottom:11px;padding-bottom:4px;scrollbar-width:thin}
+.stats>div{flex:0 0 auto;min-width:109px;padding:8px 11px;gap:3px}
+.stats span{font-size:9px}
+.stats b{font-size:15px}
+@media(max-width:560px){.formPanel{padding:10px}.compactEntryRow{gap:7px}.compactTopic{width:175px}.compactWrong{width:160px}}
