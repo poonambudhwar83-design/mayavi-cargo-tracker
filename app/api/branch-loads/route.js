@@ -64,6 +64,8 @@ async function ensure(sql){
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_remarks TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_checked_at TIMESTAMPTZ`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS jepo_live_error TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivered_on DATE`;
+  await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_date_source TEXT NOT NULL DEFAULT ''`;
   // Existing rows retain every field and get an empty optional Remarks value.
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS remarks TEXT NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE mayavi_branch_loads ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'PENDING'`;
@@ -171,6 +173,7 @@ function display(r){return {
   confirmationDecidedAt:r.amount_confirmation_decided_at||null,confirmationDecidedBy:r.amount_confirmation_decided_by||'',
   confirmationApprovedAt:r.amount_confirmation_approved_at||null,confirmationApprovedBy:r.amount_confirmation_approved_by||'',
   trackingNo:r.tracking_no||'',remarks:r.remarks||'',status:r.delivery_status==='PENDING'?initialBranchStatus(r.branch):(r.delivery_status||initialBranchStatus(r.branch)),
+  deliveredOn:r.delivered_on||null,deliveryDateSource:r.delivery_date_source||'',
   liveStatus:String(r.jepo_live_awb||'').toUpperCase()===String(r.tracking_no||'').trim().toUpperCase()?r.jepo_live_status||'':'',
   liveRemarks:String(r.jepo_live_awb||'').toUpperCase()===String(r.tracking_no||'').trim().toUpperCase()?r.jepo_live_remarks||'':'',
   liveCheckedAt:r.jepo_live_checked_at||null,
@@ -179,7 +182,7 @@ function display(r){return {
 };}
 async function one(sql,id){
   const rows=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+    jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
     FROM mayavi_branch_loads WHERE id=${id} LIMIT 1`;
   return rows[0]?display(rows[0]):null;
 }
@@ -201,10 +204,10 @@ export async function GET(request){
     }
     const rows=auth.admin
       ?await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads ORDER BY record_date DESC, created_at DESC LIMIT 10000`
       :await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,load_kg,rate,amount,received,balance,
-        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
+        jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,jepo_live_status,jepo_live_awb,jepo_live_remarks,jepo_live_checked_at,jepo_live_error,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode,amount_confirmation_decision,amount_confirmation_decided_at,amount_confirmation_decided_by,amount_confirmation_approved_at,amount_confirmation_approved_by,updated_at
         FROM mayavi_branch_loads WHERE branch=${auth.branch} ORDER BY record_date DESC, created_at DESC LIMIT 10000`;
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
@@ -225,9 +228,9 @@ export async function POST(request){
     const duplicate=await findDuplicateJepo(sql,entry.trackingNo,id);
     if(duplicate)return json(duplicateNotice(duplicate,auth,entry.trackingNo),409);
     await sql`INSERT INTO mayavi_branch_loads
-      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
+      (id,branch,record_date,load_kg,rate,received,jepo_rate,paid_to_jepo,paid_to_branch,extra_cost,destination,service,commodity,bottle_count,tracking_no,remarks,delivery_status,delivered_on,delivery_date_source,created_by,updated_by,amount_confirmation_no,amount_confirmation_name,amount_confirmation_mode)
       SELECT ${id},${entry.branch},${entry.date}::date,${entry.weight},${entry.rate},${entry.received},${entry.jepoRate},${entry.paidToJepo},${entry.paidToBranch},${entry.extraCost},
-       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.remarks},${entry.status},${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode}
+       ${entry.destination},${entry.service},${entry.commodity},${entry.bottleCount},${entry.trackingNo},${entry.remarks},${entry.status},CASE WHEN ${entry.status}='DELIVERED' THEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date ELSE NULL END,CASE WHEN ${entry.status}='DELIVERED' THEN 'MANUAL' ELSE '' END,${auth.username},${auth.username},${entry.confirmationNo},${entry.confirmationName},${entry.confirmationMode}
       WHERE ${normalizedJepoNo(entry.trackingNo)}='' OR NOT EXISTS (
         SELECT 1 FROM mayavi_branch_loads existing
         WHERE UPPER(REPLACE(BTRIM(existing.tracking_no),' ',''))=${normalizedJepoNo(entry.trackingNo)}
@@ -285,8 +288,18 @@ export async function PATCH(request){
       if(!LOAD_STATUSES.includes(status))return json({ok:false,error:'Invalid shipment status.'},400);
       await ensure(sql);
       const statusRows=auth.admin
-        ?await sql`UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
-        :await sql`UPDATE mayavi_branch_loads SET delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
+        ?await sql`UPDATE mayavi_branch_loads SET
+          delivered_on=CASE WHEN ${status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+            WHEN ${status}<>'DELIVERED' THEN NULL ELSE delivered_on END,
+          delivery_date_source=CASE WHEN ${status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN 'MANUAL'
+            WHEN ${status}<>'DELIVERED' THEN '' ELSE delivery_date_source END,
+          delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
+        :await sql`UPDATE mayavi_branch_loads SET
+          delivered_on=CASE WHEN ${status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+            WHEN ${status}<>'DELIVERED' THEN NULL ELSE delivered_on END,
+          delivery_date_source=CASE WHEN ${status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN 'MANUAL'
+            WHEN ${status}<>'DELIVERED' THEN '' ELSE delivery_date_source END,
+          delivery_status=${status},updated_by=${auth.username},updated_at=NOW() WHERE id=${id} AND branch=${auth.branch} RETURNING id`;
       return statusRows.length?json({ok:true,row:await one(sql,id)}):json({ok:false,error:'Entry not found or access denied.'},404);
     }
     const {entry,error}=parse(body,auth);
@@ -297,7 +310,12 @@ export async function PATCH(request){
     const updated=auth.admin
       ?await sql`UPDATE mayavi_branch_loads SET branch=${entry.branch},record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},
+          delivered_on=CASE WHEN ${entry.status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+            WHEN ${entry.status}<>'DELIVERED' THEN NULL ELSE delivered_on END,
+          delivery_date_source=CASE WHEN ${entry.status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN 'MANUAL'
+            WHEN ${entry.status}<>'DELIVERED' THEN '' ELSE delivery_date_source END,
+          delivery_status=${entry.status},
           amount_confirmation_decision=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
             OR amount_confirmation_mode IS DISTINCT FROM ${entry.confirmationMode}
             OR received IS DISTINCT FROM ${entry.received}
@@ -337,7 +355,12 @@ export async function PATCH(request){
           updated_by=${auth.username},updated_at=NOW() WHERE id=${id} RETURNING id`
       :await sql`UPDATE mayavi_branch_loads SET record_date=${entry.date}::date,load_kg=${entry.weight},rate=${entry.rate},received=${entry.received},
           jepo_rate=${entry.jepoRate},paid_to_jepo=${entry.paidToJepo},paid_to_branch=${entry.paidToBranch},extra_cost=${entry.extraCost},
-          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},delivery_status=${entry.status},
+          destination=${entry.destination},service=${entry.service},commodity=${entry.commodity},bottle_count=${entry.bottleCount},tracking_no=${entry.trackingNo},remarks=${entry.remarks},
+          delivered_on=CASE WHEN ${entry.status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+            WHEN ${entry.status}<>'DELIVERED' THEN NULL ELSE delivered_on END,
+          delivery_date_source=CASE WHEN ${entry.status}='DELIVERED' AND delivery_status<>'DELIVERED' THEN 'MANUAL'
+            WHEN ${entry.status}<>'DELIVERED' THEN '' ELSE delivery_date_source END,
+          delivery_status=${entry.status},
           amount_confirmation_decision=CASE WHEN amount_confirmation_no IS DISTINCT FROM ${entry.confirmationNo}
             OR amount_confirmation_mode IS DISTINCT FROM ${entry.confirmationMode}
             OR received IS DISTINCT FROM ${entry.received}
