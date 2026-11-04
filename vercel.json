@@ -54,6 +54,9 @@
     },
     "app/api/cron/courier-month-backfill/route.js": {
       "maxDuration": 300
+    },
+    "app/api/cron/jepo-branches/[shard]/route.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -96,6 +99,22 @@
     {
       "path": "/api/cron/courier-month-backfill",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/jepo-branches/1",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/jepo-branches/2",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/jepo-branches/3",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/jepo-branches/4",
+      "schedule": "*/2 * * * *"
     }
   ]
 }
