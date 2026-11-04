@@ -41,7 +41,7 @@ export default function CountryLoadAnalysisDashboard(){
   const [uploadMonth,setUploadMonth]=useState(currentMonth);
   const [notice,setNotice]=useState('');
   const [advanced,setAdvanced]=useState(false);
-  const [mapping,setMapping]=useState({courier:'',weight:'',bags:'',country:''});
+  const [mapping,setMapping]=useState({courier:'',weight:'',bags:'',country:'',date:''});
   useEffect(()=>{
     let active=true;
     setLoading(true);
@@ -59,7 +59,7 @@ export default function CountryLoadAnalysisDashboard(){
       .slice().sort((a,b)=>Number(b.totalWeight||0)-Number(a.totalWeight||0)||a.courierName.localeCompare(b.courierName));
   },[search,result.rows]);
   const sectors=result.sectors||[];
-  const selectedFile=(result.files||[]).find(f=>f.flow===flow&&f.month===month);
+  const selectedFile=(result.files||[]).find(f=>f.flow===flow&&(f.coveredMonths||[]).includes(month));
   const existingFile=(result.files||[]).find(f=>f.flow===flow&&f.month===uploadMonth);
   function switchFlow(next){setFlow(next);setMonth('LATEST');setCountry('ALL');setSearch('');setNotice('');}
   async function upload(event){
@@ -126,7 +126,7 @@ export default function CountryLoadAnalysisDashboard(){
         </label>
         <div style={{fontSize:12,color:'#476688',flex:'2 1 250px'}}>
           <strong>{month==='LATEST'?'Select a saved month':monthLabel(month)+' '+flow+' report'}</strong>
-          <div style={{marginTop:3}}>Only the selected month's courier totals and origin-wise loads are shown. Import and Export months are selected separately.</div>
+          <div style={{marginTop:3}}>Reports use each Excel row's actual FLT DATE, not the workbook upload month. Select the month to see only its loads, separately for Import and Export.</div>
         </div>
       </div>
     </div>
@@ -134,7 +134,7 @@ export default function CountryLoadAnalysisDashboard(){
       <section style={panel}>
         <h2 style={{fontSize:16,margin:'0 0 6px'}}>Upload {flow} Excel</h2>
         <p style={{fontSize:12,margin:'0 0 13px',color:'#63748b'}}>
-          Upload a monthly .xlsx file once. It stays saved in the backend, and a revised file for the same month becomes the active version.
+          Upload .xlsx Excel data once. Every shipment is grouped by its actual FLT DATE in the file, even when the upload contains dates from different months.
         </p>
         <form onSubmit={upload}>
           <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
@@ -147,7 +147,7 @@ export default function CountryLoadAnalysisDashboard(){
             </label>
           </div>
           <div style={{fontSize:11,marginTop:9,color:'#687b95'}}>
-            Auto-detects CourierCoName, Bags, Weight and Origin (also standard Courier Name / No. of Bags headings). Maximum 3 MB / 40,000 entries per workbook.
+            Auto-detects CourierCoName, Bags, Weight, Origin and FLT DATE. For missing/invalid flight dates only, the selected upload month is used. Maximum 3 MB / 40,000 entries.
           </div>
           <button type="button" onClick={()=>setAdvanced(v=>!v)}
             style={{border:0,padding:'9px 0',background:'none',color:'#2258ac',fontSize:11,fontWeight:800,cursor:'pointer'}}>
@@ -155,7 +155,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
           {advanced&&<div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8,
             padding:10,background:'#f5f8fd',borderRadius:10,marginBottom:10}}>
-            {Object.entries({courier:'Courier header',weight:'Weight header',bags:'Bags header',country:'Origin / Sector header'}).map(([key,title])=>
+            {Object.entries({courier:'Courier header',weight:'Weight header',bags:'Bags header',country:'Origin / Sector header',date:'Flight/Load Date header'}).map(([key,title])=>
               <label key={key} style={{display:'grid',gap:4,fontSize:11,fontWeight:750}}>
                 {title}<input value={mapping[key]} onChange={e=>setMapping(v=>({...v,[key]:e.target.value}))}
                   placeholder="Exact Excel heading" style={{...input,minWidth:0,width:'100%'}}/>
@@ -193,7 +193,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
         </div>
         <p style={{fontSize:11,color:'#71819a',margin:'12px 0 0'}}>
-          Excel and PDF courier summaries contain the same selected month's totals, 35–40 kg load, above-40 kg load, and origin-wise breakdown. Original monthly Excel remains available.
+          Excel and PDF courier summaries contain the same selected month's totals, 35–40 kg load, above-40 kg load, and origin-wise breakdown. Original source Excel remains available (it can contain entries from other months).
         </p>
       </section>
     </div>
