@@ -14,11 +14,12 @@ export async function GET(request){
   // Every saved JEPO AWB (including old Delivered rows) participates in
   // this complete pass. The sync function runs eight isolated browser tabs
   // concurrently; a delivered record is never downgraded by a stale scan.
-  const candidates=await sql`SELECT UPPER(BTRIM(tracking_no)) AS tracking_no
+  const candidates=await sql`SELECT UPPER(BTRIM(tracking_no)) AS tracking_no,
+      MIN(jepo_live_checked_at) AS last_checked
     FROM mayavi_branch_loads
     WHERE BTRIM(tracking_no)<>''
     GROUP BY UPPER(BTRIM(tracking_no))
-    ORDER BY UPPER(BTRIM(tracking_no)) ASC LIMIT 240`;
+    ORDER BY last_checked ASC NULLS FIRST,tracking_no ASC LIMIT 240`;
   const summary=await syncJepoBranchAwbs(sql,candidates.map(x=>x.tracking_no),{concurrency:8});
   console.log('jepo_branch_cron',JSON.stringify({
     total:candidates.length,checked:summary.checked,updated:summary.updated,failed:summary.failed,pending:summary.pending
