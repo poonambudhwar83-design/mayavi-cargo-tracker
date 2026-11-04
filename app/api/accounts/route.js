@@ -40,12 +40,14 @@ async function ensureTables(sql){
     entry_date DATE NOT NULL,
     credit NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (credit>=0),
     debit NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (debit>=0),
+    transaction_mode TEXT NOT NULL DEFAULT '',
     remarks TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT mayavi_bank_entry_one_side CHECK ((credit>0 AND debit=0) OR (debit>0 AND credit=0))
   )`;
+  await sql`ALTER TABLE mayavi_bank_entries ADD COLUMN IF NOT EXISTS transaction_mode TEXT NOT NULL DEFAULT ''`;
   await sql`CREATE INDEX IF NOT EXISTS mayavi_bank_entry_account_date
     ON mayavi_bank_entries(account_id,entry_date,created_at,id)`;
 }
@@ -73,7 +75,7 @@ async function ledger(sql,accountId,month){
   // Calculate balances across *all* earlier transactions first, then filter
   // by month; otherwise monthly views incorrectly reset the balance.
   const items=await sql`WITH running AS (
-    SELECT e.id,e.account_id,e.entry_date::TEXT AS entry_date,e.credit,e.debit,e.remarks,
+    SELECT e.id,e.account_id,e.entry_date::TEXT AS entry_date,e.credit,e.debit,e.transaction_mode,e.remarks,
     e.created_at,e.updated_at,
     (a.opening_balance+SUM(e.credit-e.debit)
       OVER (PARTITION BY e.account_id ORDER BY e.entry_date,e.created_at,e.id
@@ -87,7 +89,7 @@ async function ledger(sql,accountId,month){
   if(items.length>10000)throw Error('More than 10,000 transactions in this view. Please select a month.');
   return items.map(r=>({id:r.id,accountId:r.account_id,date:r.entry_date,
     credit:two(r.credit),debit:two(r.debit),balance:two(r.balance),
-    remarks:r.remarks||'',createdAt:r.created_at,updatedAt:r.updated_at}));
+    mode:r.transaction_mode||'',remarks:r.remarks||'',createdAt:r.created_at,updatedAt:r.updated_at}));
 }
 function infoToValidate(data={}){
   const holderName=cleanAccountText(data.holderName,120);
@@ -103,28 +105,28 @@ async function xlsxDownload(sql,account,month){
   const book=new ExcelJS.Workbook();
   book.creator='Mayavi Cargo';
   const sh=book.addWorksheet('Account Ledger');
-  sh.mergeCells('A1:E1');
+  sh.mergeCells('A1:F1');
   sh.getCell('A1').value='MAYAVI — ACCOUNT LEDGER';
   sh.getCell('A1').font={bold:true,size:16,color:{argb:'FF17365C'}};
   sh.addRow(['Account Holder',account.holderName,'Bank',account.bankName]);
   sh.addRow(['Account No.',account.accountNo,'Month',month==='ALL'?'All Months':month]);
   sh.addRow(['Opening Balance',account.openingBalance,'Current Balance',account.balance]);
-  sh.addRow(['Date','Credit','Debit','Balance','Remarks']);
+  sh.addRow(['Date','Credit','Debit','Mode of Transaction','Balance','Remarks']);
   sh.getRow(5).font={bold:true,color:{argb:'FFFFFFFF'}};
   sh.getRow(5).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF284F8B'}};
   const start=6;
   for(const entry of rows){
     const date=new Date(entry.date+'T00:00:00Z');
-    sh.addRow([date,entry.credit||null,entry.debit||null,entry.balance,entry.remarks]);
+    sh.addRow([date,entry.credit||null,entry.debit||null,entry.mode||'',entry.balance,entry.remarks]);
   }
   sh.getColumn(1).width=21;sh.getColumn(2).width=21;sh.getColumn(3).width=21;
-  sh.getColumn(4).width=23;sh.getColumn(5).width=58;
+  sh.getColumn(4).width=23;sh.getColumn(5).width=23;sh.getColumn(6).width=58;
   for(let rn=start;rn<=sh.rowCount;rn++){
     sh.getCell('A'+rn).numFmt='dd mmm yyyy';
-    for(const letter of ['B','C','D'])sh.getCell(letter+rn).numFmt='#,##0.00;[Red](#,##0.00)';
+    for(const letter of ['B','C','E'])sh.getCell(letter+rn).numFmt='#,##0.00;[Red](#,##0.00)';
   }
   sh.views=[{state:'frozen',ySplit:5}];
-  if(rows.length)sh.autoFilter={from:{row:5,column:1},to:{row:sh.rowCount,column:5}};
+  if(rows.length)sh.autoFilter={from:{row:5,column:1},to:{row:sh.rowCount,column:6}};
   const bytes=await book.xlsx.writeBuffer();
   return new Response(Buffer.from(bytes),{headers:{
     'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -182,9 +184,9 @@ export async function POST(request){
       if(!account.length)return json({ok:false,error:'Account not found.'},404);
       const id=randomUUID();
       await sql`INSERT INTO mayavi_bank_entries
-        (id,account_id,entry_date,credit,debit,remarks,created_by)
+        (id,account_id,entry_date,credit,debit,transaction_mode,remarks,created_by)
         VALUES (${id}::uuid,${body.accountId}::uuid,${entry.date}::DATE,
-          ${entry.credit},${entry.debit},${entry.remarks},${auth.session.username})`;
+          ${entry.credit},${entry.debit},${entry.mode},${entry.remarks},${auth.session.username})`;
       return json({ok:true,entryId:id,message:'Transaction saved.'},201);
     }
     return json({ok:false,error:'Unknown account operation.'},400);
@@ -217,7 +219,7 @@ export async function PATCH(request){
       const entry=readLedgerEntry(body);
       const rows=await sql`UPDATE mayavi_bank_entries
         SET entry_date=${entry.date}::DATE,credit=${entry.credit},debit=${entry.debit},
-          remarks=${entry.remarks},updated_at=NOW()
+          transaction_mode=${entry.mode},remarks=${entry.remarks},updated_at=NOW()
         WHERE id=${body.entryId}::uuid AND account_id=${body.accountId}::uuid RETURNING id`;
       return rows.length?json({ok:true,message:'Transaction updated; running balances recalculated.'})
         :json({ok:false,error:'Transaction not found.'},404);
