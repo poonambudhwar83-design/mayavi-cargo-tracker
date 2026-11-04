@@ -8,15 +8,22 @@ assert.equal(sourceStatusToBranch('In Transit'),'IN_TRANSIT');
 assert.equal(sourceStatusToBranch('Out For Delivery'),'OUT_FOR_DELIVERY');
 assert.equal(sourceStatusToBranch('Delivered'),'DELIVERED');
 assert.equal(sourceStatusToBranch('Not Delivered'),null);
-const sample=validateJepoLiveResult({
- bodyText:'Fwd No : 1Z12B6F40334321920\nStatus :\nPre Transit\nDate Time Location Progress\nFri, 30 Oct 2026 10:54 AM Departed from Facility',
- status:'Pre Transit',latestProgress:'Departed from Facility'
-},'1Z12B6F40334321920');
+const internalReference='547123';
+const forwardedReference='1Z9999999999999999';
+const liveSnapshot={
+ bodyText:'Fwd No : '+forwardedReference+'\nStatus :\nPre Transit\nDate Time Location Progress\nFri, 30 Oct 2026 10:54 AM Departed from Facility',
+ submittedAwb:internalReference,freshResult:true,status:'Pre Transit',latestProgress:'Departed from Facility'
+};
+const sample=validateJepoLiveResult(liveSnapshot,internalReference);
+assert.equal(sample.awb,internalReference);
+assert.equal(sample.carrierAwb,forwardedReference,'Carrier AWB differs from the internal JEPO reference.');
 assert.equal(sample.liveStatus,'Pre Transit');
 assert.equal(sample.liveRemarks,'Departed from Facility');
 assert.equal(sample.mappedStatus,'PRE_TRANSIT');
-assert.throws(()=>validateJepoLiveResult({bodyText:'Fwd No : 1Z12B6F40334321921\nStatus: Delivered',status:'Delivered',latestProgress:'Delivered'},'1Z12B6F40334321920'),/unverified|different/i);
-assert.throws(()=>validateJepoLiveResult({bodyText:'Fwd No : 1Z12B6F40334321920\nStatus: Delivered',status:'Delivered',latestProgress:''},'1Z12B6F40334321920'),/Progress/i);
+assert.throws(()=>validateJepoLiveResult({...liveSnapshot,submittedAwb:'547999'},internalReference),/fresh result/i);
+assert.throws(()=>validateJepoLiveResult({...liveSnapshot,freshResult:false},internalReference),/fresh result/i);
+assert.throws(()=>validateJepoLiveResult({...liveSnapshot,latestProgress:''},internalReference),/Progress/i);
+assert.throws(()=>validateJepoLiveResult({...liveSnapshot,bodyText:'No shipment details'},internalReference),/forwarded/i);
 const api=readFileSync('app/api/branch-loads/route.js','utf8');
 const ui=readFileSync('app/BranchLoadsDashboard.js','utf8');
 const sync=readFileSync('lib/jepoBranchSync.js','utf8');
@@ -41,5 +48,7 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
     'Chromium binary must be traced into '+route+' runtime');
 }
 assert.ok(browser.includes('https://jepoexpress.com/track'));
-assert.ok(browser.includes('validateJepoLiveResult(snapshot,awb)'));
+assert.ok(browser.includes('freshResult:true'));
+assert.ok(browser.includes('beforeResult'));
+assert.ok(browser.includes('validateJepoLiveResult({...snapshot,submittedAwb:awb,freshResult:true},awb)'));
 console.log('JEPO branch live status, Progress, AWB guards, tracking scheduler and Live Remarks UI checks passed.');
