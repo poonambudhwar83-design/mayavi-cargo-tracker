@@ -45,6 +45,12 @@
     },
     "app/api/cron/active-airlines/route.js": {
       "maxDuration": 260
+    },
+    "app/api/cron/jepo-branches/route.js": {
+      "maxDuration": 300
+    },
+    "app/api/branch-loads/jepo-live/route.js": {
+      "maxDuration": 180
     }
   },
   "crons": [
@@ -79,6 +85,10 @@
     {
       "path": "/api/cron/active-airlines",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/jepo-branches",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
