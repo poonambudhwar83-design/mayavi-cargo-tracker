@@ -150,7 +150,7 @@ export default function BranchLoadsDashboard({currentUser}){
   useEffect(()=>{
     let active=true;
     const number=String(draft.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'');
-    if(!/^[A-Z0-9-]{6,60}$/.test(number)){setDuplicateInfo(null);setCheckingDuplicate(false);return;}
+    if(!/^[A-Z0-9-]{3,60}$/.test(number)){setDuplicateInfo(null);setCheckingDuplicate(false);return;}
     const local=rows.find(r=>r.id!==editing&&String(r.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'')===number);
     if(local){
       setDuplicateInfo({duplicate:true,trackingNo:number,existing:{id:local.id,branch:local.branch,date:local.date,status:local.status}});
