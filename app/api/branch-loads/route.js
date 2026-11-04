@@ -87,7 +87,7 @@ function textField(value,max=120){return String(value??'').trim().slice(0,max);}
 
 // Duplicate JEPO AWBs must be recognized across both Jind and Karnal, in
 // Active AND Delivered. Other-branch shipment details remain private.
-function normalizedJepoNo(value){return String(value??'').trim().toUpperCase().replace(/\\s+/g,'');}
+function normalizedJepoNo(value){return String(value??'').trim().toUpperCase().replace(/\s+/g,'');}
 async function findDuplicateJepo(sql,trackingNo,excludeId=''){
   const key=normalizedJepoNo(trackingNo);
   if(!key||key.length<6)return null;
