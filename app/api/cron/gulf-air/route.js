@@ -1,6 +1,7 @@
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {safeAirlineMovementPatch} from '../../../../lib/activeAirlineCron.js';
+import {readableGulfFailure} from '../../../../lib/gulfAirDiagnostics.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -8,23 +9,6 @@ export const maxDuration=300;
 const digits=v=>String(v||'').replace(/\D/g,'');
 const databaseUrl=()=>process.env.DATABASE_URL||process.env.POSTGRES_URL||
   process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
-// The tracking API can return structured failure objects. String(object)
- // used to erase the true provider error into "[object Object]".
-function readableGulfFailure(value){
-  if(value===null||value===undefined||value==='')return '';
-  if(typeof value==='string')return value.trim().slice(0,450);
-  if(value instanceof Error)return String(value.message||value).slice(0,450);
-  if(typeof value==='object'){
-    const preferred=[value.reason,value.message,value.error,value.code,value.detail,value.statusText]
-      .filter(item=>item!==null&&item!==undefined&&item!==''&&item!==value);
-    if(preferred.length){
-      const meaningful=preferred.map(item=>readableGulfFailure(item)).filter(Boolean).join(' / ');
-      if(meaningful)return meaningful.slice(0,450);
-    }
-    try{return JSON.stringify(value).slice(0,450)}catch{return 'Unrecognized Gulf tracking provider error'}
-  }
-  return String(value).slice(0,450);
-}
 const cronKey=()=>process.env.MAYAVI_ADMIN_KEY||process.env.CRON_SECRET||
   (databaseUrl()?createHash('sha256').update('mayavi-cron|'+databaseUrl()).digest('hex'):'');
 function authorized(request){
