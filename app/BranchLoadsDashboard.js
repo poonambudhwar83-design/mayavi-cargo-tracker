@@ -189,9 +189,19 @@ export default function BranchLoadsDashboard({currentUser}){
     (filter==='ALL'||r.branch===filter)&&
     (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode,r.remarks,r.liveRemarks,r.liveStatus].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,search]);
-  const shown=useMemo(()=>matchingRows.filter(r=>
-    sheet==='SUMMARY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED')
-  ),[matchingRows,sheet]);
+  const shown=useMemo(()=>{
+    const visible=matchingRows.filter(r=>
+      sheet==='SUMMARY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED'));
+    if(sheet==='DELIVERED')visible.sort((a,b)=>{
+      // Actual delivery date, not the booking date, determines Delivered order.
+      // Historical deliveries without a verified date remain after dated rows.
+      const byDelivery=String(b.deliveredOn||'').localeCompare(String(a.deliveredOn||''));
+      if(byDelivery)return byDelivery;
+      const byBooking=String(b.date||'').localeCompare(String(a.date||''));
+      return byBooking||String(a.id).localeCompare(String(b.id));
+    });
+    return visible;
+  },[matchingRows,sheet]);
   // Summary combines all booked loads, regardless of current delivery status.
   const dailySummary=useMemo(()=>aggregateDailyBranchLoads(shown),[shown]);
   const summaryTotals=useMemo(()=>dailySummary.reduce((t,r)=>({
@@ -536,7 +546,16 @@ export default function BranchLoadsDashboard({currentUser}){
   const dataCells=record=>[
     <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span>
       {isAdmin&&<button type="button" aria-label={'Delete '+record.branch+' entry '+showDate(record.date)} className={styles.quickDelete} disabled={busy} onClick={()=>remove(record)}>Delete</button>}</td>,
-    <td key="date" title={showDate(record.date)}>{compactShowDate(record.date)}</td>,
+    <td key="date" title={sheet==='DELIVERED'?
+        (record.deliveredOn?'Delivered: '+showDate(record.deliveredOn)+' • Booked: '+showDate(record.date):'Delivery date not yet verified • Booked: '+showDate(record.date)):
+        showDate(record.date)}>
+      {sheet==='DELIVERED'?<div>
+        <strong style={{display:'block',color:record.deliveredOn?'#186534':'#8793a4',fontSize:11}}>
+          {record.deliveredOn?compactShowDate(record.deliveredOn):'Date not verified'}
+        </strong>
+        <small style={{display:'block',fontSize:10,color:'#64748b'}}>Booked: {compactShowDate(record.date)}</small>
+      </div>:compactShowDate(record.date)}
+    </td>,
     <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
     <td key="rate" className={styles.number}>{money(record.rate)}</td>,
     <td key="amount" className={styles.number}><b>{money(record.amount)}</b></td>,
@@ -630,6 +649,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <nav className={styles.sheetTabs} aria-label="Load sheet">
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
+      {sheet==='DELIVERED'&&<small style={{fontSize:11,color:'#25603a',fontWeight:700}}>Latest verified delivery date first • Undated past deliveries below</small>}
       <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
       {currentUser?.role==='admin'&&<button type="button" className={styles.sheetTab} onClick={()=>switchSheet('PROFIT')}>Branch Profit &amp; Loss</button>}
     </nav>
@@ -677,7 +697,7 @@ export default function BranchLoadsDashboard({currentUser}){
         {ledgerColumns(hasExtraCostColumn)}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
-          <th>Date</th>
+          <th>{sheet==='DELIVERED'?'Delivery Date ↓':'Date'}</th>
           <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Live Remarks</th><th>Entered By</th><th>Last Edited By</th><th>Remarks</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
