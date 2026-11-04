@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseCountryWorkbook, summarizeCountryRows, bucketFor, normalizeSector, buildCourierSectorPivot } from '../lib/countryLoadAnalysis.js';
+import { parseCountryWorkbook, summarizeCountryRows, bucketFor, parseShipmentDate, normalizeSector, buildCourierSectorPivot } from '../lib/countryLoadAnalysis.js';
 const row=values=>({
   hasValues:values.some(x=>x!==''&&x!==null&&x!==undefined),
   cellCount:values.length,
@@ -24,12 +24,12 @@ assert.equal(dhl.entries,4);
 assert.equal(dhl.totalWeight,289);
 assert.equal(dhl.totalBags,9);
 assert.equal(dhl.under30,87);
-assert.equal(dhl.from30To35,130);
-assert.equal(dhl.from35To40,72);
+assert.equal(dhl.from30To35,60);
+assert.equal(dhl.from35To40,142);
 assert.equal(dhl.over40,0);
 assert.equal(bucketFor(29.9,1),'under30');
 assert.equal(bucketFor(30,1),'from30To35');
-assert.equal(bucketFor(35,1),'from30To35');
+assert.equal(bucketFor(35,1),'from35To40');
 assert.equal(bucketFor(35.01,1),'from35To40');
 assert.equal(bucketFor(40,1),'from35To40');
 assert.equal(bucketFor(40.01,1),'over40');
@@ -64,8 +64,25 @@ assert.equal(sorted[0].avgBagKg,560/15);
 assert.equal(sorted[0].from30To35,0);
 assert.equal(sorted[0].from35To40,560);
 assert.equal(sorted[0].over40,0);
-assert.equal(sorted[1].from30To35,280);
+assert.equal(sorted[1].from35To40,280);
 assert.equal(sorted[1].under30,20);
+assert.equal(parseShipmentDate('2026-11-04'),'2026-11-04');
+assert.equal(parseShipmentDate('04/11/2026'),'2026-11-04');
+assert.equal(parseShipmentDate('4 Nov 2026'),'2026-11-04');
+assert.equal(parseShipmentDate(new Date(Date.UTC(2026,10,4))),'2026-11-04');
+assert.equal(parseShipmentDate((Date.UTC(2026,10,4)-Date.UTC(1899,11,30))/86400000),'2026-11-04');
+assert.equal(parseShipmentDate('31/02/2026'),null);
+assert.equal(actual.rows[0].shipmentMonth,'2026-11','Use Excel FLT DATE instead of upload month.');
+const crossMonth=parseCountryWorkbook({worksheets:[sheet('Mixed months',[
+  ['CourierCoName','Bags','Weight','Origin','FLT DATE'],
+  ['DHL',4,152,'HKG','2026-10-31'],
+  ['DHL',3,120,'DOH','2026-11-01'],
+  ['DHL',2,70,'JFK','2026-11-02']
+]) ]});
+assert.deepEqual(crossMonth.rows.map(r=>r.shipmentMonth),['2026-10','2026-11','2026-11'],
+  'November rows in an October upload must be classified under November.');
+assert.equal(crossMonth.rows[0].shipmentDate,'2026-10-31');
+assert.equal(crossMonth.rows[1].shipmentDate,'2026-11-01');
 console.log('Country analysis: real CourierCoName airline Excel format and descending Import totals passed.');
 console.log('Country analysis: Import/Export parser, weighted average, bucket boundaries and custom mapping passed.');
 
