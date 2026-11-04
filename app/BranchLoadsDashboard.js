@@ -310,6 +310,25 @@ export default function BranchLoadsDashboard({currentUser}){
     }catch(e){setMessage(e?.message||'Unable to delete.');}
     finally{setBusy(false);}
   }
+  async function refreshJepo(records){
+    if(liveBusy||busy)return;
+    const ids=(records||[]).filter(r=>r?.id&&r.trackingNo).slice(0,6).map(r=>r.id);
+    if(!ids.length){setMessage('No saved JEPO Tracking No. for this selection.');return;}
+    setLiveBusy(true);setMessage('Checking JEPO website for latest status and progress…');
+    try{
+      const response=await fetch('/api/branch-loads/jepo-live',{
+        method:'POST',credentials:'include',headers:{'content-type':'application/json'},
+        body:JSON.stringify({ids})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||!data.ok)throw Error(data.error||'JEPO live tracking could not be checked.');
+      recordWrite();await load();
+      setMessage(data.updated
+        ?'JEPO live: '+data.updated+' tracked, '+data.failed+' unavailable. Status and Live Remarks refreshed.'
+        :'JEPO website has not returned verified data. Saved statuses remain unchanged.');
+    }catch(e){setMessage('JEPO live tracking: '+(e?.message||'source unavailable')+'. Old records remain saved.');}
+    finally{setLiveBusy(false);}
+  }
   async function changeStatus(row,status){
     if(busy||status===row.status)return;
     setBusy(true);setMessage('');
@@ -615,6 +634,10 @@ export default function BranchLoadsDashboard({currentUser}){
       <span className={styles.footerActions}>
         {sheet==='ACTIVE'&&<button type="button" onClick={add} disabled={busy}>+ Daily Entry</button>}
         <button type="button" onClick={()=>void load()}>Refresh</button>
+        {sheet!=='SUMMARY'&&<button type="button" disabled={liveBusy||busy||!matchingRows.some(r=>r.trackingNo&&r.status!=='DELIVERED')}
+          onClick={()=>void refreshJepo(matchingRows.filter(r=>r.trackingNo&&r.status!=='DELIVERED').slice(0,6))}>
+          {liveBusy?'Checking JEPO…':'Refresh JEPO Live'}
+        </button>}
         <button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>
          <button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>
       </span>
