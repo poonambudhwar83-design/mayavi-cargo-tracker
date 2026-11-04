@@ -35,14 +35,11 @@ export default function StudyNotesDashboard(){
 
   const filtered=useMemo(()=>rows.filter(row=>row.subject===subject),[rows,subject]);
   const totals=useMemo(()=>studyTotals(filtered),[filtered]);
-  const theoryPreviewTotal=draft.theoryMarksTotal!==''?draft.theoryMarksTotal:
-    draft.theoryCorrected!==''?number(draft.theoryDone):'';
-  const theoryPreviewObtained=draft.theoryMarksObtained!==''?draft.theoryMarksObtained:
-    draft.theoryCorrected!==''?number(draft.theoryCorrected):'';
-  const manualSplitDraft=['mcqMarksTotal','mcqMarksObtained','theoryMarksTotal','theoryMarksObtained']
+  const theoryPreviewTotal=draft.theoryMarksTotal;
+  const theoryPreviewObtained=draft.theoryMarksObtained;
+  // Attempted and corrected counts do not write or prefill theory marks.
+  const hasSplitDraft=['mcqMarksTotal','mcqMarksObtained','theoryMarksTotal','theoryMarksObtained']
     .some(field=>draft[field]!=='');
-  // Older overall-only marks remain visible until a manually split score is entered.
-  const hasSplitDraft=manualSplitDraft||(draft.theoryCorrected!==''&&draft.totalMarks==='');
   const combinedDraftTotal=hasSplitDraft
     ?Number(draft.mcqMarksTotal||0)+Number(theoryPreviewTotal||0):draft.totalMarks;
   const combinedDraftObtained=hasSplitDraft
@@ -210,15 +207,12 @@ export default function StudyNotesDashboard(){
               placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
           </label>)}
         </div>
-        <div className={styles.theoryCalculations} aria-label="Automatic theory calculations">
+        <div className={styles.theoryCalculations} aria-label="Theory pending and incorrect calculations">
           <div><small>Theory Pending = Total − Attempted</small>
             <b className={styles.pendingCount}>{pending(draft.theoryTotal,draft.theoryDone)}</b></div>
           <div><small>Theory Incorrect = Attempted − Corrected</small>
             <b>{previewIncorrect===null?'—':previewIncorrect}</b></div>
-          <div><small>Theory Total Marks = Attempted (1 mark each)</small>
-            <b>{theoryPreviewTotal===''?'—':theoryPreviewTotal}</b></div>
-          <div><small>Marks Obtained = Corrected</small>
-            <b>{theoryPreviewObtained===''?'—':theoryPreviewObtained}</b></div>
+          <div><small>Theory marks</small><b>Manual entry</b></div>
         </div>
         <div className={styles.textFields} style={{marginTop:13}}>
           <label>Incorrect MCQ Question Numbers
@@ -250,16 +244,16 @@ export default function StudyNotesDashboard(){
                 marksPercentage(draft.mcqMarksTotal,draft.mcqMarksObtained).toFixed(2)+'%'}</b>
             </div>
           </div>
-          <h3>Theory Marks <small>(1 mark per corrected question; optional manual entries below)</small></h3>
+          <h3>Theory Marks <small>(enter both marks manually; percentage is calculated automatically)</small></h3>
           <div className={styles.marksFields}>
-            <label>Theory Total Marks (optional manual entry)
+            <label>Theory Total Marks (manual)
               <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder={draft.theoryCorrected!==''?String(number(draft.theoryDone)):'Enter manually'} value={draft.theoryMarksTotal}
+                placeholder="Enter manually" value={draft.theoryMarksTotal}
                 onChange={e=>update('theoryMarksTotal',e.target.value)}/>
             </label>
-            <label>Theory Marks Obtained (optional manual entry)
+            <label>Theory Marks Obtained (manual)
               <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder={draft.theoryCorrected!==''?String(number(draft.theoryCorrected)):'Enter manually'} value={draft.theoryMarksObtained}
+                placeholder="Enter manually" value={draft.theoryMarksObtained}
                 onChange={e=>update('theoryMarksObtained',e.target.value)}/>
             </label>
             <div className={styles.percentagePreview}><small>THEORY %</small>
@@ -282,7 +276,7 @@ export default function StudyNotesDashboard(){
         <div className={styles.actions}>
           <button type="submit" disabled={busy}>{busy?'Saving…':editId?'Save Changes':'+ Save Topic'}</button>
           {editId&&<button type="button" className={styles.cancel} disabled={busy} onClick={reset}>Cancel</button>}
-          <small>Pending, incorrect and one-mark theory scores are calculated automatically. Existing incorrect-question numbers stay editable.</small>
+          <small>Theory pending and incorrect counts are automatic. Theory marks stay manual; old question numbers remain editable.</small>
         </div>
       </form>
     </section>
