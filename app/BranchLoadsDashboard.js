@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
 import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import styles from './BranchLoadsDashboard.module.css';
 import BranchProfitDashboard from './BranchProfitDashboard.js';
 
@@ -569,6 +570,11 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
     <td key="tracking"><b>{record.trackingNo||'—'}</b>
+      {isJindJepoTimeout(record)&&<div className={styles.jindTimeoutBadge} role="status" title={record.liveError||'JEPO website timed out'}>
+        <span>⚠ JEPO TIMEOUT · AUTO RETRY</span>
+        <a href="https://jepoexpress.com/track" target="_blank" rel="noopener noreferrer"
+          title="Open JEPO website tracking in a new tab" className={styles.jindTimeoutLink}>Tracking website</a>
+      </div>}
       {flaggedJepoNumber(record.trackingNo)&&<span className={styles.duplicateBadge}>DUPLICATE / ALREADY SAVED</span>}
       {record.trackingNo&&<button type="button"
       className={styles.secondary} disabled={liveBusy||busy} style={{marginTop:5,padding:'4px 8px',display:'block',fontSize:10}}
@@ -576,7 +582,9 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="status">{record.liveStatus&&<strong style={{display:'block',fontSize:11,color:'#1d5798',marginBottom:5}} title="JEPO Website Status">{record.liveStatus}</strong>}<select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
-    <td key="liveRemarks" className={styles.remarksCell}><span title={record.liveRemarks||record.liveError||'Not checked yet'}>{record.liveRemarks||'—'}</span>
+    <td key="liveRemarks" className={styles.remarksCell}><span title={record.liveRemarks||record.liveError||'Not checked yet'}>{isJindJepoTimeout(record)
+      ?<strong className={styles.jindTimeoutText} title={record.liveError}>⚠ Tracking timed out — auto retrying</strong>
+      :record.liveRemarks||'—'}</span>
       {record.liveCheckedAt&&<small style={{display:'block',fontSize:9,color:'#63758d'}}>Last checked {new Date(record.liveCheckedAt).toLocaleString('en-IN')}</small>}</td>,
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
@@ -703,7 +711,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
-          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',flaggedJepoNumber(row.trackingNo)?styles.duplicateRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
+          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',flaggedJepoNumber(row.trackingNo)?styles.duplicateRow:'',isJindJepoTimeout(row)?styles.jindTimeoutRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
           {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
