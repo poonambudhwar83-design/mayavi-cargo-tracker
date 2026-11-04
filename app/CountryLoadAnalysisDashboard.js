@@ -193,7 +193,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
         </div>
         <p style={{fontSize:11,color:'#71819a',margin:'12px 0 0'}}>
-          Excel and PDF courier summaries contain the same selected month's totals, origin-wise load and above-35 kg analysis. Original monthly Excel remains available.
+          Excel and PDF courier summaries contain the same selected month's totals, origin-wise load and above-40 kg analysis. Original monthly Excel remains available.
         </p>
       </section>
     </div>
@@ -203,7 +203,7 @@ export default function CountryLoadAnalysisDashboard(){
       {stat('Couriers',result.totals?.couriers||0)}
       {stat('Total Load',result.totals?.totalWeight||0,'kg')}
       {stat('Average',result.totals?.avgBagKg||0,'kg/bag')}
-      {stat('Above 35 kg/bag',result.totals?.over35||0,'kg')}
+      {stat('More than 40 kg/bag',result.totals?.over40||0,'kg')}
     </div>
     <section style={{...panel,padding:'15px 11px',marginBottom:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',margin:'0 6px 13px'}}>
@@ -215,7 +215,7 @@ export default function CountryLoadAnalysisDashboard(){
       <div style={{overflowX:'auto',maxHeight:'min(65vh,620px)',borderRadius:8,border:'1px solid #e1e8f1'}}>
         <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:Math.max(600,500+sectors.length*120),width:'100%'}}>
           <thead><tr>
-            {['Courier Name','Total Load (kg)','Above 35 kg (load)',...sectors.map(sector=>sector.name+' (kg)'),'Average kg / bag'].map((label,i)=>
+            {['Courier Name','Total Load (kg)','More than 40 kg (load)',...sectors.map(sector=>sector.name+' (kg)'),'Average kg / bag'].map((label,i)=>
               <th key={label} style={{...th,textAlign:i?'right':'left',left:i===0?0:undefined,zIndex:i===0?3:2}}>{label}</th>)}
           </tr></thead>
           <tbody>
@@ -225,20 +225,20 @@ export default function CountryLoadAnalysisDashboard(){
             </td></tr>}
             {!loading&&entries.map((r,i)=><tr key={r.courierName} style={{background:i%2?'#f8faff':'#fff'}}>
               <td style={{...td,textAlign:'left',fontWeight:800,position:'sticky',left:0,background:i%2?'#f8faff':'#fff',color:'#233f69'}}>{r.courierName}</td>
-              {[r.totalWeight,r.over35,...sectors.map(sector=>r.sectorLoads?.[sector.name]||0),r.avgBagKg].map((v,j)=>
+              {[r.totalWeight,r.over40,...sectors.map(sector=>r.sectorLoads?.[sector.name]||0),r.avgBagKg].map((v,j)=>
                 <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
           {!loading&&entries.length>0&&!search.trim()&&<tfoot><tr style={{background:'#e8f0fc'}}>
             <td style={{...td,textAlign:'left',fontWeight:900,position:'sticky',left:0,background:'#e8f0fc'}}>GRAND TOTAL</td>
-            {[result.totals?.totalWeight||0,result.totals?.over35||0,
+            {[result.totals?.totalWeight||0,result.totals?.over40||0,
               ...sectors.map(sector=>sector.totalWeight||0),result.totals?.avgBagKg||0].map((v,i)=>
               <td key={i} style={{...td,fontWeight:900}}>{numeric(v)}</td>)}
           </tr></tfoot>}
         </table>
       </div>
       <p style={{fontSize:11,color:'#697e98',margin:'10px 7px 0'}}>Each sector column shows total kg loaded by that courier from that origin, such as HKG, JFK or DOH. 
-        Above 35 kg load includes shipment rows where weight ÷ bags is greater than 35 kg. Courier average = total load ÷ total bags.
+        More than 40 kg load includes shipment rows where weight ÷ bags is strictly greater than 40 kg. Courier average = total load ÷ total bags.
       </p>
     </section>
     <section style={panel}>
