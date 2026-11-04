@@ -217,6 +217,13 @@ export default function CountryLoadAnalysisDashboard(){
                 <td key={j} style={{...td,fontWeight:j===0?900:500,color:j===0?'#174c89':undefined}}>{numeric(v)}</td>)}
             </tr>)}
           </tbody>
+          {!loading&&entries.length>0&&!search.trim()&&<tfoot><tr style={{background:'#e8f0fc'}}>
+            <td style={{...td,textAlign:'left',fontWeight:900,position:'sticky',left:0,background:'#e8f0fc'}}>GRAND TOTAL</td>
+            {[result.totals?.totalWeight||0,...sectors.map(sector=>sector.totalWeight||0),
+              result.totals?.avgBagKg||0,result.totals?.under30||0,
+              result.totals?.from30To35||0,result.totals?.over35||0].map((v,i)=>
+              <td key={i} style={{...td,fontWeight:900}}>{numeric(v)}</td>)}
+          </tr></tfoot>}
         </table>
       </div>
       <p style={{fontSize:11,color:'#697e98',margin:'10px 7px 0'}}>Each sector column shows total kg loaded by that courier from that origin, such as HKG, JFK or DOH. 
