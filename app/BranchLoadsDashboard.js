@@ -466,7 +466,18 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=minimumJepoExtraCost(d.commodity,count);return {...d,bottleCount:count,extraCost:count&&minimum!==null&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
-      <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
+      <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100}
+        value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}
+        style={duplicateTrackingRows.length?{border:'2px solid #9333ea',background:'#faf5ff'}:undefined}/>
+        {!!duplicateTrackingRows.length&&<div role="alert" style={{background:'#f3e8ff',padding:7,marginTop:5,borderRadius:7,color:'#6b21a8',fontSize:10}}>
+          <strong>⚠ Duplicate JEPO Tracking No. {normalizedTracking}</strong>
+          <div>Previously saved in {duplicateTrackingRows.map(x=>x.branch).join(', ')}.</div>
+          <label><input type="checkbox" checked={duplicateAcknowledged}
+            onChange={e=>setDuplicateAcknowledged(e.target.checked)}/>
+            Acknowledge duplicate before saving.
+          </label>
+        </div>}
+      </td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.remarksCell}><span title={rows.find(r=>r.id===editing)?.liveRemarks||''}>{editing==='new'?'—':rows.find(r=>r.id===editing)?.liveRemarks||'Pending live tracking'}</span></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
