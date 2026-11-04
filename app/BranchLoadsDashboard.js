@@ -494,9 +494,11 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
-    <td key="tracking"><b>{record.trackingNo||'—'}</b>{record.trackingNo&&<button type="button"
-      className={styles.secondary} disabled={liveBusy||busy} style={{marginTop:5,padding:'4px 8px',display:'block',fontSize:10}}
-      onClick={()=>void refreshJepo([record])}>Track JEPO</button>}</td>,
+    <td key="tracking"><b>{record.trackingNo||'—'}</b>
+      {record.trackingNo&&<small style={{display:'block',marginTop:4,color:record.liveStatus?'#237b56':'#64748b',fontSize:10,fontWeight:700}}
+        title={record.liveCheckedAt?'Last JEPO check: '+new Date(record.liveCheckedAt).toLocaleString('en-IN'):'Scheduled for automatic JEPO tracking'}>
+        {record.liveStatus?'● Auto-tracked':'◌ Auto-tracking'}
+      </small>}</td>,
     <td key="status">{record.liveStatus&&<strong style={{display:'block',fontSize:11,color:'#1d5798',marginBottom:5}} title="JEPO Website Status">{record.liveStatus}</strong>}<select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
