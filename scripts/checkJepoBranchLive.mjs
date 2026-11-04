@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {cleanJepoTrackingNo,sourceStatusToBranch,validateJepoLiveResult} from '../lib/jepoBranchTracking.js';
 assert.equal(cleanJepoTrackingNo(' 1z12b6f40334321920 '),'1Z12B6F40334321920');
 assert.equal(cleanJepoTrackingNo('wrong/awb'),'');
+assert.equal(cleanJepoTrackingNo('618'),'618','Legacy short JEPO numbers must be attempted, not silently skipped.');
 assert.equal(sourceStatusToBranch('Pre Transit'),'PRE_TRANSIT');
 assert.equal(sourceStatusToBranch('In Transit'),'IN_TRANSIT');
 assert.equal(sourceStatusToBranch('Out For Delivery'),'OUT_FOR_DELIVERY');
