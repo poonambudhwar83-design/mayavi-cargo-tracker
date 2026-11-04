@@ -19,7 +19,7 @@ const currentMonth=()=>{
   return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
 };
 const monthLabel=ym=>{
-  if(ym==='ALL')return 'All Months';
+  if(ym==='LATEST')return 'Select Month';
   const [y,m]=ym.split('-').map(Number);
   return new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
 };
@@ -29,7 +29,7 @@ const stat=(label,value,unit='')=><div style={{background:'#f5f8ff',padding:'11p
 </div>;
 export default function CountryLoadAnalysisDashboard(){
   const [flow,setFlow]=useState('IMPORT');
-  const [month,setMonth]=useState('ALL');
+  const [month,setMonth]=useState('LATEST');
   const [country,setCountry]=useState('ALL');
   const [search,setSearch]=useState('');
   const [refresh,setRefresh]=useState(0);
@@ -48,7 +48,7 @@ export default function CountryLoadAnalysisDashboard(){
     const url=API+'?flow='+flow+'&month='+encodeURIComponent(month)+'&country='+encodeURIComponent(country);
     fetch(url,{credentials:'include',cache:'no-store'})
       .then(async res=>{const json=await res.json();if(!res.ok||!json.ok)throw Error(json.error||'Could not load analysis.');return json;})
-      .then(data=>{if(active){setResult(data);}})
+      .then(data=>{if(active){setResult(data);if(month==='LATEST'&&data.month&&data.month!=='LATEST')setMonth(data.month);}})
       .catch(e=>{if(active){setNotice(e.message||'Cannot open analysis.');setResult({rows:[],files:[],months:[],countries:[],totals:{}});}})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
@@ -61,7 +61,7 @@ export default function CountryLoadAnalysisDashboard(){
   const sectors=result.sectors||[];
   const selectedFile=(result.files||[]).find(f=>f.flow===flow&&f.month===month);
   const existingFile=(result.files||[]).find(f=>f.flow===flow&&f.month===uploadMonth);
-  function switchFlow(next){setFlow(next);setMonth('ALL');setCountry('ALL');setSearch('');setNotice('');}
+  function switchFlow(next){setFlow(next);setMonth('LATEST');setCountry('ALL');setSearch('');setNotice('');}
   async function upload(event){
     event.preventDefault();
     if(!file){setNotice('First select an Excel file.');return;}
@@ -114,6 +114,22 @@ export default function CountryLoadAnalysisDashboard(){
         {value==='IMPORT'?'IMPORT ANALYSIS':'EXPORT ANALYSIS'}
       </button>)}
     </div>
+    <div style={{...panel,marginBottom:16,padding:'13px 16px',background:'#f1f6ff',borderColor:'#bfd2f3'}}>
+      <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',justifyContent:'space-between'}}>
+        <label style={{display:'grid',gap:6,fontSize:13,fontWeight:900,color:'#183e77',flex:'1 1 215px',maxWidth:360}}>
+          SELECT MONTH — {flow} REPORT
+          <select style={{...input,width:'100%',maxWidth:'100%',fontSize:15,fontWeight:850,border:'2px solid #9dbbe8'}}
+            value={month} onChange={e=>{setMonth(e.target.value);setCountry('ALL');setSearch('');}}>
+            {month==='LATEST'&&<option value="LATEST">{loading?'Loading saved months…':'No saved month yet'}</option>}
+            {(result.months||[]).map(m=><option value={m} key={m}>{monthLabel(m)}</option>)}
+          </select>
+        </label>
+        <div style={{fontSize:12,color:'#476688',flex:'2 1 250px'}}>
+          <strong>{month==='LATEST'?'Select a saved month':monthLabel(month)+' '+flow+' report'}</strong>
+          <div style={{marginTop:3}}>Only the selected month's courier totals and origin-wise loads are shown. Import and Export months are selected separately.</div>
+        </div>
+      </div>
+    </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(285px,1fr))',gap:14,marginBottom:16}}>
       <section style={panel}>
         <h2 style={{fontSize:16,margin:'0 0 6px'}}>Upload {flow} Excel</h2>
@@ -154,12 +170,6 @@ export default function CountryLoadAnalysisDashboard(){
       <section style={panel}>
         <h2 style={{fontSize:16,margin:'0 0 12px'}}>View & Download {flow} Data</h2>
         <div style={{display:'flex',gap:9,flexWrap:'wrap',marginBottom:12}}>
-          <label style={{display:'grid',gap:4,fontSize:11,fontWeight:800,flex:'1 1 125px'}}>MONTH
-            <select style={{...input,width:'100%'}} value={month} onChange={e=>{setMonth(e.target.value);setCountry('ALL');}}>
-              <option value="ALL">All Saved Months</option>
-              {(result.months||[]).map(m=><option value={m} key={m}>{monthLabel(m)}</option>)}
-            </select>
-          </label>
           <label style={{display:'grid',gap:4,fontSize:11,fontWeight:800,flex:'1 1 130px'}}>ORIGIN / SECTOR
             <select style={{...input,width:'100%'}} value={country} onChange={e=>setCountry(e.target.value)}>
               <option value="ALL">All Origins</option>
@@ -179,7 +189,7 @@ export default function CountryLoadAnalysisDashboard(){
           </button>
         </div>
         <p style={{fontSize:11,color:'#71819a',margin:'12px 0 0'}}>
-          Import and Export are downloaded separately. Original Excel is available after selecting a saved month; Complete Data includes all selected entries.
+          All downloads use the selected report month shown above; the original monthly workbook remains available.
         </p>
       </section>
     </div>
@@ -194,7 +204,7 @@ export default function CountryLoadAnalysisDashboard(){
     <section style={{...panel,padding:'15px 11px',marginBottom:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',margin:'0 6px 13px'}}>
         <div><h2 style={{fontSize:16,margin:0}}>{flow} — Courier & Origin-Wise Load Summary</h2>
-          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{monthLabel(month)} • Sorted highest to lowest total load (kg) • Latest active workbook per month</div>
+          <div style={{color:'#6c7e95',fontSize:11,marginTop:4}}>{flow} • {monthLabel(month)} only • Sorted highest to lowest total load (kg)</div>
         </div>
         <input style={{...input,width:230}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search courier…"/>
       </div>
