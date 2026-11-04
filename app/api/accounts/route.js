@@ -85,7 +85,7 @@ async function ledger(sql,accountId,month){
     WHERE e.account_id=${accountId}::uuid
   ) SELECT * FROM running
     WHERE (${month}='ALL' OR LEFT(entry_date,7)=${month})
-    ORDER BY entry_date ASC,created_at ASC,id ASC LIMIT 10001`;
+    ORDER BY entry_date DESC,created_at DESC,id DESC LIMIT 10001`;
   if(items.length>10000)throw Error('More than 10,000 transactions in this view. Please select a month.');
   return items.map(r=>({id:r.id,accountId:r.account_id,date:r.entry_date,
     credit:two(r.credit),debit:two(r.debit),balance:two(r.balance),
