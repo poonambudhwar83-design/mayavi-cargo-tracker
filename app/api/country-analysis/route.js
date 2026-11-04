@@ -54,6 +54,11 @@ async function ensureTables(sql){
     source_row INTEGER NOT NULL DEFAULT 0
   )`;
   await sql`CREATE INDEX IF NOT EXISTS mayavi_other_country_rows_upload_idx ON mayavi_other_country_rows(upload_id)`;
+  await sql`ALTER TABLE mayavi_other_country_rows ADD COLUMN IF NOT EXISTS shipment_month VARCHAR(7) NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_other_country_rows ADD COLUMN IF NOT EXISTS shipment_date DATE`;
+  await sql`CREATE INDEX IF NOT EXISTS mayavi_other_country_rows_shipment_month_idx
+    ON mayavi_other_country_rows(shipment_month,upload_id)`;
+
   await sql`CREATE INDEX IF NOT EXISTS mayavi_other_country_upload_month_idx
     ON mayavi_other_country_uploads(flow,report_month,created_at DESC) WHERE ready=true`;
 }
@@ -65,6 +70,62 @@ async function activeFiles(sql){
 }
 const activeSql=`SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
   WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC`;
+// One-time, idempotent backfill for previously uploaded 2026 Excel workbooks.
+// Original Excel bytes and saved rows are retained. The Excel FLT DATE controls
+// the report month; only an unparseable/missing date falls back to upload month.
+async function backfillSavedShipmentDates(sql){
+  const pending=await sql`SELECT u.id,u.report_month,
+    encode(u.file_bytes,'base64') AS workbook_bytes
+    FROM mayavi_other_country_uploads u WHERE u.ready=true
+      AND EXISTS (SELECT 1 FROM mayavi_other_country_rows r
+        WHERE r.upload_id=u.id AND r.shipment_month='')
+    ORDER BY u.created_at ASC`;
+  for(const item of pending){
+    const workbook=new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(item.workbook_bytes,'base64'));
+    const parsed=parseCountryWorkbook(workbook);
+    // Rows already in the database are keyed by the original Excel sheet and
+    // sheet row number. Do not insert/delete any existing cargo records here.
+    const records=parsed.rows.map(row=>({
+      sheet_name:row.sheet,source_row:row.rowNumber,
+      shipment_month:row.shipmentMonth||item.report_month,
+      shipment_date:row.shipmentDate||null
+    }));
+    for(let i=0;i<records.length;i+=600){
+      const batch=records.slice(i,i+600);
+      await sql`UPDATE mayavi_other_country_rows AS r
+        SET shipment_month=x.shipment_month,
+          shipment_date=CAST(x.shipment_date AS DATE)
+        FROM jsonb_to_recordset(${JSON.stringify(batch)}::jsonb)
+          AS x(sheet_name text,source_row integer,shipment_month varchar(7),shipment_date text)
+        WHERE r.upload_id=${item.id}::uuid
+          AND r.shipment_month=''
+          AND r.sheet_name=x.sheet_name AND r.source_row=x.source_row`;
+    }
+    // Any legacy rows with unrecognized mapping remain under their original
+    // upload month rather than disappearing from monthly reports.
+    await sql`UPDATE mayavi_other_country_rows SET shipment_month=${item.report_month}
+      WHERE upload_id=${item.id}::uuid AND shipment_month=''`;
+  }
+}
+async function savedMonths(sql,flow){
+  const rows=await sql`SELECT DISTINCT COALESCE(NULLIF(r.shipment_month,''),u.report_month) AS month
+    FROM mayavi_other_country_rows r JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
+    WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
+      WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
+      AND u.flow=${flow} ORDER BY month DESC`;
+  return rows.map(row=>row.month);
+}
+async function workbookCoverage(sql){
+  const rows=await sql`SELECT r.upload_id,ARRAY_AGG(DISTINCT COALESCE(NULLIF(r.shipment_month,''),u.report_month)
+    ORDER BY COALESCE(NULLIF(r.shipment_month,''),u.report_month)) AS months
+    FROM mayavi_other_country_rows r JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
+    WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
+      WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
+    GROUP BY r.upload_id`;
+  return Object.fromEntries(rows.map(row=>[row.upload_id,row.months]));
+}
+
 async function breakdown(sql,flow,month,country){
   // Sum WEIGHT for each shipment row's average (weight / bags), never sum averages.
   const rows=await sql`SELECT MIN(r.courier_name) AS courier_name,
@@ -78,7 +139,7 @@ async function breakdown(sql,flow,month,country){
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
       WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
-      AND u.flow=${flow} AND (${month}='ALL' OR u.report_month=${month})
+      AND u.flow=${flow} AND (${month}='ALL' OR COALESCE(NULLIF(r.shipment_month,''),u.report_month)=${month})
       AND (${country}='ALL' OR r.country=${country})
     GROUP BY LOWER(TRIM(r.courier_name))
     ORDER BY total_weight DESC, courier_name ASC`;
@@ -94,7 +155,7 @@ async function countriesFor(sql,flow,month){
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
       WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
-    AND u.flow=${flow} AND (${month}='ALL' OR u.report_month=${month})
+    AND u.flow=${flow} AND (${month}='ALL' OR COALESCE(NULLIF(r.shipment_month,''),u.report_month)=${month})
     ORDER BY r.country ASC`;
   return rows.map(row=>row.country);
 }
@@ -107,7 +168,7 @@ async function sectorBreakdown(sql,flow,month,country){
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
       WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
-    AND u.flow=${flow} AND (${month}='ALL' OR u.report_month=${month})
+    AND u.flow=${flow} AND (${month}='ALL' OR COALESCE(NULLIF(r.shipment_month,''),u.report_month)=${month})
     AND (${country}='ALL' OR r.country=${country})
     GROUP BY LOWER(TRIM(r.courier_name)),r.country`;
   return buildCourierSectorPivot(groups.map(row=>({
@@ -189,7 +250,7 @@ async function detailsFile(sql,flow,month,country){
     JOIN mayavi_other_country_uploads u ON u.id=r.upload_id
     WHERE u.id IN (SELECT DISTINCT ON(flow,report_month) id FROM mayavi_other_country_uploads
       WHERE ready=true ORDER BY flow,report_month,created_at DESC,id DESC)
-    AND u.flow=${flow} AND (${month}='ALL' OR u.report_month=${month})
+    AND u.flow=${flow} AND (${month}='ALL' OR COALESCE(NULLIF(r.shipment_month,''),u.report_month)=${month})
     AND (${country}='ALL' OR r.country=${country})
     ORDER BY u.report_month DESC,r.id ASC LIMIT 100001`;
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
@@ -209,6 +270,7 @@ export async function GET(request){
     const sql=database(),auth=await authorized(request,sql);
     if(auth.error)return respond({ok:false,error:auth.error},auth.status);
     await ensureTables(sql);
+    await backfillSavedShipmentDates(sql);
     const url=new URL(request.url),flow=flowValue(url.searchParams.get('flow')||'IMPORT');
     const requestedMonth=url.searchParams.get('month')||'LATEST';
     const country=String(url.searchParams.get('country')||'ALL').slice(0,120);
@@ -218,7 +280,7 @@ export async function GET(request){
     // Pick the most recently saved month for this flow; never aggregate all
     // months implicitly. Import and Export have independent month selections.
     const files=await activeFiles(sql);
-    const months=[...new Set(files.filter(f=>f.flow===flow).map(f=>f.report_month))].sort().reverse();
+    const months=await savedMonths(sql,flow);
     const month=requestedMonth==='LATEST'?(months[0]||''):requestedMonth;
     if(!month){
       if(download)return respond({ok:false,error:'No saved monthly workbook found for this selection.'},404);
@@ -235,10 +297,10 @@ export async function GET(request){
       if(!data.length)return respond({ok:false,error:'Original Excel not found for that month.'},404);
       return excelResponse(Buffer.from(data[0].content,'base64'),data[0].file_name);
     }
-    const [rows,countries,pivot]=await Promise.all([breakdown(sql,flow,month,country),countriesFor(sql,flow,month),sectorBreakdown(sql,flow,month,country)]);
+    const [rows,countries,pivot,coverage]=await Promise.all([breakdown(sql,flow,month,country),countriesFor(sql,flow,month),sectorBreakdown(sql,flow,month,country),workbookCoverage(sql)]);
     return respond({ok:true,flow,month,country,files:files.map(f=>({
       id:f.id,flow:f.flow,month:f.report_month,fileName:f.file_name,
-      sheets:f.sheets,rows:Number(f.parsed_rows),skipped:Number(f.skipped_rows),uploadedAt:f.created_at
+      sheets:f.sheets,rows:Number(f.parsed_rows),skipped:Number(f.skipped_rows),coveredMonths:coverage[f.id]||[],uploadedAt:f.created_at
     })),months,
     countries,sectors:pivot.sectors,rows:addSectorLoads(rows,pivot),totals:overall(rows)});
   }catch(e){console.error('country_analysis_get',e?.message);
