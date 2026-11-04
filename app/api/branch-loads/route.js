@@ -178,6 +178,13 @@ export async function GET(request){
     return json({ok:true,rows:rows.map(display),scope:auth.branch||'ALL'});
   }catch(e){return json({ok:false,error:e?.message||'Could not load branch entries.'},503);}
 }
+async function hasDuplicateJepoTracking(sql,number,exceptId=''){
+  const tracking=String(number||'').trim().toUpperCase();
+  if(!tracking)return false;
+  const matches=await sql`SELECT 1 FROM mayavi_branch_loads
+    WHERE UPPER(BTRIM(tracking_no))=${tracking} AND id<>${exceptId} LIMIT 1`;
+  return matches.length>0;
+}
 export async function POST(request){
   try{
     const sql=connection(),auth=await authenticate(request,sql);
