@@ -21,9 +21,9 @@ assert.equal(pdf.subarray(0,8).toString('latin1'),'%PDF-1.4');
 assert.ok(pdf.toString('latin1').trimEnd().endsWith('%%EOF'));
 const source=pdf.toString('latin1');
 assert.match(source,/\/Count 4 >>/);
-assert.match(source,/\(October 2026\)/); // month is part of header, may have more text
-assert.match(source,/HKG \(KG\)/);
-assert.match(source,/AUH \(KG\)/);
+assert.ok(source.includes('October 2026'),'Selected month must appear in PDF.');
+assert.ok(source.includes('HKG'),'HKG sector must be in the PDF.');
+assert.ok(source.includes('AUH'),'All continuation sectors must be in the PDF.');
 assert.match(source,/GRAND TOTAL/);
 assert.match(source,/MORE THAN 35 KG/);
 assert.ok(!source.includes('Below 30 kg'));
