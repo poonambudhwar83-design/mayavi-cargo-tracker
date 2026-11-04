@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import { parseCountryWorkbook, summarizeCountryRows, bucketFor, parseShipmentDate, normalizeSector, buildCourierSectorPivot } from '../lib/countryLoadAnalysis.js';
 const row=values=>({
   hasValues:values.some(x=>x!==''&&x!==null&&x!==undefined),
@@ -107,3 +108,16 @@ assert.equal(sectorData.byCourier['fedex'].DOH,250);
 assert.equal(sectorData.byCourier['fedex'].HKG,10);
 assert.equal(sectorData.byCourier['dhl'].DOH??0,0);
 console.log('Origin-wise courier load matrix: HKG, JFK, DOH aliases, totals and no country guessing passed.');
+
+const analysisApi=readFileSync('app/api/country-analysis/route.js','utf8');
+const analysisPage=readFileSync('app/CountryLoadAnalysisDashboard.js','utf8');
+const menu=readFileSync('app/UnifiedDashboard.js','utf8');
+const cron=readFileSync('app/api/cron/courier-month-backfill/route.js','utf8');
+assert.ok(analysisApi.includes('from35To40:round(r.from35to40)'), 'SQL must aggregate 35-40 kg load for every courier.');
+assert.ok(analysisApi.includes("r.weight_kg/r.bags >= 35 AND r.weight_kg/r.bags <= 40"), '35 and 40 kg boundaries inclusive.');
+assert.ok(analysisApi.includes('backfillSavedShipmentDates(sql)'), 'Saved upload months must be backfilled by Excel flight dates.');
+assert.ok(analysisApi.includes('shipment_month:row.shipmentMonth||month'), 'New Excel uploads must persist actual shipment month.');
+assert.ok(analysisApi.includes('COALESCE(NULLIF(r.shipment_month'), 'Monthly reporting must filter by row date, not upload month.');
+assert.ok(analysisPage.includes("result.totals?.from35To40"), 'Show 35-40 column and totals.');
+assert.ok(menu.includes('OTHER COURIER SUMMARY'), 'Rename the old Other Countries Analysis tab.');
+assert.ok(cron.includes('CRON_SECRET'), 'Date backfill must be protected.');
