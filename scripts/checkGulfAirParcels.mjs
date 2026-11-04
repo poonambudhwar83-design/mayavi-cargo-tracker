@@ -53,6 +53,7 @@ const trackButton={innerText:'Track package',async click(){flow.push('PHYSICAL_T
 const browserMock={
   async $(selector){if(selector==='input[name="tracking_id"]')return inputEl;
     if(selector==='button[data-tracking-submit="true"]')return trackButton;return null;},
+  async $(selector){if(selector==='button[data-tracking-submit="true"]')return [trackButton];return [];},
   keyboard:{
     async press(keys){flow.push('KEYS:'+keys);},
     async type(value){inputEl.value=value;flow.push('TYPE:'+value);}
@@ -62,7 +63,7 @@ const browserMock={
 const submission=await submitGulfAirParcelsForm(browserMock,awb);
 assert.equal(submission.ok,true);
 assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
-assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
+assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
 
 
 // Regression from the actual ParcelsApp Gulf Air UI: two booked legs,
