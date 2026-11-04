@@ -11,7 +11,7 @@ const API='/api/branch-loads';
 const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():null;
 // Use one compact column profile for both Daily Load Entry and saved loads.
 // Identical colgroups plus synchronized scroll keep headings and values lined up.
-const LEDGER_WIDTHS=[98,140,92,90,116,110,100,108,134,146,156,148,184,146,166,120,120,124];
+const LEDGER_WIDTHS=[98,140,92,90,116,110,100,108,134,146,156,148,184,146,166,200,120,120,124];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=194;
 const CONFIRMATION_WIDTH=230;
@@ -92,6 +92,7 @@ export default function BranchLoadsDashboard({currentUser}){
   // Keep save failures visible beside the row button even on a wide scrolling table.
   const [saveError,setSaveError]=useState('');
   const [excelBusy,setExcelBusy]=useState(false);
+  const [liveBusy,setLiveBusy]=useState(false);
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -145,7 +146,7 @@ export default function BranchLoadsDashboard({currentUser}){
   // never the overview cards: Active + Delivered are always counted together.
   const matchingRows=useMemo(()=>rows.filter(r=>
     (filter==='ALL'||r.branch===filter)&&
-    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode,r.remarks].join(' ').toLowerCase().includes(search.toLowerCase()))
+    (!search||[r.trackingNo,r.destination,r.service,r.commodity,r.branch,r.date,r.confirmationNo,r.confirmationName,r.confirmationMode,r.remarks,r.liveRemarks,r.liveStatus].join(' ').toLowerCase().includes(search.toLowerCase()))
   ),[rows,filter,search]);
   const shown=useMemo(()=>matchingRows.filter(r=>
     sheet==='SUMMARY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED')
@@ -355,8 +356,8 @@ export default function BranchLoadsDashboard({currentUser}){
       data.push(['TOTAL','','',summaryTotals.loads,Number(summaryTotals.weight.toFixed(3)),Number(summaryTotals.branchAmount.toFixed(2))]);
       return {labels,data,filename:prefix+'-daily-summary'};
     }
-    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',statusLabel(r.status),employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    const labels=['Branch','Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Live Remarks','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
+    const data=shown.map(r=>[r.branch,r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',r.liveStatus||statusLabel(r.status),r.liveRemarks||'',employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     const total=Array(labels.length).fill('');
     total[0]='TOTAL';total[3]=totals.weight;total[5]=totals.amount;total[6]=totals.received;
     total[7]=totals.balance;total[9]=totals.paidToJepo;total[10]=totals.paidToBranch;
@@ -437,6 +438,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=minimumJepoExtraCost(d.commodity,count);return {...d,bottleCount:count,extraCost:count&&minimum!==null&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
       <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
+      <td className={styles.remarksCell}><span title={rows.find(r=>r.id===editing)?.liveRemarks||''}>{editing==='new'?'—':rows.find(r=>r.id===editing)?.liveRemarks||'Pending live tracking'}</span></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
       <td className={styles.audit}>{editing==='new'?'—':currentUser?.displayName||employeeName(currentUser?.username)}</td>
       <td className={styles.remarksCell}><textarea aria-label="Remarks" rows={2} maxLength={500} placeholder="Write remarks (optional)" value={draft.remarks} onChange={e=>set('remarks',e.target.value)}/></td>
@@ -473,10 +475,14 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
-    <td key="tracking"><b>{record.trackingNo||'—'}</b></td>,
-    <td key="status"><select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
+    <td key="tracking"><b>{record.trackingNo||'—'}</b>{record.trackingNo&&<button type="button"
+      className={styles.secondary} disabled={liveBusy||busy} style={{marginTop:5,padding:'4px 8px',display:'block',fontSize:10}}
+      onClick={()=>void refreshJepo([record])}>Track JEPO</button>}</td>,
+    <td key="status">{record.liveStatus&&<strong style={{display:'block',fontSize:11,color:'#1d5798',marginBottom:5}} title="JEPO Website Status">{record.liveStatus}</strong>}<select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
       {LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}
     </select></td>,
+    <td key="liveRemarks" className={styles.remarksCell}><span title={record.liveRemarks||record.liveError||'Not checked yet'}>{record.liveRemarks||'—'}</span>
+      {record.liveCheckedAt&&<small style={{display:'block',fontSize:9,color:'#63758d'}}>Last checked {new Date(record.liveCheckedAt).toLocaleString('en-IN')}</small>}</td>,
     <td key="entered"><strong className={styles.audit}>{employeeName(record.createdBy)}</strong></td>,
     <td key="edited"><span className={styles.audit}>{employeeName(record.updatedBy)}</span></td>,
     <td key="remarks" className={styles.remarksCell}><span title={record.remarks||''}>{record.remarks||'—'}</span></td>,
@@ -538,7 +544,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <div className={styles.scroller} ref={entryScrollRef} onScroll={()=>syncLedgerScroll('entry')}><table className={styles.table+' '+styles.entryLedger} style={{width:ledgerWidth(true)+'px',minWidth:'100%'}}>
           {ledgerColumns(true)}
-          <thead><tr><th>Branch</th><th>Date &amp; Day{draft.date&&<small className={styles.dayAboveDate}>{weekday(draft.date)}</small>}</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
+          <thead><tr><th>Branch</th><th>Date &amp; Day{draft.date&&<small className={styles.dayAboveDate}>{weekday(draft.date)}</small>}</th><th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount • Auto</th><th>Received (₹)</th><th>Balance • Auto</th><th>JEPO Rate (₹/kg)</th><th>Paid to JEPO • Auto (₹)</th><th>Paid to Branch • Auto (₹)</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Live Remarks</th><th>Entered By</th><th>Edited By</th><th>Remarks</th><th>UTR / Cash</th><th>Save</th><th className={styles.extraCostHeader}>Extra Cost (₹)</th><th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th></tr></thead>
           <tbody>{entryRow(true)}</tbody>
         </table></div>
       </section>}
@@ -593,15 +599,15 @@ export default function BranchLoadsDashboard({currentUser}){
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>Date</th>
-          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Entered By</th><th>Last Edited By</th><th>Remarks</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
+          <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Live Remarks</th><th>Entered By</th><th>Last Edited By</th><th>Remarks</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
+          {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}><BranchPaymentDisplay total={totals.paidToBranch} cash={totals.cashBranch}/></td><td colSpan={10}>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}><BranchPaymentDisplay total={totals.paidToBranch} cash={totals.cashBranch}/></td><td colSpan={10}>—</td><td>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
       </table></div>}
     </form>
     <footer className={styles.foot}>
