@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {STUDY_SUBJECTS,parseStudyEntry,studyTotals,pending,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
+import {STUDY_SUBJECTS,parseStudyEntry,studyTotals,pending,theoryIncorrect,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
 assert.deepEqual(STUDY_SUBJECTS,[
  'Physics','Mathematics','Chemistry','Biology','Sociology','English','Hindi'
 ]);
 assert.equal(pending(25,7),18);
 assert.equal(pending(3,9),0);
+assert.equal(theoryIncorrect(18,12),6);
+assert.equal(theoryIncorrect(18,null),null);
 assert.equal(studyTopicNumber('Chapter 1',0), '1.1');
 assert.equal(studyTopicNumber('Chapter 1 – Motion',1), '1.2');
 assert.equal(studyTopicNumber('Chapter 1',2), '1.3');
@@ -22,12 +24,29 @@ assert.equal(a.mcqTotal,20);
 assert.equal(a.mcqDone,12);
 assert.equal(a.theoryTotal,10);
 assert.equal(a.theoryDone,3);
+assert.equal(a.theoryCorrected,null);
+assert.equal(theoryIncorrect(a.theoryDone,a.theoryCorrected),null);
 assert.equal(a.totalMarks,null);
 assert.equal(a.marksObtained,null);
 assert.equal(a.mcqMarksTotal,null);
 assert.equal(a.mcqMarksObtained,null);
 assert.equal(a.theoryMarksTotal,null);
 assert.equal(a.theoryMarksObtained,null);
+const gradedTheory=parseStudyEntry({...input,theoryCorrected:2});
+assert.equal(gradedTheory.theoryCorrected,2);
+assert.equal(gradedTheory.theoryMarksTotal,3);
+assert.equal(gradedTheory.theoryMarksObtained,2);
+assert.equal(gradedTheory.totalMarks,3);
+assert.equal(gradedTheory.marksObtained,2);
+assert.equal(marksPercentage(gradedTheory.theoryMarksTotal,gradedTheory.theoryMarksObtained),66.67);
+assert.equal(theoryIncorrect(gradedTheory.theoryDone,gradedTheory.theoryCorrected),1);
+assert.throws(()=>parseStudyEntry({...input,theoryCorrected:4}),/Theory corrected cannot exceed/);
+const noScoreLoss=parseStudyEntry({...input,totalMarks:80,marksObtained:60,theoryCorrected:2});
+assert.equal(noScoreLoss.totalMarks,80,'An older combined score must not be overwritten by corrected count');
+assert.equal(noScoreLoss.marksObtained,60);
+const manuallyScored=parseStudyEntry({...input,theoryCorrected:2,theoryMarksTotal:10,theoryMarksObtained:8});
+assert.equal(manuallyScored.theoryMarksTotal,10);
+assert.equal(manuallyScored.theoryMarksObtained,8);
 const split=parseStudyEntry({...input,
   mcqMarksTotal:40,mcqMarksObtained:32,theoryMarksTotal:60,theoryMarksObtained:48});
 assert.equal(split.totalMarks,100);
@@ -89,7 +108,7 @@ assert.equal(mixed.theoryPercentage,80);
 assert.deepEqual(studyTotals([a,{...a,topic:'Velocity',mcqTotal:5,mcqDone:5,
   theoryTotal:3,theoryDone:3}]),{
   topics:2,mcqTotal:25,mcqDone:17,mcqPending:8,
-  theoryTotal:13,theoryDone:6,theoryPending:7,
+  theoryTotal:13,theoryDone:6,theoryPending:7,theoryCorrected:0,theoryIncorrect:0,theoryGradedTopics:0,
   totalMarks:0,marksObtained:0,percentage:null,markedTopics:0,
   mcqMarksTotal:0,mcqMarksObtained:0,mcqPercentage:null,mcqMarkedTopics:0,
   theoryMarksTotal:0,theoryMarksObtained:0,theoryPercentage:null,theoryMarkedTopics:0
@@ -103,7 +122,7 @@ assert.throws(()=>parseStudyEntry({...input,mcqTotal:-1}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:1.5}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:100001}),/range/);
 assert.deepEqual(parseStudyEntry({...input,mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:''}),
-  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',mcqTotal:0,mcqDone:0,theoryTotal:0,theoryDone:0,totalMarks:null,marksObtained:null,mcqMarksTotal:null,mcqMarksObtained:null,theoryMarksTotal:null,theoryMarksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
+  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',mcqTotal:0,mcqDone:0,theoryTotal:0,theoryDone:0,theoryCorrected:null,totalMarks:null,marksObtained:null,mcqMarksTotal:null,mcqMarksObtained:null,theoryMarksTotal:null,theoryMarksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 assert.ok(nav.includes("selectedDashboard==='NOTES'\n      ?<StudyNotesDashboard/>"));
 assert.ok(nav.includes("selectedDashboard==='ADMIN_NOTES'\n      ?<AdminNotesDashboard currentUser={session}/>"));
@@ -113,6 +132,12 @@ const page=readFileSync('app/StudyNotesDashboard.js','utf8');
 assert.ok(page.includes('<h1>NOTES</h1>'));
 assert.ok(page.includes('Incorrect MCQ Question Numbers'));
 assert.ok(page.includes('Incorrect Theory Question Numbers'));
+assert.ok(page.includes('Theory Corrected'));
+assert.ok(page.includes('Theory Attempted'));
+assert.ok(page.includes('Theory Pending'));
+assert.ok(page.includes('Theory Total Marks = Attempted'));
+assert.ok(page.includes('Marks Obtained = Corrected'));
+assert.ok(page.includes('theoryCorrected:draft.theoryCorrected'));
 assert.ok(page.includes("row.incorrectMcqNumbers||'—'"));
 assert.ok(page.includes("row.incorrectTheoryNumbers||'—'"));
 assert.ok(page.includes('MCQ Total Marks'));
@@ -121,7 +146,11 @@ assert.ok(page.includes('Theory Total Marks'));
 assert.ok(page.includes('Theory Marks Obtained'));
 assert.ok(page.includes('Overall Marks'));
 assert.ok(page.includes('<th>MCQ Marks</th>'));
-assert.ok(page.includes('<th>Theory Marks</th>'));
+assert.ok(page.includes('<th>Theory Total Marks</th>'));
+assert.ok(page.includes('<th>Theory Marks Obtained</th>'));
+assert.ok(page.includes('<th>Theory Corrected</th>'));
+assert.ok(page.includes('<th>Theory Incorrect</th>'));
+assert.ok(page.includes('theoryIncorrect(row.theoryDone,row.theoryCorrected)'));
 assert.ok(page.includes('<th>Overall Marks</th>'));
 assert.ok(page.includes('className={styles.pendingCard}'));
 assert.ok(page.includes('className={styles.pendingCount}'));
@@ -152,6 +181,9 @@ for(const field of ['mcq_marks_total','mcq_marks_obtained','theory_marks_total',
   assert.ok(api.includes('ADD COLUMN IF NOT EXISTS '+field));
   assert.ok(api.includes(field+'='));
 }
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS theory_corrected'));
+assert.ok(api.includes('theory_corrected=${entry.theoryCorrected}'));
+assert.ok(api.includes('theoryCorrected:row.theory_corrected===null?null:Number(row.theory_corrected)'));
 assert.ok(api.includes('incorrect_mcq_numbers=${entry.incorrectMcqNumbers}'));
 assert.ok(api.includes('incorrect_theory_numbers=${entry.incorrectTheoryNumbers}'));
 assert.ok(api.includes("incorrectMcqNumbers:row.incorrect_mcq_numbers||''"));
