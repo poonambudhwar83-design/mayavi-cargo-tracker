@@ -1,6 +1,8 @@
 module.exports = {
   serverExternalPackages: ['@sparticuz/chromium','puppeteer-core','tesseract.js','tesseract.js-core','wasm-feature-detect','bmp-js'],
   outputFileTracingIncludes: {
+    '/api/branch-loads/jepo-live': ['./node_modules/@sparticuz/chromium/bin/**/*'],
+    '/api/cron/jepo-branches': ['./node_modules/@sparticuz/chromium/bin/**/*'],
     '/api/klm-live': [
       './node_modules/@sparticuz/chromium/bin/**/*'
     ],
