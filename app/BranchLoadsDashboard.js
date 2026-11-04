@@ -93,6 +93,8 @@ export default function BranchLoadsDashboard({currentUser}){
   const [saveError,setSaveError]=useState('');
   const [excelBusy,setExcelBusy]=useState(false);
   const [liveBusy,setLiveBusy]=useState(false);
+  const [duplicateInfo,setDuplicateInfo]=useState(null);
+  const [checkingDuplicate,setCheckingDuplicate]=useState(false);
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
@@ -142,6 +144,39 @@ export default function BranchLoadsDashboard({currentUser}){
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onFocus);window.removeEventListener('focus',onFocus);};
   },[]);
 
+  // Detect a duplicate while typing, including loads that have moved to
+  // Delivered. Cross-branch lookups return a warning but no private details.
+  const normalizedDraftTracking=String(draft.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'');
+  useEffect(()=>{
+    let active=true;
+    const number=String(draft.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'');
+    if(!/^[A-Z0-9-]{6,60}$/.test(number)){setDuplicateInfo(null);setCheckingDuplicate(false);return;}
+    const local=rows.find(r=>r.id!==editing&&String(r.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'')===number);
+    if(local){
+      setDuplicateInfo({duplicate:true,trackingNo:number,existing:{id:local.id,branch:local.branch,date:local.date,status:local.status}});
+      setCheckingDuplicate(false);return;
+    }
+    setDuplicateInfo(null);setCheckingDuplicate(true);
+    const controller=new AbortController();
+    const timer=setTimeout(async()=>{
+      try{
+        const params=new URLSearchParams({checkTrackingNo:number,excludeId:editing==='new'?'':editing});
+        const response=await fetch(API+'?'+params.toString(),{credentials:'include',cache:'no-store',signal:controller.signal});
+        const data=await response.json();
+        if(active&&response.ok&&data.ok)setDuplicateInfo(data.duplicate?data:null);
+      }catch(error){if(active&&error?.name!=='AbortError')setDuplicateInfo(null);}
+      finally{if(active)setCheckingDuplicate(false);}
+    },320);
+    return()=>{active=false;clearTimeout(timer);controller.abort();};
+  },[draft.trackingNo,editing,rows]);
+  const duplicateTrackingNumbers=useMemo(()=>{
+    const counts=new Map();
+    for(const row of rows){
+      const key=String(row.trackingNo||'').trim().toUpperCase().replace(/\s+/g,'');
+      if(key)counts.set(key,(counts.get(key)||0)+1);
+    }
+    return new Set([...counts].filter(([,count])=>count>1).map(([key])=>key));
+  },[rows]);
   // Branch and search filters apply everywhere. Status affects ONLY the table,
   // never the overview cards: Active + Delivered are always counted together.
   const matchingRows=useMemo(()=>rows.filter(r=>
@@ -212,6 +247,10 @@ export default function BranchLoadsDashboard({currentUser}){
     event?.preventDefault?.();
     if(busy||!editing)return;
     setSaveError('');
+    if(duplicateInfo?.duplicate&&duplicateInfo.trackingNo===normalizedDraftTracking){
+      showSaveFailure('Duplicate JEPO Tracking No. '+normalizedDraftTracking+' already exists. Please use the saved entry.');
+      return;
+    }
     // Native HTML form validation silently blocks submit for far-right fields
     // inside the horizontally-scrolling ledger. Validate here and show feedback.
     if(!dateValid(draft.date)){showSaveFailure('select a valid Entry Date.');return;}
@@ -270,6 +309,7 @@ export default function BranchLoadsDashboard({currentUser}){
             if(res.status===401)throw new Error('Session expired. Please sign in again; your entry has not been cleared.');
             if(res.status===403)throw new Error('Account access denied. Please contact Admin; your entry has not been cleared.');
             if(res.status>=500&&attempt===0)continue;
+            if(data.duplicate)setDuplicateInfo(data);
             throw new Error(data.error||'Save failed. Please check all fields.');
           }
           if(!data.row?.id||data.row.branch!==expectedBranch)throw new Error('Save confirmation did not match the branch. Please refresh the register before trying again.');
@@ -455,7 +495,15 @@ export default function BranchLoadsDashboard({currentUser}){
       <td><FieldChoice name="Destination" list={DESTINATIONS} value={draft.destination} onChange={v=>set('destination',v)}/></td>
       <td><FieldChoice name="Service" list={SERVICES} value={draft.service} onChange={v=>set('service',v)}/></td>
       <td><FieldChoice name="Commodity" list={COMMODITIES} value={draft.commodity} onChange={v=>setDraft(d=>({...d,commodity:v,bottleCount:requiresBottleCount(v)?d.bottleCount:''}))}/>{requiresBottleCount(draft.commodity)&&<label className={styles.bottleControl}>No. of Bottles<input aria-label="No. of Bottles" type="number" min="1" max="10000" step="1" required value={draft.bottleCount} placeholder="Enter bottles" onChange={e=>setDraft(d=>{const count=e.target.value;const minimum=minimumJepoExtraCost(d.commodity,count);return {...d,bottleCount:count,extraCost:count&&minimum!==null&&Number(d.extraCost||0)<minimum?String(minimum):d.extraCost};})}/></label>}</td>
-      <td><input aria-label="JEPO tracking number" placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/></td>
+      <td className={duplicateInfo?.duplicate?styles.duplicateField:''}>
+        <input aria-label="JEPO tracking number" aria-invalid={Boolean(duplicateInfo?.duplicate)}
+          placeholder="JEPO tracking" maxLength={100} value={draft.trackingNo} onChange={e=>set('trackingNo',e.target.value)}/>
+        {duplicateInfo?.duplicate&&<div role="alert" className={styles.duplicateAlert}>
+          <strong>⚠ DUPLICATE JEPO NO.</strong>
+          <span>Already saved{duplicateInfo.existing?' • '+duplicateInfo.existing.branch+' • '+(duplicateInfo.existing.date||'')+' • '+statusLabel(duplicateInfo.existing.status):''}. Do not enter twice.</span>
+        </div>}
+        {!duplicateInfo?.duplicate&&checkingDuplicate&&<small className={styles.duplicateCheck}>Checking duplicate…</small>}
+      </td>
       <td><select aria-label="Delivery status" value={draft.status} onChange={e=>set('status',e.target.value)}>{LOAD_STATUSES.map(x=><option key={x} value={x}>{statusLabel(x)}</option>)}</select></td>
       <td className={styles.remarksCell}><span title={rows.find(r=>r.id===editing)?.liveRemarks||''}>{editing==='new'?'—':rows.find(r=>r.id===editing)?.liveRemarks||'Pending live tracking'}</span></td>
       <td className={styles.audit}>{editing==='new'?currentUser?.displayName||employeeName(currentUser?.username):employeeName(rows.find(r=>r.id===editing)?.createdBy)}</td>
@@ -494,7 +542,9 @@ export default function BranchLoadsDashboard({currentUser}){
     <td key="destination">{record.destination}</td>,
     <td key="service">{record.service}</td>,
     <td key="commodity">{record.commodity}{requiresBottleCount(record.commodity)&&<small className={styles.bottleNote}>No. of Bottles: {record.bottleCount??'Not recorded'}</small>}</td>,
-    <td key="tracking"><b>{record.trackingNo||'—'}</b>{record.trackingNo&&<button type="button"
+    <td key="tracking"><b>{record.trackingNo||'—'}</b>
+      {duplicateTrackingNumbers.has(String(record.trackingNo||'').trim().toUpperCase())&&<span className={styles.duplicateBadge}>DUPLICATE</span>}
+      {record.trackingNo&&<button type="button"
       className={styles.secondary} disabled={liveBusy||busy} style={{marginTop:5,padding:'4px 8px',display:'block',fontSize:10}}
       onClick={()=>void refreshJepo([record])}>Track JEPO</button>}</td>,
     <td key="status">{record.liveStatus&&<strong style={{display:'block',fontSize:11,color:'#1d5798',marginBottom:5}} title="JEPO Website Status">{record.liveStatus}</strong>}<select className={styles.statusChip} data-status={record.status} aria-label={'Status for '+(record.trackingNo||record.branch)} disabled={busy} value={record.status||initialBranchStatus(record.branch)} onChange={e=>changeStatus(record,e.target.value)}>
@@ -626,7 +676,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
-          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={row.status==='DELIVERED'?styles.deliveredRow:''}>{dataCells(row)}</tr>)}
+          {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',duplicateTrackingNumbers.has(String(row.trackingNo||'').trim().toUpperCase())?styles.duplicateRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
           {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
           {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
