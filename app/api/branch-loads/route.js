@@ -90,7 +90,7 @@ function textField(value,max=120){return String(value??'').trim().slice(0,max);}
 function normalizedJepoNo(value){return String(value??'').trim().toUpperCase().replace(/\s+/g,'');}
 async function findDuplicateJepo(sql,trackingNo,excludeId=''){
   const key=normalizedJepoNo(trackingNo);
-  if(!key||key.length<6)return null;
+  if(!key||key.length<3)return null;
   const matches=await sql`SELECT id,branch,to_char(record_date,'YYYY-MM-DD') AS record_date,delivery_status
     FROM mayavi_branch_loads WHERE UPPER(REPLACE(BTRIM(tracking_no),' ',''))=${key}
       AND (${excludeId}='' OR id<>${excludeId})
