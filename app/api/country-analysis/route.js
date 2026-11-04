@@ -121,12 +121,12 @@ async function summaryFile(sql,flow,month,country){
   const rows=await breakdown(sql,flow,month,country);
   if(!rows.length)return respond({ok:false,error:'No saved data for this selection.'},404);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
-  sheet.addRow(['Courier Name','Entries','No. of Bags','Total Load (kg)','Average kg / bag',
+  sheet.addRow(['Courier Name','Total Load (kg)','Total Bags','Average kg / bag','Entries',
     'Below 30 kg - Load (kg)','30-35 kg - Load (kg)','Above 35 kg - Load (kg)']);
-  for(const row of rows)sheet.addRow([row.courierName,row.entries,row.totalBags,row.totalWeight,row.avgBagKg,
+  for(const row of rows)sheet.addRow([row.courierName,row.totalWeight,row.totalBags,row.avgBagKg,row.entries,
     row.under30,row.from30To35,row.over35]);
   const totals=overall(rows);
-  sheet.addRow(['GRAND TOTAL',totals.entries,totals.totalBags,totals.totalWeight,totals.avgBagKg,
+  sheet.addRow(['GRAND TOTAL',totals.totalWeight,totals.totalBags,totals.avgBagKg,totals.entries,
     totals.under30,totals.from30To35,totals.over35]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
@@ -134,6 +134,7 @@ async function summaryFile(sql,flow,month,country){
   note.addRow(['Month',month==='ALL'?'All saved months':month]);
   note.addRow(['Country',country==='ALL'?'All countries':country]);
   note.addRow(['Source','Latest successfully uploaded Excel per flow/month']);
+  note.addRow(['Order','Courier with highest total weight (kg) appears first']);
   note.addRow(['Average kg/bag','Total Load / Total Bags (weighted average)']);
   note.addRow(['Below 30','Shipment weight where shipment weight / bags is below 30']);
   note.addRow(['30-35','Shipment weight where average is >=30 and <=35']);
