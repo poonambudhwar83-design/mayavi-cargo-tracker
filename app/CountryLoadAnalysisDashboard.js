@@ -239,7 +239,7 @@ export default function CountryLoadAnalysisDashboard(){
         </table>
       </div>
       <p style={{fontSize:11,color:'#697e98',margin:'10px 7px 0'}}>Each sector column shows total kg loaded by that courier from that origin, such as HKG, JFK or DOH. 
-        35–40 kg includes shipments averaging more than 35 through 40 kg/bag; More than 40 kg means strictly above 40 kg/bag. Courier average = total load ÷ total bags.
+        35–40 kg includes shipments averaging 35 through 40 kg/bag (inclusive); More than 40 kg means strictly above 40 kg/bag. Courier average = total load ÷ total bags.
       </p>
     </section>
     <section style={panel}>
