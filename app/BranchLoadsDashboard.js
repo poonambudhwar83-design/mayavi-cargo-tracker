@@ -136,7 +136,7 @@ export default function BranchLoadsDashboard({currentUser}){
   useEffect(()=>{
     void load();
     const onFocus=()=>{if(document.visibilityState==='visible')void load()};
-    const timer=setInterval(onFocus,30000);
+    const timer=setInterval(onFocus,20000);
     document.addEventListener('visibilitychange',onFocus);
     window.addEventListener('focus',onFocus);
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onFocus);window.removeEventListener('focus',onFocus);};
@@ -544,7 +544,11 @@ export default function BranchLoadsDashboard({currentUser}){
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
-        <p>Daily Load Entry • Active, Delivered & Daily Summary • Overview combines Active + Delivered</p></div>
+        <p>Daily Load Entry • Active, Delivered & Daily Summary • Overview combines Active + Delivered</p>
+        <p style={{fontSize:12,color:'#28744e',fontWeight:800,marginTop:5}}>
+          ● JEPO AUTO LIVE — Website checked every 2 minutes in batches; this page refreshes automatically every 20 seconds.
+          {lastUpdated&&<span style={{color:'#526b81',fontWeight:500}}> • Screen updated {lastUpdated}</span>}
+        </p></div>
     </header>
     <div className={styles.metrics} aria-label="Active and Delivered combined summary">
       <div><span>Total Load • Active + Delivered</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
