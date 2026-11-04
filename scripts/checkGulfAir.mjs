@@ -1,5 +1,7 @@
 // Regression checks: Gulf Air (GF/072) must never invent a final arrival.
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {readableGulfFailure} from '../lib/gulfAirDiagnostics.js';
 import { parseGulfAirTrackingPage } from '../lib/gulfAir.js';
 const mawb='072-12345675';
 const header='Online Air Waybill Tracking\nAWB Number: '+mawb+'\nOrigin: BAH\nDestination: DEL\nGross Weight: 100 KG\nPieces: 3';
@@ -28,4 +30,22 @@ const unknown=parseGulfAirTrackingPage({text:'ONLINE AIR WAYBILL TRACKING Prefix
 assert.equal(unknown.ok,false,'Empty search form must never count as a shipment');
 const other=parseGulfAirTrackingPage({text:header.replace(mawb,'072-99999999'),tables:[[rcs,dep]]},mawb);
 assert.equal(other.ok,false,'Wrong AWB cannot be accepted');
+assert.equal(readableGulfFailure({reason:'PARCELS PUBLIC TRACKER API RETURNED NO_DATA'}),'PARCELS PUBLIC TRACKER API RETURNED NO_DATA');
+assert.equal(readableGulfFailure({error:{message:'Gulf official cargo unavailable'}}),'Gulf official cargo unavailable');
+assert.equal(readableGulfFailure({code:'CAPTCHA_QUOTA_EXCEEDED'}),'CAPTCHA_QUOTA_EXCEEDED');
+assert.equal(readableGulfFailure(new Error('CHAMP timeout')),'CHAMP timeout');
+assert.ok(!readableGulfFailure({error:{message:'Access denied'}}).includes('[object Object]'),
+  'Stored Gulf tracking errors must never lose structured provider meaning.');
+const gulfCode=readFileSync('lib/gulfAir.js','utf8');
+const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
+assert.ok(gulfCode.includes("GULF_AIR_PUBLIC_CARGO_URL='https://www.gulfair.com/cargo'"),
+  'Use first-party Gulf Air Falcon Cargo tracking form.');
+assert.ok(gulfCode.includes('const publicCargo=await searchGulfAirPublicCargo(page,mawb)'),
+  'Try first-party Gulf cargo before CHAMP fallback.');
+assert.ok(gulfCode.includes('await button.click({delay:100})'),
+  'Public Gulf page must click its actual Track your cargo control.');
+assert.ok(gulfCode.includes('parseGulfAirTrackingPage({...lastDom,officialTracker:GULF_AIR_PUBLIC_CARGO_URL},mawb)'),
+  'Accept only exact AWB-verified first-party result rows.');
+assert.ok(gulfCron.includes('readableGulfFailure(cause)'),
+  'Scheduled Gulf tracking must preserve the provider error rather than [object Object].');
 console.log('Gulf Air GF 072 CHAMP shipment parsing regression checks passed');
