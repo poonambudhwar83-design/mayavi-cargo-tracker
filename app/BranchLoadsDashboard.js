@@ -189,7 +189,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const normalizedTracking=String(draft.trackingNo||'').trim().toUpperCase();
   const duplicateTrackingRows=normalizedTracking?rows.filter(r=>
     r.id!==editing&&String(r.trackingNo||'').trim().toUpperCase()===normalizedTracking):[];
-  const duplicateVisible=duplicateTrackingRows.length>0||serverDuplicateNo===normalizedTracking;
+  const duplicateVisible=Boolean(normalizedTracking)&&(duplicateTrackingRows.length>0||serverDuplicateNo===normalizedTracking);
   const set=(field,value)=>{
     if(field==='trackingNo'){setDuplicateAcknowledged(false);setServerDuplicateNo('');}
     setDraft(d=>({...d,[field]:value}));
