@@ -53,7 +53,7 @@ const trackButton={innerText:'Track package',async click(){flow.push('PHYSICAL_T
 const browserMock={
   async $(selector){if(selector==='input[name="tracking_id"]')return inputEl;
     if(selector==='button[data-tracking-submit="true"]')return trackButton;return null;},
-  async $(selector){if(selector==='button[data-tracking-submit="true"]')return [trackButton];return [];},
+  async $$(selector){if(selector==='button[data-tracking-submit="true"]')return [trackButton];return [];}, 
   keyboard:{
     async press(keys){flow.push('KEYS:'+keys);},
     async type(value){inputEl.value=value;flow.push('TYPE:'+value);}
