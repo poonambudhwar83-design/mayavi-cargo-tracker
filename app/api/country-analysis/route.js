@@ -145,14 +145,12 @@ async function summaryFile(sql,flow,month,country){
   const fullRows=addSectorLoads(rows,pivot);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Courier Summary');
   sheet.addRow(['Courier Name','Total Load (kg)',...pivot.sectors.map(s=>s.name+' (kg)'),
-    'Average kg / bag','Below 30 kg - Load (kg)','30-35 kg - Load (kg)','Above 35 kg - Load (kg)']);
+    'Average kg / bag','Above 35 kg - Load (kg)']);
   for(const row of fullRows)sheet.addRow([row.courierName,row.totalWeight,
-    ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg,
-    row.under30,row.from30To35,row.over35]);
+    ...pivot.sectors.map(sector=>row.sectorLoads[sector.name]||0),row.avgBagKg,row.over35]);
   const totals=overall(rows);
   sheet.addRow(['GRAND TOTAL',totals.totalWeight,
-    ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg,
-    totals.under30,totals.from30To35,totals.over35]);
+    ...pivot.sectors.map(sector=>sector.totalWeight),totals.avgBagKg,totals.over35]);
   sheetStyle(sheet);
   const note=book.addWorksheet('Method');
   note.addRow(['Analysis','Other Countries - '+flow]);
@@ -162,8 +160,6 @@ async function summaryFile(sql,flow,month,country){
   note.addRow(['Source','Latest successfully uploaded Excel per flow/month']);
   note.addRow(['Order','Courier with highest total weight (kg) appears first']);
   note.addRow(['Average kg/bag','Total Load / Total Bags (weighted average)']);
-  note.addRow(['Below 30','Shipment weight where shipment weight / bags is below 30']);
-  note.addRow(['30-35','Shipment weight where average is >=30 and <=35']);
   note.addRow(['Above 35','Shipment weight where average is >35']);
   return excelResponse(await book.xlsx.writeBuffer(),`Mayavi_${flow}_Courier_Summary_${month}.xlsx`);
 }
