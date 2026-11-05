@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {accountParty,summarizeAccountEntries} from '../lib/accountSummary.js';
+import {createAccountSummaryPdf} from '../lib/accountSummaryPdf.js';
 import {readFileSync} from 'node:fs';
 import {moneyInput,readLedgerEntry,computeLedger,validEntryDate,cleanAccountText,transactionMode,TRANSACTION_MODES} from '../lib/accountLedger.js';
 assert.equal(moneyInput('1,200.50'),'1200.50');
@@ -39,4 +41,38 @@ assert.ok(api.includes('ORDER BY entry_date DESC,created_at DESC,id DESC LIMIT 1
 assert.ok(api.includes('OVER (PARTITION BY e.account_id ORDER BY e.entry_date,e.created_at,e.id'),
   'Running balances must be calculated oldest-to-newest even when displayed newest first.');
 assert.ok(ui.includes('DATE ↓ (LATEST FIRST)'),'Account date heading must show newest-first sorting.');
+
+assert.equal(accountParty({partyName:'Zepto',remarks:'Other'}),'Zepto');
+assert.equal(accountParty({remarks:'Paid to Blinkit 214'}),'Blinkit');
+assert.equal(accountParty({remarks:'Amazon settlement'}),'Amazon');
+assert.equal(accountParty({remarks:'Meesho sale'}),'Meesho');
+assert.equal(accountParty({remarks:'Mantra transfer'}),'Myntra');
+assert.equal(accountParty({remarks:'Unknown vendor'}),'Unclassified');
+const report=summarizeAccountEntries([
+  {id:'a',date:'2026-11-04',credit:100.10,debit:0,remarks:'Amazon credit',bankName:'HDFC',accountNo:'123456'},
+  {id:'b',date:'2026-11-05',credit:0,debit:40.05,partyName:'Amazon',remarks:'Payment',bankName:'HDFC',accountNo:'123456'},
+  {id:'c',date:'2026-11-03',credit:23,debit:0,remarks:'Unmatched description',bankName:'SBI',accountNo:'556677'}
+]);
+assert.equal(report.totals.credit,123.10);
+assert.equal(report.totals.debit,40.05);
+assert.equal(report.totals.net,83.05);
+assert.equal(report.groups.find(g=>g.party==='Amazon').credit,100.10);
+assert.equal(report.groups.find(g=>g.party==='Amazon').debit,40.05);
+assert.equal(report.groups.find(g=>g.party==='Amazon').lastCreditDate,'2026-11-04');
+assert.equal(report.groups.find(g=>g.party==='Zepto').count,0);
+const reportPdf=createAccountSummaryPdf({...report,party:'ALL',account:'All'});
+assert.ok(Buffer.isBuffer(reportPdf));
+assert.ok(reportPdf.toString('latin1',0,8).startsWith('%PDF-1.'));
+assert.ok(reportPdf.toString('latin1').includes('Amazon'));
+const summaryApi=readFileSync('app/api/accounts/summary/route.js','utf8');
+const summaryUi=readFileSync('app/AccountSummary.js','utf8');
+assert.ok(summaryApi.includes('Only Admin can view Account summaries.'));
+assert.ok(summaryApi.includes("download==='pdf'"));
+assert.ok(summaryApi.includes('LIMIT 25001'),'Unbounded reports must fail explicitly rather than silently omit rows.');
+assert.ok(summaryUi.includes('DOWNLOAD DETAILED PDF'));
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS party_name'),'Migrate ledger without dropping existing transactions.');
+assert.ok(api.includes('party_name=${entry.partyName}'),'Persist platform labels in ledger.');
+assert.ok(ui.includes('PARTY / PLATFORM'),'Platform input must be present.');
+console.log('Account summary classification, date detail, PDF and admin scope checks passed.');
+
 console.log('Account ledger validation, date order and rolling balance regression checks passed.');
