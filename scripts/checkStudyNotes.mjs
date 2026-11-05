@@ -125,7 +125,7 @@ assert.deepEqual(parseStudyEntry({...input,mcqTotal:'',mcqDone:'',theoryTotal:''
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 assert.ok(nav.includes("selectedDashboard==='NOTES'\n      ?<StudyNotesDashboard/>"));
 assert.ok(nav.includes("selectedDashboard==='ADMIN_NOTES'\n      ?<AdminNotesDashboard currentUser={session}/>"));
-assert.ok(nav.includes('>NOTES</button>'));
+assert.ok(readFileSync('app/MayaviSidebar.js','utf8').includes("page('notes','Study Notes','NOTES')"));
 assert.ok(nav.includes("setSelectedDashboard('ADMIN_NOTES')"));
 const page=readFileSync('app/StudyNotesDashboard.js','utf8');
 assert.ok(page.includes('<h1>NOTES</h1>'));
