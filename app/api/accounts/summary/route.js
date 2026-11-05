@@ -17,7 +17,7 @@ function db(){
 async function admin(request,sql){
   const session=readSession(request);
   if(!session)return {error:'Log in to Mayavi first.',status:401};
-  if(session.role!=='admin')return {error:'Only Admin can view Account summaries.',status:403};
+  if(session.role!=='admin'&&!(session.role==='employee'&&session.username==='accounts'&&session.branchScope==='ACCOUNTS'))return {error:'Only Admin can view Account summaries.',status:403};
   const rows=await sql`SELECT role,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
   if(rows[0]?.role!=='admin'||!rows[0]?.is_active)return {error:'Admin login is inactive.',status:403};
   return {session};
