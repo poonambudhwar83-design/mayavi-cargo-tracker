@@ -102,7 +102,7 @@ export default function ExportProfitSheet(){
       });
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'Save failed.');
-      setRows(previous=>previous.map(r=>r.mawb===mawb?{...r,shipmentCharge:data.shipmentCharge}:r));
+      setRows(previous=>previous.map(r=>r.mawb===mawb?{...r,shipmentCharge:data.shipmentCharge,auditAutoCharge:false}:r));
       setDrafts(previous=>{const next={...previous};delete next[mawb];return next});
       setMessage(mawb+' • Shipment Charge '+showMoney(data.shipmentCharge)+' saved.');
     }catch(error){
@@ -116,7 +116,7 @@ export default function ExportProfitSheet(){
     if(saving[key])return;
     const bags=validateExportBagCount(rawValue);
     if(bags===null){setMessage('Not saved for '+mawb+': '+EXPORT_BAG_CATEGORIES[code].label+' bag count must be a whole number between 0 and 100,000.');return;}
-    if(bags===exportCategorySummary(row.categoryBags,row.clientName).items[code].bags){
+    if(bags===exportCategorySummary(row.categoryBags,row.clientName).items[code].bags&&(row.manualBagCodes||[]).includes(code)){
       setCategoryDrafts(previous=>{const next={...previous};delete next[key];return next});return;
     }
     setSaving(previous=>({...previous,[key]:true}));setMessage('');
@@ -124,7 +124,7 @@ export default function ExportProfitSheet(){
       const response=await fetch('/api/export-profit',{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mawb,category:code,bags})});
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'Save failed.');
-      setRows(previous=>previous.map(r=>r.mawb===mawb?{...r,categoryBags:{...r.categoryBags,[code]:bags}}:r));
+      setRows(previous=>previous.map(r=>r.mawb===mawb?{...r,categoryBags:data.categoryBags,manualBagCodes:data.manualBagCodes||[],auditAutoCodes:data.auditAutoCodes||[]}:r));
       setCategoryDrafts(previous=>{const next={...previous};delete next[key];return next});
       setMessage(mawb+' • '+EXPORT_BAG_CATEGORIES[code].label+' bags '+bags+' saved.');
     }catch(error){setMessage('Not saved for '+mawb+': '+(error?.message||error));}
@@ -209,7 +209,7 @@ export default function ExportProfitSheet(){
               <td style={{...cell,fontWeight:800}}>
                 <input type="number" min="0" step="0.01" inputMode="decimal"
                   aria-label={'Edit Export Shipment Charge for '+row.mawb}
-                  title="Shipment Charge per master MAWB. Auto ₹2,600. Edit and leave the field to save."
+                  title={row.auditAutoCharge?'From matching Audit Excel; edit and leave to save a permanent manual override.':'Shipment Charge per master MAWB; manual edits stay locked during later Audit uploads.'}
                   value={drafts[row.mawb]??String(resolvedExportShipmentCharge(row.shipmentCharge))}
                   disabled={Boolean(saving[row.mawb])}
                   onChange={event=>setDrafts(previous=>({...previous,[row.mawb]:event.target.value}))}
@@ -217,18 +217,21 @@ export default function ExportProfitSheet(){
                   onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}}
                   style={{border:'1px solid #93b5d9',borderRadius:7,padding:'7px 8px',fontSize:13,fontWeight:800,width:115,color:'#164e83',background:saving[row.mawb]?'#edf2f7':'#fff'}}/>
                 {saving[row.mawb]&&<small style={{display:'block',color:'#475569'}}>Saving…</small>}
+                {row.auditAutoCharge&&<small style={{display:'block',color:'#19705d',fontSize:10}}>AUTO · AUDIT</small>}
               </td>
               {EXPORT_BAG_CODES.flatMap(code=>{
                 const item=exportCategorySummary(row.categoryBags,row.clientName).items[code],key=row.mawb+':'+code;
                 return [
                   <td key={key+':bags'} style={cell}><input type="number" min="0" max="100000" step="1" inputMode="numeric"
                     aria-label={EXPORT_BAG_CATEGORIES[code].label+' bags for '+row.mawb}
-                    title="Extra category bag count; separate from original Export shipment bags. Save on blur or Enter."
+                    title={(row.auditAutoCodes||[]).includes(code)?'Auto from matching Audit Excel. Edit to lock only this field as manual.':'Editable category bags. Saved manual values are never overwritten by Audit uploads.'}
                     value={categoryDrafts[key]??String(item.bags)} disabled={Boolean(saving[key])}
                     onChange={e=>setCategoryDrafts(previous=>({...previous,[key]:e.target.value}))}
                     onBlur={e=>void saveCategoryBags(row,code,e.target.value)}
                     onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}
-                    style={{border:'1px solid #93b5d9',borderRadius:7,padding:'7px 8px',width:80,fontWeight:800,background:saving[key]?'#edf2f7':'#fff'}}/></td>,
+                    style={{border:'1px solid #93b5d9',borderRadius:7,padding:'7px 8px',width:80,fontWeight:800,background:saving[key]?'#edf2f7':'#fff'}}/>
+                    {(row.auditAutoCodes||[]).includes(code)&&<small style={{display:'block',color:'#19705d',fontSize:10}}>AUTO</small>}
+                    {(row.manualBagCodes||[]).includes(code)&&<small style={{display:'block',color:'#17427c',fontSize:10}}>MANUAL ✓</small>}</td>,
                   <td key={key+':charge'} style={{...cell,color:'#175c9e',fontWeight:800}}>{showMoney(item.clientCharge)}</td>,
                   <td key={key+':deduction'} style={{...cell,color:'#a33f36',fontWeight:800}}>{showMoney(item.deduction)}</td>
                 ];
@@ -257,7 +260,7 @@ export default function ExportProfitSheet(){
           </tr></tfoot>}
         </table>
       </div>
-      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>D client charge ₹10,000 per bag; T/DT client charge ₹6,000 per bag; G&C client charge TPL/OVERSEAS ₹300 per bag, others ₹500 per bag, with G&C deduction ₹300 per bag. D/T/DT deductions remain at the previous ₹6,000 per bag provisionally until revised deductions are supplied. DHL clients earn ₹11/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Final Profit = (Weight × client rate) − Shipment Charge + (D/T/DT/G&C client charges − their deductions). These new category bag counts are separate from original bags and are saved per MAWB. The default Shipment Charge is ₹2,600 per master MAWB; Admin can edit and save a different amount for any MAWB. The saved amount is deducted once even for part shipments. October 2026 is the first month. The current sheet syncs all Export Active masters (even when flight or handover timing is pending) and Export Master Copy Received masters whose Handover YES belongs to this month. Past months include completed Export masters by recorded Handover YES date in IST, not departure date. Import MAWBs never enter this sheet. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
+      <p style={{fontSize:12,color:'#52657f',marginTop:12}}>D client charge ₹10,000 per bag; T/DT client charge ₹6,000 per bag; G&C client charge TPL/OVERSEAS ₹300 per bag, others ₹500 per bag, with G&C deduction ₹300 per bag. D/T/DT deductions remain at the previous ₹6,000 per bag provisionally until revised deductions are supplied. DHL clients earn ₹11/kg; Overseas clients earn ₹7/kg; other clients earn ₹6/kg. Final Profit = (Weight × client rate) − Shipment Charge + (D/T/DT/G&C client charges − their deductions). These new category bag counts are separate from original bags and are saved per MAWB. Data Analysis fills unmatched Audit category bags and conditional Shipment Charge only when both MAWB and client name match. Every manual entry is locked independently and never overwritten by a later Excel upload. Existing saved entries remain protected. The default Shipment Charge is ₹2,600 per master MAWB; Admin can edit and save a different amount for any MAWB. The saved amount is deducted once even for part shipments. October 2026 is the first month. The current sheet syncs all Export Active masters (even when flight or handover timing is pending) and Export Master Copy Received masters whose Handover YES belongs to this month. Past months include completed Export masters by recorded Handover YES date in IST, not departure date. Import MAWBs never enter this sheet. The Rate footer adds the rate entries and is not an average. Negative profit is displayed as a loss. Shipment-charge totals cover every displayed MAWB. If weight is missing, its profit stays blank and the total calculated profit includes only MAWBs with known weights; the total will update when the missing weights arrive. The selected month and client filter change all displayed totals.</p>
     </div>
   </main>;
 }
