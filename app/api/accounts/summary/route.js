@@ -70,7 +70,8 @@ export async function GET(request){
         'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'
       }});
     }
-    return respond({ok:true,groups:report.groups,totals:report.totals,entries:visible,
+    return respond({ok:true,groups:report.groups,peopleGroups:report.peopleGroups,
+      peopleEntries:report.peopleEntries,totals:report.totals,entries:visible,
       monthly,countVisible:visible.length,months,month,party,accountId});
   }catch(error){
     console.error('account_summary_get',error?.message);
