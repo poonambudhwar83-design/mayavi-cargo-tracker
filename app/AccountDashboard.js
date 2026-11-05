@@ -245,7 +245,7 @@ export default function AccountDashboard(){
             </select>
           </label>
           {field('PARTY / PLATFORM',entryDraft.partyName,v=>setEntryDraft(a=>({...a,partyName:v})),'text',{list:'mayavi-parties',placeholder:'Zepto, Blinkit, Amazon, Zomato…'})}
-          <datalist id="mayavi-parties">{['Zepto','Blinkit','Amazon','Meesho','Myntra','Zomato','FirstCry','Nykaa'].map(p=><option key={p} value={p}/>)}</datalist>
+          <datalist id="mayavi-parties">{['Zepto','Blinkit','Amazon','Meesho','Myntra','Zomato','FirstCry','Nykaa','Flipkart'].map(p=><option key={p} value={p}/>)}</datalist>
           {field('REMARKS',entryDraft.remarks,v=>setEntryDraft(a=>({...a,remarks:v})),'text',{placeholder:'Transaction details'})}
         </div>
         <button disabled={busy} style={{...button,marginTop:12,background:'#1d58a2',color:'#fff'}} type="submit">
