@@ -4,6 +4,7 @@ import {cleanJepoTrackingNo,sourceStatusToBranch,validateJepoLiveResult} from '.
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import {waitForJepoInput,waitForJepoResult} from '../lib/jepoBranchBrowser.js';
 import {parseJepoDeliveryDate} from '../lib/jepoDeliveryDate.js';
+import {summarizeJepoTimeline} from '../lib/jepoProgressTimeline.js';
 assert.equal(cleanJepoTrackingNo(' 1z12b6f40334321920 '),'1Z12B6F40334321920');
 assert.equal(cleanJepoTrackingNo('wrong/awb'),'');
 assert.equal(cleanJepoTrackingNo('618'),'618','Legacy short JEPO numbers must be attempted, not silently skipped.');
@@ -18,6 +19,20 @@ assert.equal(parseJepoDeliveryDate('2026-11-04'),'2026-11-04');
 assert.equal(parseJepoDeliveryDate('04/11/2026'),'2026-11-04');
 assert.equal(parseJepoDeliveryDate('31/02/2026'),null);
 assert.equal(parseJepoDeliveryDate(''),null);
+const mixedEvents=[
+ ['03 Nov 2026','11:30 AM','Delhi','Dispatched'],
+ ['05 Nov 2026','10:15 AM','Mumbai','Delivered'],
+ ['04 Nov 2026','03:45 PM','Mumbai','In Transit'],
+ ['05 Nov 2026','09:10 AM','Mumbai','Out for Delivery']
+];
+assert.deepEqual(summarizeJepoTimeline(mixedEvents),{
+ latestProgress:'Delivered',latestEventWhen:'05 Nov 2026 10:15 AM',deliveredScanDate:'05 Nov 2026 10:15 AM'
+},'JEPO leftmost Date and adjacent Time, not first table row, establish latest update and actual delivery.');
+assert.equal(summarizeJepoTimeline([['05 Nov 2026','08:00 AM','Mumbai','Not Delivered']]).deliveredScanDate,'',
+  'Never mark attempted or failed delivery as a delivered event.');
+assert.equal(summarizeJepoTimeline([]).latestEventWhen,'',
+  'Invalid AWB / empty JEPO timeline must not create a date.');
+
 
 const internalReference='547123';
 const forwardedReference='1Z9999999999999999';
@@ -62,7 +77,7 @@ assert.ok(api.includes('jepo_live_event_when'), 'API exposes tracked event date.
 assert.ok(ui.includes('JEPO status: {record.liveEventWhen}'), 'Show JEPO status date next to matching tracking number.');
 assert.ok(ui.includes("'JEPO Status Date/Time'"), 'Export source status date/time.');
 assert.ok(sync.includes("delivery_date_source="), 'JEPO verified delivery event is persisted.');
-assert.ok(browser.includes('deliveredScanDate'), 'Read actual date from live timeline.');
+assert.ok(browser.includes('summarizeJepoTimeline(snapshot.timelineRows)'), 'Read Date/Time from actual JEPO Progress rows.');
 assert.ok(api.includes('jepo_live_remarks'));
 assert.ok(api.includes('jepo_live_awb'));
 assert.ok(ui.includes('key="liveRemarks"'));
