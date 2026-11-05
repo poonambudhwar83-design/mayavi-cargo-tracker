@@ -42,7 +42,7 @@ export default function AuditDataAnalysisDashboard(){
   try{
    const form=new FormData();form.append('file',file);form.append('action',action);
    if(sheetName)form.append('sheetName',sheetName);
-   form.append('headerRow',String(headerRow||1));
+   form.append('headerRow',String(sheetName?headerRow||1:0));
    form.append('mapping',JSON.stringify(mapping));
    const response=await fetch('/api/audit-data-analysis',{method:'POST',body:form,credentials:'include'});
    const data=await response.json();
