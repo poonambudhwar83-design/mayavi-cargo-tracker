@@ -6,8 +6,8 @@ const moneyNumber=new Intl.NumberFormat('en-IN',{maximumFractionDigits:3});
 const surface={background:'#fff',border:'1px solid #dbe5f1',borderRadius:13,padding:16};
 const button={padding:'10px 15px',borderRadius:9,border:'1px solid #b7cbe6',background:'#fff',color:'#183965',fontWeight:800,cursor:'pointer'};
 const field={padding:'9px 10px',borderRadius:8,border:'1px solid #bfcede',background:'#fff',maxWidth:'100%',fontSize:13};
-const headings=['MAWB','Weight (kg)','Bags','Client Name','G&C','T','DT','D','X-ray','Shift','Loader','Co-loader','Remarks'];
-const keys=['mawb','weight','bags','clientName','gc','t','dt','d','xray','shift','loader','coLoader','remarks'];
+const headings=['MAWB','Weight (kg)','Bags','Client Name','G&C','T','DT','D','X-ray','Tray','Shift','Loader','Co-loader','Remarks'];
+const keys=['mawb','weight','bags','clientName','gc','t','dt','d','xray','tray','shift','loader','coLoader','remarks'];
 const MAPPING_FIELDS=[{key:'enteredBy',label:'Audit — Entered By (optional Vivek filter)'},...AUDIT_FIELDS];
 function csvDownload(rows,fileName='mayavi_audit_analysis'){
  const lines=[headings,...rows.map(r=>keys.map(k=>r[k]??''))];
@@ -61,8 +61,8 @@ export default function AuditDataAnalysisDashboard(){
   finally{setBusy(false);}
  }
  const rows=useMemo(()=> (saved.rows||[]).filter(r=>
-  (!query||[r.mawb,r.clientName,r.gc,r.t,r.dt,r.d,r.xray,r.shift,r.loader,r.coLoader,r.remarks].join(' ').toLowerCase().includes(query.trim().toLowerCase()))&&
-  (!onlyMissing||r.weight===null||r.bags===null||!['gc','t','dt','d','xray','shift','loader','coLoader','remarks'].some(k=>r[k]))
+  (!query||[r.mawb,r.clientName,r.gc,r.t,r.dt,r.d,r.xray,r.tray,r.shift,r.loader,r.coLoader,r.remarks].join(' ').toLowerCase().includes(query.trim().toLowerCase()))&&
+  (!onlyMissing||r.weight===null||r.bags===null||!['gc','t','dt','d','xray','tray','shift','loader','coLoader','remarks'].some(k=>r[k]))
  ),[saved.rows,query,onlyMissing]);
  const sheet=preview?.sheets?.find(s=>s.name===sheetName)||preview?.sheets?.[0];
  const metrics=saved.totals||{};
@@ -71,7 +71,7 @@ export default function AuditDataAnalysisDashboard(){
    <div style={{marginBottom:18}}>
     <small style={{color:'#2d5ca6',letterSpacing:1.3,fontWeight:900}}>MAYAVI • ADMIN ONLY • EXCEL ANALYSIS</small>
     <h1 style={{fontSize:26,margin:'6px 0'}}>Data Analysis — Audit (Vivek / Rahul)</h1>
-    <p style={{margin:0,color:'#52677f'}}>Vivek: entered MAWB, weight &amp; bags • Rahul: Client Name (or Excel BN), G&amp;C, T, DT, D, X-ray, shift, loader, co-loader &amp; remarks. Independent from Profit Sheets.</p>
+    <p style={{margin:0,color:'#52677f'}}>Vivek: entered MAWB, weight &amp; bags • Rahul: Client Name (or Excel BN), G&amp;C, T, DT, D, X-ray, tray, shift, loader, co-loader &amp; remarks. Matched MAWB and client entries automatically populate the Export Profit Sheet.</p>
    </div>
    <section style={surface}>
     <div style={{display:'flex',alignItems:'end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
@@ -166,7 +166,7 @@ export default function AuditDataAnalysisDashboard(){
       </tbody>
      </table>
     </div>
-    <p style={{fontSize:12,color:'#62748d',marginBottom:0}}>Client Name comes from Rahul's column, or Excel BN if missing. Source values are kept as entered in Excel, without assuming whether Rahul’s figures are charges or counts. No Profit Sheet calculations are modified.</p>
+    <p style={{fontSize:12,color:'#62748d',marginBottom:0}}>Client Name comes from Rahul's column, or Excel BN if missing. Source values are kept as entered in Excel, without assuming whether Rahul’s figures are charges or counts. Export Profit Sheet auto-fills category bags and qualifying tray/shift/loader/co-loader shipment charges after matching both MAWB and client name. Manual entries take priority.</p>
    </section>
   </div>
  </main>;
