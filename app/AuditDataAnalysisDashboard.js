@@ -8,6 +8,7 @@ const button={padding:'10px 15px',borderRadius:9,border:'1px solid #b7cbe6',back
 const field={padding:'9px 10px',borderRadius:8,border:'1px solid #bfcede',background:'#fff',maxWidth:'100%',fontSize:13};
 const headings=['MAWB','Weight (kg)','Bags','G&C','T','DT','D','X-ray','Shift','Loader','Co-loader','Remarks'];
 const keys=['mawb','weight','bags','gc','t','dt','d','xray','shift','loader','coLoader','remarks'];
+const MAPPING_FIELDS=[{key:'enteredBy',label:'Audit — Entered By (optional Vivek filter)'},...AUDIT_FIELDS];
 function csvDownload(rows,fileName='mayavi_audit_analysis'){
  const lines=[headings,...rows.map(r=>keys.map(k=>r[k]??''))];
  const csv=lines.map(line=>line.map(v=>{
@@ -99,7 +100,7 @@ export default function AuditDataAnalysisDashboard(){
      <button style={button} disabled={busy} onClick={()=>void submit('preview')}>Check selected columns</button>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9}}>
-     {AUDIT_FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:'#344d6b'}}>
+     {MAPPING_FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:'#344d6b'}}>
       {f.label}{f.key==='mawb'&&<span style={{color:'#c33139'}}> *</span>}
       <select aria-label={f.label+' Excel column'} value={mapping[f.key]||''}
         onChange={e=>{setMapping(prev=>({...prev,[f.key]:Number(e.target.value)||0}));setDirty(true)}}
