@@ -1,6 +1,5 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {ACCOUNT_PARTIES} from '../lib/accountSummary.js';
 
 const API='/api/accounts/summary';
 const panel={background:'#fff',border:'1px solid #dce5f0',borderRadius:14,padding:16,
@@ -87,7 +86,7 @@ export default function AccountSummary({accounts=[],refresh=0}){
         </label>
         <div style={{display:'flex',alignItems:'end'}}>
           <button type="button" disabled={loading||downloading} onClick={download}
-            style={{...button,width:'100%',background:'#176c56',borderColor:'#176c56',color:'#fff',opacity:loading||downloading?.65:1}}>
+            style={{...button,width:'100%',background:'#176c56',borderColor:'#176c56',color:'#fff',opacity:(loading||downloading)?0.65:1}}>
             {downloading?'PREPARING PDF…':'↓ DOWNLOAD DETAILED PDF'}
           </button>
         </div>
