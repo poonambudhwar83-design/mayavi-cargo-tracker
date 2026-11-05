@@ -176,7 +176,7 @@ export async function PATCH(request){
         ON CONFLICT(awb) DO UPDATE SET ${field}=EXCLUDED.${field},
         manual_codes=CASE WHEN mayavi_export_category_bags.manual_codes IS NULL
           THEN '["D","T","DT","GC"]'::jsonb
-          ELSE (SELECT jsonb_agg(DISTINCT item) FROM jsonb_array_elements_text(mayavi_export_category_bags.manual_codes || EXCLUDED.manual_codes) AS item)
+          ELSE (SELECT jsonb_agg(DISTINCT codes.value) FROM jsonb_array_elements_text(mayavi_export_category_bags.manual_codes || EXCLUDED.manual_codes) AS codes(value))
         END,updated_at=NOW(),updated_by=EXCLUDED.updated_by`,
         [awb,updated.D,updated.T,updated.DT,updated.GC,JSON.stringify(manualCodes),admin.username]);
       const values=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags,manual_codes
