@@ -93,7 +93,7 @@ export async function GET(request){
       const rate=exportRateForCompany(client);
       const shipmentCharge=savedCharges.has(awb)?savedCharges.get(awb):EXPORT_SHIPMENT_CHARGE;
       const categoryBags=savedBags.get(awb)||savedBagCounts();
-      const categories=exportCategorySummary(categoryBags);
+      const categories=exportCategorySummary(categoryBags,client);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
         handoverDate:exportProfitHandoverDate(data),
@@ -130,7 +130,7 @@ export async function PATCH(request){
       return Response.json({ok:false,error:'Enter a valid Shipment Charge (₹0 or more, up to 2 decimals).'},{status:400});
     const sql=sqlClient();
     await Promise.all([ensureCharges(sql),ensureCategoryBags(sql)]);
-    const matched=await sql`SELECT awb FROM mayavi_shipments WHERE awb=${awb}
+    const matched=await sql`SELECT awb,data FROM mayavi_shipments WHERE awb=${awb}
       AND UPPER(COALESCE(data->>'shipmentType',''))='EXPORT' LIMIT 1`;
     if(!matched.length)
       return Response.json({ok:false,error:'Export MAWB not found. Refresh the sheet.'},{status:404});
@@ -151,7 +151,7 @@ export async function PATCH(request){
         FROM mayavi_export_category_bags WHERE awb=${awb} LIMIT 1`;
       const categoryBags=savedBagCounts(values[0]);
       return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),categoryBags,
-        categoryTotals:exportCategorySummary(categoryBags)}, {headers:{'Cache-Control':'no-store, private'}});
+        categoryTotals:exportCategorySummary(categoryBags,clientName(matched[0].data||{}))}, {headers:{'Cache-Control':'no-store, private'}});
     }
     await sql`INSERT INTO mayavi_export_shipment_charge(awb,charge,updated_by)
       VALUES (${awb},${charge},${admin.username})
