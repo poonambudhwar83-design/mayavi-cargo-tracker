@@ -30,6 +30,11 @@ assert.deepEqual(summarizeJepoTimeline(mixedEvents),{
 },'JEPO leftmost Date and adjacent Time, not first table row, establish latest update and actual delivery.');
 assert.equal(summarizeJepoTimeline([['05 Nov 2026','08:00 AM','Mumbai','Not Delivered']]).deliveredScanDate,'',
   'Never mark attempted or failed delivery as a delivered event.');
+assert.ok(browser.includes("querySelectorAll('th,td,[role=\"cell\"]')"),'JEPO Date appears in a tbody TH, Time/Location/Progress in TD; capture all cells.');
+assert.equal(summarizeJepoTimeline([['05:34 AM','Port Elgin, ON','Delivered']]).latestEventWhen,'',
+ 'Never treat Time as Date when the left-hand TH is missing.');
+assert.equal(summarizeJepoTimeline([['Wed, 04 Nov 2026','01:29 AM','Port Elgin, ON','Delivered']]).deliveredScanDate,
+ 'Wed, 04 Nov 2026 01:29 AM','JEPO Date TH must become verified delivery date.');
 assert.equal(summarizeJepoTimeline([]).latestEventWhen,'',
   'Invalid AWB / empty JEPO timeline must not create a date.');
 
