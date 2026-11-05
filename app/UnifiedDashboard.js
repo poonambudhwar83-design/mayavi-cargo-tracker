@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardClient from './DashboardClient.js';
+import MayaviSidebar from './MayaviSidebar.js';
+import MonthlyDashboard from './MonthlyDashboard.js';
 import SpeedPostDashboard from './SpeedPostDashboard.js';
 import AdminNotesDashboard from './AdminNotesDashboard.js';
 import StudyNotesDashboard from './StudyNotesDashboard.js';
@@ -42,6 +44,7 @@ function clearStaleShipmentBackup(){try{localStorage.removeItem(LOCAL_SHIPMENT_K
 export default function UnifiedDashboard(){
   const [session,setSession]=useState(null);
   const [selectedDashboard,setSelectedDashboard]=useState('AIR_CARGO');
+  const [cargoNav,setCargoNav]=useState({id:'active-import',tab:'IMPORT',view:'ACTIVE'});
   const [users,setUsers]=useState(FALLBACK_USERS);
   const [username,setUsername]=useState('');
   const [password,setPassword]=useState('');
@@ -198,6 +201,12 @@ export default function UnifiedDashboard(){
     }catch(e){setManageNote(e.message||'Password update failed.')}finally{setManageBusy(false)}
   }
 
+  function selectSidebar(item){
+    if(item.dashboard==='AIR_CARGO'){
+      setCargoNav({id:item.id,tab:item.tab,view:item.view});
+      setSelectedDashboard('AIR_CARGO');
+    }else setSelectedDashboard(item.dashboard);
+  }
   const speedPostAllowed=Boolean(session&&(session.role==='admin'||String(session.username||'').toLowerCase()==='sonu'));
   const branchLogin=Boolean(session?.role==='employee'&&['JIND','KARNAL'].includes(session.branchScope));
   const haryanaLogin=Boolean(session?.role==='haryana_admin'&&session.branchScope==='HARYANA');
@@ -211,6 +220,8 @@ export default function UnifiedDashboard(){
     ?<HaryanaAdminDashboard currentUser={session} onLogout={logout}/>
     :branchSelected
     ?<BranchLoadsDashboard currentUser={session}/>
+    :session?.role==='admin'&&selectedDashboard==='MONTHLY'
+       ?<MonthlyDashboard/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
       ?<ImportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
@@ -231,30 +242,24 @@ export default function UnifiedDashboard(){
       ?<StudyNotesDashboard/>
     :speedPostAllowed&&selectedDashboard==='SPEED_POST'
       ?<SpeedPostDashboard currentUser={session}/>
-    :<DashboardClient isAdmin={session?.role==='admin'} currentUser={session}
+    :<DashboardClient isAdmin={session?.role==='admin'} currentUser={session} navigationTarget={cargoNav}
         onLogout={logout}
         onOpenSpeedPost={speedPostAllowed?()=>setSelectedDashboard('SPEED_POST'):null}
         onOpenAdminNotes={session?.role==='admin'?()=>setSelectedDashboard('ADMIN_NOTES'):null}/>;
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
-    <div style={topAccountBar}>
-      {!branchLogin&&!haryanaLogin&&!accountsLogin&&<SaudiaAssist/>}
-      {!branchLogin&&!haryanaLogin&&!accountsLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('OTHER_COUNTRIES')} style={{...topAccountButton,background:selectedDashboard==='OTHER_COUNTRIES'?'#dbeafe':'#fff',color:'#17419b'}}>OTHER COURIER SUMMARY</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('DATA_ANALYSIS')} style={{...topAccountButton,background:selectedDashboard==='DATA_ANALYSIS'?'#dbeafe':'#fff',color:'#17419b'}}>DATA ANALYSIS</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('ACCOUNT')} style={{...topAccountButton,background:selectedDashboard==='ACCOUNT'?'#dbeafe':'#fff',color:'#17419b'}}>ACCOUNT</button>}
-       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('NOTES')} style={{...topAccountButton,background:selectedDashboard==='NOTES'?'#dbeafe':'#fff',color:'#17419b'}}>NOTES</button>}
-      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
-      {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
-      <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
-      {(branchLogin||haryanaLogin||accountsLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
+    <div className="mayavi-shell">
+      <MayaviSidebar session={session} selectedDashboard={selectedDashboard} cargoNav={cargoNav}
+        onSelect={selectSidebar} speedPostAllowed={speedPostAllowed}
+        onManagePasswords={()=>{setManageOpen(true);setManageNote('')}}
+        onChangePassword={()=>{setChangeOpen(true);setChangeNote('')}}
+        onLogout={logout}/>
+      <div className="mayavi-shell-content">
+        {!branchLogin&&!haryanaLogin&&!accountsLogin&&<div className="mayavi-tools-bar"><SaudiaAssist/></div>}
+        {dashboardView}
+      </div>
     </div>
-    {dashboardView}
 
     {changeOpen&&<div style={modalBack}>
       <section style={modalCard}>
