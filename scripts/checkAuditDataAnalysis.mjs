@@ -28,7 +28,8 @@ assert.equal(parsed.rows[0].bags,4);assert.equal(parsed.rows[0].gc,'300');
 assert.equal(parsed.rows[0].t,'12');assert.equal(parsed.rows[0].dt,'13');
 assert.equal(parsed.rows[0].d,'14');assert.equal(parsed.rows[0].xray,'5');
 assert.equal(parsed.rows[0].shift,'Night');assert.equal(parsed.rows[0].loader,'Rahul');
-assert.equal(parsed.rows[0].coLoader,'ABC');assert.equal(parsed.rows[0].remarks,'urgent');
+assert.equal(parsed.rows[0].coLoader,'ABC');
+assert.equal(parsed.rows[0].clientName,'');assert.equal(parsed.rows[0].remarks,'urgent');
 assert.equal(parsed.skipped,2);
 assert.equal(auditMawb('098-12345678'),'098-12345678');
 assert.equal(auditMawb('not an awb'),'');
@@ -57,15 +58,36 @@ const mapped=parseAuditWorkbook(custom,{sheetName:'Custom Excel',headerRow:1,
 assert.equal(mapped.rows[0].gc,'300');assert.equal(mapped.rows[0].weight,250);
 const bad={worksheets:[sheet('Audit',[['MAWB','Weight'],['bad',25]])]};
 assert.throws(()=>parseAuditWorkbook(bad),/valid MAWB/);
+
+// Rahul heading takes priority over BN; BN is Excel column 66 and may be blank-headed.
+const rahulHeader=new Array(66).fill('');
+rahulHeader[0]='MAWB';rahulHeader[1]='Weight';rahulHeader[2]='Bags';rahulHeader[3]='Rahul Client Name';
+const sourceRow=new Array(66).fill('');
+sourceRow[0]='16012345678';sourceRow[1]=180;sourceRow[2]=5;sourceRow[3]='TPL';sourceRow[65]='OVERSEAS';
+const rahulClient=parseAuditWorkbook({worksheets:[sheet('Audit',[rahulHeader,sourceRow]) ]});
+assert.equal(rahulClient.mapping.clientName,4);
+assert.equal(rahulClient.rows[0].clientName,'TPL','Rahul client name takes priority over Excel BN.');
+const emptyRahul=[...sourceRow];emptyRahul[3]='';
+const fallback=parseAuditWorkbook({worksheets:[sheet('Audit',[rahulHeader,emptyRahul]) ]});
+assert.equal(fallback.rows[0].clientName,'OVERSEAS','If Rahul is blank, use Excel BN.');
+const noHeading=new Array(66).fill('');noHeading[0]='MAWB';noHeading[1]='Weight';noHeading[2]='Bags';
+const blankHeading=parseAuditWorkbook({worksheets:[sheet('Audit',[noHeading,sourceRow]) ]});
+assert.equal(blankHeading.mapping.clientName,66,'Default mapping must show BN.');
+assert.equal(blankHeading.rows[0].clientName,'OVERSEAS','BN fallback even without named client heading.');
+assert.ok(listAuditSheets({worksheets:[sheet('Audit',[noHeading,sourceRow]) ]})[0].columns.some(col=>col.column===66));
+assert.equal(summarizeAuditRows(blankHeading.rows).rows,1);
+
 const ui=readFileSync('app/AuditDataAnalysisDashboard.js','utf8');
 const api=readFileSync('app/api/audit-data-analysis/route.js','utf8');
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 const exportFinance=readFileSync('app/ExportFinanceSection.js','utf8');
-assert.equal(AUDIT_FIELDS.length,12);
+assert.equal(AUDIT_FIELDS.length,13);
 assert.ok(ui.includes('Preview Excel')&&ui.includes('Save this Audit Analysis'));
-assert.ok(ui.includes('Download CSV')&&ui.includes('Rahul'));
+assert.ok(ui.includes('Download CSV')&&ui.includes('Rahul')&&ui.includes("'Client Name'"));
 assert.ok(api.includes("readSession(request)?.role==='admin'"));
 assert.ok(api.includes('jsonb_to_recordset')&&api.includes("action==='preview'"));
+assert.ok(api.includes('client_name TEXT NOT NULL DEFAULT')&&api.includes('client_name,gm')===false);
+assert.ok(api.includes('client_name:r.clientName')&&api.includes('clientName:x.client_name'));
 assert.ok(nav.includes('DATA ANALYSIS')&&nav.includes('AuditDataAnalysisDashboard'));
 assert.ok(exportFinance.includes("tab==='ANALYSIS'")&&exportFinance.includes('<AuditDataAnalysisDashboard/>'));
 console.log('Vivek/Rahul Excel Audit parser, two-row headers, manual mapping, saved analysis and admin UI checks passed.');
