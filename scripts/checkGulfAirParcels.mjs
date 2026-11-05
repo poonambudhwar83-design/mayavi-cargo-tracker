@@ -113,7 +113,7 @@ assert.ok(gulfCron.includes("Promise.allSettled"), 'All current 072 AWBs should 
 assert.ok(gulfCron.includes("x-mayavi-internal-key"), 'Scheduled checks must use internal tracking authentication.');
 assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/gulf-air'&&r.schedule==='15 * * * *'),
   'Run dedicated Gulf Air status checks each hour without changing JEPO refresh.');
-assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/jepo-branches'&&r.schedule==='0 */4 * * *'),
-  'JEPO must keep its user-requested four-hour interval.');
+assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/jepo-branches'&&r.schedule==='0 * * * *'),
+  'JEPO must run on its user-requested one-hour interval.');
 
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
