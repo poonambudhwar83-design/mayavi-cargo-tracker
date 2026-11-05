@@ -867,8 +867,16 @@ function stickyColumn(left,width,header=false){return {position:'sticky',left,zI
 function companyChoice(row={}){const t=String(row.companyType||'').toUpperCase(),n=String(row.companyName||'').trim();if(t==='KCC'||t==='PV'||t==='OTHER')return t;if(n.toUpperCase()==='KCC')return'KCC';if(n.toUpperCase()==='PV')return'PV';return n?'OTHER':''}
 function companyFilterLabel(row={}){const type=companyChoice(row);return type==='OTHER'?(String(row.companyName||'').trim()||'Other'):type}
 
-export default function DashboardClient({isAdmin=false,haryanaMode=false,currentUser=null,onLogout=null,onOpenSpeedPost=null,onOpenAdminNotes=null}){
+export default function DashboardClient({isAdmin=false,haryanaMode=false,currentUser=null,onLogout=null,onOpenSpeedPost=null,onOpenAdminNotes=null,navigationTarget=null}){
   const [rows,setRows]=useState([]),[mawb,setMawb]=useState(''),[client,setClient]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[loaded,setLoaded]=useState(false),[shared,setShared]=useState(false),[activeTab,setActiveTab]=useState('IMPORT');
+  // Navigation from the persistent Mayavi sidebar, without changing saved shipment records.
+  useEffect(()=>{
+    if(!navigationTarget?.id)return;
+    const nextTab=navigationTarget.tab||'IMPORT';
+    const nextView=navigationTarget.view||'ACTIVE';
+    setActiveTab(current=>current===nextTab?current:nextTab);
+    setAdminView(current=>current===nextView?current:nextView);
+  },[navigationTarget?.id,navigationTarget?.tab,navigationTarget?.view]);
   const [adminView,setAdminView]=useState('ACTIVE'),[clientFilter,setClientFilter]=useState(''),[originFilter,setOriginFilter]=useState(''),[destinationFilter,setDestinationFilter]=useState(''),[prefixFilter,setPrefixFilter]=useState('');
   const [goodsFilter,setGoodsFilter]=useState(''),[companyFilter,setCompanyFilter]=useState(''),[enteredByFilter,setEnteredByFilter]=useState('');
   const [currentImportMonth,setCurrentImportMonth]=useState(currentImportIstMonth);

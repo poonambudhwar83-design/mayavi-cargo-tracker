@@ -192,5 +192,5 @@ assert.ok(ui.includes('companyPastel=company=>companyPastels[company]'),
   'Older employees with blank companies should have a neutral fallback');
 
 assert.ok(navigation.includes('selectedDashboard===\x27SALARY\x27')&&navigation.includes('<SalaryDashboard/>'));
-assert.ok(navigation.includes('>SALARY</button>'));
+assert.ok(readFileSync('app/MayaviSidebar.js','utf8').includes("page('salary','Salary','SALARY')"));
 console.log('Salary calculator regression passed: JEPO/KCC/PV company groups, branch subtotal, original monthly salary persistence, admin-only access and no deductions.');

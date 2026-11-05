@@ -119,5 +119,5 @@ assert.ok(analysisApi.includes('backfillSavedShipmentDates(sql)'), 'Saved upload
 assert.ok(analysisApi.includes('shipment_month:row.shipmentMonth||month'), 'New Excel uploads must persist actual shipment month.');
 assert.ok(analysisApi.includes('COALESCE(NULLIF(r.shipment_month'), 'Monthly reporting must filter by row date, not upload month.');
 assert.ok(analysisPage.includes("result.totals?.from35To40"), 'Show 35-40 column and totals.');
-assert.ok(menu.includes('OTHER COURIER SUMMARY'), 'Rename the old Other Countries Analysis tab.');
+assert.ok(readFileSync('app/MayaviSidebar.js','utf8').includes("page('other-couriers','Other Courier Summary','OTHER_COUNTRIES')"), 'Other Courier Summary must stay in the sidebar.');
 assert.ok(cron.includes('CRON_SECRET'), 'Date backfill must be protected.');
