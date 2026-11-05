@@ -88,6 +88,6 @@ assert.ok(api.includes("readSession(request)?.role==='admin'"));
 assert.ok(api.includes('jsonb_to_recordset')&&api.includes("action==='preview'"));
 assert.ok(api.includes('client_name TEXT NOT NULL DEFAULT')&&api.includes('client_name,gm')===false);
 assert.ok(api.includes('client_name:r.clientName')&&api.includes('clientName:x.client_name'));
-assert.ok(nav.includes('DATA ANALYSIS')&&nav.includes('AuditDataAnalysisDashboard'));
+assert.ok(readFileSync('app/MayaviSidebar.js','utf8').includes("page('analysis','Data Analysis','DATA_ANALYSIS')")&&nav.includes('AuditDataAnalysisDashboard'));
 assert.ok(exportFinance.includes("tab==='ANALYSIS'")&&exportFinance.includes('<AuditDataAnalysisDashboard/>'));
 console.log('Vivek/Rahul Excel Audit parser, two-row headers, manual mapping, saved analysis and admin UI checks passed.');
