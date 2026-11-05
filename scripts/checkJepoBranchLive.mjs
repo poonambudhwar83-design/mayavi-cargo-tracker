@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {cleanJepoTrackingNo,sourceStatusToBranch,validateJepoLiveResult} from '../lib/jepoBranchTracking.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
+import {waitForJepoInput,waitForJepoResult} from '../lib/jepoBranchBrowser.js';
 import {parseJepoDeliveryDate} from '../lib/jepoDeliveryDate.js';
 assert.equal(cleanJepoTrackingNo(' 1z12b6f40334321920 '),'1Z12B6F40334321920');
 assert.equal(cleanJepoTrackingNo('wrong/awb'),'');
@@ -121,4 +122,22 @@ assert.ok(ui.includes('isJindJepoTimeout(row)?styles.jindTimeoutRow'), 'Highligh
 assert.ok(ui.includes('JEPO TIMEOUT · AUTO RETRY'), 'Show which Jind shipments timed out.');
 assert.ok(ui.includes('https://jepoexpress.com/track'), 'Keep direct tracking website link.');
 assert.ok(ui.includes('>Track JEPO</button>'), 'Keep existing manual JEPO tracking button.');
+
+// Regression: a navigation during the JEPO form/result wait must recover.
+// These fake pages exercise the actual async polling without launching Chrome.
+let formPolls=0;
+await waitForJepoInput({
+ isClosed:()=>false,
+ evaluate:async()=>{if(++formPolls===1)throw Error('Attempted to use detached Frame A1');return true;}
+});
+assert.equal(formPolls,2,'Form polling should recover after a transient detached frame.');
+let resultPolls=0;
+const recovered=await waitForJepoResult({
+ isClosed:()=>false,
+ evaluate:async()=>{if(++resultPolls===1)throw Error('Execution context was destroyed, most likely because of a navigation.');
+  return {freshResult:true,status:'Delivered',latestProgress:'Delivered'};}
+},'before');
+assert.equal(resultPolls,2,'Result polling should recover after a page navigation.');
+assert.equal(recovered.status,'Delivered');
+
 console.log('JEPO branch live status, Progress, AWB guards, tracking scheduler and Live Remarks UI checks passed.');
