@@ -47,6 +47,14 @@ assert.equal(accountParty({remarks:'Paid to Blinkit 214'}),'Blinkit');
 assert.equal(accountParty({remarks:'Amazon settlement'}),'Amazon');
 assert.equal(accountParty({remarks:'Meesho sale'}),'Meesho');
 assert.equal(accountParty({remarks:'Mantra transfer'}),'Myntra');
+assert.equal(accountParty({partyName:'Zomato'}),'Zomato');
+assert.equal(accountParty({remarks:'Zomato settlement'}),'Zomato');
+assert.equal(accountParty({partyName:'First Cry'}),'FirstCry');
+assert.equal(accountParty({remarks:'FirstCry credit'}),'FirstCry');
+assert.equal(accountParty({partyName:'Nykaa'}),'Nykaa');
+assert.equal(accountParty({remarks:'Nykaaye settlement'}),'Nykaa');
+assert.equal(accountParty({partyName:'Flipkart'}),'Flipkart');
+assert.equal(accountParty({remarks:'Flip Kart settlement'}),'Flipkart');
 assert.equal(accountParty({remarks:'Unknown vendor'}),'Unclassified');
 const report=summarizeAccountEntries([
   {id:'a',date:'2026-11-04',credit:100.10,debit:0,remarks:'Amazon credit',bankName:'HDFC',accountNo:'123456'},
@@ -60,6 +68,7 @@ assert.equal(report.groups.find(g=>g.party==='Amazon').credit,100.10);
 assert.equal(report.groups.find(g=>g.party==='Amazon').debit,40.05);
 assert.equal(report.groups.find(g=>g.party==='Amazon').lastCreditDate,'2026-11-04');
 assert.equal(report.groups.find(g=>g.party==='Zepto').count,0);
+for(const party of ['Zomato','FirstCry','Nykaa','Flipkart'])assert.equal(report.groups.find(g=>g.party===party).count,0);
 const reportPdf=createAccountSummaryPdf({...report,party:'ALL',account:'All'});
 assert.ok(Buffer.isBuffer(reportPdf));
 assert.ok(reportPdf.toString('latin1',0,8).startsWith('%PDF-1.'));
