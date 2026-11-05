@@ -101,6 +101,31 @@ assert.ok(monthlyPdfText.includes('MONTH: 2026-11'));
 assert.ok(monthlyPdfText.includes('MONTH: 2026-10'));
 assert.ok(monthlyPdfText.includes('Flipkart'));
 
+const named=summarizeAccountEntries([
+ {id:'person1',date:'2026-11-05',partyName:'Amazon',remarks:'Ravi office payment',credit:0,debit:100.10,bankName:'Axis'},
+ {id:'person2',date:'2026-11-04',remarks:'Sonia order refund',credit:45.25,debit:0,bankName:'HDFC'},
+ {id:'person3',date:'2026-11-03',remarks:'Chand and Sonia joint expense',credit:0,debit:50,bankName:'SBI'},
+ {id:'person4',date:'2026-11-02',remarks:'Upasna payment',credit:80,debit:0,bankName:'SBI'},
+ {id:'person5',date:'2026-11-02',remarks:'Suresh courier charges',credit:0,debit:30,bankName:'SBI'},
+ {id:'person6',date:'2026-11-01',remarks:'Kapil advance received',credit:40,debit:0,bankName:'SBI'}
+]);
+assert.equal(named.peopleGroups.find(g=>g.person==='Ravi').debit,100.10);
+assert.equal(named.peopleGroups.find(g=>g.person==='Sonia').credit,45.25);
+assert.equal(named.peopleGroups.find(g=>g.person==='Chand + Sonia').debit,50);
+assert.equal(named.peopleGroups.find(g=>g.person==='Chand').count,0);
+assert.equal(named.peopleGroups.find(g=>g.person==='Upasna').credit,80);
+assert.equal(named.peopleGroups.find(g=>g.person==='Suresh').debit,30);
+assert.equal(named.peopleGroups.find(g=>g.person==='Kapil').credit,40);
+assert.equal(named.peopleEntries.length,6);
+assert.equal(named.peopleEntries[0].reason,'Ravi office payment');
+assert.equal(named.totals.debit,180.10);
+const personPdf=createAccountSummaryPdf({...named,month:'2026-11',account:'All'});
+const personText=personPdf.toString('latin1');
+assert.ok(personText.includes('PERSON-WISE ACCOUNTS'));
+assert.ok(personText.includes('Ravi office payment'));
+assert.ok(personText.includes('Chand + Sonia'));
+
+
 const reportPdf=createAccountSummaryPdf({...report,party:'ALL',account:'All'});
 assert.ok(Buffer.isBuffer(reportPdf));
 assert.ok(reportPdf.toString('latin1',0,8).startsWith('%PDF-1.'));
@@ -115,6 +140,17 @@ assert.ok(summaryApi.includes('const monthly=allReport.monthly'),'API must inclu
 assert.ok(summaryApi.includes('createAccountSummaryPdf({...report,monthly'),'PDF must include month-wise totals.');
 assert.ok(summaryUi.includes('MONTH-WISE SUMMARY'),'UI must show monthly totals.');
 assert.ok(summaryUi.includes('Platform-wise Addition'),'UI must show monthly party subtotals.');
+assert.ok(summaryUi.includes('PERSON-WISE CREDIT / DEBIT SUMMARY'));
+assert.ok(summaryUi.includes('WHY / REMARKS'));
+assert.ok(summaryApi.includes('peopleGroups:report.peopleGroups'));
+const accountAuth=readFileSync('lib/mayaviAuth.js','utf8');
+const unified=readFileSync('app/UnifiedDashboard.js','utf8');
+assert.ok(accountAuth.includes("branchScope==='ACCOUNTS'"));
+assert.ok(accountAuth.includes("'/api/accounts/summary'"));
+assert.ok(unified.includes("accountsLogin"));
+assert.ok(unified.includes("branchScope==='ACCOUNTS'"));
+assert.ok(api.includes("accountsOnly"));
+
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS party_name'),'Migrate ledger without dropping existing transactions.');
 assert.ok(api.includes('party_name=${entry.partyName}'),'Persist platform labels in ledger.');
 assert.ok(ui.includes('PARTY / PLATFORM'),'Platform input must be present.');
