@@ -64,7 +64,7 @@ assert.ok(ui.includes('key="liveRemarks"'));
 assert.equal((ui.match(/<th>Live Remarks<\/th>/g)||[]).length,2);
 assert.ok(ui.includes('setInterval(onFocus,20000)'), 'Visible branch page must refresh from saved live data every 20 seconds.');
 assert.ok(ui.includes('JEPO AUTO LIVE'), 'Show automatic live status without requiring clicks.');
-assert.ok(ui.includes('JEPO website checked every 4 hours'), 'Display the four-hour tracking schedule.');
+assert.ok(ui.includes('JEPO website checked every 1 hour'), 'Display the four-hour tracking schedule.');
 assert.ok(ui.includes('Refresh JEPO Live'));
 assert.ok(ui.includes('Track JEPO'));
 assert.ok(ui.includes('r.liveStatus||statusLabel(r.status)'));
@@ -77,7 +77,7 @@ assert.ok(browser.includes('const results=new Array(awbs.length)'), 'Maintain co
 assert.ok(cron.includes('LIMIT 240'), 'Check all JEPO AWBs in one scheduled run.');
 assert.ok(!cron.includes("delivery_status<>'DELIVERED'"), 'All records including Delivered must have refresh coverage.');
 assert.ok(cron.includes('CRON_SECRET'));
-assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='0 */4 * * *'));
+assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='0 * * * *'));
 const nextConfig=readFileSync('next.config.js','utf8');
 for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
   assert.ok(nextConfig.includes("'"+route+"': ['./node_modules/@sparticuz/chromium/bin/**/*']"),

@@ -631,7 +631,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <div><small>MAYAVI CARGO • DAILY BRANCH REGISTER</small><h1>Jind &amp; Karnal — Daily Load &amp; Payments</h1>
         <p>Daily Load Entry • Active, Delivered & Daily Summary • Overview combines Active + Delivered</p>
         <p style={{fontSize:12,color:'#28744e',fontWeight:800,marginTop:5}}>
-          ● JEPO AUTO LIVE — JEPO website checked every 4 hours; this page refreshes saved data every 20 seconds. Track JEPO can be used for a manual check.
+          ● JEPO AUTO LIVE — JEPO website checked every 1 hour; this page refreshes saved data every 20 seconds. Track JEPO can be used for a manual check.
           {lastUpdated&&<span style={{color:'#526b81',fontWeight:500}}> • Screen updated {lastUpdated}</span>}
         </p></div>
     </header>
