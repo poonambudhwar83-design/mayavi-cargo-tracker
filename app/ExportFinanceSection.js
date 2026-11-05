@@ -2,6 +2,7 @@
 import {useState} from 'react';
 import ExportProfitSheet from './ExportProfitSheet.js';
 import ExportClientLedger from './ExportClientLedger.js';
+import AuditDataAnalysisDashboard from './AuditDataAnalysisDashboard.js';
 
 const tabStyle={padding:'11px 17px',borderRadius:9,border:'1px solid #c9d6e8',cursor:'pointer',fontSize:13,fontWeight:900};
 export default function ExportFinanceSection(){
@@ -17,7 +18,11 @@ export default function ExportFinanceSection(){
         style={{...tabStyle,background:tab==='LEDGER'?'#087b73':'#fff',color:tab==='LEDGER'?'#fff':'#1f5e63'}}>
         Export Client Ledger
       </button>
+      <button type="button" aria-current={tab==='ANALYSIS'?'page':undefined} onClick={()=>setTab('ANALYSIS')}
+        style={{...tabStyle,background:tab==='ANALYSIS'?'#2157a1':'#fff',color:tab==='ANALYSIS'?'#fff':'#1f5e8b'}}>
+        Data Analysis
+      </button>
     </nav>
-    {tab==='PROFIT'?<ExportProfitSheet/>:<ExportClientLedger/>}
+    {tab==='PROFIT'?<ExportProfitSheet/>:tab==='ANALYSIS'?<AuditDataAnalysisDashboard/>:<ExportClientLedger/>}
   </>;
 }
