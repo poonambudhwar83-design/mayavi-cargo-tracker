@@ -82,6 +82,13 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
   assert.ok(nextConfig.includes("'"+route+"': ['./node_modules/@sparticuz/chromium/bin/**/*']"),
     'Chromium binary must be traced into '+route+' runtime');
 }
+
+assert.ok(browser.includes('waitForJepoResult(page,beforeResult)'), 'JEPO result polling must survive page navigations.');
+assert.ok(!browser.includes('await page.waitForFunction(previous=>'), 'Never bind result wait to the old frame after submitting Track.');
+assert.ok(browser.includes('if(!page||page.isClosed())page=await browser.newPage()'), 'Replace unusable tabs between AWBs.');
+assert.ok(browser.includes('for(let attempt=0;attempt<2;attempt++)'), 'Retry detached-frame AWBs before marking them failed.');
+assert.ok(browser.includes('if(attempt===0&&transient)continue'), 'Only transient page faults trigger a fresh-tab retry.');
+assert.ok(browser.includes('if(++consecutiveDetachments>=5)'), 'Repeated frame detachments must restart the tab, not poison later AWBs.');
 assert.ok(browser.includes('https://jepoexpress.com/track'));
 assert.ok(browser.includes('freshResult:true'));
 assert.ok(browser.includes('beforeResult'));
