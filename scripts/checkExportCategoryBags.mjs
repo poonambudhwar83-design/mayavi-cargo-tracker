@@ -1,11 +1,27 @@
 import assert from 'node:assert/strict';
-import {EXPORT_BAG_CODES,exportCategorySummary,validateExportBagCount} from '../lib/exportCategoryBags.js';
+import {EXPORT_BAG_CODES,exportCategoryClientRate,exportCategorySummary,validateExportBagCount} from '../lib/exportCategoryBags.js';
 const result=exportCategorySummary({D:2,T:3,DT:1,GC:4});
 assert.deepEqual(EXPORT_BAG_CODES,['D','T','DT','GC']);
-assert.equal(result.clientCharge,2*15000+3*10000+1*5000+4*500);
+assert.equal(result.clientCharge,2*6000+3*6000+1*6000+4*500);
 assert.equal(result.deduction,2*6000+3*6000+1*6000+4*300);
-assert.equal(result.netProfit,2*9000+3*4000-1000+4*200);
+assert.equal(result.netProfit,2*0+3*0+1*0+4*200);
 assert.equal(exportCategorySummary({}).netProfit,0);
+assert.equal(exportCategoryClientRate('D','TPL'),6000);
+assert.equal(exportCategoryClientRate('T','OVERSEAS'),6000);
+assert.equal(exportCategoryClientRate('DT','DHL'),6000);
+assert.equal(exportCategoryClientRate('GC','TPL'),300);
+assert.equal(exportCategoryClientRate('GC','Overseas'),300);
+assert.equal(exportCategoryClientRate('GC','DHL'),500);
+assert.equal(exportCategoryClientRate('GC','M5'),500);
+assert.equal(exportCategoryClientRate('GC','SHIPUNIV'),500);
+assert.equal(exportCategorySummary({GC:5},'TPL').clientCharge,1500);
+assert.equal(exportCategorySummary({GC:5},'OVERSEAS').deduction,1500);
+assert.equal(exportCategorySummary({GC:5},'TPL').netProfit,0);
+assert.equal(exportCategorySummary({GC:5},'OVERSEAS').netProfit,0);
+assert.equal(exportCategorySummary({GC:5},'DHL').netProfit,1000);
+assert.equal(exportCategorySummary({D:4},'TPL').clientCharge,24000);
+assert.equal(exportCategorySummary({D:4},'TPL').deduction,24000); // existing deduction provisional
+
 assert.equal(validateExportBagCount('0'),0);
 assert.equal(validateExportBagCount('11'),11);
 assert.equal(validateExportBagCount('2.5'),null);
