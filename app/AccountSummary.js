@@ -18,6 +18,7 @@ export default function AccountSummary({accounts=[],refresh=0}){
   const [open,setOpen]=useState(true);
   const [accountId,setAccountId]=useState('ALL'),[month,setMonth]=useState('ALL'),
     [party,setParty]=useState('ALL');
+  const [personFocus,setPersonFocus]=useState('ALL');
   const [data,setData]=useState({groups:[],entries:[],monthly:[],months:[],totals:{}});
   const [monthlyFocus,setMonthlyFocus]=useState('');
   const [loading,setLoading]=useState(false),[downloading,setDownloading]=useState(false);
@@ -57,6 +58,8 @@ export default function AccountSummary({accounts=[],refresh=0}){
     finally{setDownloading(false);}
   }
   const groups=data.groups||[],entries=data.entries||[],totals=data.totals||{};
+  const peopleGroups=data.peopleGroups||[],peopleEntries=data.peopleEntries||[];
+  const selectedPeople=personFocus==='ALL'?peopleEntries:peopleEntries.filter(e=>e.person===personFocus);
   const monthly=data.monthly||[];
   const focusedMonth=monthly.find(row=>row.month===monthlyFocus)||monthly[0];
   const fullTotals=monthly.reduce((a,row)=>({count:a.count+row.count,
@@ -174,6 +177,55 @@ export default function AccountSummary({accounts=[],refresh=0}){
           </table>
         </div>
       </div>}
+      <section style={{margin:'18px 0 12px',padding:13,background:'#f8fbff',border:'1px solid #ceddf0',borderRadius:12}}>
+        <h3 style={{fontSize:16,margin:'0 0 5px',color:'#193f72'}}>PERSON-WISE CREDIT / DEBIT SUMMARY (REMARKS)</h3>
+        <p style={{fontSize:11,color:'#586d89',margin:'0 0 12px'}}>Ravi, Chand, Sonia, Upasna, Suresh and Kapil. Shows who was mentioned and the original reason in Remarks. Counts here cross-reference saved transactions and are NOT added again to platform or grand totals. Month filter applies.</p>
+        <div style={{overflowX:'auto'}}>
+          <table style={{borderCollapse:'collapse',width:'100%',minWidth:620}}>
+            <thead><tr>{['PERSON','ENTRIES','CREDIT (₹)','DEBIT (₹)','NET (₹)'].map(h=>
+              <th key={h} style={{background:'#e6effd',padding:9,fontSize:11,textAlign:'left'}}>{h}</th>)}</tr></thead>
+            <tbody>
+              {peopleGroups.map((g,i)=><tr key={g.person} style={{background:i%2?'#f3f8ff':'#fff',borderBottom:'1px solid #dfe8f4'}}>
+                <td style={{padding:9,fontSize:12,fontWeight:800}}>{g.person}</td>
+                <td style={{padding:9,fontSize:12}}>{g.count}</td>
+                <td style={{padding:9,fontSize:12,color:'#15734e'}}>₹{money(g.credit)}</td>
+                <td style={{padding:9,fontSize:12,color:'#a33c4a'}}>₹{money(g.debit)}</td>
+                <td style={{padding:9,fontSize:12,fontWeight:850}}>₹{money(g.net)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+        <div style={{display:'flex',alignItems:'end',justifyContent:'space-between',flexWrap:'wrap',gap:10,margin:'16px 0 10px'}}>
+          <div>
+            <h4 style={{margin:0,fontSize:13}}>Person-wise transaction reasons</h4>
+            <div style={{fontSize:11,color:'#60758c'}}>Exact date, incoming/outgoing amount and saved remarks.</div>
+          </div>
+          <label style={{display:'grid',gap:4,fontWeight:800,fontSize:11,minWidth:175}}>PERSON
+            <select style={input} value={personFocus} onChange={e=>setPersonFocus(e.target.value)}>
+              <option value="ALL">All People</option>
+              {peopleGroups.map(g=><option key={g.person} value={g.person}>{g.person}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{overflowX:'auto',maxHeight:370,border:'1px solid #dfe8f4',borderRadius:9}}>
+          <table style={{width:'100%',minWidth:790,borderCollapse:'collapse'}}>
+            <thead><tr>{['DATE','PERSON','CREDIT (₹)','DEBIT (₹)','MODE','WHY / REMARKS','BANK'].map(h=>
+              <th key={h} style={{background:'#e8f0fd',padding:8,fontSize:10,textAlign:'left',position:'sticky',top:0}}>{h}</th>)}</tr></thead>
+            <tbody>
+              {!selectedPeople.length&&<tr><td colSpan={7} style={{padding:16,fontSize:12,color:'#708197',textAlign:'center'}}>No matching remarks for this period.</td></tr>}
+              {selectedPeople.map((e,i)=><tr key={e.id||i} style={{background:i%2?'#f6f9ff':'#fff',borderBottom:'1px solid #e1e9f4'}}>
+                <td style={{padding:8,fontSize:11,whiteSpace:'nowrap'}}>{e.date}</td>
+                <td style={{padding:8,fontSize:11,fontWeight:750}}>{e.person}</td>
+                <td style={{padding:8,fontSize:11,color:'#13734c'}}>{e.credit?'₹'+money(e.credit):'—'}</td>
+                <td style={{padding:8,fontSize:11,color:'#a33c4a'}}>{e.debit?'₹'+money(e.debit):'—'}</td>
+                <td style={{padding:8,fontSize:11}}>{e.mode||'—'}</td>
+                <td style={{padding:8,fontSize:11,minWidth:225,overflowWrap:'anywhere'}}>{e.reason||'Reason not specified'}</td>
+                <td style={{padding:8,fontSize:11}}>{e.bankName||'—'}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <h3 style={{fontSize:14,margin:'20px 0 8px'}}>Platform totals for selected detail period</h3>
       <div style={{overflowX:'auto',marginTop:14}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:810}}>

@@ -18,9 +18,12 @@ function client(){
 async function verifyAdmin(request,sql){
   const session=readSession(request);
   if(!session)return {error:'Log in to Mayavi first.',status:401};
-  if(session.role!=='admin')return {error:'Only the main Admin can view and edit Accounts.',status:403};
-  const users=await sql`SELECT role,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
-  if(users[0]?.role!=='admin'||!users[0]?.is_active)return {error:'Admin login is inactive.',status:403};
+  const accountsOnly=session.role==='employee'&&session.username==='accounts'&&session.branchScope==='ACCOUNTS';
+  if(session.role!=='admin'&&!accountsOnly)return {error:'Accounts access only.',status:403};
+  const users=await sql`SELECT role,branch_scope,session_version,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
+  const user=users[0];
+  const allowed=(session.role==='admin'&&user?.role==='admin')||(accountsOnly&&user?.role==='employee'&&user?.branch_scope==='ACCOUNTS');
+  if(!allowed||!user?.is_active||Number(user.session_version||0)!==Number(session.sessionVersion||0))return {error:'Accounts session inactive.',status:403};
   return {session};
 }
 async function ensureTables(sql){

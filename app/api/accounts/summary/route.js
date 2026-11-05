@@ -17,9 +17,9 @@ function db(){
 async function admin(request,sql){
   const session=readSession(request);
   if(!session)return {error:'Log in to Mayavi first.',status:401};
-  if(session.role!=='admin')return {error:'Only Admin can view Account summaries.',status:403};
+  if(session.role!=='admin'&&!(session.role==='employee'&&session.username==='accounts'&&session.branchScope==='ACCOUNTS'))return {error:'Only Admin can view Account summaries.',status:403};
   const rows=await sql`SELECT role,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
-  if(rows[0]?.role!=='admin'||!rows[0]?.is_active)return {error:'Admin login is inactive.',status:403};
+  if(!(rows[0]?.role==='admin'||rows[0]?.role==='employee'&&session.branchScope==='ACCOUNTS')||!rows[0]?.is_active)return {error:'Admin login is inactive.',status:403};
   return {session};
 }
 export async function GET(request){
@@ -70,7 +70,8 @@ export async function GET(request){
         'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'
       }});
     }
-    return respond({ok:true,groups:report.groups,totals:report.totals,entries:visible,
+    return respond({ok:true,groups:report.groups,peopleGroups:report.peopleGroups,
+      peopleEntries:report.peopleEntries,totals:report.totals,entries:visible,
       monthly,countVisible:visible.length,months,month,party,accountId});
   }catch(error){
     console.error('account_summary_get',error?.message);
