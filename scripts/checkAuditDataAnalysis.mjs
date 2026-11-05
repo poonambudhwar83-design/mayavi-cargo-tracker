@@ -81,7 +81,7 @@ const ui=readFileSync('app/AuditDataAnalysisDashboard.js','utf8');
 const api=readFileSync('app/api/audit-data-analysis/route.js','utf8');
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 const exportFinance=readFileSync('app/ExportFinanceSection.js','utf8');
-assert.equal(AUDIT_FIELDS.length,13);
+assert.equal(AUDIT_FIELDS.length,14);
 assert.ok(ui.includes('Preview Excel')&&ui.includes('Save this Audit Analysis'));
 assert.ok(ui.includes('Download CSV')&&ui.includes('Rahul')&&ui.includes("'Client Name'"));
 assert.ok(api.includes("readSession(request)?.role==='admin'"));
