@@ -5,7 +5,7 @@ import { selectedProfitMonth, profitMonths, currentProfitMonth, exportProfitHand
 import { includeExportMasterInProfit, exportProfitRegister } from '../../../lib/exportProfitSource.js';
 import { EXPORT_SHIPMENT_CHARGE, validateExportShipmentCharge } from '../../../lib/exportShipmentCharge.js';
 import {exportCategorySummary,validateExportBagCount} from '../../../lib/exportCategoryBags.js';
-import {auditExportIndex,exportAuditKey,exportAuditValues} from '../../../lib/auditExportSync.js';
+import {auditExportIndex,exportAuditKey,exportAuditValues,mergeExportAuditBags,exportManualCategoryCodes} from '../../../lib/auditExportSync.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,6 +61,7 @@ async function ensureCategoryBags(sql){
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by TEXT NOT NULL DEFAULT ''
   )`;
+  await sql`ALTER TABLE mayavi_export_category_bags ADD COLUMN IF NOT EXISTS manual_codes JSONB`;
 }
 function savedBagCounts(row={}){
   return {D:Number(row.d_bags||0),T:Number(row.t_bags||0),DT:Number(row.dt_bags||0),GC:Number(row.gc_bags||0)};
@@ -92,11 +93,11 @@ export async function GET(request){
         WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'
         ORDER BY updated_at DESC`,
       sql`SELECT awb,charge FROM mayavi_export_shipment_charge`,
-      sql`SELECT awb,d_bags,t_bags,dt_bags,gc_bags FROM mayavi_export_category_bags`,
+      sql`SELECT awb,d_bags,t_bags,dt_bags,gc_bags,manual_codes FROM mayavi_export_category_bags`,
       auditIndex(sql)
     ]);
     const savedCharges=new Map(charges.map(row=>[awbDigits(row.awb),Number(row.charge)]));
-    const savedBags=new Map(categoryRows.map(row=>[awbDigits(row.awb),savedBagCounts(row)]));
+    const savedBags=new Map(categoryRows.map(row=>[awbDigits(row.awb),row]));
     const seen=new Set(),rows=[];
     for(const shipment of shipments){
       const awb=awbDigits(shipment.awb);
@@ -112,9 +113,10 @@ export async function GET(request){
       // Explicit admin saves always win over automatically matched Audit values.
       const auditCharge=imported?.shipmentCharge;
       const autoCharge=!savedCharges.has(awb)&&auditCharge!==null&&auditCharge!==undefined;
-      const autoBags=!savedBags.has(awb)&&Boolean(imported?.hasBags);
+      const mergedBags=mergeExportAuditBags(savedBags.get(awb),imported);
+      const {categoryBags,manualBagCodes,autoBagCodes}=mergedBags;
+      const autoBags=autoBagCodes.length>0;
       const shipmentCharge=savedCharges.has(awb)?savedCharges.get(awb):autoCharge?auditCharge:EXPORT_SHIPMENT_CHARGE;
-      const categoryBags=savedBags.get(awb)||(autoBags?imported.categoryBags:savedBagCounts());
       const categories=exportCategorySummary(categoryBags,client);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
@@ -124,7 +126,7 @@ export async function GET(request){
         clientName:client,
         rate,
         shipmentCharge, // Admin-editable; still once per master MAWB.
-        categoryBags,auditAutoBags:autoBags,auditAutoCharge:autoCharge,
+        categoryBags,auditAutoBags:autoBags,auditAutoCodes:autoBagCodes,manualBagCodes,auditAutoCharge:autoCharge,
         categoryClientCharge:categories.clientCharge,
         categoryDeduction:categories.deduction,categoryProfit:categories.netProfit,
         profit:weight===null?null:Math.round((weight*rate-shipmentCharge+categories.netProfit)*100)/100
@@ -158,23 +160,35 @@ export async function PATCH(request){
     if(!matched.length)
       return Response.json({ok:false,error:'Export MAWB not found. Refresh the sheet.'},{status:404});
     if(category){
-      const current=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags FROM mayavi_export_category_bags WHERE awb=${awb} LIMIT 1`;
+      const current=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags,manual_codes FROM mayavi_export_category_bags WHERE awb=${awb} LIMIT 1`;
       const client=clientName(matched[0].data||{});
       const audit=!current.length?(await auditIndex(sql,awb)).get(exportAuditKey(awb,client)):null;
       const source=audit?exportAuditValues(audit):null;
       const base=current.length?savedBagCounts(current[0]):source?.hasBags?source.categoryBags:savedBagCounts();
       const updated={...base,[category]:bags};
       const field={D:'d_bags',T:'t_bags',DT:'dt_bags',GC:'gc_bags'}[category];
-      // Field is a hardcoded whitelist, never a user-supplied SQL identifier.
-      await sql.query(`INSERT INTO mayavi_export_category_bags(awb,d_bags,t_bags,dt_bags,gc_bags,updated_by)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT(awb) DO UPDATE SET ${field}=EXCLUDED.${field},updated_at=NOW(),updated_by=EXCLUDED.updated_by`,
-        [awb,updated.D,updated.T,updated.DT,updated.GC,admin.username]);
-      const values=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags
+      const priorCodes=exportManualCategoryCodes(current[0]);
+      const manualCodes=[...new Set([...priorCodes,category])];
+      // Save only this manually edited field and its lock on conflict.
+      // Old rows (NULL manual_codes) are treated as fully manually protected.
+      await sql.query(`INSERT INTO mayavi_export_category_bags(awb,d_bags,t_bags,dt_bags,gc_bags,manual_codes,updated_by)
+        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
+        ON CONFLICT(awb) DO UPDATE SET ${field}=EXCLUDED.${field},
+        manual_codes=CASE WHEN mayavi_export_category_bags.manual_codes IS NULL
+          THEN '["D","T","DT","GC"]'::jsonb
+          ELSE (SELECT jsonb_agg(DISTINCT item) FROM jsonb_array_elements_text(mayavi_export_category_bags.manual_codes || EXCLUDED.manual_codes) AS item)
+        END,updated_at=NOW(),updated_by=EXCLUDED.updated_by`,
+        [awb,updated.D,updated.T,updated.DT,updated.GC,JSON.stringify(manualCodes),admin.username]);
+      const values=await sql`SELECT d_bags,t_bags,dt_bags,gc_bags,manual_codes
         FROM mayavi_export_category_bags WHERE awb=${awb} LIMIT 1`;
-      const categoryBags=savedBagCounts(values[0]);
-      return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),categoryBags,
-        categoryTotals:exportCategorySummary(categoryBags,client)}, {headers:{'Cache-Control':'no-store, private'}});
+      const manualBagCodes=exportManualCategoryCodes(values[0]);
+      const freshAudit=(await auditIndex(sql,awb)).get(exportAuditKey(awb,client));
+      const merged=mergeExportAuditBags(values[0],freshAudit?exportAuditValues(freshAudit):null);
+      return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),
+        categoryBags:merged.categoryBags,manualBagCodes,
+        auditAutoCodes:merged.autoBagCodes,
+        categoryTotals:exportCategorySummary(merged.categoryBags,client)},
+        {headers:{'Cache-Control':'no-store, private'}});
     }
     await sql`INSERT INTO mayavi_export_shipment_charge(awb,charge,updated_by)
       VALUES (${awb},${charge},${admin.username})
