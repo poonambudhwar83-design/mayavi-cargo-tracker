@@ -94,7 +94,7 @@
     },
     {
       "path": "/api/cron/jepo-branches",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/courier-month-backfill",

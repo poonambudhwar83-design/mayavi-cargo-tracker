@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {cleanJepoTrackingNo,sourceStatusToBranch,validateJepoLiveResult} from '../lib/jepoBranchTracking.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
+import {waitForJepoInput,waitForJepoResult} from '../lib/jepoBranchBrowser.js';
 import {parseJepoDeliveryDate} from '../lib/jepoDeliveryDate.js';
 assert.equal(cleanJepoTrackingNo(' 1z12b6f40334321920 '),'1Z12B6F40334321920');
 assert.equal(cleanJepoTrackingNo('wrong/awb'),'');
@@ -29,6 +30,7 @@ assert.equal(sample.awb,internalReference);
 assert.equal(sample.carrierAwb,forwardedReference,'Carrier AWB differs from the internal JEPO reference.');
 assert.equal(sample.liveStatus,'Pre Transit');
 assert.equal(sample.liveRemarks,'Departed from Facility');
+assert.equal(validateJepoLiveResult({...liveSnapshot,latestEventWhen:'30 Oct 2026 10:54 AM'},internalReference).liveEventWhen,'30 Oct 2026 10:54 AM');
 assert.equal(sample.mappedStatus,'PRE_TRANSIT');
 assert.throws(()=>validateJepoLiveResult({...liveSnapshot,submittedAwb:'547999'},internalReference),/fresh result/i);
 assert.throws(()=>validateJepoLiveResult({...liveSnapshot,freshResult:false},internalReference),/fresh result/i);
@@ -55,6 +57,10 @@ assert.ok(api.includes("TIME ZONE 'Asia/Kolkata'"), 'Manual delivery uses local 
 assert.ok(ui.includes('sheet===\'DELIVERED\'')&&ui.includes('const byDelivery='), 'Delivered sheet sorted by verified delivery day.');
 assert.ok(ui.includes('Date not verified'), 'Unknown historic delivery dates must not be made up.');
 assert.ok(ui.includes("'Delivery Date'"), 'Delivery day included in exported Delivered records.');
+assert.ok(sync.includes('jepo_live_event_when=${result.liveEventWhen'), 'Preserve website event date with verified tracking updates.');
+assert.ok(api.includes('jepo_live_event_when'), 'API exposes tracked event date.');
+assert.ok(ui.includes('JEPO status: {record.liveEventWhen}'), 'Show JEPO status date next to matching tracking number.');
+assert.ok(ui.includes("'JEPO Status Date/Time'"), 'Export source status date/time.');
 assert.ok(sync.includes("delivery_date_source="), 'JEPO verified delivery event is persisted.');
 assert.ok(browser.includes('deliveredScanDate'), 'Read actual date from live timeline.');
 assert.ok(api.includes('jepo_live_remarks'));
@@ -63,7 +69,7 @@ assert.ok(ui.includes('key="liveRemarks"'));
 assert.equal((ui.match(/<th>Live Remarks<\/th>/g)||[]).length,2);
 assert.ok(ui.includes('setInterval(onFocus,20000)'), 'Visible branch page must refresh from saved live data every 20 seconds.');
 assert.ok(ui.includes('JEPO AUTO LIVE'), 'Show automatic live status without requiring clicks.');
-assert.ok(ui.includes('JEPO website checked every 4 hours'), 'Display the four-hour tracking schedule.');
+assert.ok(ui.includes('JEPO website checked every 1 hour'), 'Display the hourly tracking schedule.');
 assert.ok(ui.includes('Refresh JEPO Live'));
 assert.ok(ui.includes('Track JEPO'));
 assert.ok(ui.includes('r.liveStatus||statusLabel(r.status)'));
@@ -76,12 +82,21 @@ assert.ok(browser.includes('const results=new Array(awbs.length)'), 'Maintain co
 assert.ok(cron.includes('LIMIT 240'), 'Check all JEPO AWBs in one scheduled run.');
 assert.ok(!cron.includes("delivery_status<>'DELIVERED'"), 'All records including Delivered must have refresh coverage.');
 assert.ok(cron.includes('CRON_SECRET'));
-assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='0 */4 * * *'));
+assert.ok(settings.crons.some(c=>c.path==='/api/cron/jepo-branches'&&c.schedule==='0 * * * *'));
 const nextConfig=readFileSync('next.config.js','utf8');
 for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
   assert.ok(nextConfig.includes("'"+route+"': ['./node_modules/@sparticuz/chromium/bin/**/*']"),
     'Chromium binary must be traced into '+route+' runtime');
 }
+
+assert.ok(browser.includes('await waitForJepoInput(page)'), 'JEPO input polling must survive early redirects.');
+assert.ok(!browser.includes('await page.waitForFunction('), 'No frame-bound Puppeteer waits on navigable JEPO pages.');
+assert.ok(browser.includes('waitForJepoResult(page,beforeResult)'), 'JEPO result polling must survive page navigations.');
+assert.ok(!browser.includes('await page.waitForFunction(previous=>'), 'Never bind result wait to the old frame after submitting Track.');
+assert.ok(browser.includes('if(!page||page.isClosed())page=await browser.newPage()'), 'Replace unusable tabs between AWBs.');
+assert.ok(browser.includes('for(let attempt=0;attempt<2;attempt++)'), 'Retry detached-frame AWBs before marking them failed.');
+assert.ok(browser.includes('if(attempt===0&&transient)continue'), 'Only transient page faults trigger a fresh-tab retry.');
+assert.ok(browser.includes('if(++consecutiveDetachments>=5)'), 'Repeated frame detachments must restart the tab, not poison later AWBs.');
 assert.ok(browser.includes('https://jepoexpress.com/track'));
 assert.ok(browser.includes('freshResult:true'));
 assert.ok(browser.includes('beforeResult'));
@@ -112,4 +127,22 @@ assert.ok(ui.includes('isJindJepoTimeout(row)?styles.jindTimeoutRow'), 'Highligh
 assert.ok(ui.includes('JEPO TIMEOUT · AUTO RETRY'), 'Show which Jind shipments timed out.');
 assert.ok(ui.includes('https://jepoexpress.com/track'), 'Keep direct tracking website link.');
 assert.ok(ui.includes('>Track JEPO</button>'), 'Keep existing manual JEPO tracking button.');
+
+// Regression: a navigation during the JEPO form/result wait must recover.
+// These fake pages exercise the actual async polling without launching Chrome.
+let formPolls=0;
+await waitForJepoInput({
+ isClosed:()=>false,
+ evaluate:async()=>{if(++formPolls===1)throw Error('Attempted to use detached Frame A1');return true;}
+});
+assert.equal(formPolls,2,'Form polling should recover after a transient detached frame.');
+let resultPolls=0;
+const recovered=await waitForJepoResult({
+ isClosed:()=>false,
+ evaluate:async()=>{if(++resultPolls===1)throw Error('Execution context was destroyed, most likely because of a navigation.');
+  return {freshResult:true,status:'Delivered',latestProgress:'Delivered'};}
+},'before');
+assert.equal(resultPolls,2,'Result polling should recover after a page navigation.');
+assert.equal(recovered.status,'Delivered');
+
 console.log('JEPO branch live status, Progress, AWB guards, tracking scheduler and Live Remarks UI checks passed.');
