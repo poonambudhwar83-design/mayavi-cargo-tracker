@@ -43,26 +43,26 @@ export async function GET(request){
       e.created_at,a.bank_name,a.account_number,a.holder_name
       FROM mayavi_bank_entries e JOIN mayavi_bank_accounts a ON a.id=e.account_id
       WHERE (${selectedId}::uuid IS NULL OR e.account_id=${selectedId}::uuid)
-      AND (${month}='ALL' OR TO_CHAR(e.entry_date,'YYYY-MM')=${month})
       ORDER BY e.entry_date DESC,e.created_at DESC,e.id DESC LIMIT 25001`;
-    if(records.length>25000)return respond({ok:false,error:'Too many transactions. Select a month or bank account for a complete report.'},422);
+    if(records.length>25000)return respond({ok:false,error:'More than 25,000 bank transactions. Select one bank account for a complete month-wise report.'},422);
     const rows=records.map(r=>({
       id:r.id,accountId:r.account_id,date:r.date,credit:Number(r.credit)||0,
       debit:Number(r.debit)||0,mode:r.mode||'',remarks:r.remarks||'',partyName:r.party_name||'',
       createdAt:r.created_at,bankName:r.bank_name,accountNo:r.account_number,
       holderName:r.holder_name
     }));
-    const report=summarizeAccountEntries(rows);
+    // Monthly totals always span all saved months for the chosen bank account.
+    // The month dropdown filters only the detailed party statement below.
+    const allReport=summarizeAccountEntries(rows);
+    const report=month==='ALL'?allReport:summarizeAccountEntries(rows.filter(r=>r.date.startsWith(month)));
+    const monthly=allReport.monthly;
     if(party!=='ALL'&&!report.groups.some(g=>g.party===party))
       return respond({ok:false,error:'Party not found in this statement.'},400);
     const visible=party==='ALL'?report.entries:report.entries.filter(e=>e.party===party);
-    const months=await sql`SELECT DISTINCT TO_CHAR(entry_date,'YYYY-MM') AS month
-      FROM mayavi_bank_entries
-      WHERE (${selectedId}::uuid IS NULL OR account_id=${selectedId}::uuid)
-      ORDER BY month DESC`;
+    const months=monthly.map(r=>r.month);
     const accountName=account?account.holder_name+' - '+account.bank_name+' ('+account.account_number+')':'All bank accounts';
     if(download==='pdf'){
-      const pdf=createAccountSummaryPdf({...report,account:accountName,month,party});
+      const pdf=createAccountSummaryPdf({...report,monthly,account:accountName,month,party});
       const safeParty=party==='ALL'?'ALL':party.replace(/[^a-zA-Z0-9]/g,'_').slice(0,40);
       return new Response(pdf,{headers:{
         'Content-Type':'application/pdf',
@@ -71,7 +71,7 @@ export async function GET(request){
       }});
     }
     return respond({ok:true,groups:report.groups,totals:report.totals,entries:visible,
-      countVisible:visible.length,months:months.map(m=>m.month),month,party,accountId});
+      monthly,countVisible:visible.length,months,month,party,accountId});
   }catch(error){
     console.error('account_summary_get',error?.message);
     return respond({ok:false,error:'Unable to load Summary of Accounts. '+(error?.message||'')},503);

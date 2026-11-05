@@ -18,7 +18,8 @@ export default function AccountSummary({accounts=[],refresh=0}){
   const [open,setOpen]=useState(true);
   const [accountId,setAccountId]=useState('ALL'),[month,setMonth]=useState('ALL'),
     [party,setParty]=useState('ALL');
-  const [data,setData]=useState({groups:[],entries:[],months:[],totals:{}});
+  const [data,setData]=useState({groups:[],entries:[],monthly:[],months:[],totals:{}});
+  const [monthlyFocus,setMonthlyFocus]=useState('');
   const [loading,setLoading]=useState(false),[downloading,setDownloading]=useState(false);
   const [error,setError]=useState('');
   useEffect(()=>{
@@ -56,6 +57,11 @@ export default function AccountSummary({accounts=[],refresh=0}){
     finally{setDownloading(false);}
   }
   const groups=data.groups||[],entries=data.entries||[],totals=data.totals||{};
+  const monthly=data.monthly||[];
+  const focusedMonth=monthly.find(row=>row.month===monthlyFocus)||monthly[0];
+  const fullTotals=monthly.reduce((a,row)=>({count:a.count+row.count,
+    credit:a.credit+row.credit,debit:a.debit+row.debit,net:a.net+row.net}),
+    {count:0,credit:0,debit:0,net:0});
   return <section style={{...panel,marginBottom:15,borderColor:'#b9cdea'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
       <div>
@@ -102,6 +108,73 @@ export default function AccountSummary({accounts=[],refresh=0}){
             </div>
           </div>)}
       </div>
+
+      <div style={{margin:'20px 0 9px',display:'flex',justifyContent:'space-between',gap:10,alignItems:'end',flexWrap:'wrap'}}>
+        <div>
+          <h3 style={{fontSize:16,margin:'0 0 4px',color:'#193f72'}}>MONTH-WISE SUMMARY</h3>
+          <div style={{fontSize:11,color:'#64748b'}}>All months for the selected bank account(s). Credit and debit are added separately; latest month first.</div>
+        </div>
+      </div>
+      <div style={{overflowX:'auto',border:'1px solid #dce6f3',borderRadius:10}}>
+        <table style={{borderCollapse:'collapse',width:'100%',minWidth:680}}>
+          <thead><tr>{['MONTH','ENTRIES','TOTAL CREDIT (₹)','TOTAL DEBIT (₹)','NET CREDIT − DEBIT (₹)'].map(h=>
+            <th key={h} style={{padding:'10px 9px',textAlign:'left',fontSize:11,background:'#e8f1fc',color:'#294563'}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {!loading&&!monthly.length&&<tr><td colSpan={5} style={{padding:16,textAlign:'center',fontSize:12,color:'#64748b'}}>No monthly transactions yet.</td></tr>}
+            {monthly.map((row,i)=><tr key={row.month} style={{background:row.month===focusedMonth?.month?'#eaf3ff':i%2?'#f9fbff':'#fff',borderBottom:'1px solid #e5edf6'}}>
+              <td style={{padding:9,fontSize:12,fontWeight:850}}>
+                <button type="button" onClick={()=>setMonthlyFocus(row.month)} style={{border:0,background:'none',color:'#15579c',fontWeight:850,textDecoration:'underline',cursor:'pointer',padding:0}} title={'View '+monthLabel(row.month)+' platform breakdown'}>
+                  {monthLabel(row.month)}
+                </button>
+              </td>
+              <td style={{padding:9,fontSize:12}}>{row.count}</td>
+              <td style={{padding:9,fontSize:12,color:'#16724f',fontWeight:750}}>₹{money(row.credit)}</td>
+              <td style={{padding:9,fontSize:12,color:'#a6454f',fontWeight:750}}>₹{money(row.debit)}</td>
+              <td style={{padding:9,fontSize:12,fontWeight:850}}>₹{money(row.net)}</td>
+            </tr>)}
+            {!!monthly.length&&<tr style={{background:'#daeafb',fontWeight:900}}>
+              <td style={{padding:10,fontSize:12}}>ALL MONTHS TOTAL</td>
+              <td style={{padding:10,fontSize:12}}>{fullTotals.count}</td>
+              <td style={{padding:10,fontSize:12}}>₹{money(fullTotals.credit)}</td>
+              <td style={{padding:10,fontSize:12}}>₹{money(fullTotals.debit)}</td>
+              <td style={{padding:10,fontSize:12}}>₹{money(fullTotals.net)}</td>
+            </tr>}
+          </tbody>
+        </table>
+      </div>
+      {!!focusedMonth&&<div style={{marginTop:14,padding:12,background:'#f8fbff',border:'1px solid #dce6f3',borderRadius:10}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10,marginBottom:10}}>
+          <h3 style={{fontSize:14,margin:0}}>Platform-wise Addition — {monthLabel(focusedMonth.month)}</h3>
+          <label style={{fontSize:11,fontWeight:800,display:'grid',gap:4,minWidth:160}}>VIEW MONTH
+            <select style={input} value={focusedMonth.month} onChange={e=>setMonthlyFocus(e.target.value)}>
+              {monthly.map(m=><option key={m.month} value={m.month}>{monthLabel(m.month)}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table style={{borderCollapse:'collapse',width:'100%',minWidth:640}}>
+            <thead><tr>{['PLATFORM','ENTRIES','CREDIT (₹)','DEBIT (₹)','NET (₹)'].map(h=>
+              <th key={h} style={{padding:'9px 8px',fontSize:11,textAlign:'left',background:'#eaf1fa',color:'#294563'}}>{h}</th>)}</tr></thead>
+            <tbody>
+              {focusedMonth.parties.map((row,i)=><tr key={row.party} style={{borderBottom:'1px solid #e1eaf5',background:i%2?'#f6f9ff':'#fff'}}>
+                <td style={{padding:8,fontSize:12,fontWeight:800}}>{row.party}</td>
+                <td style={{padding:8,fontSize:12}}>{row.count}</td>
+                <td style={{padding:8,fontSize:12,color:'#16724f'}}>₹{money(row.credit)}</td>
+                <td style={{padding:8,fontSize:12,color:'#a6454f'}}>₹{money(row.debit)}</td>
+                <td style={{padding:8,fontSize:12,fontWeight:800}}>₹{money(row.net)}</td>
+              </tr>)}
+              <tr style={{background:'#dceafc',fontWeight:900}}>
+                <td style={{padding:9,fontSize:12}}>MONTH TOTAL</td>
+                <td style={{padding:9,fontSize:12}}>{focusedMonth.count}</td>
+                <td style={{padding:9,fontSize:12}}>₹{money(focusedMonth.credit)}</td>
+                <td style={{padding:9,fontSize:12}}>₹{money(focusedMonth.debit)}</td>
+                <td style={{padding:9,fontSize:12}}>₹{money(focusedMonth.net)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>}
+      <h3 style={{fontSize:14,margin:'20px 0 8px'}}>Platform totals for selected detail period</h3>
       <div style={{overflowX:'auto',marginTop:14}}>
         <table style={{borderCollapse:'collapse',width:'100%',minWidth:810}}>
           <thead><tr>{['PARTY / PLATFORM','ENTRIES','TOTAL CREDIT (₹)','TOTAL DEBIT (₹)','NET (₹)','LAST CREDIT DATE'].map(h=>
