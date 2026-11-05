@@ -9,6 +9,7 @@ import ImportFinanceSection from './ImportFinanceSection.js';
 import SalaryDashboard from './SalaryDashboard.js';
 import MonthlyExpensesDashboard from './MonthlyExpensesDashboard.js';
 import CountryLoadAnalysisDashboard from './CountryLoadAnalysisDashboard.js';
+import AuditDataAnalysisDashboard from './AuditDataAnalysisDashboard.js';
 import AccountDashboard from './AccountDashboard.js';
 import ExportFinanceSection from './ExportFinanceSection.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
@@ -217,6 +218,8 @@ export default function UnifiedDashboard(){
       ?<AccountDashboard/>
     :session?.role==='admin'&&selectedDashboard==='OTHER_COUNTRIES'
       ?<CountryLoadAnalysisDashboard/>
+    :session?.role==='admin'&&selectedDashboard==='DATA_ANALYSIS'
+      ?<AuditDataAnalysisDashboard/>
     :session?.role==='admin'&&selectedDashboard==='ADMIN_NOTES'
       ?<AdminNotesDashboard currentUser={session}/>
     :session?.role==='admin'&&selectedDashboard==='NOTES'
@@ -238,6 +241,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('OTHER_COUNTRIES')} style={{...topAccountButton,background:selectedDashboard==='OTHER_COUNTRIES'?'#dbeafe':'#fff',color:'#17419b'}}>OTHER COURIER SUMMARY</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('DATA_ANALYSIS')} style={{...topAccountButton,background:selectedDashboard==='DATA_ANALYSIS'?'#dbeafe':'#fff',color:'#17419b'}}>DATA ANALYSIS</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('ACCOUNT')} style={{...topAccountButton,background:selectedDashboard==='ACCOUNT'?'#dbeafe':'#fff',color:'#17419b'}}>ACCOUNT</button>}
        {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('NOTES')} style={{...topAccountButton,background:selectedDashboard==='NOTES'?'#dbeafe':'#fff',color:'#17419b'}}>NOTES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
