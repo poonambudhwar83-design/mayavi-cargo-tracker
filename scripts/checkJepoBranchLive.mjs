@@ -83,6 +83,8 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
     'Chromium binary must be traced into '+route+' runtime');
 }
 
+assert.ok(browser.includes('await waitForJepoInput(page)'), 'JEPO input polling must survive early redirects.');
+assert.ok(!browser.includes('await page.waitForFunction('), 'No frame-bound Puppeteer waits on navigable JEPO pages.');
 assert.ok(browser.includes('waitForJepoResult(page,beforeResult)'), 'JEPO result polling must survive page navigations.');
 assert.ok(!browser.includes('await page.waitForFunction(previous=>'), 'Never bind result wait to the old frame after submitting Track.');
 assert.ok(browser.includes('if(!page||page.isClosed())page=await browser.newPage()'), 'Replace unusable tabs between AWBs.');
