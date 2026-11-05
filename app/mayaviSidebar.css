@@ -1,0 +1,37 @@
+/* Persistent Mayavi desktop navigation — only visual layout, no data changes. */
+.mayavi-shell{--mayavi-rail:245px;display:flex;min-height:100vh;background:#f4f7fc;color:#14263d}
+.mayavi-shell-content{flex:1;min-width:0;width:calc(100% - var(--mayavi-rail));padding:0 0 36px}
+.mayavi-shell-content > main{max-width:none;width:100%;min-width:0;margin:0;padding:18px clamp(12px,2vw,28px)}
+.mayavi-shell-content .adminNavGroup,.mayavi-shell-content > main .typeTabs,.mayavi-shell-content .adminBar{display:none!important}
+.mayavi-tools-bar{display:flex;justify-content:flex-end;align-items:center;padding:7px 24px;background:#fff;border-bottom:1px solid #e4ebf5}
+.mayavi-sidebar{position:sticky;top:0;align-self:flex-start;height:100vh;flex:0 0 var(--mayavi-rail);width:var(--mayavi-rail);min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2eaf5;background:#fff;z-index:50;box-shadow:2px 0 16px rgba(23,49,93,.04)}
+.mayavi-sidebar-brand{display:flex;gap:10px;align-items:center;padding:23px 18px 20px;border-bottom:1px solid #edf2f8}
+.mayavi-brand-mark{width:38px;height:38px;display:grid;place-items:center;flex-shrink:0;border-radius:13px;background:linear-gradient(145deg,#4e85ec,#3557cb);color:white;font-weight:900;font-size:18px}
+.mayavi-sidebar-brand strong{display:block;font-size:13px;letter-spacing:1.8px;color:#203049}
+.mayavi-sidebar-brand small{display:block;margin-top:4px;color:#8aa0bb;font-size:9px;font-weight:800;letter-spacing:1.5px}
+.mayavi-sidebar-links{min-height:0;overflow-y:auto;overflow-x:hidden;padding:10px 9px 18px;scrollbar-width:thin;scrollbar-color:#cbd9eb transparent}
+.mayavi-sidebar-group{padding:13px 0 3px}
+.mayavi-sidebar-heading{padding:0 10px 9px;font-weight:850;color:#8193ad;font-size:10px;letter-spacing:1.2px}
+.mayavi-sidebar-item{width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:11px;background:transparent;color:#50627e;font-size:12px;line-height:1.32;text-align:left;font-weight:750;cursor:pointer;min-height:37px;padding:8px 12px;margin:1px 0}
+.mayavi-sidebar-item:hover{background:#f2f6ff;color:#244e98}
+.mayavi-sidebar-item:focus-visible{outline:2px solid #2c64cc;outline-offset:-2px}
+.mayavi-sidebar-item.is-active{background:#e8f1ff;color:#1f53af;font-weight:900}
+.mayavi-sidebar-dot{width:7px;height:7px;border-radius:50%;background:#c4d2e7;flex-shrink:0}
+.mayavi-sidebar-item.is-active .mayavi-sidebar-dot{background:#4d72d5;box-shadow:0 0 0 4px #d7e4fe}
+.mayavi-sidebar-logout{color:#ab3740;margin-top:8px}
+.mayavi-sidebar-user{display:flex;gap:10px;align-items:center;flex-shrink:0;padding:13px 16px;background:#f9fbff;border-top:1px solid #edf2fa}
+.mayavi-sidebar-avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;background:#5b95d5;font-weight:900}
+.mayavi-sidebar-user strong{display:block;font-size:12px;color:#30435f;overflow:hidden;text-overflow:ellipsis;max-width:162px;white-space:nowrap}
+.mayavi-sidebar-user small{font-size:9px;letter-spacing:.7px;color:#8496ae;font-weight:850}
+.mayavi-mobile-toggle,.mayavi-sidebar-scrim{display:none}
+@media(max-width:860px){
+ .mayavi-shell{display:block}
+ .mayavi-shell-content{width:100%;padding-top:48px}
+ .mayavi-shell-content>main{padding:9px}
+ .mayavi-mobile-toggle{display:block;position:fixed;top:8px;left:8px;z-index:95;border:1px solid #d0dced;border-radius:9px;background:#fff;color:#23456f;padding:8px 13px;font-weight:850;box-shadow:0 2px 12px #26437220}
+ .mayavi-sidebar{position:fixed;top:0;left:0;bottom:0;transform:translateX(-105%);transition:transform .18s ease;z-index:102;width:min(290px,85vw);height:100dvh}
+ .mayavi-sidebar.is-open{transform:translateX(0)}
+ .mayavi-sidebar-scrim{display:block;position:fixed;inset:0;z-index:101;border:0;background:rgba(16,29,52,.45)}
+ .mayavi-tools-bar{padding:5px 10px}
+}
+@media(prefers-reduced-motion:reduce){.mayavi-sidebar{transition:none}}
