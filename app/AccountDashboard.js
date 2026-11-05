@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {TRANSACTION_MODES} from '../lib/accountLedger.js';
+import AccountSummary from './AccountSummary.js';
 
 const API='/api/accounts';
 const panel={background:'#fff',border:'1px solid #dce5f0',borderRadius:14,padding:17,
@@ -20,7 +21,7 @@ function localDay(){
   const get=type=>parts.find(part=>part.type===type)?.value||'';
   return get('year')+'-'+get('month')+'-'+get('day');
 }
-const blankEntry=()=>({date:localDay(),credit:'',debit:'',mode:'',remarks:''});
+const blankEntry=()=>({date:localDay(),credit:'',debit:'',mode:'',partyName:'',remarks:''});
 const monthLabel=value=>{
   if(value==='ALL')return 'All Dates';
   const [year,month]=String(value).split('-').map(Number);
@@ -122,7 +123,7 @@ export default function AccountDashboard(){
   function startEdit(row){
     setEditId(row.id);
     setEditDraft({date:row.date,credit:row.credit?String(row.credit):'',
-      debit:row.debit?String(row.debit):'',mode:row.mode||'',remarks:row.remarks||''});
+      debit:row.debit?String(row.debit):'',mode:row.mode||'',partyName:row.partyName||'',remarks:row.remarks||''});
     setNotice('');
   }
   async function updateEntry(event){
@@ -228,6 +229,7 @@ export default function AccountDashboard(){
         {summary('TOTAL DEBIT',selected.totalDebit)}
         {summary('CURRENT BALANCE',selected.balance)}
       </div>
+      <AccountSummary accounts={data.accounts} refresh={refresh}/>
       <form onSubmit={saveEntry} style={{...panel,marginBottom:15}}>
         <h2 style={{fontSize:16,margin:'0 0 5px'}}>Add Transaction</h2>
         <p style={{margin:'0 0 11px',color:'#697e97',fontSize:11}}>Enter an amount under either Credit or Debit. Balance will update automatically.</p>
@@ -242,6 +244,8 @@ export default function AccountDashboard(){
               {TRANSACTION_MODES.map(mode=><option key={mode} value={mode}>{mode}</option>)}
             </select>
           </label>
+          {field('PARTY / PLATFORM',entryDraft.partyName,v=>setEntryDraft(a=>({...a,partyName:v})),'text',{list:'mayavi-parties',placeholder:'Zepto, Blinkit, Amazon…'})}
+          <datalist id="mayavi-parties">{['Zepto','Blinkit','Amazon','Meesho','Myntra'].map(p=><option key={p} value={p}/>)}</datalist>
           {field('REMARKS',entryDraft.remarks,v=>setEntryDraft(a=>({...a,remarks:v})),'text',{placeholder:'Transaction details'})}
         </div>
         <button disabled={busy} style={{...button,marginTop:12,background:'#1d58a2',color:'#fff'}} type="submit">
@@ -271,12 +275,12 @@ export default function AccountDashboard(){
         {notice&&<div role="status" style={{margin:'0 6px 10px',padding:'10px 12px',background:'#eef5ff',
           color:'#26528a',fontSize:12,border:'1px solid #d4e5ff',borderRadius:9}}>{notice}</div>}
         <div style={{overflowX:'auto',maxHeight:'min(70vh,680px)',border:'1px solid #dfe8f4',borderRadius:10}}>
-          <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:1050}}>
-            <thead><tr>{['DATE ↓ (LATEST FIRST)','CREDIT (₹)','DEBIT (₹)','MODE OF TRANSACTION','BALANCE (₹)','REMARKS','ACTIONS'].map((title,i)=>
+          <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%',minWidth:1200}}>
+            <thead><tr>{['DATE ↓ (LATEST FIRST)','CREDIT (₹)','DEBIT (₹)','MODE OF TRANSACTION','BALANCE (₹)','PARTY / PLATFORM','REMARKS','ACTIONS'].map((title,i)=>
               <th key={title} style={{...th,textAlign:[1,2,4].includes(i)?'right':'left'}}>{title}</th>)}</tr></thead>
             <tbody>
-              {loading&&<tr><td colSpan={7} style={{padding:25,textAlign:'center',color:'#74859e'}}>Loading saved ledger…</td></tr>}
-              {!loading&&!shown.length&&<tr><td colSpan={7} style={{padding:25,textAlign:'center',color:'#74859e'}}>
+              {loading&&<tr><td colSpan={8} style={{padding:25,textAlign:'center',color:'#74859e'}}>Loading saved ledger…</td></tr>}
+              {!loading&&!shown.length&&<tr><td colSpan={8} style={{padding:25,textAlign:'center',color:'#74859e'}}>
                 No transactions for this selection.
               </td></tr>}
               {!loading&&shown.map((r,i)=><tr key={r.id} style={{background:i%2?'#f9fbff':'#fff'}}>
@@ -292,6 +296,8 @@ export default function AccountDashboard(){
                     {TRANSACTION_MODES.map(mode=><option key={mode} value={mode}>{mode}</option>)}
                   </select></td>
                   <td style={{...td,textAlign:'right',fontWeight:800,color:'#1a5b9f'}}>{cash(r.balance)}</td>
+                  <td style={td}><input form="edit-bank-entry" style={{...input,minWidth:150}} list="mayavi-parties" value={editDraft.partyName||''}
+                    onChange={e=>setEditDraft(a=>({...a,partyName:e.target.value}))} placeholder="Party / Platform"/></td>
                   <td style={td}><input form="edit-bank-entry" style={{...input,minWidth:225}} value={editDraft.remarks}
                     onChange={e=>setEditDraft(a=>({...a,remarks:e.target.value}))}/></td>
                   <td style={td}>
@@ -306,6 +312,7 @@ export default function AccountDashboard(){
                   <td style={{...td,textAlign:'right',color:'#b35554',fontWeight:r.debit?800:400}}>{r.debit?cash(r.debit):'—'}</td>
                   <td style={{...td,color:'#475569',fontWeight:650}}>{r.mode||'—'}</td>
                   <td style={{...td,textAlign:'right',fontWeight:900,color:Number(r.balance)<0?'#b33d43':'#214e86'}}>{cash(r.balance)}</td>
+                  <td style={{...td,fontWeight:700}}>{r.partyName||'—'}</td>
                   <td style={{...td,whiteSpace:'normal',minWidth:220,overflowWrap:'anywhere'}}>{r.remarks||'—'}</td>
                   <td style={td}>
                     <div style={{display:'flex',gap:6}}>
