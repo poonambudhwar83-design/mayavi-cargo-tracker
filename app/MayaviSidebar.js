@@ -1,12 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useRef } from 'react';
 
 // One navigation rail for the existing Mayavi pages. Permissions mirror the
 // signed-in dashboard routes; the sidebar never grants API access by itself.
 const cargo = (id,label,tab,view='ACTIVE')=>({id,label,dashboard:'AIR_CARGO',tab,view});
 const page = (id,label,dashboard)=>({id,label,dashboard});
 export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSelect,onManagePasswords,onChangePassword,onLogout,speedPostAllowed}){
-  const [mobileOpen,setMobileOpen]=useState(false);
+  const settingsRef=useRef(null);
   const admin=session?.role==='admin';
   const branch=['JIND','KARNAL'].includes(session?.branchScope);
   const haryana=session?.role==='haryana_admin';
@@ -53,30 +53,39 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
     ];
     if(operations.length)sections.push({title:'OPERATIONS',items:operations});
   }
-  function choose(item){onSelect(item);setMobileOpen(false)}
+  function choose(item){onSelect(item)}
   function current(item){
     return item.dashboard==='AIR_CARGO'
       ? selectedDashboard==='AIR_CARGO'&&cargoNav?.id===item.id
       : selectedDashboard===item.dashboard;
   }
-  return <>
-    <button type="button" className="mayavi-mobile-toggle" onClick={()=>setMobileOpen(v=>!v)} aria-expanded={mobileOpen} aria-controls="mayavi-sidebar-navigation">☰ Menu</button>
-    {mobileOpen&&<button className="mayavi-sidebar-scrim" type="button" aria-label="Close navigation" onClick={()=>setMobileOpen(false)}/>}
-    <aside className={'mayavi-sidebar'+(mobileOpen?' is-open':'')} id="mayavi-sidebar-navigation">
-      <div className="mayavi-sidebar-brand"><span className="mayavi-brand-mark">M</span><div><strong>MAYAVI CARGO</strong><small>CONTROL CENTER</small></div></div>
-      <nav aria-label="Mayavi sections" className="mayavi-sidebar-links">
-        {sections.map(section=><div className="mayavi-sidebar-group" key={section.title}>
-          <div className="mayavi-sidebar-heading">{section.title}</div>
-          {section.items.map(item=><button key={item.id} type="button" className={'mayavi-sidebar-item'+(current(item)?' is-active':'')} aria-current={current(item)?'page':undefined} onClick={()=>choose(item)}><span className="mayavi-sidebar-dot" aria-hidden="true"/><span>{item.label}</span></button>)}
-        </div>)}
-        <div className="mayavi-sidebar-group">
-          <div className="mayavi-sidebar-heading">SETTINGS</div>
-          {admin&&<button type="button" className="mayavi-sidebar-item" onClick={()=>{onManagePasswords();setMobileOpen(false)}}>Manage User Passwords</button>}
-          <button type="button" className="mayavi-sidebar-item" onClick={()=>{onChangePassword();setMobileOpen(false)}}>Change My Password</button>
-          <button type="button" className="mayavi-sidebar-item mayavi-sidebar-logout" onClick={onLogout}>Log Out</button>
-        </div>
-      </nav>
-      <div className="mayavi-sidebar-user"><span className="mayavi-sidebar-avatar">{String(session?.displayName||session?.username||'U').slice(0,1).toUpperCase()}</span><div><strong>{session?.displayName||session?.username||'User'}</strong><small>{admin?'ADMIN':haryana?'HARYANA ADMIN':accounts?'ACCOUNTS':branch?'BRANCH':'EMPLOYEE'}</small></div></div>
-    </aside>
-  </>;
+  function settingsAction(action){
+    if(settingsRef.current)settingsRef.current.open=false;
+    action();
+  }
+  return <header className="mayavi-sidebar" id="mayavi-sidebar-navigation">
+    <div className="mayavi-header-top">
+      <div className="mayavi-sidebar-brand"><span className="mayavi-brand-mark">M</span><strong>MAYAVI CARGO</strong><span className="mayavi-brand-subtitle">TRACKER</span></div>
+      <div className="mayavi-header-account">
+        <span className="mayavi-sidebar-user" title={session?.displayName||session?.username||'User'}>
+          <span className="mayavi-sidebar-avatar">{String(session?.displayName||session?.username||'U').slice(0,1).toUpperCase()}</span>
+          <strong>{session?.displayName||session?.username||'User'}</strong>
+        </span>
+        <details className="mayavi-settings" ref={settingsRef}>
+          <summary>Settings <span aria-hidden="true">⌄</span></summary>
+          <div className="mayavi-settings-menu">
+            {admin&&<button type="button" onClick={()=>settingsAction(onManagePasswords)}>Manage User Passwords</button>}
+            <button type="button" onClick={()=>settingsAction(onChangePassword)}>Change My Password</button>
+            <button type="button" className="mayavi-sidebar-logout" onClick={()=>settingsAction(onLogout)}>Log Out</button>
+          </div>
+        </details>
+      </div>
+    </div>
+    <nav aria-label="Mayavi sections — scroll sideways to see every tab" className="mayavi-sidebar-links">
+      {sections.map(section=><div className="mayavi-sidebar-group" key={section.title}>
+        <span className="mayavi-sidebar-heading">{section.title}</span>
+        {section.items.map(item=><button key={item.id} type="button" className={'mayavi-sidebar-item'+(current(item)?' is-active':'')} aria-current={current(item)?'page':undefined} onClick={()=>choose(item)}>{item.label}</button>)}
+      </div>)}
+    </nav>
+  </header>;
 }
