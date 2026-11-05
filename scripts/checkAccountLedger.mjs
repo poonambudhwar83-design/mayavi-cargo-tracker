@@ -69,6 +69,38 @@ assert.equal(report.groups.find(g=>g.party==='Amazon').debit,40.05);
 assert.equal(report.groups.find(g=>g.party==='Amazon').lastCreditDate,'2026-11-04');
 assert.equal(report.groups.find(g=>g.party==='Zepto').count,0);
 for(const party of ['Zomato','FirstCry','Nykaa','Flipkart'])assert.equal(report.groups.find(g=>g.party===party).count,0);
+
+const monthReport=summarizeAccountEntries([
+  {date:'2026-10-01',partyName:'Zepto',credit:20.10,debit:0},
+  {date:'2026-10-31',partyName:'Zepto',credit:0,debit:5.05},
+  {date:'2026-10-12',partyName:'Amazon',credit:5.07,debit:0},
+  {date:'2026-11-01',partyName:'Zepto',credit:3.03,debit:0},
+  {date:'2026-11-02',remarks:'Meesho payout',credit:100.10,debit:0},
+  {date:'2026-11-03',partyName:'Flipkart',credit:0,debit:8.08},
+  {date:'2026-11-04',partyName:'Wholesale Client',credit:20,debit:0}
+]);
+assert.deepEqual(monthReport.monthly.map(g=>g.month),['2026-11','2026-10']);
+assert.equal(monthReport.monthly[0].count,4);
+assert.equal(monthReport.monthly[0].credit,123.13);
+assert.equal(monthReport.monthly[0].debit,8.08);
+assert.equal(monthReport.monthly[0].net,115.05);
+assert.equal(monthReport.monthly[1].credit,25.17);
+assert.equal(monthReport.monthly[1].debit,5.05);
+assert.equal(monthReport.monthly[1].parties.find(g=>g.party==='Zepto').credit,20.10);
+assert.equal(monthReport.monthly[1].parties.find(g=>g.party==='Zepto').debit,5.05);
+assert.equal(monthReport.monthly[0].parties.find(g=>g.party==='Meesho').credit,100.10);
+assert.equal(monthReport.monthly[0].parties.find(g=>g.party==='Flipkart').debit,8.08);
+assert.equal(monthReport.monthly[0].parties.find(g=>g.party==='Wholesale Client').credit,20);
+for(const name of ['Zepto','Blinkit','Amazon','Meesho','Myntra','Zomato','FirstCry','Nykaa','Flipkart']){
+  assert.ok(monthReport.monthly.every(g=>g.parties.some(p=>p.party===name)));
+}
+const monthlyPdf=createAccountSummaryPdf({...monthReport,party:'ALL',account:'All bank accounts'});
+const monthlyPdfText=monthlyPdf.toString('latin1');
+assert.ok(monthlyPdfText.includes('MONTH-WISE ACCOUNT SUMMARY'));
+assert.ok(monthlyPdfText.includes('MONTH: 2026-11'));
+assert.ok(monthlyPdfText.includes('MONTH: 2026-10'));
+assert.ok(monthlyPdfText.includes('Flipkart'));
+
 const reportPdf=createAccountSummaryPdf({...report,party:'ALL',account:'All'});
 assert.ok(Buffer.isBuffer(reportPdf));
 assert.ok(reportPdf.toString('latin1',0,8).startsWith('%PDF-1.'));
@@ -79,6 +111,10 @@ assert.ok(summaryApi.includes('Only Admin can view Account summaries.'));
 assert.ok(summaryApi.includes("download==='pdf'"));
 assert.ok(summaryApi.includes('LIMIT 25001'),'Unbounded reports must fail explicitly rather than silently omit rows.');
 assert.ok(summaryUi.includes('DOWNLOAD DETAILED PDF'));
+assert.ok(summaryApi.includes('const monthly=allReport.monthly'),'API must include all months, even if a detail month is selected.');
+assert.ok(summaryApi.includes('createAccountSummaryPdf({...report,monthly'),'PDF must include month-wise totals.');
+assert.ok(summaryUi.includes('MONTH-WISE SUMMARY'),'UI must show monthly totals.');
+assert.ok(summaryUi.includes('Platform-wise Addition'),'UI must show monthly party subtotals.');
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS party_name'),'Migrate ledger without dropping existing transactions.');
 assert.ok(api.includes('party_name=${entry.partyName}'),'Persist platform labels in ledger.');
 assert.ok(ui.includes('PARTY / PLATFORM'),'Platform input must be present.');
