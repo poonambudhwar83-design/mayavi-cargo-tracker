@@ -181,5 +181,5 @@ for(const [field,col] of [['rent','rent'],['office','office_expenses'],
 assert.ok(ui.includes('metrics.finalProfit'));
 assert.ok(ui.includes("saved[head.key]?'#15803d':'#2056a1'"));
 assert.ok(dash.includes("selectedDashboard==='MONTHLY_EXPENSES'"));
-assert.ok(dash.includes('>MONTHLY EXPENSES</button>'));
+assert.ok(readFileSync('app/MayaviSidebar.js','utf8').includes("page('monthly-expenses','Monthly Expenses','MONTHLY_EXPENSES')"));
 console.log('Monthly Expenses regression passed: Import/Export parity, physical parts, 15%, branch sums, salary, rent, office, final profit and admin controls.');
