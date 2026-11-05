@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import ExcelJS from 'exceljs';
 import {AUDIT_FIELDS,auditMawb,listAuditSheets,parseAuditWorkbook,summarizeAuditRows} from '../lib/auditDataAnalysis.js';
 const makeRow=values=>({cellCount:values.length,hasValues:values.some(v=>v!==''&&v!==null&&v!==undefined),getCell(i){return {value:values[i-1]??''}}});
 const sheet=(name,values)=>({name,state:'visible',rowCount:values.length,columnCount:values.reduce((m,x)=>Math.max(m,x.length),0),getRow(i){return makeRow(values[i-1]||[])}});
+// Exercise the real .xlsx upload reader, not only mocked worksheet cells.
+const realWorkbook=new ExcelJS.Workbook();
+const realAudit=realWorkbook.addWorksheet('Audit');
+realAudit.addRow(['Entered By','MAWB No','Weight (kg)','Bags','G&C','T','DT','D','X Ray','Shift','Loader','Co Loader','Remarks']);
+realAudit.addRow(['Vivek','09812345678',123.5,4,300,12,13,14,5,'Night','Rahul','ABC','urgent']);
+const bytes=await realWorkbook.xlsx.writeBuffer();
+const reopened=new ExcelJS.Workbook();
+await reopened.xlsx.load(bytes);
+assert.equal(parseAuditWorkbook(reopened).rows[0].mawb,'098-12345678');
+assert.equal(parseAuditWorkbook(reopened).rows[0].remarks,'urgent');
 const normal={worksheets:[sheet('Audit',[
  ['Entered By','MAWB No','Weight (kg)','Bags','G&C','T','DT','D','X Ray','Shift','Loader','Co Loader','Remarks'],
  ['Vivek','09812345678',123.5,4,300,12,13,14,'5','Night','Rahul','ABC','urgent'],
