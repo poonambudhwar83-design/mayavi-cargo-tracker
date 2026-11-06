@@ -456,10 +456,13 @@ export default function BranchLoadsDashboard({currentUser}){
   }
   function downloadTatSummaryCsv(){
     if(sheet!=='DELIVERED')return;
-    const header=['Group','Name','Verified Deliveries','Average TAT (Days)','Fastest (Days)','Slowest (Days)'];
+    const header=['Group','Service / Company','Country','Verified Deliveries','Average TAT (Days)','Fastest (Days)','Slowest (Days)'];
     const rows=[
-      ...tatSummary.byService.map(item=>['Service',item.name,item.count,item.averageDays??'',item.fastest??'',item.slowest??'']),
-      ...tatSummary.byDestination.map(item=>['Destination',item.name,item.count,item.averageDays??'',item.fastest??'',item.slowest??''])
+      ...tatSummary.byServiceCountry.flatMap(service=>service.countries.map(country=>[
+        'Company × Country',service.service,country.name,country.count,country.averageDays??'',country.fastest??'',country.slowest??''
+      ])),
+      ...tatSummary.byService.map(item=>['Service',item.name,'',item.count,item.averageDays??'',item.fastest??'',item.slowest??'']),
+      ...tatSummary.byDestination.map(item=>['Destination','',item.name,item.count,item.averageDays??'',item.fastest??'',item.slowest??''])
     ];
     const csv='\uFEFF'+[header,...rows].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
@@ -507,6 +510,24 @@ export default function BranchLoadsDashboard({currentUser}){
       totalRow.font={bold:true,color:{argb:'FF163B74'}};
       totalRow.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1FC'}};
       if(sheet==='DELIVERED'){
+        const matrixSheet=workbook.addWorksheet('TAT by Company Country');
+        matrixSheet.columns=[
+          {header:'Service / Company',key:'service',width:25},
+          {header:'Country',key:'country',width:25},
+          {header:'Verified Deliveries',key:'count',width:21},
+          {header:'Average TAT (Days)',key:'average',width:22},
+          {header:'Fastest (Days)',key:'fastest',width:18},
+          {header:'Slowest (Days)',key:'slowest',width:18}
+        ];
+        for(const service of tatSummary.byServiceCountry)for(const country of service.countries){
+          matrixSheet.addRow([service.service,country.name,country.count,country.averageDays??'',country.fastest??'',country.slowest??'']);
+        }
+        matrixSheet.getRow(1).eachCell(cell=>{
+          cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF174A91'}};
+          cell.font={bold:true,color:{argb:'FFFFFFFF'}};
+        });
+        matrixSheet.views=[{state:'frozen',xSplit:2,ySplit:1}];
+        matrixSheet.getColumn(4).numFmt='0.0';
         for(const section of [
           {title:'TAT by Service',key:'Service',items:tatSummary.byService},
           {title:'TAT by Country',key:'Destination',items:tatSummary.byDestination}
@@ -755,13 +776,38 @@ export default function BranchLoadsDashboard({currentUser}){
         <div className={styles.tatSummaryHeading}>
           <div>
             <h2>Delivery TAT Summary</h2>
-            <p>Service-wise and destination-wise average delivery time, from booking to delivery (both dates included).</p>
+            <p>Each company’s delivery time by country, plus service-wise and country-wise averages. Booking and delivery dates both count.</p>
             <small>{tatSummary.verifiedCount} dated deliveries out of {tatSummary.deliveredCount} delivered loads
               {tatSummary.missingDateCount>0&&' • '+tatSummary.missingDateCount+' without a valid delivery date excluded'}
             </small>
           </div>
           <div className={styles.tatOverall}><strong>{tatSummary.averageDays===null?'—':tatSummary.averageDays.toFixed(1)+' days'}</strong><span>Overall average TAT</span></div>
         </div>
+        <div className={styles.tatMatrixHeading}>
+          <h3>Company × Country-wise TAT</h3>
+          <p>FedEx, TPL, Speed Post, Self and other saved services — USA, UK, Australia, Canada and Other Countries.</p>
+        </div>
+        <div className={styles.tatMatrixGrid}>
+          {tatSummary.byServiceCountry.map(service=><section key={service.service} className={styles.tatMatrixCard}>
+            <div className={styles.tatMatrixService}>
+              <strong>{service.service}</strong>
+              <small>{service.count} delivered with dates • Avg {service.averageDays===null?'—':service.averageDays.toFixed(1)+' days'}</small>
+            </div>
+            <div className={styles.tatTableScroll}>
+              <table className={styles.tatSummaryTable}>
+                <thead><tr><th>Country</th><th>Delivered</th><th>Avg. TAT</th><th>Fastest</th><th>Slowest</th></tr></thead>
+                <tbody>{service.countries.map(country=><tr key={country.name}>
+                  <td><strong>{country.name}</strong></td>
+                  <td>{country.count}</td>
+                  <td><strong>{country.averageDays===null?'—':country.averageDays.toFixed(1)+' days'}</strong></td>
+                  <td>{country.fastest===null?'—':country.fastest+' days'}</td>
+                  <td>{country.slowest===null?'—':country.slowest+' days'}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </section>)}
+        </div>
+        <div className={styles.tatMatrixHeading}><h3>Overall TAT summaries</h3></div>
         <div className={styles.tatSummaryGrid}>
           {[
             {id:'services',title:'Company / Service-wise TAT',items:tatSummary.byService},
@@ -782,7 +828,7 @@ export default function BranchLoadsDashboard({currentUser}){
             </div>
           </div>)}
         </div>
-        <p className={styles.tatSummaryNote}>*Only deliveries with valid booking and verified delivery dates. Average TAT = total inclusive TAT days ÷ verified deliveries. The branch selection and search filters apply here too. Missing dates show —, not an estimated TAT.</p>
+        <p className={styles.tatSummaryNote}>*Only deliveries with valid booking and verified delivery dates. Average TAT = total inclusive TAT days ÷ verified deliveries. All destinations outside USA, UK, Australia and Canada are grouped under Other Countries within each service. Branch and search filters apply to every table. Missing dates show —, never an estimated TAT.</p>
       </section>}
       {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
