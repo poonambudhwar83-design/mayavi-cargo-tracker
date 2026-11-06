@@ -121,7 +121,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('065-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('065-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')||mawb.startsWith('910-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -516,7 +516,7 @@ async function dedicatedOfficial(mawb,options={}){
     return trackVietnam(mawb);
   }
   if(mawb.startsWith('607-')) return trackEtihad(mawb);
-  if(mawb.startsWith('910-')) return trackOman(mawb);
+  if(mawb.startsWith('910-')) return trackOman(mawb,{finalDestination:options?.omanFinalDestination||''});
   if(mawb.startsWith('932-')){
     let result=await trackVirgin(mawb);
     if(!result?.ok&&/ETXTBSY|EBUSY/i.test(String(result?.reason||''))){
@@ -699,9 +699,12 @@ async function handle(mawb,fallback={}){
   const needsStoredFallback=vietnamFastPath||turkishFastPath||qatarFastPath||malaysiaFastPath;
   const storedFallback=needsStoredFallback?await loadStoredTrackingFallback(mawb):{};
   const effectiveFallback=needsStoredFallback?{...storedFallback,...fallback}:fallback;
+  // The operator-confirmed final endpoint survives when SmartKargo initially
+  // publishes only its first BAH-MCT sector.
+  const omanStored=mawb.startsWith('910-')?await loadStoredTrackingFallback(mawb):{};
   const [apiSettled,directSettled,browserSettled]=await Promise.allSettled([
     skipGenericApi?Promise.resolve({ok:false,skipped:true,reason:gulfAirFastPath?'GULF AIR OFFICIAL CHAMP CARGO TRACKER IS PRIMARY':etihadFastPath?'ETIHAD AWB-VERIFIED OFFICIAL HISTORY IS PRIMARY':ethiopianFastPath?'ETHIOPIAN OFFICIAL AWB-SPECIFIC HTML IS PRIMARY':klmFastPath?'KLM OFFICIAL AFKLM TRACK & TRACE ADAPTER IS PRIMARY':britishFastPath?'BRITISH AIRWAYS IAG TRACK AND TRACE ADAPTER IS PRIMARY':airIndiaFastPath?'AIR INDIA DEDICATED CARGO PORTAL ADAPTER IS PRIMARY':qatarFastPath?'QATAR DEDICATED OFFICIAL BROWSER ADAPTER IS PRIMARY':thaiFastPath?'THAI CARGO CHORUS PUBLIC TRACKER IS PRIMARY':kuwaitFastPath?'KUWAIT AIRWAYS DEDICATED DETAILS TABLE ADAPTER IS PRIMARY':malaysiaFastPath?'MALAYSIA AIRLINES MASKARGO OFFICIAL TRACKER IS PRIMARY':turkishFastPath?'TURKISH CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':indigoFastPath?'INDIGO DEDICATED SMARTKARGO FORM ADAPTER IS PRIMARY':saudiaFastPath?'SAUDIA DEEP DIRECT TRACK-SHIPMENT IS PRIMARY':cathayFastPath?'CATHAY FAST PATH USES OFFICIAL TERMINAL ONLY':omanFastPath?'OMAN AIR CARGO DEDICATED OFFICIAL TRACKER IS PRIMARY':virginFastPath?'VIRGIN ATLANTIC DEDICATED TRACK CARGO ADAPTER IS PRIMARY':'AIR ARABIA OFFICIAL DETAILS-SCREEN FLOW IS PRIMARY'}):trackWithTrackingMore(mawb,airline),
-    dedicatedOfficial(mawb,{fastTerminal:cathayFastPath&&fallback?.cxFastRefresh===true}),
+    dedicatedOfficial(mawb,{fastTerminal:cathayFastPath&&fallback?.cxFastRefresh===true,omanFinalDestination:omanStored?.omanFinalDestination||''}),
     // KLM must never merge an unrelated generic page's weight/route.
     (klmFastPath||gulfAirFastPath||(cathayFastPath&&fallback?.cxFastRefresh===true))?Promise.resolve({ok:false,skipped:true,
       reason:gulfAirFastPath?'GULF AIR USES AWB-VERIFIED PARCELS OR CHAMP ONLY':'KLM USES EXCLUSIVELY AWB-MATCHED OFFICIAL DETAILS'}):browserOfficial(mawb)
@@ -1965,7 +1968,7 @@ async function handle(mawb,fallback={}){
       // manual refresh that can leave two stale 8-piece flight-history rows.
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.warn('saudia_verified_split_db_save_failed',mawb,e?.message||String(e));}
-    }else if((saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology'))||airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath){
+    }else if((saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology'))||airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath||mawb.startsWith('910-')){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
