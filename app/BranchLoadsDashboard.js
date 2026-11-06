@@ -15,10 +15,11 @@ const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID
 const LEDGER_WIDTHS=[98,140,92,90,116,110,100,108,134,146,156,148,184,146,166,200,120,120,124];
 const EXTRA_COST_WIDTH=132;
 const TOTAL_JEPO_WIDTH=194;
+const TAT_WIDTH=94;
 const CONFIRMATION_WIDTH=230;
 const REMARKS_WIDTH=196;
-const ledgerWidth=extra=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH+REMARKS_WIDTH)+(extra?EXTRA_COST_WIDTH:0);
-const ledgerColumns=extra=><colgroup>{[...LEDGER_WIDTHS.slice(0,-1),REMARKS_WIDTH,CONFIRMATION_WIDTH,LEDGER_WIDTHS[LEDGER_WIDTHS.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
+const ledgerWidth=(extra,delivered=false)=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH+REMARKS_WIDTH)+(extra?EXTRA_COST_WIDTH:0)+(delivered?TAT_WIDTH:0);
+const ledgerColumns=(extra,delivered=false)=><colgroup>{[...LEDGER_WIDTHS.slice(0,2),...(delivered?[TAT_WIDTH]:[]),...LEDGER_WIDTHS.slice(2,-1),REMARKS_WIDTH,CONFIRMATION_WIDTH,LEDGER_WIDTHS[LEDGER_WIDTHS.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const fresh=(branch='JIND')=>({
   branch,date:todayIST(),weight:'',rate:'',received:'',jepoRate:'',extraCost:'',bottleCount:'',remarks:'',confirmationNo:'',confirmationName:'',confirmationMode:'PENDING',
@@ -27,6 +28,17 @@ const fresh=(branch='JIND')=>({
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
 const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'long',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
+ // Calendar-day TAT includes both booking and delivery dates. UTC handles date math without local timezone offsets.
+ const inclusiveTatDays=(bookingDate,deliveryDate)=>{
+   const day=value=>{
+     const iso=String(value||'');
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(iso))return null;
+     const timestamp=Date.parse(iso+'T00:00:00Z');
+     return Number.isFinite(timestamp)&&new Date(timestamp).toISOString().slice(0,10)===iso?timestamp:null;
+   };
+   const first=day(bookingDate),last=day(deliveryDate);
+   return first!==null&&last!==null&&last>=first?Math.round((last-first)/86400000)+1:null;
+ };
 const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
 const compactShowDate=value=>value?weekday(value).slice(0,3)+', '+String(value).split('-').reverse().join('/'):'—';
 const employeeName=value=>String(value||'').split(/[._-]/).map(v=>v? v[0].toUpperCase()+v.slice(1):'').join(' ')||'—';
@@ -433,11 +445,12 @@ export default function BranchLoadsDashboard({currentUser}){
       return {labels,data,filename:prefix+'-daily-summary'};
     }
     const deliveredOffset=sheet==='DELIVERED'?1:0;
-    const labels=['Branch',...(deliveredOffset?['Delivery Date']:[]),'Date','Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Live Remarks','JEPO Status Date/Time','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
-    const data=shown.map(r=>[r.branch,...(deliveredOffset?[r.deliveredOn||'']:[]),r.date,weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',r.liveStatus||statusLabel(r.status),r.liveRemarks||'',r.liveEventWhen||'',employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
+    const amountOffset=deliveredOffset*2; // Delivery Date and TAT on Delivered sheet.
+    const labels=['Branch',...(deliveredOffset?['Delivery Date']:[]),'Date',...(deliveredOffset?['TAT (Days)']:[]),'Day','Load Received (kg)','Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)','Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','Destination','Service','Commodity','No. of Bottles','JEPO Tracking No.','Status','Live Remarks','JEPO Status Date/Time','Entered By','Last Edited By','Remarks','Payment Mode','UTR / Confirmation No.',...(isAdmin?['Admin Decision','Decided By','Decided At']:[]),...(hasExtraCostColumn?['Extra Cost (INR)']:[]),'Total Amount Paid to JEPO (INR)'];
+    const data=shown.map(r=>[r.branch,...(deliveredOffset?[r.deliveredOn||'']:[]),r.date,...(deliveredOffset?[inclusiveTatDays(r.date,r.deliveredOn)??'']:[]),weekday(r.date),r.weight,r.rate,r.amount,r.received,r.balance,r.jepoRate,r.paidToJepo,branchPayoutForRecord(r),r.destination,r.service,r.commodity,r.bottleCount||'',r.trackingNo||'',r.liveStatus||statusLabel(r.status),r.liveRemarks||'',r.liveEventWhen||'',employeeName(r.createdBy),employeeName(r.updatedBy),r.remarks||'',confirmationModeFor(r),r.confirmationNo||'',...(isAdmin?[r.confirmationDecision==='PENDING'&&r.confirmationApprovedAt?'YES':r.confirmationDecision||'PENDING',r.confirmationDecidedBy||r.confirmationApprovedBy||'',r.confirmationDecidedAt||r.confirmationApprovedAt||'']:[]),...(hasExtraCostColumn?[r.extraCost||0]:[]),totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true})]);
     const total=Array(labels.length).fill('');
-    total[0]='TOTAL';total[3+deliveredOffset]=totals.weight;total[5+deliveredOffset]=totals.amount;total[6+deliveredOffset]=totals.received;
-    total[7+deliveredOffset]=totals.balance;total[9+deliveredOffset]=totals.paidToJepo;total[10+deliveredOffset]=totals.paidToBranch;
+    total[0]='TOTAL';total[3+amountOffset]=totals.weight;total[5+amountOffset]=totals.amount;total[6+amountOffset]=totals.received;
+    total[7+amountOffset]=totals.balance;total[9+amountOffset]=totals.paidToJepo;total[10+amountOffset]=totals.paidToBranch;
     if(hasExtraCostColumn)total[labels.indexOf('Extra Cost (INR)')]=totals.extraCost;
     total[labels.length-1]=totals.totalJepo;
     data.push(total);
@@ -468,7 +481,7 @@ export default function BranchLoadsDashboard({currentUser}){
       const numericLabels=new Set(['No. of Loads','Total Weight (kg)','Total Branch Amount (INR)','Load Received (kg)',
         'Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)',
         'Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','No. of Bottles','Extra Cost (INR)',
-        'Total Amount Paid to JEPO (INR)']);
+        'Total Amount Paid to JEPO (INR)','TAT (Days)']);
       const numericIndices=new Set(labels.flatMap((label,index)=>numericLabels.has(label)?[index]:[]));
       data.forEach(values=>{
         const rowValues=values.map((v,index)=>numericIndices.has(index)&&v!==''&&v!==null&&v!==undefined?Number(v):(v===null||v===undefined?'':String(v)));
@@ -484,7 +497,7 @@ export default function BranchLoadsDashboard({currentUser}){
       // Do not include the final TOTAL row in column filters.
       if(data.length>1)worksheet.autoFilter={from:{row:1,column:1},to:{row:data.length,column:labels.length}};
       for(let i=0;i<labels.length;i++){
-        if(numericIndices.has(i))worksheet.getColumn(i+1).numFmt=/Weight/.test(labels[i])?'#,##0.000':/No\. of/.test(labels[i])?'#,##0':'#,##0.00';
+        if(numericIndices.has(i))worksheet.getColumn(i+1).numFmt=/Weight/.test(labels[i])?'#,##0.000':/No\. of|TAT/.test(labels[i])?'#,##0':'#,##0.00';
       }
       const totalRow=worksheet.getRow(data.length+1);
       totalRow.font={bold:true,color:{argb:'FF163B74'}};
@@ -542,8 +555,12 @@ export default function BranchLoadsDashboard({currentUser}){
     </tr>;
   }
   function entryRowCells(){
-    // Reuse the complete edit row cell layout for existing entries.
-    return entryRow(hasExtraCostColumn).props.children;
+    // The Delivered sheet retains TAT beside the dates while an existing row is edited.
+    const cells=entryRow(hasExtraCostColumn).props.children;
+    if(sheet!=='DELIVERED')return cells;
+    const deliveredOn=rows.find(r=>r.id===editing)?.deliveredOn;
+    const tat=inclusiveTatDays(draft.date,deliveredOn);
+    return [...cells.slice(0,2),<td key="tat-edit" className={styles.number}>{tat===null?'—':tat+' days'}</td>,...cells.slice(2)];
   }
   const dataCells=record=>[
     <td key="branch"><span className={styles.branchTag} data-branch={record.branch}>{record.branch}</span>
@@ -558,6 +575,9 @@ export default function BranchLoadsDashboard({currentUser}){
         <small style={{display:'block',fontSize:10,color:'#64748b'}}>Booked: {compactShowDate(record.date)}</small>
       </div>:compactShowDate(record.date)}
     </td>,
+    ...(sheet==='DELIVERED'?[<td key="tat" className={styles.number} title={'Booked '+(record.date||'—')+' • Delivered '+(record.deliveredOn||'not verified')}>
+      <strong>{inclusiveTatDays(record.date,record.deliveredOn)===null?'—':inclusiveTatDays(record.date,record.deliveredOn)+' days'}</strong>
+    </td>]:[]),
     <td key="weight" className={styles.number}>{weightFormat(record.weight)}</td>,
     <td key="rate" className={styles.number}>{money(record.rate)}</td>,
     <td key="amount" className={styles.number}><b>{money(record.amount)}</b></td>,
@@ -705,20 +725,21 @@ export default function BranchLoadsDashboard({currentUser}){
         </table></div>
         <p className={styles.summaryHint}>Branch Amount = Amount − Paid to JEPO + Branch share of Extra Cost. This is branch earnings before any expenses not recorded in these loads.</p>
       </section>}
-      {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn)+'px',minWidth:'100%'}}>
-        {ledgerColumns(hasExtraCostColumn)}
+      {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
+        {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
           <th>{sheet==='DELIVERED'?'Delivery Date ↓':'Date'}</th>
+          {sheet==='DELIVERED'&&<th title="Booking Date to Delivery Date, both days included">TAT (Days)</th>}
           <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Live Remarks</th><th>Entered By</th><th>Last Edited By</th><th>Remarks</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
         </tr></thead>
         <tbody>
           {/* Daily Load Entry stays above; saved records only in this sheet. */}
           {shown.map(row=>editing===row.id?<tr key={row.id} className={styles.editRow}>{entryRowCells()}</tr>:<tr key={row.id} data-branch={row.branch} className={[row.status==='DELIVERED'?styles.deliveredRow:'',flaggedJepoNumber(row.trackingNo)?styles.duplicateRow:'',isJindJepoTimeout(row)?styles.jindTimeoutRow:''].filter(Boolean).join(' ')}>{dataCells(row)}</tr>)}
-          {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)}>Loading branch entries…</td></tr>}
-          {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
+          {!loaded&&<tr><td colSpan={22+(hasExtraCostColumn?1:0)+(sheet==='DELIVERED'?1:0)}>Loading branch entries…</td></tr>}
+          {loaded&&!shown.length&&<tr><td colSpan={21+(hasExtraCostColumn?1:0)+(sheet==='DELIVERED'?1:0)} className={styles.empty}>{sheet==='ACTIVE'?'No active loads yet. Use the row Save button above.':'No delivered loads yet.'}</td></tr>}
         </tbody>
-        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td><td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}><BranchPaymentDisplay total={totals.paidToBranch} cash={totals.cashBranch}/></td><td colSpan={10}>—</td><td>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
+        <tfoot><tr><td>TOTAL</td><td>{shown.length} entries</td>{sheet==='DELIVERED'&&<td>—</td>}<td className={styles.number}>{weightFormat(totals.weight)}</td><td>—</td><td className={styles.number}>{money(totals.amount)}</td><td className={styles.number}>{money(totals.received)}</td><td className={styles.number}>{money(totals.balance)}</td><td>—</td><td className={styles.number}>{money(totals.paidToJepo)}</td><td className={styles.number}><BranchPaymentDisplay total={totals.paidToBranch} cash={totals.cashBranch}/></td><td colSpan={10}>—</td><td>—</td>{hasExtraCostColumn&&<td className={styles.extraCostCell+' '+styles.number}>{money(totals.extraCost)}</td>}<td className={styles.totalJepoCell+' '+styles.number}><JepoPaymentSplit total={totals.totalJepo} account={totals.paidToJepo} cash={totals.cashJepo}/></td></tr></tfoot>
       </table></div>}
     </form>
     <footer className={styles.foot}>
