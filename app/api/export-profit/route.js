@@ -9,8 +9,8 @@ import {auditExportIndex,exportAuditKey,exportAuditValues,mergeExportAuditBags,e
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Read Export master MAWBs without any shipment-wise deduction.
-// Historical saved charge records remain untouched for audit, but are never loaded or applied.
+// Read Export master MAWBs and conditional Audit-only shipping expenses.
+// Historical saved fixed shipment charges are never loaded or applied.
 // This endpoint never modifies Import rows, source tracking or airline adapters.
 function sqlClient(){
   const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||
@@ -99,6 +99,11 @@ export async function GET(request){
       const rate=exportRateForCompany(client);
       const audit=audits.get(exportAuditKey(awb,client));
       const imported=audit?exportAuditValues(audit):null;
+      // Only the fully matched Audit row can supply a variable additional charge.
+      // Ignore legacy manually saved fixed ₹2,600/₹2,500 or other amounts.
+      const auditCharge=imported?.shipmentCharge;
+      const autoCharge=auditCharge!==null&&auditCharge!==undefined;
+      const shipmentCharge=autoCharge?auditCharge:null;
       const mergedBags=mergeExportAuditBags(savedBags.get(awb),imported);
       const {categoryBags,manualBagCodes,autoBagCodes}=mergedBags;
       const autoBags=autoBagCodes.length>0;
@@ -110,10 +115,11 @@ export async function GET(request){
         weight,
         clientName:client,
         rate,
+        shipmentCharge,auditAutoCharge:autoCharge,
         categoryBags,auditAutoBags:autoBags,auditAutoCodes:autoBagCodes,manualBagCodes,
         categoryClientCharge:categories.clientCharge,
         categoryDeduction:categories.deduction,categoryProfit:categories.netProfit,
-        profit:weight===null?null:Math.round((weight*rate+categories.netProfit)*100)/100
+        profit:weight===null?null:Math.round((weight*rate-(autoCharge?shipmentCharge:0)+categories.netProfit)*100)/100
       });
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
@@ -135,7 +141,7 @@ export async function PATCH(request){
     if(category&&(!['D','T','DT','GC'].includes(category)||bags===null))
       return Response.json({ok:false,error:'Enter D, T, DT or G&C bags as a whole number between 0 and 100,000.'},{status:400});
     if(!category)
-      return Response.json({ok:false,error:'Per-MAWB Export shipment charges have been removed. Only category bag counts can be edited.'},{status:400});
+      return Response.json({ok:false,error:'Shipment Charge is calculated only from matching Audit X-ray, Shift, Loader and Co-loader. Manual fixed charges are disabled.'},{status:400});
     const sql=sqlClient();
     await ensureCategoryBags(sql);
     const matched=await sql`SELECT awb,data FROM mayavi_shipments WHERE awb=${awb}
@@ -173,7 +179,7 @@ export async function PATCH(request){
         categoryTotals:exportCategorySummary(merged.categoryBags,client)},
         {headers:{'Cache-Control':'no-store, private'}});
     }
-    return Response.json({ok:false,error:'Shipment charges are no longer editable.'},{status:400});
+    return Response.json({ok:false,error:'Automatic Audit shipment charges cannot be edited here.'},{status:400});
   }catch(error){
     return Response.json({ok:false,error:error?.message||'Unable to save Export category bags.'},{status:503});
   }
