@@ -55,41 +55,35 @@ assert.equal(exportHandoverOverdue({departureDate:'2026-10-25',departureTime:'02
 assert.equal(exportHandoverOverdue({handoverDone:false},asUtc('2026-10-24T15:30:00Z')),false,'Missing date/time must not blink.');
 console.log('LOCKED Export Handover blink regression passed: -5h IST, NO deadline, YES stop, date rollover, CSS and live clock.');
 
-// Export master-MAWB shipment charge defaults to INR 2,600. The admin
-// may override any individual master MAWB, and it is never per part.
-import { EXPORT_SHIPMENT_CHARGE, resolvedExportShipmentCharge, validateExportShipmentCharge } from '../lib/exportShipmentCharge.js';
+// The old fixed ₹2,600/₹2,500 Export per-MAWB deductions have been removed.
+// Only exactly matched Data Analysis rows with blank G&C/D/T/DT contribute Audit expenses.
+import { EXPORT_SHIPMENT_CHARGE, resolvedExportShipmentCharge, auditOnlyExportShipmentCharge, validateExportShipmentCharge } from '../lib/exportShipmentCharge.js';
 import { readFileSync as readExportChargeSource } from 'node:fs';
 import assertExportCharge from 'node:assert/strict';
 const exportChargeUi=readExportChargeSource('app/ExportProfitSheet.js','utf8');
 const exportChargeApi=readExportChargeSource('app/api/export-profit/route.js','utf8');
-assertExportCharge.equal(EXPORT_SHIPMENT_CHARGE,2600);
-assertExportCharge.equal(resolvedExportShipmentCharge(undefined),2600);
-assertExportCharge.equal(resolvedExportShipmentCharge(''),2600);
+assertExportCharge.equal(EXPORT_SHIPMENT_CHARGE,0);
+assertExportCharge.equal(resolvedExportShipmentCharge(undefined),0);
+assertExportCharge.equal(resolvedExportShipmentCharge(''),0);
 assertExportCharge.equal(resolvedExportShipmentCharge(0),0);
 assertExportCharge.equal(resolvedExportShipmentCharge(3250.25),3250.25);
-assertExportCharge.equal(validateExportShipmentCharge('2600'),2600);
-assertExportCharge.equal(validateExportShipmentCharge('3300.50'),3300.50);
-assertExportCharge.equal(validateExportShipmentCharge('0'),0);
 assertExportCharge.equal(validateExportShipmentCharge('-1'),null);
-assertExportCharge.equal(validateExportShipmentCharge('3.999'),null);
-assertExportCharge.equal(validateExportShipmentCharge(''),null);
-assertExportCharge.ok(exportChargeUi.includes('const SHIPMENT_CHARGE=EXPORT_SHIPMENT_CHARGE;'));
-assertExportCharge.ok(exportChargeUi.includes('value*rate-resolvedExportShipmentCharge(row.shipmentCharge)'));
-assertExportCharge.ok(exportChargeUi.includes('acc.shipmentCharges+=resolvedExportShipmentCharge(r.shipmentCharge);'));
-assertExportCharge.ok(exportChargeUi.includes('Shipment Charge defaults to ₹2,600 per MAWB (editable)'));
-assertExportCharge.ok(exportChargeUi.includes('SHIPMENT CHARGES • DEFAULT ₹2,600 / MAWB'));
-assertExportCharge.ok(exportChargeUi.includes('Final Profit = (Weight × client rate) − Shipment Charge + (D/T/DT/G&C client charges − their deductions).'));
-assertExportCharge.ok(exportChargeUi.includes("onBlur={event=>void saveShipmentCharge(row,event.target.value)}"));
-assertExportCharge.ok(exportChargeUi.includes('resolv')&&exportChargeUi.includes('shipmentCharge:data.shipmentCharge'));
-assertExportCharge.ok(exportChargeUi.includes('r.rate??6,resolvedExportShipmentCharge(r.shipmentCharge)')&&exportChargeUi.includes('categories.netProfit,profitFor(r)'));
-assertExportCharge.ok(exportChargeApi.includes('shipmentCharge, // Admin-editable; still once per master MAWB.'));
-assertExportCharge.ok(exportChargeApi.includes('weight*rate-shipmentCharge'));
-assertExportCharge.ok(exportChargeApi.includes('CREATE TABLE IF NOT EXISTS mayavi_export_shipment_charge'));
+assertExportCharge.equal(auditOnlyExportShipmentCharge({shipmentCharge:2600}),0);
+assertExportCharge.equal(auditOnlyExportShipmentCharge({shipmentCharge:2500}),0);
+assertExportCharge.equal(auditOnlyExportShipmentCharge({shipmentCharge:175,auditAutoCharge:true}),175);
+assertExportCharge.ok(exportChargeUi.includes('value*rate-auditOnlyExportShipmentCharge(row)'));
+assertExportCharge.ok(exportChargeUi.includes('acc.shipmentCharges+=auditOnlyExportShipmentCharge(r);'));
+assertExportCharge.ok(exportChargeUi.includes('Shipment Charges (₹) • Audit Auto'));
+assertExportCharge.ok(exportChargeUi.includes('showCategoryMoney(item.deduction)'));
+assertExportCharge.ok(exportChargeUi.includes('showCategoryCount(totals.categoryItems[code].bags)'));
+assertExportCharge.ok(!exportChargeUi.includes('Shipment Charge defaults to ₹2,600 per MAWB (editable)'));
+assertExportCharge.ok(!exportChargeUi.includes('onBlur={event=>void saveShipmentCharge('));
+assertExportCharge.ok(exportChargeApi.includes('audits.get(exportAuditKey(awb,client))'));
+assertExportCharge.ok(exportChargeApi.includes('shipmentCharge,auditAutoCharge:autoCharge'));
+assertExportCharge.ok(exportChargeApi.includes('weight*rate-(autoCharge?shipmentCharge:0)'));
+assertExportCharge.ok(!exportChargeApi.includes('mayavi_export_shipment_charge'));
 assertExportCharge.ok(exportChargeApi.includes('export async function PATCH(request)'));
-assertExportCharge.ok(exportChargeApi.includes('validateExportShipmentCharge(body.shipmentCharge)'));
-assertExportCharge.ok(exportChargeApi.includes('ON CONFLICT(awb) DO UPDATE SET charge=EXCLUDED.charge'));
 assertExportCharge.ok(exportChargeApi.includes("admin?.role!=='admin'"));
-// DHL's existing rate remains INR 11/kg, and the default fee applies once.
 import { exportRateForCompany } from '../lib/profitPeriod.js';
 assertExportCharge.equal(exportRateForCompany('DHL'),11);
 assertExportCharge.equal(exportRateForCompany('DHL EXPRESS'),11);
@@ -97,12 +91,12 @@ assertExportCharge.equal(exportRateForCompany('dhl'),11);
 assertExportCharge.equal(exportRateForCompany('OVERSEAS'),7);
 assertExportCharge.equal(exportRateForCompany('OTHER CLIENT'),6);
 assertExportCharge.ok(exportChargeUi.includes('DHL client ₹11/kg'));
-assertExportCharge.ok(exportChargeUi.includes('DHL clients earn ₹11/kg'));
+assertExportCharge.ok(exportChargeUi.includes('DHL client rate ₹11/kg'));
 assertExportCharge.ok(!exportChargeUi.includes('₹19/kg'));
-assertExportCharge.equal(Math.round((400*exportRateForCompany('DHL')-EXPORT_SHIPMENT_CHARGE)*100)/100,1800);
-assertExportCharge.equal(Math.round((400*exportRateForCompany('DHL')-3300.5)*100)/100,1099.5);
-console.log('Export master-MAWB editable shipment charge regression passed: default INR 2,600, admin overrides, rate rules and once-per-master.');
- 
+assertExportCharge.equal(400*exportRateForCompany('DHL')-auditOnlyExportShipmentCharge({shipmentCharge:2600}),4400);
+assertExportCharge.equal(400*exportRateForCompany('DHL')-auditOnlyExportShipmentCharge({shipmentCharge:175,auditAutoCharge:true}),4225);
+console.log('Export Audit-only shipment charges: fixed fees ignored; exact-match category blank rule and DHL rates passed.');
+
 // Export Profit MAWBs must match Export Active + Master Copy Received (never Import).
 import { includeExportMasterInProfit, exportProfitRegister } from '../lib/exportProfitSource.js';
 const currentExportMonth='2026-10', oldExportMonth='2026-09';

@@ -3,14 +3,14 @@ import { readSession } from '../../../lib/mayaviAuth.js';
 import { masterKg, partKg } from '../../../lib/arrivalWeights.js';
 import { selectedProfitMonth, profitMonths, currentProfitMonth, exportProfitHandoverDate, exportRateForCompany } from '../../../lib/profitPeriod.js';
 import { includeExportMasterInProfit, exportProfitRegister } from '../../../lib/exportProfitSource.js';
-import { EXPORT_SHIPMENT_CHARGE, validateExportShipmentCharge } from '../../../lib/exportShipmentCharge.js';
 import {exportCategorySummary,validateExportBagCount} from '../../../lib/exportCategoryBags.js';
 import {auditExportIndex,exportAuditKey,exportAuditValues,mergeExportAuditBags,exportManualCategoryCodes} from '../../../lib/auditExportSync.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Read Export master MAWBs and a separately saved per-MAWB shipment charge.
+// Read Export master MAWBs and conditional Audit-only shipping expenses.
+// Historical saved fixed shipment charges are never loaded or applied.
 // This endpoint never modifies Import rows, source tracking or airline adapters.
 function sqlClient(){
   const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||
@@ -40,15 +40,6 @@ function totalWeight(data={}){
 }
 function clientName(data={}){
   return String(data.clientName||data.client||'').trim();
-}
-async function ensureCharges(sql){
-  // Per master MAWB only. CREATE IF NOT EXISTS keeps old data safe.
-  await sql`CREATE TABLE IF NOT EXISTS mayavi_export_shipment_charge (
-    awb VARCHAR(11) PRIMARY KEY,
-    charge NUMERIC(16,2) NOT NULL CHECK(charge>=0),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_by TEXT NOT NULL DEFAULT ''
-  )`;
 }
 async function ensureCategoryBags(sql){
   // These counts never alter the tracking record's original bag count.
@@ -87,16 +78,14 @@ export async function GET(request){
   if(!month)return Response.json({ok:false,error:'Profit sheets start from October 2026. Choose a valid month.'},{status:400});
   try{
     const sql=sqlClient();
-    await Promise.all([ensureCharges(sql),ensureCategoryBags(sql)]);
-    const [shipments,charges,categoryRows,audits]=await Promise.all([
+    await ensureCategoryBags(sql);
+    const [shipments,categoryRows,audits]=await Promise.all([
       sql`SELECT awb,data FROM mayavi_shipments
         WHERE UPPER(COALESCE(data->>'shipmentType',''))='EXPORT'
         ORDER BY updated_at DESC`,
-      sql`SELECT awb,charge FROM mayavi_export_shipment_charge`,
       sql`SELECT awb,d_bags,t_bags,dt_bags,gc_bags,manual_codes FROM mayavi_export_category_bags`,
       auditIndex(sql)
     ]);
-    const savedCharges=new Map(charges.map(row=>[awbDigits(row.awb),Number(row.charge)]));
     const savedBags=new Map(categoryRows.map(row=>[awbDigits(row.awb),row]));
     const seen=new Set(),rows=[];
     for(const shipment of shipments){
@@ -110,13 +99,14 @@ export async function GET(request){
       const rate=exportRateForCompany(client);
       const audit=audits.get(exportAuditKey(awb,client));
       const imported=audit?exportAuditValues(audit):null;
-      // Explicit admin saves always win over automatically matched Audit values.
+      // Only the fully matched Audit row can supply a variable additional charge.
+      // Ignore legacy manually saved fixed ₹2,600/₹2,500 or other amounts.
       const auditCharge=imported?.shipmentCharge;
-      const autoCharge=!savedCharges.has(awb)&&auditCharge!==null&&auditCharge!==undefined;
+      const autoCharge=auditCharge!==null&&auditCharge!==undefined;
+      const shipmentCharge=autoCharge?auditCharge:null;
       const mergedBags=mergeExportAuditBags(savedBags.get(awb),imported);
       const {categoryBags,manualBagCodes,autoBagCodes}=mergedBags;
       const autoBags=autoBagCodes.length>0;
-      const shipmentCharge=savedCharges.has(awb)?savedCharges.get(awb):autoCharge?auditCharge:EXPORT_SHIPMENT_CHARGE;
       const categories=exportCategorySummary(categoryBags,client);
       rows.push({
         mawb:awb.slice(0,3)+'-'+awb.slice(3),
@@ -125,11 +115,11 @@ export async function GET(request){
         weight,
         clientName:client,
         rate,
-        shipmentCharge, // Admin-editable; still once per master MAWB.
-        categoryBags,auditAutoBags:autoBags,auditAutoCodes:autoBagCodes,manualBagCodes,auditAutoCharge:autoCharge,
+        shipmentCharge,auditAutoCharge:autoCharge,
+        categoryBags,auditAutoBags:autoBags,auditAutoCodes:autoBagCodes,manualBagCodes,
         categoryClientCharge:categories.clientCharge,
         categoryDeduction:categories.deduction,categoryProfit:categories.netProfit,
-        profit:weight===null?null:Math.round((weight*rate-shipmentCharge+categories.netProfit)*100)/100
+        profit:weight===null?null:Math.round((weight*rate-(autoCharge?shipmentCharge:0)+categories.netProfit)*100)/100
       });
     }
     return Response.json({ok:true,rows,month,months:profitMonths()},{headers:{'Cache-Control':'no-store, private'}});
@@ -150,11 +140,10 @@ export async function PATCH(request){
     const bags=category?validateExportBagCount(body.bags):null;
     if(category&&(!['D','T','DT','GC'].includes(category)||bags===null))
       return Response.json({ok:false,error:'Enter D, T, DT or G&C bags as a whole number between 0 and 100,000.'},{status:400});
-    const charge=category?null:validateExportShipmentCharge(body.shipmentCharge);
-    if(!category&&charge===null)
-      return Response.json({ok:false,error:'Enter a valid Shipment Charge (₹0 or more, up to 2 decimals).'},{status:400});
+    if(!category)
+      return Response.json({ok:false,error:'Shipment Charge is calculated only from matching Audit X-ray, Shift, Loader and Co-loader. Manual fixed charges are disabled.'},{status:400});
     const sql=sqlClient();
-    await Promise.all([ensureCharges(sql),ensureCategoryBags(sql)]);
+    await ensureCategoryBags(sql);
     const matched=await sql`SELECT awb,data FROM mayavi_shipments WHERE awb=${awb}
       AND UPPER(COALESCE(data->>'shipmentType',''))='EXPORT' LIMIT 1`;
     if(!matched.length)
@@ -190,13 +179,8 @@ export async function PATCH(request){
         categoryTotals:exportCategorySummary(merged.categoryBags,client)},
         {headers:{'Cache-Control':'no-store, private'}});
     }
-    await sql`INSERT INTO mayavi_export_shipment_charge(awb,charge,updated_by)
-      VALUES (${awb},${charge},${admin.username})
-      ON CONFLICT(awb) DO UPDATE SET charge=EXCLUDED.charge,
-      updated_at=NOW(),updated_by=EXCLUDED.updated_by`;
-    return Response.json({ok:true,mawb:awb.slice(0,3)+'-'+awb.slice(3),shipmentCharge:charge},
-      {headers:{'Cache-Control':'no-store, private'}});
+    return Response.json({ok:false,error:'Automatic Audit shipment charges cannot be edited here.'},{status:400});
   }catch(error){
-    return Response.json({ok:false,error:error?.message||'Unable to save shipment charge.'},{status:503});
+    return Response.json({ok:false,error:error?.message||'Unable to save Export category bags.'},{status:503});
   }
 }
