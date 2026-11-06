@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {auditOnlyExportShipmentCharge,EXPORT_SHIPMENT_CHARGE} from '../lib/exportShipmentCharge.js';
+import {exportAuditKey,exportAuditValues,auditExportIndex} from '../lib/auditExportSync.js';
+import {sumMonthlyExport} from '../lib/monthlyExpenses.js';
+
+const source={mawb:'098-12345678',client_name:'TPL',d:'',t:'',dt:'',gc:'',
+  xray:'100',shift:'40',loader:'20',co_loader:'15',tray:'999'};
+const imported=exportAuditValues(source);
+assert.equal(imported.shipmentCharge,175,'X-ray + Shift + Loader + Co-loader only; no Tray.');
+assert.equal(imported.hasBags,false);
+assert.equal(EXPORT_SHIPMENT_CHARGE,0,'No fixed per-MAWB charge.');
+assert.equal(exportAuditValues({...source,d:'0'}).shipmentCharge,null,'0 is not an empty category.');
+assert.equal(exportAuditValues({...source,gc:'2'}).shipmentCharge,null);
+assert.equal(exportAuditValues({...source,xray:'abc'}).shipmentCharge,null);
+assert.equal(exportAuditValues({...source,xray:'',shift:'',loader:'',co_loader:''}).shipmentCharge,null);
+const index=auditExportIndex([source]);
+assert.equal(index.get(exportAuditKey('09812345678','tpl')),source);
+assert.equal(index.get(exportAuditKey('09812345678','DIFFERENT')),undefined);
+assert.equal(auditOnlyExportShipmentCharge({shipmentCharge:2600}),0,'Old manual fixed charge ignored.');
+assert.equal(auditOnlyExportShipmentCharge({shipmentCharge:2500}),0,'Old ₹2,500 manual charge ignored.');
+assert.equal(auditOnlyExportShipmentCharge({shipmentCharge:175,auditAutoCharge:true}),175);
+assert.equal(auditOnlyExportShipmentCharge({shipmentCharge:null,auditAutoCharge:false}),0);
+assert.equal(sumMonthlyExport([{weight:100,rate:6,shipmentCharge:175,auditAutoCharge:true}]).grossProfit,425);
+assert.equal(sumMonthlyExport([{weight:100,rate:6,shipmentCharge:2600}]).grossProfit,600);
+const api=readFileSync('app/api/export-profit/route.js','utf8');
+const ui=readFileSync('app/ExportProfitSheet.js','utf8');
+assert.ok(api.includes('audits.get(exportAuditKey(awb,client))'),'Exact MAWB and client match required.');
+assert.ok(api.includes('auditCharge=imported?.shipmentCharge'),'Charge must come from Audit.');
+assert.ok(!api.includes('mayavi_export_shipment_charge'),'Legacy manual charge DB is not loaded.');
+assert.ok(api.includes("shipmentCharge,auditAutoCharge:autoCharge"));
+assert.ok(ui.includes('Shipment Charges (₹) • Audit Auto'),'Audit-only charge column restored.');
+assert.ok(ui.includes('showCategoryMoney(item.clientCharge)')&&ui.includes('showCategoryMoney(item.deduction)'));
+assert.ok(ui.includes('showCategoryCount(totals.categoryItems[code].bags)'));
+assert.ok(ui.includes('placeholder="—"'),'Zero bag input uses dash placeholder.');
+assert.ok(ui.includes('showCategoryMoney(totals.categoryDeduction)'),'Zero total deduction must show dash.');
+assert.ok(ui.includes('const bags=String(rawValue??').valueOf());
+console.log('Export fixed charges removed; matched blank-category Audit charges and zero-as-dash UI verified.');
