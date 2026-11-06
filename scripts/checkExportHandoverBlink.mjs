@@ -91,7 +91,7 @@ assertExportCharge.equal(exportRateForCompany('dhl'),11);
 assertExportCharge.equal(exportRateForCompany('OVERSEAS'),7);
 assertExportCharge.equal(exportRateForCompany('OTHER CLIENT'),6);
 assertExportCharge.ok(exportChargeUi.includes('DHL client ₹11/kg'));
-assertExportCharge.ok(exportChargeUi.includes('DHL clients earn ₹11/kg'));
+assertExportCharge.ok(exportChargeUi.includes('DHL client rate ₹11/kg'));
 assertExportCharge.ok(!exportChargeUi.includes('₹19/kg'));
 assertExportCharge.equal(400*exportRateForCompany('DHL')-auditOnlyExportShipmentCharge({shipmentCharge:2600}),4400);
 assertExportCharge.equal(400*exportRateForCompany('DHL')-auditOnlyExportShipmentCharge({shipmentCharge:175,auditAutoCharge:true}),4225);
