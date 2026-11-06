@@ -436,3 +436,16 @@
 .tatSummaryTable tbody tr:last-child td{border-bottom:0}
 .tatSummaryNote{padding:0 13px 12px;margin:0;color:#597165;font-size:10px;line-height:1.5}
 @media(max-width:940px){.tatSummaryGrid{grid-template-columns:1fr}.tatSummaryHeading{align-items:flex-start}.tatOverall{text-align:left}}
+
+
+/* Company × Country delivery TAT matrix within the existing Delivered summary. */
+.tatMatrixHeading{padding:13px 13px 5px}
+.tatMatrixHeading h3{margin:0 0 4px;color:#165b43;font-size:14px;font-weight:900}
+.tatMatrixHeading p{margin:0;color:#577568;font-size:11px;line-height:1.45}
+.tatMatrixGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:10px 12px 14px}
+.tatMatrixCard{min-width:0;border:1px solid #d5e5dd;background:white;border-radius:10px;overflow:hidden}
+.tatMatrixService{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;padding:11px 12px;background:#eaf8f1}
+.tatMatrixService strong{font-size:14px;font-weight:900;color:#175840}
+.tatMatrixService small{font-size:10px;font-weight:800;color:#437564}
+.tatMatrixCard .tatSummaryTable{min-width:405px}
+@media(max-width:940px){.tatMatrixGrid{grid-template-columns:1fr}}
