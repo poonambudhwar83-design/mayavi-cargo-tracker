@@ -281,11 +281,11 @@ export async function POST(request){
             'duplicateCount',COALESCE((mayavi_shipments.data->>'duplicateCount')::integer,0),
             'duplicateAlertAt',COALESCE(mayavi_shipments.data->>'duplicateAlertAt','')
           )) || CASE
-            -- CX only: a stale browser or failed client fetch must not replace
+            -- CX/WY: a stale browser or failed client fetch must not replace
             -- a newer AWB-verified server tracking result. Preserve movement
             -- fields atomically at conflict time, while allowing operator
             -- edits (client, Mail, Customs, remarks, etc.) to be saved.
-            WHEN LEFT(EXCLUDED.awb,3)='160'
+            WHEN LEFT(EXCLUDED.awb,3) IN ('160','910')
               AND COALESCE(mayavi_shipments.data->>'source','')<>''
               AND (
                 COALESCE(EXCLUDED.data->>'source','')=''
@@ -305,14 +305,17 @@ export async function POST(request){
                 'scheduledArrivalDate','scheduledArrivalTime','scheduledArrivalTimeZone',
                 'cxBookingDetailsPending','cxBookingDetailsMessage',
                 'lastChecked','trackingError','manualHint','liveTracking',
-                'savedSnapshot','officialTracker'
+                'savedSnapshot','officialTracker',
+                'via','transitAirport','transitArrivalDate','transitArrivalTime',
+                'transitArrivalTimeZone','currentLocation','finalArrivalPending',
+                'arrivalVerifiedAbsent','omanFinalDestination'
               ])
             )
             ELSE '{}'::jsonb
           END,
           version=mayavi_shipments.version+1,
           updated_at=now(),
-          tracking_checked_at=CASE WHEN LEFT(EXCLUDED.awb,3)='160'
+          tracking_checked_at=CASE WHEN LEFT(EXCLUDED.awb,3) IN ('160','910')
             THEN GREATEST(mayavi_shipments.tracking_checked_at,EXCLUDED.tracking_checked_at)
             ELSE EXCLUDED.tracking_checked_at END
         RETURNING awb,data,version,updated_at,tracking_checked_at
