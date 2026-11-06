@@ -246,7 +246,7 @@ export async function POST(request){
         INSERT INTO mayavi_shipments (awb,data,version,updated_at,tracking_checked_at)
         VALUES (${awb},${JSON.stringify(data)}::jsonb,1,now(),${checked})
         ON CONFLICT (awb) DO UPDATE SET
-          data=EXCLUDED.data || jsonb_build_object(
+          data=(EXCLUDED.data || jsonb_build_object(
             'enteredBy',COALESCE(mayavi_shipments.data->>'enteredBy',EXCLUDED.data->>'enteredBy'),
             'enteredByUsername',COALESCE(mayavi_shipments.data->>'enteredByUsername',EXCLUDED.data->>'enteredByUsername'),
             'enteredAt',COALESCE(mayavi_shipments.data->>'enteredAt',EXCLUDED.data->>'enteredAt'),
@@ -280,10 +280,41 @@ export async function POST(request){
             'duplicateAlert',COALESCE((mayavi_shipments.data->>'duplicateAlert')::boolean,false),
             'duplicateCount',COALESCE((mayavi_shipments.data->>'duplicateCount')::integer,0),
             'duplicateAlertAt',COALESCE(mayavi_shipments.data->>'duplicateAlertAt','')
-          ),
+          )) || CASE
+            -- CX only: a stale browser or failed client fetch must not replace
+            -- a newer AWB-verified server tracking result. Preserve movement
+            -- fields atomically at conflict time, while allowing operator
+            -- edits (client, Mail, Customs, remarks, etc.) to be saved.
+            WHEN LEFT(EXCLUDED.awb,3)='160'
+              AND COALESCE(mayavi_shipments.data->>'source','')<>''
+              AND (
+                COALESCE(EXCLUDED.data->>'source','')=''
+                OR COALESCE(EXCLUDED.data->>'lastChecked','')<=COALESCE(mayavi_shipments.data->>'lastChecked','')
+              )
+            THEN (
+              SELECT COALESCE(jsonb_object_agg(key,value),'{}'::jsonb)
+              FROM jsonb_each(mayavi_shipments.data)
+              WHERE key=ANY(ARRAY[
+                'status','source','sourceStatus','statusSource',
+                'flightNo','flightDate','origin','destination',
+                'pieces','bags','weight','bookingDate','bookingTime','bookingDateSource',
+                'departureDate','departureTime','departureIsActual',
+                'departureTimeZone','departureTimeSource',
+                'arrivalDate','arrivalTime','arrivalIsActual','arrivalEstimate',
+                'arrivalTimeZone','arrivalTimeSource',
+                'scheduledArrivalDate','scheduledArrivalTime','scheduledArrivalTimeZone',
+                'cxBookingDetailsPending','cxBookingDetailsMessage',
+                'lastChecked','trackingError','manualHint','liveTracking',
+                'savedSnapshot','officialTracker'
+              ])
+            )
+            ELSE '{}'::jsonb
+          END,
           version=mayavi_shipments.version+1,
           updated_at=now(),
-          tracking_checked_at=EXCLUDED.tracking_checked_at
+          tracking_checked_at=CASE WHEN LEFT(EXCLUDED.awb,3)='160'
+            THEN GREATEST(mayavi_shipments.tracking_checked_at,EXCLUDED.tracking_checked_at)
+            ELSE EXCLUDED.tracking_checked_at END
         RETURNING awb,data,version,updated_at,tracking_checked_at
       `;
       saved.push({...result,data:dataForViewer(sanitizeShipment(result.data||{},result.awb),auth.session,auth.internal)});
