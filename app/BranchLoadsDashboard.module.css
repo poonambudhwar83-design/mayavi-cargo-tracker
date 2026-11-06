@@ -412,3 +412,27 @@
   .table tbody tr.jindTimeoutRow > td:not(.extraCostCell):not(.totalJepoCell),
   .jindTimeoutBadge{animation:none;}
 }
+
+
+/* Delivered TAT summary — compact, filter-aware, and readable on mobile. */
+.tatSummarySection{margin:12px 0 16px;border:1px solid #b7dccf;border-radius:12px;background:#f8fdfb;overflow:hidden}
+.tatSummaryHeading{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 16px;background:#edf9f3;border-bottom:1px solid #cde8db}
+.tatSummaryHeading h2{font-size:17px;color:#14543c;margin:0 0 4px;font-weight:900}
+.tatSummaryHeading p{font-size:12px;color:#496b5d;margin:0 0 6px}
+.tatSummaryHeading small{font-size:11px;color:#4e665e;font-weight:700}
+.tatOverall{min-width:136px;text-align:right;display:grid;gap:3px}
+.tatOverall strong{font-size:20px;color:#047857;font-weight:900;font-variant-numeric:tabular-nums}
+.tatOverall span{font-size:10px;color:#4b6357;font-weight:800}
+.tatSummaryGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px}
+.tatSummaryCard{min-width:0;border:1px solid #d8e5de;border-radius:9px;background:#fff;overflow:hidden}
+.tatSummaryCard h3{padding:10px 12px;margin:0;background:#f0f7f4;color:#175741;font-size:13px;font-weight:900}
+.tatTableScroll{overflow-x:auto}
+.tatSummaryTable{border-collapse:collapse;width:100%;min-width:370px;font-size:11px}
+.tatSummaryTable th,.tatSummaryTable td{padding:8px 9px;text-align:right;border-bottom:1px solid #edf1ef;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tatSummaryTable th{background:#f8fbfa;color:#506d60;font-size:10px;font-weight:850}
+.tatSummaryTable th:first-child,.tatSummaryTable td:first-child{text-align:left}
+.tatSummaryTable td{color:#334155}
+.tatSummaryTable td:nth-child(3) strong{color:#047857}
+.tatSummaryTable tbody tr:last-child td{border-bottom:0}
+.tatSummaryNote{padding:0 13px 12px;margin:0;color:#597165;font-size:10px;line-height:1.5}
+@media(max-width:940px){.tatSummaryGrid{grid-template-columns:1fr}.tatSummaryHeading{align-items:flex-start}.tatOverall{text-align:left}}
