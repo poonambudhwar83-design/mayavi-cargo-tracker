@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
 import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+import {inclusiveTatDays,summarizeBranchTat} from '../lib/branchTatSummary.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import styles from './BranchLoadsDashboard.module.css';
 import BranchProfitDashboard from './BranchProfitDashboard.js';
@@ -28,17 +29,6 @@ const fresh=(branch='JIND')=>({
 const money=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const weightFormat=value=>Number(value||0).toLocaleString('en-IN',{maximumFractionDigits:3});
 const weekday=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?new Intl.DateTimeFormat('en-IN',{weekday:'long',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')):'';
- // Calendar-day TAT includes both booking and delivery dates. UTC handles date math without local timezone offsets.
- const inclusiveTatDays=(bookingDate,deliveryDate)=>{
-   const day=value=>{
-     const iso=String(value||'');
-     if(!/^\d{4}-\d{2}-\d{2}$/.test(iso))return null;
-     const timestamp=Date.parse(iso+'T00:00:00Z');
-     return Number.isFinite(timestamp)&&new Date(timestamp).toISOString().slice(0,10)===iso?timestamp:null;
-   };
-   const first=day(bookingDate),last=day(deliveryDate);
-   return first!==null&&last!==null&&last>=first?Math.round((last-first)/86400000)+1:null;
- };
 const showDate=value=>value?weekday(value)+', '+String(value).split('-').reverse().join('/'):'—';
 const compactShowDate=value=>value?weekday(value).slice(0,3)+', '+String(value).split('-').reverse().join('/'):'—';
 const employeeName=value=>String(value||'').split(/[._-]/).map(v=>v? v[0].toUpperCase()+v.slice(1):'').join(' ')||'—';
@@ -236,6 +226,7 @@ export default function BranchLoadsDashboard({currentUser}){
     setDraft(fresh(isAdmin&&filter!=='ALL'?filter:userBranch||'JIND'));
   }
   const totals=useMemo(()=>sumLedgerTotals(shown),[shown]); // current sheet footer / CSV
+  const tatSummary=useMemo(()=>summarizeBranchTat(shown),[shown]); // delivered-only, same branch/search filters
   const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]); // Active + Delivered
   // Every commodity may have an optional Extra Cost. Keep this column visible
   // and keep Total JEPO last, for consistent branch and CSV accounting.
@@ -463,6 +454,19 @@ export default function BranchLoadsDashboard({currentUser}){
     const anchor=document.createElement('a');anchor.href=url;anchor.download=filename+'.csv';anchor.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
+  function downloadTatSummaryCsv(){
+    if(sheet!=='DELIVERED')return;
+    const header=['Group','Name','Verified Deliveries','Average TAT (Days)','Fastest (Days)','Slowest (Days)'];
+    const rows=[
+      ...tatSummary.byService.map(item=>['Service',item.name,item.count,item.averageDays??'',item.fastest??'',item.slowest??'']),
+      ...tatSummary.byDestination.map(item=>['Destination',item.name,item.count,item.averageDays??'',item.fastest??'',item.slowest??''])
+    ];
+    const csv='\uFEFF'+[header,...rows].map(line=>line.map(safeCsvValue).join(',')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const anchor=document.createElement('a');anchor.href=url;
+    anchor.download='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase())+'-tat-summary.csv';
+    anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
   async function downloadExcel(){
     if(excelBusy)return;
     setExcelBusy(true);
@@ -502,6 +506,28 @@ export default function BranchLoadsDashboard({currentUser}){
       const totalRow=worksheet.getRow(data.length+1);
       totalRow.font={bold:true,color:{argb:'FF163B74'}};
       totalRow.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1FC'}};
+      if(sheet==='DELIVERED'){
+        for(const section of [
+          {title:'TAT by Service',key:'Service',items:tatSummary.byService},
+          {title:'TAT by Country',key:'Destination',items:tatSummary.byDestination}
+        ]){
+          const summarySheet=workbook.addWorksheet(section.title);
+          summarySheet.columns=[
+            {header:section.key,key:'name',width:24},
+            {header:'Verified Deliveries',key:'count',width:21},
+            {header:'Average TAT (Days)',key:'avg',width:22},
+            {header:'Fastest (Days)',key:'min',width:18},
+            {header:'Slowest (Days)',key:'max',width:18}
+          ];
+          for(const row of section.items)summarySheet.addRow([row.name,row.count,row.averageDays??'',row.fastest??'',row.slowest??'']);
+          summarySheet.getRow(1).eachCell(cell=>{
+            cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF174A91'}};
+            cell.font={bold:true,color:{argb:'FFFFFFFF'}};
+          });
+          summarySheet.views=[{state:'frozen',ySplit:1}];
+          summarySheet.getColumn(3).numFmt='0.0';
+        }
+      }
       const buffer=await workbook.xlsx.writeBuffer();
       const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
       const anchor=document.createElement('a');anchor.href=url;anchor.download=filename+'.xlsx';anchor.click();
@@ -725,6 +751,39 @@ export default function BranchLoadsDashboard({currentUser}){
         </table></div>
         <p className={styles.summaryHint}>Branch Amount = Amount − Paid to JEPO + Branch share of Extra Cost. This is branch earnings before any expenses not recorded in these loads.</p>
       </section>}
+      {sheet==='DELIVERED'&&<section className={styles.tatSummarySection} aria-label="Service and destination delivery TAT summary">
+        <div className={styles.tatSummaryHeading}>
+          <div>
+            <h2>Delivery TAT Summary</h2>
+            <p>Service-wise and destination-wise average delivery time, from booking to delivery (both dates included).</p>
+            <small>{tatSummary.verifiedCount} dated deliveries out of {tatSummary.deliveredCount} delivered loads
+              {tatSummary.missingDateCount>0&&' • '+tatSummary.missingDateCount+' without a valid delivery date excluded'}
+            </small>
+          </div>
+          <div className={styles.tatOverall}><strong>{tatSummary.averageDays===null?'—':tatSummary.averageDays.toFixed(1)+' days'}</strong><span>Overall average TAT</span></div>
+        </div>
+        <div className={styles.tatSummaryGrid}>
+          {[
+            {id:'services',title:'Company / Service-wise TAT',items:tatSummary.byService},
+            {id:'destinations',title:'Destination / Country-wise TAT',items:tatSummary.byDestination}
+          ].map(group=><div key={group.id} className={styles.tatSummaryCard}>
+            <h3>{group.title}</h3>
+            <div className={styles.tatTableScroll}>
+              <table className={styles.tatSummaryTable}>
+                <thead><tr><th>{group.id==='services'?'Service':'Country'}</th><th>Delivered*</th><th>Avg. days</th><th>Fastest</th><th>Slowest</th></tr></thead>
+                <tbody>{group.items.map(item=><tr key={item.name}>
+                  <td><strong>{item.name}</strong></td>
+                  <td>{item.count}</td>
+                  <td><strong>{item.averageDays===null?'—':item.averageDays.toFixed(1)}</strong></td>
+                  <td>{item.fastest===null?'—':item.fastest}</td>
+                  <td>{item.slowest===null?'—':item.slowest}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </div>)}
+        </div>
+        <p className={styles.tatSummaryNote}>*Only deliveries with valid booking and verified delivery dates. Average TAT = total inclusive TAT days ÷ verified deliveries. The branch selection and search filters apply here too. Missing dates show —, not an estimated TAT.</p>
+      </section>}
       {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
         <thead><tr>
@@ -751,6 +810,7 @@ export default function BranchLoadsDashboard({currentUser}){
           onClick={()=>void refreshJepo(matchingRows.filter(r=>r.trackingNo&&r.status!=='DELIVERED').slice(0,6))}>
           {liveBusy?'Checking JEPO…':'Refresh JEPO Live'}
         </button>}
+        {sheet==='DELIVERED'&&<button type="button" onClick={downloadTatSummaryCsv} disabled={!tatSummary.verifiedCount}>Download TAT Summary CSV</button>}
         <button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>
          <button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>
       </span>
