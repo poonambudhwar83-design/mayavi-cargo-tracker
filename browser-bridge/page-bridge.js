@@ -17,17 +17,18 @@
   function requestBrowserTrack(mawb,carrier){
     return new Promise(resolve=>{
       const requestId=`${carrier.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const timeout=carrier==='TURKISH'?190000:75000;
+      const timeout=carrier==='TURKISH'?190000:carrier==='GULF'?135000:75000;
       const timer=setTimeout(()=>{
         pending.delete(requestId);
         resolve({
           ok:false,
           trackingError:carrier==='TURKISH'
             ? 'Turkish browser verification timed out. Complete Press & Hold in the Turkish Cargo tab and refresh again.'
+            :carrier==='GULF'?'Gulf Air ParcelsApp browser read timed out.'
             : 'Saudia browser bridge timed out.',
-          officialTracker:carrier==='TURKISH'
-            ? 'https://www.turkishcargo.com/en/cargo-tracking'
-            : 'https://saudiacargo.com/en/digital-services?tab=trackShipment'
+          officialTracker:carrier==='GULF'?'https://parcelsapp.com/'
+            :carrier==='TURKISH'?'https://www.turkishcargo.com/en/cargo-tracking'
+            :'https://saudiacargo.com/en/digital-services?tab=trackShipment'
         });
       },timeout);
       pending.set(requestId,{resolve,timer});
@@ -52,6 +53,7 @@
     let carrier='';
     if(mawb.startsWith('065-'))carrier='SAUDIA';
     else if(mawb.startsWith('235-'))carrier='TURKISH';
+    else if(mawb.startsWith('072-'))carrier='GULF';
     else return originalFetch(input,init);
 
     const payload=await requestBrowserTrack(mawb,carrier);
