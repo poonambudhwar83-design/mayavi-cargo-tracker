@@ -98,8 +98,13 @@ assert.equal(dubaiResult.shipment.flightNo,'GF500');
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
-assert.ok(gulfSource.includes('const page=await publicPageLookup(mawb,GULF_PARCELS_URL);'),
-  'Gulf Air carrier-specific Track Cargo page must be tried first.');
+assert.ok(gulfSource.includes('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
+  'Start Gulf Air checks on parcelsapp.com and use the visible Track Package button.');
+assert.ok(gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);')<
+  gulfSource.indexOf('const carrierPage=await publicPageLookup(mawb,GULF_PARCELS_URL);'),
+  'The main ParcelsApp Track Package flow must run before the Gulf carrier fallback.');
+assert.ok(gulfSource.includes("PARCELS_TRACK_PACKAGE_URL='https://parcelsapp.com/'"),
+  'The owner supplied parcelsapp.com homepage as the entry point.');
 assert.ok(gulfSource.includes("reason:'PARCELS PUBLIC TRACKER API RETURNED NO_DATA'"),
   'If ParcelsApp has no current data, report NO_DATA rather than invent a status.');
 assert.ok(!gulfSource.includes("keyboard.press('Control+A')"),
@@ -107,6 +112,10 @@ assert.ok(!gulfSource.includes("keyboard.press('Control+A')"),
 assert.ok(gulfSource.includes("await button.click({delay:100})"),
   'The real ParcelsApp Track Cargo button must be clicked.');
 assert.ok(gulfCron.includes("awb LIKE '072%'"), 'Scheduled checks must include only Gulf Air 072 shipments.');
+assert.ok(gulfCron.includes("origin=process.env.VERCEL_ENV==='production'"),
+  'Dedicated hourly Gulf Air cron must not call SSO-protected Vercel deployment hostname.');
+assert.ok(gulfCron.includes("'https://tracker.mayavicargo.com'"),
+  'Production Gulf Air checks must use the public Mayavi tracker URL.');
 assert.ok(gulfCron.includes("data=data||"), 'Refreshes must preserve existing shipment metadata and manual fields.');
 assert.ok(gulfCron.includes("backendGulfError"), 'Source failure must be saved as technical diagnostic.');
 assert.ok(gulfCron.includes("Promise.allSettled"), 'All current 072 AWBs should be checked in parallel.');
