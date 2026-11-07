@@ -50,6 +50,7 @@ import { acceptAirIndiaDatedEta, flightInfoAirIndiaEta, latestAirIndiaEventDate 
 import { parseAirIndiaTrackingView, recentAirIndiaTrackingEta } from '../../../lib/airIndiaTrackingView.js';
 import { normalizeShipmentTimesToIst } from '../../../lib/exportIst.js';
 import { mergePartMail, mergePartCustoms, mergeEmiratesPartCustoms } from '../../../lib/partMail.js';
+import { safeAirlineMovementPatch } from '../../../lib/activeAirlineCron.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -286,6 +287,60 @@ async function persistEmiratesSplitResult(mawb,shipment={}){
       WHERE awb=${awb} AND version=${current.version}
       RETURNING awb`;
     if(saved)return{saved:true};
+  }
+  return{saved:false,reason:'CONCURRENT_UPDATE'};
+}
+
+/**
+ * Verified EK movements must persist for non-split masters, not only split ARR.
+ * The CAS and movement-only patch preserve client, Mail, Customs and charges.
+ */
+async function persistEmiratesLiveResult(mawb,shipment={},officialAwbMatched=false){
+  // Save a verified Emirates shipment even when it has only one physical load.
+  // Older code only persisted split loads with an actual arrival timestamp.
+  if(!mawb.startsWith('176-')||officialAwbMatched!==true||
+     normalizeMawb(shipment.mawb)!==mawb||
+     !String(shipment.source||'').includes('Emirates eSkyCargo'))
+    return{saved:false,reason:'EK_OFFICIAL_AWB_NOT_VERIFIED'};
+  if(!concrete(shipment)||!shipment.status||shipment.status==='TRACKING')
+    return{saved:false,reason:'EK_NO_VERIFIED_MOVEMENT'};
+  const freshParts=Array.isArray(shipment.partShipments)?shipment.partShipments:[];
+  if(freshParts.length>=2&&freshParts.some(p=>
+    p.arrivalIsActual===true&&p.arrivalDate&&p.arrivalTime))
+    return persistEmiratesSplitResult(mawb,shipment);
+  const url=trackingDbUrl();
+  if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
+  const sql=neon(url),awb=mawb.replace(/\D/g,'');
+  for(let attempt=0;attempt<5;attempt++){
+    const [current]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+    if(!current)return{saved:false,reason:'MAWB_NOT_REGISTERED'};
+    const stored=current.data||{};
+    const patch=safeAirlineMovementPatch(stored,shipment);
+    if(!patch)return{saved:false,reason:'EK_NO_MOVEMENT_PATCH'};
+    const preserveActual=stored.arrivalIsActual===true&&shipment.arrivalIsActual!==true;
+    for(const key of ['arrivalEvidence','loadStatus','discrepancy',
+      'pendingPieces','pendingWeight','source']){
+      const value=shipment[key];
+      if(value===null||value===undefined||value==='')continue;
+      if(preserveActual&&key==='arrivalEvidence')continue;
+      patch[key]=value;
+    }
+    if(freshParts.length>=2){
+      const oldParts=Array.isArray(stored.partShipments)?stored.partShipments:[];
+      patch.partShipments=mergeEmiratesPartCustoms(
+        mergePartMail(freshParts,oldParts),oldParts);
+    }else{
+      // An aggregate result must not destroy the physical part ledger.
+      delete patch.partShipments;
+    }
+    patch.lastChecked=new Date().toISOString();
+    patch.trackingError='';
+    patch.manualHint='';
+    const saved=await sql`UPDATE mayavi_shipments
+      SET data=data||${JSON.stringify(patch)}::jsonb,
+          version=version+1,updated_at=now(),tracking_checked_at=now()
+      WHERE awb=${awb} AND version=${current.version} RETURNING awb`;
+    if(saved?.length)return{saved:true};
   }
   return{saved:false,reason:'CONCURRENT_UPDATE'};
 }
@@ -1960,8 +2015,12 @@ async function handle(mawb,fallback={}){
   if(hasUseful){
     let serverSaved=false;
     if(mawb.startsWith('176-')){
-      try{serverSaved=(await persistEmiratesSplitResult(mawb,shipment)).saved===true;}
-      catch(e){console.log('emirates_split_save_error',mawb,e?.message||String(e));}
+      try{
+        const save=await persistEmiratesLiveResult(mawb,shipment,
+          directResult?.ok===true&&directResult?.debug?.awbMatched===true);
+        serverSaved=save.saved===true;
+        if(!serverSaved)console.warn('emirates_live_save_skipped',mawb,save.reason||'UNKNOWN');
+      }catch(e){console.error('emirates_live_save_error',mawb,e?.message||String(e));}
     }else if(saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology')&&Array.isArray(shipment.partShipments)&&shipment.partShipments.length>=2&&Number(shipment.totalPieces||0)>0&&shipment.partShipments.reduce((n,p)=>n+Number(p.pieces||0),0)===Number(shipment.totalPieces||0)&&Math.abs(shipment.partShipments.reduce((n,p)=>n+Number(p.weight||0),0)-Number(shipment.totalWeight||0))<1){
       // The verified SAL Parts/Events chronology is authoritative. Save it
       // immediately to the shared record; do not depend on a browser login or

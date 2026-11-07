@@ -92,7 +92,15 @@ export async function GET(request){
     const all=await sql`SELECT awb,data,tracking_checked_at,updated_at
       FROM mayavi_shipments ORDER BY updated_at DESC`;
     const now=new Date();
-    const selected=activeAirlineCandidates(all,now,BATCH_SIZE);
+    // Reserve two places for overdue EK checks without expanding concurrency.
+    const ekDue=activeAirlineCandidates(
+      all.filter(row=>digits(row.awb).startsWith('176')),now,2);
+    const regular=activeAirlineCandidates(all,now,BATCH_SIZE);
+    const seen=new Set();
+    const selected=[...ekDue,...regular].filter(row=>{
+      if(seen.has(row.awb))return false;
+      seen.add(row.awb);return true;
+    }).slice(0,BATCH_SIZE);
     // Scheduled cron calls arrive on a Vercel deployment hostname, which may
     // be protected by SSO. Call the public production custom domain instead
     // so internal /api/track requests reach the airline adapters.

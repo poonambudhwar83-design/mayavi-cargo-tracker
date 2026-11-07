@@ -27,6 +27,26 @@ assert.deepEqual(selected.map(x=>x.awb),[
 ].sort().sort((a,b)=>a.localeCompare(b)));
 assert.ok(selected.every(x=>!x.awb.startsWith('072')));
 assert.ok(selected.length<=BATCH_SIZE);
+// EK recent Customs Cleared remains eligible, without refreshing old archives.
+const ekCleared=activeAirlineCandidates([
+  entry('176-21773006',{customsCleared:true,customsClearedAt:'2026-11-01T01:00:00Z'}),
+  entry('176-64478676',{customsCleared:false}),
+  entry('176-21775515',{customsCleared:true,customsClearedAt:'2026-10-20T01:00:00Z'}),
+  entry('160-18860310',{customsCleared:true,customsClearedAt:'2026-11-01T01:00:00Z'})
+],now);
+assert.ok(ekCleared.some(r=>r.awb==='17621773006'));
+assert.ok(ekCleared.some(r=>r.awb==='17664478676'));
+assert.ok(!ekCleared.some(r=>r.awb==='17621775515'));
+assert.ok(!ekCleared.some(r=>r.awb==='16018860310'));
+const ekSafe=safeAirlineMovementPatch(
+ {status:'BOOKED',clientName:'EXISTING',mailSent:true,customsCleared:false},
+ {status:'BOOKED',flightNo:'EK0510',origin:'KWI',destination:'DEL',
+  pieces:'102',weight:'2935',arrivalDate:'2026-11-09',arrivalTime:'08:55',
+  arrivalIsActual:false,clientName:'WRONG',customsCleared:true});
+assert.equal(ekSafe.flightNo,'EK0510');
+assert.equal(ekSafe.weight,'2935');
+assert.equal(ekSafe.arrivalDate,'2026-11-09');
+assert.ok(!('clientName' in ekSafe)&&!('customsCleared' in ekSafe));
 const verified=safeAirlineMovementPatch(
   {status:'MANIFESTED',arrivalIsActual:false,clientName:'ACME',mailSent:true,
     customsCleared:false},
