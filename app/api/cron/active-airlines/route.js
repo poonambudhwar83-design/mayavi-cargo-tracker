@@ -7,7 +7,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=260;
 
-const CONCURRENCY=3;
+const CONCURRENCY=2; // avoid simultaneous Chromium resource exhaustion during airline checks
 const REQUEST_TIMEOUT_MS=75000;
 const digits=value=>String(value||'').replace(/\D/g,'');
 const dbUrl=()=>process.env.DATABASE_URL||process.env.POSTGRES_URL||
