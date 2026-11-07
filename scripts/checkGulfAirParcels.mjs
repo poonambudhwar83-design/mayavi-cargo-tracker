@@ -182,8 +182,10 @@ const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
 assert.ok(gulfSource.includes('collectGulfAirParcelsHistory(resultPage)'),
   'Gulf tracking page must be fully scrolled before classifying part-load status.');
+assert.ok(gulfSource.includes('const trackingNumber=mawb;'),
+  'Gulf licensed API must use the documented hyphenated 3+8 AWB, unlike the public web form.');
 assert.ok(gulfSource.includes("body:JSON.stringify({language:'en',shipments:[{tracking_number:trackingNumber,carrier_hint:'gulf-air-cargo'}]})"),
-  'Gulf licensed API fallback must use digits-only tracking number.');
+  'Gulf licensed API request must include a carrier hint.');
 assert.ok(gulfSource.includes("const actual=await page.evaluate(el=>String(el.value||''),input)"),
   'Gulf AWB field validation must reject hyphens rather than stripping them.');
 assert.ok(gulfSource.includes('submittedTracking:submittedTracking.slice(-3)'),
