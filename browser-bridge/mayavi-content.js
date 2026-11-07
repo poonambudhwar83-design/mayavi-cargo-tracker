@@ -10,16 +10,16 @@
     const data=event.data||{};
     if(data.source!=='MAYAVI_CARGO_PAGE'||data.type!=='TRACK_REQUEST')return;
     const carrier=String(data.carrier||'').toUpperCase();
-    const type=carrier==='GULF'?'TRACK_GULF':carrier==='TURKISH'?'TRACK_TURKISH':'TRACK_SAUDIA';
+    const type=carrier==='TURKISH'?'TRACK_TURKISH':'TRACK_SAUDIA';
     let payload;
     try{
       payload=await chrome.runtime.sendMessage({type,mawb:data.mawb});
     }catch(error){
       payload={
         ok:false,
-        trackingError:`${carrier==='GULF'?'Gulf Air':carrier==='TURKISH'?'Turkish':'Saudia'} browser bridge error: ${error?.message||error}`,
-        officialTracker:carrier==='GULF'?'https://parcelsapp.com/'
-          :carrier==='TURKISH'?'https://www.turkishcargo.com/en/cargo-tracking'
+        trackingError:`${carrier==='TURKISH'?'Turkish':'Saudia'} browser bridge error: ${error?.message||error}`,
+        officialTracker:carrier==='TURKISH'
+          ?'https://www.turkishcargo.com/en/cargo-tracking'
           :'https://saudiacargo.com/en/digital-services?tab=trackShipment'
       };
     }
