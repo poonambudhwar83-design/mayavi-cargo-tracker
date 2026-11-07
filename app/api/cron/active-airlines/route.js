@@ -93,7 +93,11 @@ export async function GET(request){
       FROM mayavi_shipments ORDER BY updated_at DESC`;
     const now=new Date();
     const selected=activeAirlineCandidates(all,now,BATCH_SIZE);
-    const origin=new URL(request.url).origin;
+    // Scheduled cron calls arrive on a Vercel deployment hostname, which may
+    // be protected by SSO. Call the public production custom domain instead
+    // so internal /api/track requests reach the airline adapters.
+    const origin=process.env.VERCEL_ENV==='production'
+      ?'https://tracker.mayavicargo.com':new URL(request.url).origin;
     const results=[];
     for(let i=0;i<selected.length;i+=CONCURRENCY){
       const round=await Promise.allSettled(selected.slice(i,i+CONCURRENCY)
