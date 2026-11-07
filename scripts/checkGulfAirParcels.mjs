@@ -95,6 +95,50 @@ assert.deepEqual(dubaiResult.shipment.bookedFlights,['GF131','GF500']);
 assert.equal(dubaiResult.shipment.flightLegs.length,2);
 assert.equal(dubaiResult.shipment.flightNo,'GF500');
 
+
+// 7 Nov user screenshot: 072-95019411 contains two physical loads:
+// 24/55 pieces (550/1260 kg) on GF130 departed from BAH, and
+// 31/55 pieces (710/1260 kg) on GF134 only booked. Repeated DEP,
+// PRE, MAN, BKD for GF130 are the same bags, not 4 physical loads.
+const splitAwb='072-95019411';
+const splitRows=[
+  '05 Nov 2026 22:46 Departed (DEP). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain',
+  '05 Nov 2026 22:30 Departed on Flight (DEP). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain',
+  '05 Nov 2026 18:10 Pre-Manifested on Flight (PRE). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain',
+  '05 Nov 2026 18:10 Manifested on Flight (MAN). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain',
+  '05 Nov 2026 17:07 Booked on Flight (BKD). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 31, weight: 710.0 Bahrain Intl (BAH), Bahrain',
+  '05 Nov 2026 17:07 Booked on Flight (BKD). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain'
+];
+const split=parseGulfAirParcelsPage({
+  resultText:'Tracking number\n07295019411',
+  rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH), Bahrain\nTo\nIndira Gandhi Intl (DEL), Delhi\nWeight\n1260.0 kg\nPieces\n55',
+  leftText:'AWB 07295019411\n'+splitRows.join('\n'),
+  timelineRows:splitRows
+},splitAwb);
+assert.equal(split.ok,true,split.reason);
+assert.equal(split.shipment.isPartLoad,true);
+assert.equal(split.shipment.partShipments.length,2);
+assert.equal(split.shipment.totalPieces,55);
+assert.equal(split.shipment.totalWeight,1260);
+assert.equal(split.shipment.partShipments.reduce((n,p)=>n+p.pieces,0),55);
+assert.equal(split.shipment.partShipments.reduce((n,p)=>n+p.weight,0),1260);
+const gf130=split.shipment.partShipments.find(p=>p.flightNo==='GF130');
+const gf134=split.shipment.partShipments.find(p=>p.flightNo==='GF134');
+assert.equal(gf130.pieces,24);assert.equal(gf130.weight,550);
+assert.equal(gf130.status,'DEPARTED');assert.equal(gf130.departureIsActual,true);
+assert.equal(gf130.departureTimeZone,'IST');
+assert.equal(gf130.departureDate,'2026-11-06');assert.equal(gf130.departureTime,'01:16');
+assert.equal(gf134.pieces,31);assert.equal(gf134.weight,710);
+assert.equal(gf134.status,'BOOKED');assert.equal(gf134.departureIsActual,false);
+assert.equal(gf130.arrivalIsActual,false);assert.equal(gf134.arrivalIsActual,false);
+assert.equal(split.shipment.arrivalDate,'');
+assert.equal(split.shipment.arrivedPieces,0);
+assert.equal(split.shipment.pendingPieces,55);
+
+const dashboardSource=readFileSync('app/DashboardClient.js','utf8');
+assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"),
+  'Gulf Air 072 is eligible for independent physical part rows.');
+
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
