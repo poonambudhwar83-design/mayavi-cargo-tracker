@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {POST as parseGulfBrowserResult} from '../app/api/gulf-parse/route.js';
 import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm,collectGulfAirParcelsHistory,parcelsTrackingDigits} from '../lib/gulfAirParcels.js';
 // Regardless of how Mayavi stores/formats a master, ParcelsApp always gets
 // the complete eleven digit tracking number without spaces or a hyphen.
@@ -219,6 +220,26 @@ assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/jepo-branches'&&r.sched
 
 // Gulf-only normal Chrome bridge: reads an AWB-matched ParcelsApp page even
 // when the Vercel headless server sees NO_DATA. Other airline routing is intact.
+const browserResult=await parseGulfBrowserResult(new Request('https://tracker.mayavicargo.com/api/gulf-parse',{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({mawb:splitAwb,dom:{
+    resultText:'AWB '+splitAwb,
+    leftText:'AWB '+splitAwb+'\\n'+splitRows.join('\\n'),
+    rightText:'Tracking number\\n07295019411\\nFrom\\nBahrain Intl (BAH), Bahrain\\nTo\\nIndira Gandhi Intl (DEL), Delhi\\nWeight\\n1260.0 kg\\nPieces\\n55',
+    timelineRows:splitRows
+  }})
+}));
+assert.equal(browserResult.status,200,'Gulf normal Chrome result parser must accept AWB-verified tracking');
+const browserParsed=await browserResult.json();
+assert.equal(browserParsed.shipment.partShipments.length,2);
+assert.equal(browserParsed.shipment.partShipments.reduce((a,p)=>a+Number(p.pieces),0),55);
+assert.match(browserParsed.shipment.source,/browser session/i);
+const unsafe=await parseGulfBrowserResult(new Request('https://tracker.mayavicargo.com/api/gulf-parse',{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({mawb:'06511493672',dom:{resultText:'',leftText:'',rightText:'',timelineRows:[]}})
+}));
+assert.equal(unsafe.status,400,'Only Gulf Air 072 data can enter this isolated parser');
+
 const bridgeManifest=JSON.parse(readFileSync('browser-bridge/manifest.json','utf8'));
 const gulfContent=readFileSync('browser-bridge/gulf-content.js','utf8');
 const bridgeBackground=readFileSync('browser-bridge/background.js','utf8');
