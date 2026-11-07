@@ -150,7 +150,10 @@ async function fetchJsonWithRetry(url,options={},attempts=3,label='request'){
 export async function GET(request){
   const secret=process.env.CRON_SECRET;
   if(secret&&request.headers.get('authorization')!==`Bearer ${secret}`)return Response.json({ok:false,error:'Unauthorized'},{status:401});
-  const origin=new URL(request.url).origin;
+  // Vercel schedules call the deployment hostname, which can be protected
+  // by SSO. Use the unprotected custom production domain for self-requests.
+  const origin=process.env.VERCEL_ENV==='production'
+    ?'https://tracker.mayavicargo.com':new URL(request.url).origin;
   const internalKey=cronInternalKey();
   const internalHeaders=internalKey?{'x-mayavi-internal-key':internalKey}:{};
 
