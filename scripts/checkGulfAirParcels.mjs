@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm,collectGulfAirParcelsHistory} from '../lib/gulfAirParcels.js';
+import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm,collectGulfAirParcelsHistory,parcelsTrackingDigits} from '../lib/gulfAirParcels.js';
+// Regardless of how Mayavi stores/formats a master, ParcelsApp always gets
+// the complete eleven digit tracking number without spaces or a hyphen.
+assert.equal(parcelsTrackingDigits('072-95019411'),'07295019411');
+assert.equal(parcelsTrackingDigits('07295019411'),'07295019411');
+assert.equal(parcelsTrackingDigits('065-11493904'),'');
 const awb='072-95056684';
 const fixture={results:[{tracking_number:awb,shipment:{
   trackingId:awb,fromAirport:'LHR',toAirport:'DEL',pieces:17,weight:442.6,
@@ -64,6 +69,8 @@ const browserMock={
 const submission=await submitGulfAirParcelsForm(browserMock,awb);
 assert.equal(submission.ok,true);
 assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
+assert.equal(submission.awbEntered,'07295056684');
+assert.equal(inputEl.value,'07295056684');
 assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
 
 
@@ -175,6 +182,12 @@ const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
 assert.ok(gulfSource.includes('collectGulfAirParcelsHistory(resultPage)'),
   'Gulf tracking page must be fully scrolled before classifying part-load status.');
+assert.ok(gulfSource.includes("body:JSON.stringify({language:'en',shipments:[{tracking_number:trackingNumber,carrier_hint:'gulf-air-cargo'}]})"),
+  'Gulf licensed API fallback must use digits-only tracking number.');
+assert.ok(gulfSource.includes("const actual=await page.evaluate(el=>String(el.value||''),input)"),
+  'Gulf AWB field validation must reject hyphens rather than stripping them.');
+assert.ok(gulfSource.includes('submittedTracking:submittedTracking.slice(-3)'),
+  'Gulf-only diagnostics should confirm whether ParcelsApp received the full 11 digits.');
 assert.ok(gulfSource.includes('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
   'Start Gulf Air checks on parcelsapp.com and use the visible Track Package button.');
 assert.ok(gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);')<
