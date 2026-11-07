@@ -36,6 +36,23 @@ assert.equal(readableGulfFailure({code:'CAPTCHA_QUOTA_EXCEEDED'}),'CAPTCHA_QUOTA
 assert.equal(readableGulfFailure(new Error('CHAMP timeout')),'CHAMP timeout');
 assert.ok(!readableGulfFailure({error:{message:'Access denied'}}).includes('[object Object]'),
   'Stored Gulf tracking errors must never lose structured provider meaning.');
+
+// If the first-party Falcon Cargo browser returns 24/55 and 31/55 physical
+// events, both parts are visible, not collapsed into one master or duplicated.
+const splitAwb='072-95019411';
+const splitHeader='AWB Number: '+splitAwb+'\nOrigin: BAH\nDestination: DEL\nGross Weight: 1260 KG\nPieces: 55';
+const splitOfficial=parseGulfAirTrackingPage({text:splitHeader,tables:[[
+  ['DEP','BAH','05-NOV-2026 22:46','GF130 pieces: 24 weight: 550 KG'],
+  ['DEP','BAH','06-NOV-2026 09:10','GF134 pieces: 31 weight: 710 KG'],
+  ['BKD','BAH','05-NOV-2026 17:07','GF130 pieces: 24 weight: 550 KG']
+]]},splitAwb);
+assert.equal(splitOfficial.ok,true,splitOfficial.reason);
+assert.equal(splitOfficial.shipment.partShipments.length,2);
+assert.equal(splitOfficial.shipment.partShipments.find(p=>p.flightNo==='GF130')?.status,'DEPARTED');
+assert.equal(splitOfficial.shipment.partShipments.find(p=>p.flightNo==='GF134')?.status,'DEPARTED');
+assert.equal(splitOfficial.shipment.partShipments.reduce((n,p)=>n+p.pieces,0),55);
+assert.equal(splitOfficial.shipment.arrivalDate,'');
+
 const gulfCode=readFileSync('lib/gulfAir.js','utf8');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 assert.ok(gulfCode.includes("GULF_AIR_PUBLIC_CARGO_URL='https://www.gulfair.com/cargo'"),
