@@ -24,7 +24,10 @@ async function trackOne(sql,origin,key,row){
   const checkedAt=new Date().toISOString();
   let result=null,reason='';
   try{
-    const response=await fetch(origin+'/api/track',{
+    // Run Gulf-only lookups through the dedicated Mumbai function, instead of
+    // the US-region generic tracker. This route delegates to the same shared
+    // AWB-verified logic but isolates the Gulf carrier and its source region.
+    const response=await fetch(origin+'/api/gulf-track',{
       method:'POST',cache:'no-store',
       headers:{'content-type':'application/json','x-mayavi-internal-key':key},
       body:JSON.stringify({mawb,currentShipment:row.data||{}}),
