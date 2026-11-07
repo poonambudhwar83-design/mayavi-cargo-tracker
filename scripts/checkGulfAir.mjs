@@ -42,6 +42,12 @@ assert.ok(gulfCode.includes("GULF_AIR_PUBLIC_CARGO_URL='https://www.gulfair.com/
   'Use first-party Gulf Air Falcon Cargo tracking form.');
 assert.ok(gulfCode.includes('const publicCargo=await searchGulfAirPublicCargo(page,mawb)'),
   'Try first-party Gulf cargo before CHAMP fallback.');
+assert.ok(gulfCode.includes("const inputs=await frame.$('input').catch(()=>[])"),
+  'First-party Gulf Air AWB inputs must be returned as an iterable list.');
+assert.ok(gulfCode.includes("const controls=await frame.$('button,input[type=\"submit\"],a,[role=\"button\"]').catch(()=>[])"),
+  'First-party Gulf Air buttons must be returned as an iterable list.');
+assert.ok(!gulfCode.includes("const inputs=await frame.$('input').catch(()=>[])"),
+  'Do not regress the scalar-ElementHandle iterable error.');
 assert.ok(gulfCode.includes('await button.click({delay:100})'),
   'Public Gulf page must click its actual Track your cargo control.');
 assert.ok(gulfCode.includes('parseGulfAirTrackingPage({...lastDom,officialTracker:GULF_AIR_PUBLIC_CARGO_URL},mawb)'),
