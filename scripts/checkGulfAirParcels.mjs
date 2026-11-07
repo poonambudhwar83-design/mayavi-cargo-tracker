@@ -224,8 +224,8 @@ const browserResult=await parseGulfBrowserResult(new Request('https://tracker.ma
   method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify({mawb:splitAwb,dom:{
     resultText:'AWB '+splitAwb,
-    leftText:'AWB '+splitAwb+'\\n'+splitRows.join('\\n'),
-    rightText:'Tracking number\\n07295019411\\nFrom\\nBahrain Intl (BAH), Bahrain\\nTo\\nIndira Gandhi Intl (DEL), Delhi\\nWeight\\n1260.0 kg\\nPieces\\n55',
+    leftText:'AWB '+splitAwb+'\n'+splitRows.join('\n'),
+    rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH), Bahrain\nTo\nIndira Gandhi Intl (DEL), Delhi\nWeight\n1260.0 kg\nPieces\n55',
     timelineRows:splitRows
   }})
 }));
