@@ -73,63 +73,6 @@ async function runTurkish(mawb,returnTabId){
   }
 }
 
-// Gulf Air 072: use normal Chrome's ParcelsApp session, not a Vercel headless
-// datacenter browser. Do not manipulate CAPTCHA/human-verification controls.
-async function runGulf(mawb,returnTabId){
-  const tracking=String(mawb||'').replace(/\\D/g,'');
-  if(!/^072\\d{8}$/.test(tracking))
-    return{ok:false,trackingError:'Invalid Gulf Air 072 MAWB.'};
-  let tab,created=false;
-  const resultUrl='https://parcelsapp.com/en/tracking/'+tracking;
-  try{
-    const existing=await chrome.tabs.query({url:['https://parcelsapp.com/en/tracking/*',
-      'https://www.parcelsapp.com/en/tracking/*']});
-    tab=existing.find(t=>t.url?.includes('/tracking/'+tracking));
-    if(!tab){
-      tab=await chrome.tabs.create({url:'https://parcelsapp.com/',active:false});
-      created=true;
-      await waitForComplete(tab.id,35000);
-      await sleep(1100);
-      const submission=await chrome.tabs.sendMessage(tab.id,{type:'GULF_SUBMIT',mawb:tracking});
-      if(!submission?.ok)
-        return{ok:false,trackingError:submission?.reason||'ParcelsApp form submission failed',officialTracker:resultUrl};
-      // Full 11-digit submission navigates to /en/tracking/<AWB>.
-      await sleep(1200);
-      await waitForComplete(tab.id,35000).catch(()=>{});
-    }
-    await sleep(1400);
-    let dom=null,reason='';
-    for(let attempt=0;attempt<4;attempt++){
-      const current=await chrome.tabs.query({url:['https://parcelsapp.com/en/tracking/*',
-        'https://www.parcelsapp.com/en/tracking/*']});
-      const target=current.find(t=>t.url?.includes('/tracking/'+tracking));
-      if(target)tab=target;
-      try{
-        const response=await chrome.tabs.sendMessage(tab.id,{type:'GULF_READ',mawb:tracking});
-        if(response?.ok){dom=response.dom;break;}
-        reason=response?.reason||'No AWB-verified history in Chrome';
-      }catch(error){reason=String(error?.message||error);}
-      await sleep(1700);
-    }
-    if(!dom)return{ok:false,trackingError:reason||'ParcelsApp result did not load',officialTracker:resultUrl};
-    const response=await fetch('https://tracker.mayavicargo.com/api/gulf-parse',{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({mawb:tracking,dom}),
-      signal:AbortSignal.timeout(35000)
-    });
-    const parsed=await response.json().catch(()=>({ok:false,trackingError:'Gulf browser result parse failed'}));
-    if(!parsed?.ok)return{ok:false,trackingError:parsed.trackingError||parsed.error||
-      'ParcelsApp Gulf Air results could not be verified',officialTracker:resultUrl};
-    return parsed;
-  }catch(error){
-    return{ok:false,trackingError:'Gulf Air Chrome session: '+String(error?.message||error),
-      officialTracker:resultUrl};
-  }finally{
-    if(created&&tab?.id)chrome.tabs.remove(tab.id).catch(()=>{});
-    if(returnTabId)chrome.tabs.update(returnTabId,{active:true}).catch(()=>{});
-  }
-}
-
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.type==='TRACK_SAUDIA'){
     runSaudia(message.mawb).then(sendResponse);
@@ -137,10 +80,6 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   }
   if(message?.type==='TRACK_TURKISH'){
     runTurkish(message.mawb,sender?.tab?.id).then(sendResponse);
-    return true;
-  }
-  if(message?.type==='TRACK_GULF'){
-    runGulf(message.mawb,sender?.tab?.id).then(sendResponse);
     return true;
   }
 });
