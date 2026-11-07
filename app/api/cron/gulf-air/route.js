@@ -83,7 +83,11 @@ export async function GET(request){
       WHERE awb LIKE '072%' AND LENGTH(awb)=11
       ORDER BY NULLIF(data->>'backendGulfAttemptAt','')::timestamptz ASC NULLS FIRST,awb ASC
       LIMIT 3`;
-    const origin=new URL(request.url).origin;
+    // Vercel cron arrives on a protected deployment hostname; that hostname
+    // returns 401 for internal tracking calls. Use the public production
+    // custom domain while preserving the Gulf-only 072 query.
+    const origin=process.env.VERCEL_ENV==='production'
+      ?'https://tracker.mayavicargo.com':new URL(request.url).origin;
     const output=await Promise.allSettled(candidates.map(row=>trackOne(sql,origin,key,row)));
     const results=output.map((item,i)=>item.status==='fulfilled'?item.value:
       {mawb:candidates[i]?.awb,verified:false,error:String(item.reason?.message||item.reason).slice(0,250)});
