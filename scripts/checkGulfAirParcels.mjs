@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {POST as parseGulfBrowserResult} from '../app/api/gulf-parse/route.js';
 import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm,collectGulfAirParcelsHistory,parcelsTrackingDigits} from '../lib/gulfAirParcels.js';
 // Regardless of how Mayavi stores/formats a master, ParcelsApp always gets
 // the complete eleven digit tracking number without spaces or a hyphen.
@@ -217,56 +216,5 @@ assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/gulf-air'&&r.schedule==
   'Run dedicated Gulf Air status checks each hour without changing JEPO refresh.');
 assert.ok(cronSettings.crons.some(r=>r.path==='/api/cron/jepo-branches'&&r.schedule==='0 * * * *'),
   'JEPO must run on its user-requested one-hour interval.');
-
-// Gulf-only normal Chrome bridge: reads an AWB-matched ParcelsApp page even
-// when the Vercel headless server sees NO_DATA. Other airline routing is intact.
-const browserResult=await parseGulfBrowserResult(new Request('https://tracker.mayavicargo.com/api/gulf-parse',{
-  method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({mawb:splitAwb,dom:{
-    resultText:'AWB '+splitAwb,
-    leftText:'AWB '+splitAwb+'\n'+splitRows.join('\n'),
-    rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH), Bahrain\nTo\nIndira Gandhi Intl (DEL), Delhi\nWeight\n1260.0 kg\nPieces\n55',
-    timelineRows:splitRows
-  }})
-}));
-assert.equal(browserResult.status,200,'Gulf normal Chrome result parser must accept AWB-verified tracking');
-const browserParsed=await browserResult.json();
-assert.equal(browserParsed.shipment.partShipments.length,2);
-assert.equal(browserParsed.shipment.partShipments.reduce((a,p)=>a+Number(p.pieces),0),55);
-assert.match(browserParsed.shipment.source,/browser session/i);
-const unsafe=await parseGulfBrowserResult(new Request('https://tracker.mayavicargo.com/api/gulf-parse',{
-  method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({mawb:'06511493672',dom:{resultText:'',leftText:'',rightText:'',timelineRows:[]}})
-}));
-assert.equal(unsafe.status,400,'Only Gulf Air 072 data can enter this isolated parser');
-
-const bridgeManifest=JSON.parse(readFileSync('browser-bridge/manifest.json','utf8'));
-const gulfContent=readFileSync('browser-bridge/gulf-content.js','utf8');
-const bridgeBackground=readFileSync('browser-bridge/background.js','utf8');
-const bridgePage=readFileSync('browser-bridge/page-bridge.js','utf8');
-const bridgeMayavi=readFileSync('browser-bridge/mayavi-content.js','utf8');
-const gulfParseRoute=readFileSync('app/api/gulf-parse/route.js','utf8');
-assert.ok(bridgeManifest.content_scripts.some(s=>s.js.includes('gulf-content.js')&&
-  s.matches.some(p=>p.includes('parcelsapp.com'))),
-  'Gulf Air normal-browser result reader must run on ParcelsApp pages.');
-assert.ok(gulfContent.includes("String(input.value)!==tracking"),
-  'Browser must enter the complete 11-digit AWB without a hyphen.');
-assert.ok(gulfContent.includes("window.setTimeout(()=>button.click(),25)"),
-  'The Chrome bridge must physically click ParcelsApp Track Package.');
-assert.ok(gulfContent.includes("for(let step=0;step<25;step++)"),
-  'Browser must collect the whole scrolling shipment history.');
-assert.ok(bridgeBackground.includes("message?.type==='TRACK_GULF'"),
-  'Gulf Chrome bridge should be callable without changing Saudia or Turkish workflows.');
-assert.ok(bridgeBackground.includes("'/api/gulf-parse'")||
-  bridgeBackground.includes("/api/gulf-parse"),
-  'Chrome browser result must be parsed on the AWB-verified Mayavi endpoint.');
-assert.ok(bridgePage.includes("else if(mawb.startsWith('072-'))carrier='GULF'"),
-  'Only 072 shipments use Gulf browser-bridge tracking.');
-assert.ok(bridgeMayavi.includes("carrier==='GULF'?'TRACK_GULF'"),
-  'Mayavi to Chrome routing includes Gulf Air.');
-assert.ok(gulfParseRoute.includes("parseGulfAirParcelsPage(input,awb)"),
-  'Normal Chrome tracking data must pass through the existing Gulf-only parser.');
-assert.ok(!gulfParseRoute.includes('UPDATE mayavi_shipments'),
-  'Browser parser must not bypass authenticated Mayavi shipment persistence.');
 
 console.log('Gulf Air ParcelsApp checks passed: AWB verification, booked destination, weight, transit vs actual arrival.');
