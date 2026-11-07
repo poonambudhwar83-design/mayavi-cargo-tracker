@@ -57,6 +57,12 @@
     },
     "app/api/cron/gulf-air/route.js": {
       "maxDuration": 300
+    },
+    "app/api/gulf-track/route.js": {
+      "maxDuration": 300,
+      "regions": [
+        "bom1"
+      ]
     }
   },
   "crons": [
