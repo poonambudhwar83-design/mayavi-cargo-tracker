@@ -56,9 +56,9 @@ const locked = Object.freeze({
   // CX final-arrival and retention safety remain enforced by functional tests.
   // CX refresh implementation remains protected by its functional contract below.
   // Freeze verified CX 160 flight/ETA retention: partial carrier responses must not blank the dashboard.
-  // Owner-requested 2026-11-07 EK reliability fix: relock the corrected source.
+  // Owner-requested 2026-11-07 EK reliability follow-up: relock corrected serial-number search and details expansion.
   'lib/emirates.js':'752b0f5d73c50a360c5efd3ffcf30dca77a5e82a',
-  'lib/emiratesFast.js':'75e0f4bccb40bccc8ba146a91f8ae5c0244bc1ac',
+  'lib/emiratesFast.js':'15b6f065105a831bcdba5c3a7d02c9beb6fa96ad',
   // Thai AirAsia 900 & AirAsia 807 SmartKargo: owner-approved temporary freeze
   // of AWB-specific tracking, DMK connection and verified DEL arrival parser.
   'lib/airAsia.js':'8191d7df6dbb3f71189b1caf311b32ae93d745e8',
