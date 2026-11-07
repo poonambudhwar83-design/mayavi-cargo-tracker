@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm} from '../lib/gulfAirParcels.js';
+import {parseGulfAirParcelsApi,parseGulfAirParcelsPage,submitGulfAirParcelsForm,collectGulfAirParcelsHistory} from '../lib/gulfAirParcels.js';
 const awb='072-95056684';
 const fixture={results:[{tracking_number:awb,shipment:{
   trackingId:awb,fromAirport:'LHR',toAirport:'DEL',pieces:17,weight:442.6,
@@ -135,6 +135,37 @@ assert.equal(split.shipment.arrivalDate,'');
 assert.equal(split.shipment.arrivedPieces,0);
 assert.equal(split.shipment.pendingPieces,55);
 
+// A departure card found only after scrolling all the way down must upgrade
+// GF134 from BOOKED to DEPARTED, without inventing a DEL cargo arrival.
+const departedBelowFold=parseGulfAirParcelsPage({
+  resultText:'Tracking number\n07295019411',
+  rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH), Bahrain\nTo\nIndira Gandhi Intl (DEL), Delhi\nWeight\n1260.0 kg\nPieces\n55',
+  leftText:'AWB 07295019411\n'+splitRows.join('\n'),
+  timelineRows:[...splitRows,
+    '06 Nov 2026 09:10 Departed on Flight (DEP). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 31, weight: 710.0 Bahrain Intl (BAH), Bahrain']
+},splitAwb);
+assert.equal(departedBelowFold.ok,true,departedBelowFold.reason);
+assert.equal(departedBelowFold.shipment.partShipments.length,2);
+assert.equal(departedBelowFold.shipment.partShipments.find(p=>p.flightNo==='GF134')?.status,'DEPARTED');
+assert.equal(departedBelowFold.shipment.partShipments.find(p=>p.flightNo==='GF134')?.departureIsActual,true);
+assert.equal(departedBelowFold.shipment.arrivalDate,'');
+assert.equal(departedBelowFold.shipment.partShipments.reduce((n,p)=>n+p.pieces,0),55);
+assert.equal(departedBelowFold.shipment.partShipments.reduce((n,p)=>n+p.weight,0),1260);
+
+// Simulate a virtualized tracking history: initial viewport only shows BKD,
+// while older/deeper scrolling reveals the GF134 DEP event.
+const visited=[];
+const historyMock={async evaluate(_function,step){
+  visited.push(step);
+  if(step===0)return {rows:[splitRows[4]],bottom:false,expanded:0};
+  if(step===1)return {rows:['06 Nov 2026 09:10 Departed on Flight (DEP). Flight GF134 to DEL, pieces: 31, weight: 710.0'],
+    bottom:true,expanded:0};
+  return {rows:[],bottom:true,expanded:0};
+}};
+const collected=await collectGulfAirParcelsHistory(historyMock);
+assert.ok(collected.some(row=>row.includes('GF134')&&row.includes('DEP')));
+assert.ok(visited.includes(1),'Gulf reader must scroll beyond the initially visible rows');
+
 const dashboardSource=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"),
   'Gulf Air 072 is eligible for independent physical part rows.');
@@ -142,6 +173,8 @@ assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
+assert.ok(gulfSource.includes('collectGulfAirParcelsHistory(resultPage)'),
+  'Gulf tracking page must be fully scrolled before classifying part-load status.');
 assert.ok(gulfSource.includes('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
   'Start Gulf Air checks on parcelsapp.com and use the visible Track Package button.');
 assert.ok(gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);')<
