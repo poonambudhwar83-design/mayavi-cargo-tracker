@@ -216,7 +216,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
       {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
-     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks every 5 minutes, up to 100 AWBs per batch • Awaiting First Check means not yet processed; Retry Needed means no verified status from the last website check. These are queue labels, not shipment statuses.</p>
+     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks every 2 minutes, up to 100 AWBs per batch • Awaiting First Check means not yet processed; Retry Needed means no verified status from the last website check. These are queue labels, not shipment statuses.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
        <thead><tr>{['#',...columns.map(c=>c[1]),...(!readOnly?['Live Check']:[])].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
