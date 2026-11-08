@@ -29,7 +29,7 @@ assert.equal(inspectJepoExcel(workbook)[0].found,8);
 // Sectioned headings: Chargeable on the previous row and Weight below.
 const sectioned=new ExcelJS.Workbook();
 const s=sectioned.addWorksheet('Sheet 2');
-const labels=['Waybill No','Carrier Name','Courier Partner','Recipient Name','Dest Country',
+const labels=['Waybill No','Service Type','Courier Partner','Recipient Name','Dest Country',
  'Weight','JP Reference','Booking Date'];
 labels.forEach((v,i)=>s.getRow(4).getCell(i+2).value=v);
 s.getRow(3).getCell(7).value='Chargeable';
