@@ -78,7 +78,7 @@ export default function JEPOTrackingDashboard(){
  }
  useEffect(()=>{void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load(false)},120000);return()=>clearInterval(timer)},[]);
  async function upload(action){
-  if(!file){setMessage('Pehle JEPO .xlsx file select karein.');return;}
+  if(!file){setMessage('Pehle JEPO .csv ya .xlsx file select karein.');return;}
   setBusy(true);setMessage('');
   try{
    const form=new FormData();form.append('file',file);form.append('action',action);
@@ -87,7 +87,7 @@ export default function JEPOTrackingDashboard(){
    if(action==='preview'){
     setPreview(data);setMessage('Preview ready: Excel headings, booking dates and AWB numbers check karke Save karein.');
    }else{
-    setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in Excel, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
+    setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in file, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
     setPreview(null);setFile(null);await load(false);
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
@@ -135,13 +135,13 @@ export default function JEPOTrackingDashboard(){
     <button style={button} disabled={fetching||busy} onClick={()=>void load()}>{fetching?'Loading…':'Reload Saved Data'}</button>
    </div>
    <section style={panel}>
-    <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO Excel</h2>
+    <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO CSV / Excel</h2>
     <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
-     <input id="jepo-upload" type="file" accept=".xlsx" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setMessage('')}}/>
+     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setMessage('')}}/>
      <button style={{...button,background:'#e6f0ff'}} onClick={()=>void upload('preview')} disabled={!file||busy}>1. Preview Excel</button>
      <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!preview||!file||busy}>2. Save AWBs</button>
     </div>
-    <p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Columns: AWB No. · Service · Vendor · Consignee Name · Destination · Chargeable Weight · JP Code · Booking Date. Uploading the same AWB again updates its Excel information without creating a second row or wiping the last verified delivery status.</p>
+    <p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Supports <b>.csv</b> (JEPO downloaded export) and <b>.xlsx</b>. CSV Row 1 headings: Account Code → JEPO Code; AWB → AWB No.; CHARG. WEIGHT → Chargeable Weight. Columns: AWB No. · Service · Vendor · Consignee Name · Destination · Chargeable Weight · JP Code · Booking Date. Uploading the same AWB again updates its Excel information without creating a second row or wiping the last verified delivery status.</p>
     {message&&<p role="status" style={{padding:10,borderRadius:8,background:'#ecf3ff',color:'#174477',fontSize:13,marginBottom:0}}>{message}</p>}
     {preview&&<div style={{marginTop:12}}>
      <strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}</strong>
