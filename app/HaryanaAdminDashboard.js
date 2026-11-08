@@ -2,6 +2,7 @@
 import {useState} from 'react';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
 import DashboardClient from './DashboardClient.js';
+import JEPOTrackingDashboard from './JEPOTrackingDashboard.js';
 
 const button={border:'1px solid #cbd5e1',borderRadius:9,padding:'11px 16px',fontSize:13,fontWeight:800,cursor:'pointer'};
 export default function HaryanaAdminDashboard({currentUser,onLogout}){
@@ -10,8 +11,10 @@ export default function HaryanaAdminDashboard({currentUser,onLogout}){
     <nav aria-label="Haryana Admin sections" style={{display:'flex',gap:10,flexWrap:'wrap',padding:'12px 16px',background:'#eef3ff',borderBottom:'1px solid #cbd5e1'}}>
       <button type="button" style={{...button,background:tab==='BRANCHES'?'#1d4ed8':'#fff',color:tab==='BRANCHES'?'#fff':'#1e293b'}} onClick={()=>setTab('BRANCHES')}>JIND / KARNAL LOADS</button>
       <button type="button" style={{...button,background:tab==='MASTERS'?'#1d4ed8':'#fff',color:tab==='MASTERS'?'#fff':'#1e293b'}} onClick={()=>setTab('MASTERS')}>ACTIVE IMPORT MASTERS</button>
+      <button type="button" style={{...button,background:tab==='JEPO'?'#1d4ed8':'#fff',color:tab==='JEPO'?'#fff':'#1e293b'}} onClick={()=>setTab('JEPO')}>JEPO TRACKING</button>
     </nav>
     {tab==='BRANCHES'?<BranchLoadsDashboard currentUser={currentUser}/>:
+    tab==='JEPO'?<JEPOTrackingDashboard readOnly/>:
     <DashboardClient isAdmin haryanaMode currentUser={currentUser} onLogout={onLogout}/>}
   </>;
 }
