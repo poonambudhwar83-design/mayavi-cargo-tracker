@@ -1,9 +1,10 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
-import {inclusiveTatDays,tatServiceName,tatDestinationName} from '../lib/branchTatSummary.js';
+import {inclusiveTatDays} from '../lib/branchTatSummary.js';
 import JEPOLoadSummary from './JEPOLoadSummary.js';
 import JEPOFedexLoadSummary from './JEPOFedexLoadSummary.js';
 import JEPOMonthlyDashboard from './JEPOMonthlyDashboard.js';
+import JEPOTatDashboard from './JEPOTatDashboard.js';
 import {jepoTrackingState,jepoTrackingStatusLabel,sortJepoActiveRecords} from '../lib/jepoTrackingState.js';
 
 const API='/api/jepo-tracking';
@@ -33,38 +34,6 @@ function downloadCsv(rows,name){
  const url=URL.createObjectURL(new Blob(['\ufeff'+body],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download=name+'.csv';
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
-}
-function tatSummary(rows,keyFn){
- const groups=new Map();
- rows.filter(isDelivered).forEach(row=>{
-  const key=keyFn(row);
-  const days=tatValue(row);
-  const group=groups.get(key)||{label:key,delivered:0,verified:0,total:0,fastest:null,slowest:null};
-  group.delivered++;
-  if(days!==null){
-   group.verified++;group.total+=days;
-   group.fastest=group.fastest===null?days:Math.min(group.fastest,days);
-   group.slowest=group.slowest===null?days:Math.max(group.slowest,days);
-  }
-  groups.set(key,group);
- });
- return [...groups.values()].map(g=>({...g,average:g.verified?Math.round(g.total/g.verified*10)/10:null}))
-  .sort((a,b)=>b.delivered-a.delivered||a.label.localeCompare(b.label));
-}
-function summaryTable(items,title){
- return <section style={{...panel,flex:'1 1 360px',minWidth:0}}>
-  <h3 style={{margin:'0 0 10px',fontSize:17}}>{title}</h3>
-  <div style={{maxHeight:360,overflow:'auto'}}>
-   <table style={{borderCollapse:'collapse',width:'100%',fontSize:12}}>
-    <thead><tr>{['Group','Delivered','TAT Verified','Average','Fastest','Slowest'].map(h=><th key={h} style={{padding:8,textAlign:'left',background:'#eaf2fb',position:'sticky',top:0}}>{h}</th>)}</tr></thead>
-    <tbody>{items.map(r=><tr key={r.label}>
-     {[r.label,r.delivered,r.verified,r.average===null?'—':r.average+' d',r.fastest===null?'—':r.fastest+' d',r.slowest===null?'—':r.slowest+' d'].map((v,i)=><td key={i} style={{padding:8,borderBottom:'1px solid #e5ebf3'}}>{v}</td>)}
-    </tr>)}
-    {!items.length&&<tr><td colSpan={6} style={{padding:14,color:'#63748a'}}>No verified delivered shipments yet.</td></tr>}
-    </tbody>
-   </table>
-  </div>
- </section>;
 }
 export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
@@ -122,10 +91,6 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  }),[source,search,service,destination,trackingStage,tab]);
  const valid=useMemo(()=>delivered.map(tatValue).filter(v=>v!==null),[delivered]);
  const avg=valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length*10)/10:null;
- const serviceSummary=useMemo(()=>tatSummary(rows,r=>tatServiceName(r.service)),[rows]);
- const countrySummary=useMemo(()=>tatSummary(rows,r=>tatDestinationName(r.destination)),[rows]);
- const vendorSummary=useMemo(()=>tatSummary(rows,r=>r.vendor||'Not specified'),[rows]);
- const combined=useMemo(()=>tatSummary(rows,r=>tatServiceName(r.service)+' / '+tatDestinationName(r.destination)),[rows]);
  const awaiting=rows.filter(r=>jepoTrackingState(r)==='AWAITING_FIRST_CHECK').length;
  const retryNeeded=rows.filter(r=>jepoTrackingState(r)==='RETRY_NEEDED').length;
  const metrics=[
@@ -197,15 +162,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <button key={id} onClick={()=>setTab(id)} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
-    {tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<>
-     <p style={{fontSize:12,color:'#536b86'}}>TAT = Booking Date se JEPO website par verified Delivered Date tak, dono calendar dates included. Missing verified delivery dates are not used in averages.</p>
-     <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
-      {summaryTable(serviceSummary,'Service-wise TAT')}
-      {summaryTable(countrySummary,'Country-wise TAT')}
-      {summaryTable(vendorSummary,'Vendor-wise TAT')}
-      {summaryTable(combined,'Service × Destination TAT')}
-     </div>
-    </>:<>
+    {tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
      <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0',alignItems:'center'}}>
       <input aria-label="Search JEPO AWB" placeholder="Search AWB, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
