@@ -56,7 +56,7 @@ export async function POST(request){
   let parsed;
   try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
-  if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,
+  if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
    preview:parsed.records.slice(0,12)});
   await ensureJepoTrackingTable(sql);
