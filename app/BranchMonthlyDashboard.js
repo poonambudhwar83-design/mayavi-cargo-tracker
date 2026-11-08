@@ -40,7 +40,7 @@ function SummaryTable({title,items,headName='Branch'}){
   </div>
  </section>;
 }
-export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchFilter='ALL'}){
+export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchFilter='ALL',onBranchChange=()=>{}}){
  const [selectedMonth,setSelectedMonth]=useState('');
  const [busy,setBusy]=useState(false);
  const months=useMemo(()=>branchMonths(records),[records]);
@@ -74,6 +74,11 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
    <div><h2 style={{fontSize:21,color:'#1e4c7c',margin:'0 0 6px'}}>Jind &amp; Karnal — Monthly Data</h2>
     <p style={{fontSize:12,color:'#5c7189',margin:0}}>Booking Date month • Active + Delivered • Branch filter respected • Existing records unchanged</p></div>
    <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
+    {isAdmin&&<label style={{fontSize:12,fontWeight:750}}>Branch
+     <select aria-label="Monthly branch filter" style={{display:'block',marginTop:4,padding:'9px 11px',border:'1px solid #b8c9de',borderRadius:8}} value={branchFilter} onChange={e=>onBranchChange(e.target.value)}>
+      <option value="ALL">Jind + Karnal</option><option value="JIND">Jind</option><option value="KARNAL">Karnal</option>
+     </select>
+    </label>}
     <label style={{fontSize:12,fontWeight:750}}>Booking Month
      <select aria-label="Monthly booking month" style={{display:'block',marginTop:4,padding:'9px 11px',border:'1px solid #b8c9de',borderRadius:8}} value={month} onChange={e=>setSelectedMonth(e.target.value)}>
       {months.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}
