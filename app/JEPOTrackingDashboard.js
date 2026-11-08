@@ -64,7 +64,7 @@ function summaryTable(items,title){
 }
 export default function JEPOTrackingDashboard(){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
- const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null);
+ const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState('');
  const [lastLoad,setLastLoad]=useState(null);
  async function load(showError=true){
@@ -85,10 +85,10 @@ export default function JEPOTrackingDashboard(){
    const res=await fetch(API,{method:'POST',body:form,credentials:'include'});
    const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Excel upload failed.');
    if(action==='preview'){
-    setPreview(data);setMessage('Preview ready: Excel headings, booking dates and AWB numbers check karke Save karein.');
+    setPreview(data);setDuplicateNotice(null);setMessage('Preview ready: Excel headings aur repeated AWB acknowledgement check karke Save karein.');
    }else{
     setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in file, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
-    setPreview(null);setFile(null);await load(false);
+    setDuplicateNotice(data);setPreview(null);setFile(null);await load(false);
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
   }catch(e){setMessage(e.message||'Excel upload failed.');}finally{setBusy(false);}
@@ -137,32 +137,43 @@ export default function JEPOTrackingDashboard(){
    <section style={panel}>
     <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO CSV / Excel</h2>
     <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
-     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setMessage('')}}/>
+     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setMessage('')}}/>
      <button style={{...button,background:'#e6f0ff'}} onClick={()=>void upload('preview')} disabled={!file||busy}>1. Preview Excel</button>
      <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!preview||!file||busy}>2. Save AWBs</button>
     </div>
     <p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Supports <b>.csv</b> (JEPO downloaded export) and <b>.xlsx</b>. CSV Row 1 headings: Account Code → JEPO Code; AWB → AWB No.; CHARG. WEIGHT → Chargeable Weight. Columns: AWB No. · Service · Vendor · Consignee Name · Destination · Chargeable Weight · JP Code · Booking Date. Uploading the same AWB again updates its Excel information without creating a second row or wiping the last verified delivery status.</p>
     {message&&<p role="status" style={{padding:10,borderRadius:8,background:'#ecf3ff',color:'#174477',fontSize:13,marginBottom:0}}>{message}</p>}
-    {preview&&<div style={{marginTop:12}}>
-     <strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}</strong>
-     <div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
+    {(preview||duplicateNotice)&&<div style={{marginTop:12}}>
+     {preview&&<strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}</strong>}
+     {preview&&<div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
       {[
        ['awb','AWB No.'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
        ['destination','Destination'],['weight','Chargeable Weight'],['jpCode','JP Code'],['bookingDate','Booking Date']
       ].map(([field,label])=><div key={field} style={{padding:'7px 10px',borderRadius:8,background:'#f0f7ff',border:'1px solid #d4e3f5',fontSize:12}}>
        <b>{label}</b> → {preview.columnMatches?.[field]?.heading||'Not found'} <span style={{color:'#64748b'}}>(Excel column {preview.mapping?.[field]||'?'})</span>
       </div>)}
-     </div>
-     <p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>
-    {preview.missingFields?.length>0&&<p style={{fontSize:13,fontWeight:800,color:'#9a3412',background:'#fff7ed',padding:10,borderRadius:8}}>
+     </div>}
+     {preview&&<p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>}
+    {(preview||duplicateNotice)&&((preview||duplicateNotice).duplicates>0||(preview||duplicateNotice).previouslySavedCount>0)&&<div style={{background:'#f3e8ff',color:'#5b21b6',padding:'12px 14px',borderRadius:10,border:'2px solid #a78bfa',margin:'12px 0',fontSize:13}}>
+      <strong>Duplicate AWB Acknowledgement</strong>
+      <p style={{margin:'5px 0 8px'}}>Same uploaded file mein {number((preview||duplicateNotice).duplicates||0)} repeat entries (unique repeated AWBs: {(preview||duplicateNotice).repeatedUniqueCount||0}).
+       Pehle se saved JEPO Tracking mein {(preview||duplicateNotice).previouslySavedCount||0} AWBs match hue. Duplicate row nahi banegi; purana live tracking aur Delivered status safe rahega.</p>
+      {((preview||duplicateNotice).repeatedAwbs||[]).length>0&&<div style={{maxHeight:120,overflowY:'auto',borderTop:'1px solid #c4b5fd',paddingTop:7}}>
+       {((preview||duplicateNotice).repeatedAwbs||[]).slice(0,40).map(item=><span key={item.awb} style={{display:'inline-block',padding:'4px 8px',background:'#ede9fe',borderRadius:7,margin:3,fontWeight:750}}>
+        {item.awb} × {item.count} (Excel row {item.rows?.join(', ')||item.firstRow})
+       </span>)}
+      </div>}
+      {((preview||duplicateNotice).previouslySavedAwbs||[]).length>0&&<div style={{marginTop:7,fontSize:12}}>Already saved AWBs (first 25): {((preview||duplicateNotice).previouslySavedAwbs||[]).slice(0,25).join(', ')}</div>}
+     </div>}
+    {preview?.missingFields?.length>0&&<p style={{fontSize:13,fontWeight:800,color:'#9a3412',background:'#fff7ed',padding:10,borderRadius:8}}>
      Excel mein identify nahi hue: {preview.missingFields.join(', ')}. Baaki AWB records load ho sakte hain; missing values blank rahengi. Booking Date missing ho to TAT calculate nahi hoga.
     </p>}
-     <div style={{overflowX:'auto',maxHeight:275}}>
+     {preview&&<div style={{overflowX:'auto',maxHeight:275}}>
       <table style={{borderCollapse:'collapse',whiteSpace:'nowrap',fontSize:12}}>
        <thead><tr>{['AWB','Service','Vendor','Consignee','Destination','Weight','JEPO Code','Booking Date'].map(h=><th key={h} style={{padding:8,background:'#eaf2ff',textAlign:'left'}}>{h}</th>)}</tr></thead>
        <tbody>{(preview.preview||[]).map(r=><tr key={r.awb}>{[r.awb,r.service,r.vendor,r.consignee,r.destination,r.weight,r.jpCode,day(r.bookingDate)].map((v,i)=><td key={i} style={{padding:8,borderBottom:'1px solid #edf0f5'}}>{v??'—'}</td>)}</tr>)}</tbody>
       </table>
-     </div>
+     </div>}
     </div>}
    </section>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:14}}>
@@ -193,7 +204,7 @@ export default function JEPOTrackingDashboard(){
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
       {tab==='ACTIVE'&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
-     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks run twice per hour in rotating batches • Pending shipments show live scan status, not an invented delivery date.</p>
+     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks run every 5 minutes in batches of 40 AWBs • Pending shipments show live scan status, not an invented delivery date.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
        <thead><tr>{['#',...columns.map(c=>c[1]),'Live Check'].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
