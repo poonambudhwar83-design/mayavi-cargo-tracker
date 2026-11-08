@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {inclusiveTatDays,tatServiceName,tatDestinationName} from '../lib/branchTatSummary.js';
 import JEPOLoadSummary from './JEPOLoadSummary.js';
 import JEPOFedexLoadSummary from './JEPOFedexLoadSummary.js';
+import {jepoTrackingState,jepoTrackingStatusLabel,sortJepoActiveRecords} from '../lib/jepoTrackingState.js';
 
 const API='/api/jepo-tracking';
 const panel={background:'#fff',border:'1px solid #d9e3ee',borderRadius:13,padding:16,marginTop:14};
@@ -67,7 +68,7 @@ function summaryTable(items,title){
 export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
- const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState('');
+ const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
  async function load(showError=true){
   setFetching(true);
@@ -106,7 +107,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   }catch(e){setMessage(e.message||'Tracking request failed.');}
   finally{setBusy(false);}
  }
- const active=useMemo(()=>rows.filter(r=>!isDelivered(r)),[rows]);
+ const active=useMemo(()=>sortJepoActiveRecords(rows.filter(r=>!isDelivered(r))),[rows]);
  const delivered=useMemo(()=>rows.filter(isDelivered).sort((a,b)=>
   String(b.deliveredOn||'').localeCompare(String(a.deliveredOn||''))||String(b.bookingDate||'').localeCompare(String(a.bookingDate||''))),[rows]);
  const source=tab==='DELIVERED'?delivered:active;
@@ -115,16 +116,20 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const visible=useMemo(()=>source.filter(r=>{
   const needle=search.trim().toLowerCase();
   return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.destination,r.jpCode,r.carrierAwb,r.liveStatus].join(' ').toLowerCase().includes(needle))
-   &&(!service||r.service===service)&&(!destination||r.destination===destination);
- }),[source,search,service,destination]);
+   &&(!service||r.service===service)&&(!destination||r.destination===destination)
+   &&(trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
+ }),[source,search,service,destination,trackingStage]);
  const valid=useMemo(()=>delivered.map(tatValue).filter(v=>v!==null),[delivered]);
  const avg=valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length*10)/10:null;
  const serviceSummary=useMemo(()=>tatSummary(rows,r=>tatServiceName(r.service)),[rows]);
  const countrySummary=useMemo(()=>tatSummary(rows,r=>tatDestinationName(r.destination)),[rows]);
  const vendorSummary=useMemo(()=>tatSummary(rows,r=>r.vendor||'Not specified'),[rows]);
  const combined=useMemo(()=>tatSummary(rows,r=>tatServiceName(r.service)+' / '+tatDestinationName(r.destination)),[rows]);
+ const awaiting=rows.filter(r=>jepoTrackingState(r)==='AWAITING_FIRST_CHECK').length;
+ const retryNeeded=rows.filter(r=>jepoTrackingState(r)==='RETRY_NEEDED').length;
  const metrics=[
   ['All JEPO AWBs',rows.length],['Active',active.length],['Delivered',delivered.length],
+  ['Awaiting First Check',awaiting],['Retry Needed',retryNeeded],
   ['Verified TAT',valid.length],['Average Delivered TAT',avg===null?'—':avg+' days']
  ];
  return <main style={{background:'#f4f7fc',minHeight:'85vh',padding:'18px clamp(12px,3vw,30px)',color:'#193452'}}>
@@ -204,10 +209,14 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <input aria-label="Search JEPO AWB" placeholder="Search AWB, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
       <select aria-label="Filter Destination" value={destination} onChange={e=>setDestination(e.target.value)} style={control}><option value="">All Destinations</option>{destinations.map(s=><option key={s}>{s}</option>)}</select>
+      {tab==='ACTIVE'&&<select aria-label="Filter Tracking Progress" value={trackingStage} onChange={e=>setTrackingStage(e.target.value)} style={control}>
+       <option value="ALL">All Tracking States</option><option value="RETRY_NEEDED">Retry Needed</option>
+       <option value="LIVE_UPDATED">Live Updated</option><option value="AWAITING_FIRST_CHECK">Awaiting First Check</option>
+      </select>}
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
       {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
-     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks run every 5 minutes in batches of up to 100 AWBs • Pending shipments show live scan status, not an invented delivery date.</p>
+     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks every 5 minutes, up to 100 AWBs per batch • Awaiting First Check means not yet processed; Retry Needed means no verified status from the last website check. These are queue labels, not shipment statuses.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
        <thead><tr>{['#',...columns.map(c=>c[1]),...(!readOnly?['Live Check']:[])].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
@@ -217,8 +226,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
          let v=key==='tat'?tatValue(r):r[key];
          if(['bookingDate','deliveredOn'].includes(key))v=day(v);
          if(key==='checkedAt')v=v?new Date(v).toLocaleString('en-IN',{hour12:false}):'—';
-         if(key==='status')v=r.liveStatus||r.status;
-         return <td key={key} title={key==='liveRemarks'?r.trackingError||r.liveRemarks||'':''} style={{padding:9,maxWidth:key==='liveRemarks'?280:200,overflow:'hidden',textOverflow:'ellipsis',borderBottom:'1px solid #e9eef5',color:key==='status'?(isDelivered(r)?'#12704d':'#2c5785'):'#354c64',fontWeight:key==='awb'||key==='status'?800:400}}>
+         if(key==='status')v=jepoTrackingStatusLabel(r);
+         return <td key={key} title={key==='liveRemarks'?r.trackingError||r.liveRemarks||'':''} style={{padding:9,maxWidth:key==='liveRemarks'?280:200,overflow:'hidden',textOverflow:'ellipsis',borderBottom:'1px solid #e9eef5',color:key==='status'?(isDelivered(r)?'#12704d':jepoTrackingState(r)==='RETRY_NEEDED'?'#a3411c':jepoTrackingState(r)==='AWAITING_FIRST_CHECK'?'#7c5999':'#2c5785'):'#354c64',fontWeight:key==='awb'||key==='status'?800:400}}>
           {v===null||v===undefined||v===''?'—':key==='tat'?v+' d':v}{key==='status'&&r.trackingError?' ⚠':''}
          </td>;
         })}
