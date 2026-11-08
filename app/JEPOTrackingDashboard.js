@@ -117,8 +117,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   const needle=search.trim().toLowerCase();
   return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.destination,r.jpCode,r.carrierAwb,r.liveStatus].join(' ').toLowerCase().includes(needle))
    &&(!service||r.service===service)&&(!destination||r.destination===destination)
-   &&(trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
- }),[source,search,service,destination,trackingStage]);
+   &&(tab!=='ACTIVE'||trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
+ }),[source,search,service,destination,trackingStage,tab]);
  const valid=useMemo(()=>delivered.map(tatValue).filter(v=>v!==null),[delivered]);
  const avg=valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length*10)/10:null;
  const serviceSummary=useMemo(()=>tatSummary(rows,r=>tatServiceName(r.service)),[rows]);
