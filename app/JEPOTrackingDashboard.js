@@ -8,7 +8,7 @@ const control={padding:'9px 12px',border:'1px solid #b8cadd',borderRadius:8,back
 const button={...control,cursor:'pointer',fontWeight:800};
 const columns=[
  ['awb','AWB No.'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
- ['destination','Destination'],['weight','Chargeable Weight (kg)'],['jpCode','JP Code'],
+ ['destination','Destination'],['weight','Chargeable Weight (kg)'],['jpCode','JEPO Code (Account Code)'],
  ['bookingDate','Booking Date'],['status','Tracking Status'],['carrierAwb','Forwarded AWB'],
  ['deliveredOn','Delivered Date'],['tat','TAT (days)'],['liveEventWhen','Latest Event'],
  ['liveRemarks','JEPO Progress'],['checkedAt','Last Checked']
@@ -156,7 +156,7 @@ export default function JEPOTrackingDashboard(){
      <p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>
      <div style={{overflowX:'auto',maxHeight:275}}>
       <table style={{borderCollapse:'collapse',whiteSpace:'nowrap',fontSize:12}}>
-       <thead><tr>{['AWB','Service','Vendor','Consignee','Destination','Weight','JP Code','Booking Date'].map(h=><th key={h} style={{padding:8,background:'#eaf2ff',textAlign:'left'}}>{h}</th>)}</tr></thead>
+       <thead><tr>{['AWB','Service','Vendor','Consignee','Destination','Weight','JEPO Code','Booking Date'].map(h=><th key={h} style={{padding:8,background:'#eaf2ff',textAlign:'left'}}>{h}</th>)}</tr></thead>
        <tbody>{(preview.preview||[]).map(r=><tr key={r.awb}>{[r.awb,r.service,r.vendor,r.consignee,r.destination,r.weight,r.jpCode,day(r.bookingDate)].map((v,i)=><td key={i} style={{padding:8,borderBottom:'1px solid #edf0f5'}}>{v??'—'}</td>)}</tr>)}</tbody>
       </table>
      </div>
