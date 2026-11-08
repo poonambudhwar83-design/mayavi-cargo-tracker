@@ -7,6 +7,7 @@ import {inclusiveTatDays,summarizeBranchTat} from '../lib/branchTatSummary.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import styles from './BranchLoadsDashboard.module.css';
 import BranchProfitDashboard from './BranchProfitDashboard.js';
+import BranchMonthlyDashboard from './BranchMonthlyDashboard.js';
 
 const API='/api/branch-loads';
 // The same request ID is reused if a save must be retried, preventing duplicate entries.
@@ -194,7 +195,7 @@ export default function BranchLoadsDashboard({currentUser}){
   ),[rows,filter,search]);
   const shown=useMemo(()=>{
     const visible=matchingRows.filter(r=>
-      sheet==='SUMMARY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED'));
+      sheet==='SUMMARY'||sheet==='MONTHLY'||(sheet==='DELIVERED'?r.status==='DELIVERED':r.status!=='DELIVERED'));
     if(sheet==='DELIVERED')visible.sort((a,b)=>{
       // Actual delivery date, not the booking date, determines Delivered order.
       // Historical deliveries without a verified date remain after dated rows.
@@ -691,6 +692,7 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads</button>
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet</button>
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
+       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('MONTHLY')}>Monthly Data</button>
       <button type="button" className={styles.activeTab}>Branch Profit &amp; Loss</button>
     </nav>
     <BranchProfitDashboard/>
@@ -730,11 +732,13 @@ export default function BranchLoadsDashboard({currentUser}){
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
       {sheet==='DELIVERED'&&<small style={{fontSize:11,color:'#25603a',fontWeight:700}}>Latest verified delivery date first • Undated past deliveries below</small>}
       <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
+       <button type="button" className={sheet==='MONTHLY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('MONTHLY')}>Monthly Data</button>
       {currentUser?.role==='admin'&&<button type="button" className={styles.sheetTab} onClick={()=>switchSheet('PROFIT')}>Branch Profit &amp; Loss</button>}
     </nav>
 
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch. Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
-      {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
+      {sheet==='MONTHLY'&&<BranchMonthlyDashboard records={matchingRows} isAdmin={isAdmin} branchFilter={filter} onBranchChange={setFilter}/>}
+       {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
         <div className={styles.summaryHeader}>
           <div>
             <h2>Daily Branch Summary</h2>
@@ -830,7 +834,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <p className={styles.tatSummaryNote}>*Only deliveries with valid booking and verified delivery dates. Average TAT = total inclusive TAT days ÷ verified deliveries. All destinations outside USA, UK, Australia and Canada are grouped under Other Countries within each service. Branch and search filters apply to every table. Missing dates show —, never an estimated TAT.</p>
       </section>}
-      {sheet!=='SUMMARY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
+      {sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
         <thead><tr>
           <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
@@ -852,13 +856,13 @@ export default function BranchLoadsDashboard({currentUser}){
       <span className={styles.footerActions}>
         {sheet==='ACTIVE'&&<button type="button" onClick={add} disabled={busy}>+ Daily Entry</button>}
         <button type="button" onClick={()=>void load()}>Refresh</button>
-        {sheet!=='SUMMARY'&&<button type="button" disabled={liveBusy||busy||!matchingRows.some(r=>r.trackingNo&&r.status!=='DELIVERED')}
+        {sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<button type="button" disabled={liveBusy||busy||!matchingRows.some(r=>r.trackingNo&&r.status!=='DELIVERED')}
           onClick={()=>void refreshJepo(matchingRows.filter(r=>r.trackingNo&&r.status!=='DELIVERED').slice(0,6))}>
           {liveBusy?'Checking JEPO…':'Refresh JEPO Live'}
         </button>}
         {sheet==='DELIVERED'&&<button type="button" onClick={downloadTatSummaryCsv} disabled={!tatSummary.verifiedCount}>Download TAT Summary CSV</button>}
-        <button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>
-         <button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>
+        {sheet!=='MONTHLY'&&<button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>}
+         {sheet!=='MONTHLY'&&<button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>}
       </span>
     </footer>
   </main>;
