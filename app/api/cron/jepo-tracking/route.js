@@ -16,7 +16,7 @@ export async function GET(request){
   // Never-checked shipments first, newest bookings within the queue. Rotate through
   // active AWBs fairly; a failed check will not block later AWBs.
   // Delivered statuses and dates are retained; a transient website failure is non-destructive.
-  const candidates=await sql.query("SELECT awb FROM mayavi_jepo_tracking WHERE status<>'DELIVERED' ORDER BY checked_at ASC NULLS FIRST,booking_date DESC NULLS LAST LIMIT 40");
+  const candidates=await sql.query("SELECT awb FROM mayavi_jepo_tracking WHERE status<>'DELIVERED' ORDER BY checked_at ASC NULLS FIRST,booking_date DESC NULLS LAST LIMIT 100");
   const result=await syncJepoTrackingAwbs(sql,candidates.map(x=>x.awb),{concurrency:8});
   console.log('jepo_tracking_cron',JSON.stringify({candidates:candidates.length,checked:result.checked,updated:result.updated,failed:result.failed}));
   return Response.json({ok:true,total:candidates.length,checked:result.checked,updated:result.updated,failed:result.failed,pending:result.pending});
