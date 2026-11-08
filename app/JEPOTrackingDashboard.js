@@ -10,11 +10,11 @@ const panel={background:'#fff',border:'1px solid #d9e3ee',borderRadius:13,paddin
 const control={padding:'9px 12px',border:'1px solid #b8cadd',borderRadius:8,background:'#fff',color:'#17365d',fontSize:13};
 const button={...control,cursor:'pointer',fontWeight:800};
 const columns=[
- ['awb','AWB No.'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
+ ['awb','AWB No.'],['liveRemarks','JEPO Progress'],['liveEventWhen','Progress Date/Time'],
+ ['status','Tracking Status'],['carrierAwb','Forwarded AWB'],
+ ['bookingDate','Booking Date'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
  ['destination','Destination'],['weight','Chargeable Weight (kg)'],['jpCode','JEPO Code (Account Code)'],
- ['bookingDate','Booking Date'],['status','Tracking Status'],['carrierAwb','Forwarded AWB'],
- ['deliveredOn','Delivered Date'],['tat','TAT (days)'],['liveEventWhen','Latest Event'],
- ['liveRemarks','JEPO Progress'],['checkedAt','Last Checked']
+ ['deliveredOn','Delivered Date'],['tat','TAT (days)'],['checkedAt','Last Checked']
 ];
 const day=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
 const tatValue=r=>inclusiveTatDays(r.bookingDate,r.deliveredOn);
@@ -211,7 +211,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <select aria-label="Filter Destination" value={destination} onChange={e=>setDestination(e.target.value)} style={control}><option value="">All Destinations</option>{destinations.map(s=><option key={s}>{s}</option>)}</select>
       {tab==='ACTIVE'&&<select aria-label="Filter Tracking Progress" value={trackingStage} onChange={e=>setTrackingStage(e.target.value)} style={control}>
        <option value="ALL">All Tracking States</option><option value="RETRY_NEEDED">Retry Needed</option>
-       <option value="LIVE_UPDATED">Live Updated</option><option value="AWAITING_FIRST_CHECK">Awaiting First Check</option>
+       <option value="LIVE_UPDATED">Live Updated</option><option value="PROGRESS_ONLY">JEPO Progress Available</option><option value="AWAITING_FIRST_CHECK">Awaiting First Check</option>
       </select>}
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
       {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
@@ -227,7 +227,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
          if(['bookingDate','deliveredOn'].includes(key))v=day(v);
          if(key==='checkedAt')v=v?new Date(v).toLocaleString('en-IN',{hour12:false}):'—';
          if(key==='status')v=jepoTrackingStatusLabel(r);
-         return <td key={key} title={key==='liveRemarks'?r.trackingError||r.liveRemarks||'':''} style={{padding:9,maxWidth:key==='liveRemarks'?280:200,overflow:'hidden',textOverflow:'ellipsis',borderBottom:'1px solid #e9eef5',color:key==='status'?(isDelivered(r)?'#12704d':jepoTrackingState(r)==='RETRY_NEEDED'?'#a3411c':jepoTrackingState(r)==='AWAITING_FIRST_CHECK'?'#7c5999':'#2c5785'):'#354c64',fontWeight:key==='awb'||key==='status'?800:400}}>
+         if(key==='liveRemarks'&&!v)v=jepoTrackingState(r)==='AWAITING_FIRST_CHECK'?'Not checked yet':'JEPO progress not verified';
+         return <td key={key} title={key==='liveRemarks'?r.trackingError||r.liveRemarks||'':''} style={{padding:9,maxWidth:key==='liveRemarks'?330:200,minWidth:key==='liveRemarks'?190:undefined,whiteSpace:key==='liveRemarks'?'normal':'nowrap',overflow:key==='liveRemarks'?'visible':'hidden',textOverflow:key==='liveRemarks'?'clip':'ellipsis',borderBottom:'1px solid #e9eef5',color:key==='status'?(isDelivered(r)?'#12704d':jepoTrackingState(r)==='RETRY_NEEDED'?'#a3411c':jepoTrackingState(r)==='AWAITING_FIRST_CHECK'?'#7c5999':'#2c5785'):'#354c64',fontWeight:key==='awb'||key==='status'?800:400}}>
           {v===null||v===undefined||v===''?'—':key==='tat'?v+' d':v}{key==='status'&&r.trackingError?' ⚠':''}
          </td>;
         })}
