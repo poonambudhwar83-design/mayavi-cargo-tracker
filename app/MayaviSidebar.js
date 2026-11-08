@@ -45,6 +45,7 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
       ...(speedPostAllowed?[page('speed-post','Speed Post','SPEED_POST')]:[]),
       ...(admin?[
         page('branch','Jind / Karnal Loads','BRANCH_LOADS'),
+        page('jepo-tracking','JEPO Tracking','JEPO_TRACKING'),
         page('other-couriers','Other Courier Summary','OTHER_COUNTRIES'),
         page('analysis','Data Analysis','DATA_ANALYSIS'),
         page('meetings','Meetings & Daily Updates','ADMIN_NOTES'),
