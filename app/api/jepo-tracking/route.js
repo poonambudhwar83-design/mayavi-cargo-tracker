@@ -15,12 +15,16 @@ const db=()=>{
  if(!url)throw Error('Mayavi shared database unavailable.');
  return neon(url);
 };
-async function auth(request,sql){
+async function auth(request,sql,{readOnlyAllowed=false}={}){
  const session=readSession(request);
- if(!session||session.role!=='admin')return false;
- const rows=await sql.query("SELECT role,is_active,session_version FROM mayavi_users WHERE lower(username)=$1 LIMIT 1",[session.username]);
+ if(!session)return false;
+ const isAdmin=session.role==='admin';
+ const isHaryana=readOnlyAllowed&&session.role==='haryana_admin'&&session.branchScope==='HARYANA'&&session.username==='haryanaadmin';
+ if(!isAdmin&&!isHaryana)return false;
+ const rows=await sql.query("SELECT role,branch_scope,is_active,session_version FROM mayavi_users WHERE lower(username)=$1 LIMIT 1",[session.username]);
  const user=rows[0];
- return Boolean(user&&user.role==='admin'&&user.is_active&&Number(user.session_version)===Number(session.sessionVersion||0));
+ if(!user||!user.is_active||Number(user.session_version)!==Number(session.sessionVersion||0))return false;
+ return isAdmin?user.role==='admin':user.role==='employee'&&user.branch_scope==='HARYANA';
 }
 const columns="awb,service,vendor,consignee,destination,chargeable_weight,jp_code,to_char(booking_date,'YYYY-MM-DD') AS booking_date,status,live_status,carrier_awb,live_remarks,live_event_when,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,checked_at,tracking_error,import_file,created_at";
 function rowData(row){
@@ -47,7 +51,7 @@ async function existingJepoAwbs(sql,records=[]){
 export async function GET(request){
  try{
   const sql=db();
-  if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
+  if(!await auth(request,sql,{readOnlyAllowed:true}))return json({ok:false,error:'Admin or Haryana Admin login required.'},403);
   await ensureJepoTrackingTable(sql);
   const rows=await sql.query("SELECT "+columns+" FROM mayavi_jepo_tracking ORDER BY CASE WHEN status='DELIVERED' THEN 1 ELSE 0 END, booking_date DESC NULLS LAST, created_at DESC LIMIT 20000");
   return json({ok:true,rows:rows.map(rowData)});
