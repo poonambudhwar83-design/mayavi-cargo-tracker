@@ -31,6 +31,19 @@ function rowData(row){
   deliveryDateSource:row.delivery_date_source,checkedAt:row.checked_at,trackingError:row.tracking_error,
   importFile:row.import_file};
 }
+
+// Repeated shipments are acknowledged against already-saved imports as well
+// as duplicate rows inside the current CSV/XLSX. No duplicate database rows.
+async function existingJepoAwbs(sql,records=[]){
+ const matches=[];
+ for(let i=0;i<records.length;i+=900){
+  const awbs=records.slice(i,i+900).map(r=>r.awb);
+  const rows=await sql.query("SELECT awb FROM mayavi_jepo_tracking WHERE awb IN (SELECT jsonb_array_elements_text($1::jsonb))",[JSON.stringify(awbs)]);
+  for(const item of rows)matches.push(item.awb);
+ }
+ return matches;
+}
+
 export async function GET(request){
  try{
   const sql=db();
@@ -61,10 +74,13 @@ export async function POST(request){
   let parsed;
   try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:isCsv?1:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
+  await ensureJepoTrackingTable(sql);
+  const existingAwbs=await existingJepoAwbs(sql,parsed.records);
   if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
+   repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,
+   previouslySavedCount:existingAwbs.length,previouslySavedAwbs:existingAwbs.slice(0,200),
    preview:parsed.records.slice(0,12)});
-  await ensureJepoTrackingTable(sql);
   const fileName=String(file.name||'jepo.xlsx').replace(/[/\\\u0000-\u001f]/g,'_').slice(0,150);
   const session=readSession(request);
   for(let i=0;i<parsed.records.length;i+=200){
@@ -73,7 +89,9 @@ export async function POST(request){
     [JSON.stringify(part.map(r=>({...r,weight:r.weight,jp_code:r.jpCode,booking_date:r.bookingDate||''}))),session.username,fileName]);
   }
   return json({ok:true,saved:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingFields:parsed.missingFields,
-   missingDates:parsed.missingDates,message:'JEPO Excel saved. Existing verified tracking and delivered dates are retained.'});
+   repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,
+   previouslySavedCount:existingAwbs.length,previouslySavedAwbs:existingAwbs.slice(0,200),
+   missingDates:parsed.missingDates,message:'JEPO AWBs saved. Repeated AWBs acknowledged and existing verified tracking retained.'});
  }catch(e){console.error('jepo_tracking_upload',String(e?.message||e).slice(0,220));return json({ok:false,error:'JEPO Excel upload failed; please verify file and retry.'},503);}
 }
 export async function PATCH(request){
