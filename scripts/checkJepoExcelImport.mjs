@@ -48,4 +48,41 @@ const twoDates=new ExcelJS.Workbook(),d=twoDates.addWorksheet('Report');
 parsed=parseJepoExcel(twoDates);
 assert.equal(parsed.columnMapping.bookingDate,9);
 assert.equal(parsed.records[0].bookingDate,'2026-11-03');
+
+// Actual JEPO export: requested labels on ROW 1 with many unrelated fields.
+const realHeader=new ExcelJS.Workbook(),actual=realHeader.addWorksheet('JEPO Bulk Export');
+const actualPositions={jpCode:2,awb:7,service:15,vendor:24,consignee:41,destination:54,weight:70,bookingDate:85};
+const actualLabels={jpCode:'Account Code',awb:'AWB',service:'SERVICE',
+ vendor:'VENDOR',consignee:'CONSIGNEE NAME',destination:'DESTINATION',
+ weight:'CHARG. WEIGHT',bookingDate:'BOOKING DATE'};
+for(const [field,col] of Object.entries(actualPositions))actual.getRow(1).getCell(col).value=actualLabels[field];
+for(let col=1;col<=95;col++){
+ if(Object.values(actualPositions).includes(col))continue;
+ actual.getRow(1).getCell(col).value='Unrelated Extra Field '+col;
+}
+for(const [field,col] of Object.entries(actualPositions)){
+ const fields={jpCode:'JEP001',awb:535271,service:'SELF',vendor:'OVERSEAS LOG.',
+  consignee:'TEST CONSIGNEE',destination:'UK',weight:'2.75',bookingDate:'07/11/2026'};
+ actual.getRow(2).getCell(col).value=fields[field];
+}
+parsed=parseJepoExcel(realHeader);
+assert.equal(parsed.headerRow,1);
+assert.deepEqual(parsed.columnMapping,actualPositions);
+assert.deepEqual(parsed.records[0],{awb:'535271',service:'SELF',vendor:'OVERSEAS LOG.',
+ consignee:'TEST CONSIGNEE',destination:'UK',weight:2.75,jpCode:'JEP001',bookingDate:'2026-11-07'});
+assert.equal(inspectJepoExcel(realHeader)[0].headerRow,1);
+// Confirm SERVICE and VENDOR are not accidentally swapped.
+actual.getRow(3).getCell(actualPositions.awb).value='535272';
+actual.getRow(3).getCell(actualPositions.service).value='FEDEX';
+actual.getRow(3).getCell(actualPositions.vendor).value='TPL';
+actual.getRow(3).getCell(actualPositions.jpCode).value='JEP002';
+actual.getRow(3).getCell(actualPositions.consignee).value='ANOTHER CONSIGNEE';
+actual.getRow(3).getCell(actualPositions.weight).value=5;
+actual.getRow(3).getCell(actualPositions.destination).value='USA';
+actual.getRow(3).getCell(actualPositions.bookingDate).value='08/11/2026';
+parsed=parseJepoExcel(realHeader);
+assert.equal(parsed.records[1].service,'FEDEX');
+assert.equal(parsed.records[1].vendor,'TPL');
+assert.equal(parsed.records[1].jpCode,'JEP002');
+
 console.log('JEPO Excel detection checks passed for 132 columns, mixed row layouts and booking dates.');
