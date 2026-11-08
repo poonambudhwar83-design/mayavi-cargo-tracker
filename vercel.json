@@ -118,7 +118,7 @@
     },
     {
       "path": "/api/cron/jepo-tracking",
-      "schedule": "15,45 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
