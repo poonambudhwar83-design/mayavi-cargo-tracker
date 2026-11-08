@@ -145,6 +145,14 @@ export default function JEPOTrackingDashboard(){
     {message&&<p role="status" style={{padding:10,borderRadius:8,background:'#ecf3ff',color:'#174477',fontSize:13,marginBottom:0}}>{message}</p>}
     {preview&&<div style={{marginTop:12}}>
      <strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}</strong>
+     <div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
+      {[
+       ['awb','AWB No.'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
+       ['destination','Destination'],['weight','Chargeable Weight'],['jpCode','JP Code'],['bookingDate','Booking Date']
+      ].map(([field,label])=><div key={field} style={{padding:'7px 10px',borderRadius:8,background:'#f0f7ff',border:'1px solid #d4e3f5',fontSize:12}}>
+       <b>{label}</b> → {preview.columnMatches?.[field]?.heading||'Not found'} <span style={{color:'#64748b'}}>(Excel column {preview.mapping?.[field]||'?'})</span>
+      </div>)}
+     </div>
      <p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>
      <div style={{overflowX:'auto',maxHeight:275}}>
       <table style={{borderCollapse:'collapse',whiteSpace:'nowrap',fontSize:12}}>
