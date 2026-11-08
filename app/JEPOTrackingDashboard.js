@@ -1,6 +1,8 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {inclusiveTatDays,tatServiceName,tatDestinationName} from '../lib/branchTatSummary.js';
+import JEPOLoadSummary from './JEPOLoadSummary.js';
+import JEPOFedexLoadSummary from './JEPOFedexLoadSummary.js';
 
 const API='/api/jepo-tracking';
 const panel={background:'#fff',border:'1px solid #d9e3ee',borderRadius:13,padding:16,marginTop:14};
@@ -184,11 +186,11 @@ export default function JEPOTrackingDashboard(){
    </div>
    <section style={panel}>
     <div style={{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center'}}>
-     {[['ACTIVE','Active ('+active.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['TAT','TAT Summary']].map(([id,label])=>
+     {[['ACTIVE','Active ('+active.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['TAT','TAT Summary']].map(([id,label])=>
       <button key={id} onClick={()=>setTab(id)} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
-    {tab==='TAT'?<>
+    {tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='TAT'?<>
      <p style={{fontSize:12,color:'#536b86'}}>TAT = Booking Date se JEPO website par verified Delivered Date tak, dono calendar dates included. Missing verified delivery dates are not used in averages.</p>
      <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
       {summaryTable(serviceSummary,'Service-wise TAT')}
