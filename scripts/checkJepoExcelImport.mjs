@@ -85,4 +85,14 @@ assert.equal(parsed.records[1].service,'FEDEX');
 assert.equal(parsed.records[1].vendor,'TPL');
 assert.equal(parsed.records[1].jpCode,'JEP002');
 
+
+// Six-column JEPO export must still import the AWB rather than hiding all data.
+const partial=new ExcelJS.Workbook(),p=partial.addWorksheet('Actual Row 1');
+['ACCOUNT CODE','AWB','SERVICE','VENDOR','CONSIGNEE NAME','CHARG. WEIGHT'].forEach((h,i)=>p.getRow(1).getCell(i+1).value=h);
+['ACC002','123456','ARAMEX','ICL','Sample Receiver','6.25'].forEach((v,i)=>p.getRow(2).getCell(i+1).value=v);
+parsed=parseJepoExcel(partial);
+assert.deepEqual(parsed.missingFields,['Destination','Booking Date']);
+assert.deepEqual(parsed.records,[{awb:'123456',service:'ARAMEX',vendor:'ICL',
+ consignee:'Sample Receiver',destination:'',weight:6.25,jpCode:'ACC002',bookingDate:null}]);
+
 console.log('JEPO Excel detection checks passed for 132 columns, mixed row layouts and booking dates.');
