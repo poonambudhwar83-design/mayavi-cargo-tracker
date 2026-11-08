@@ -56,7 +56,7 @@ export async function POST(request){
   let parsed;
   try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
-  if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,
+  if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
    preview:parsed.records.slice(0,12)});
   await ensureJepoTrackingTable(sql);
@@ -67,7 +67,7 @@ export async function POST(request){
    await sql.query("INSERT INTO mayavi_jepo_tracking (awb,service,vendor,consignee,destination,chargeable_weight,jp_code,booking_date,imported_by,import_file) SELECT x.awb,x.service,x.vendor,x.consignee,x.destination,x.weight,x.jp_code,NULLIF(x.booking_date,'')::date,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,service text,vendor text,consignee text,destination text,weight numeric,jp_code text,booking_date text) ON CONFLICT (awb) DO UPDATE SET service=COALESCE(NULLIF(EXCLUDED.service,''),mayavi_jepo_tracking.service),vendor=COALESCE(NULLIF(EXCLUDED.vendor,''),mayavi_jepo_tracking.vendor),consignee=COALESCE(NULLIF(EXCLUDED.consignee,''),mayavi_jepo_tracking.consignee),destination=COALESCE(NULLIF(EXCLUDED.destination,''),mayavi_jepo_tracking.destination),chargeable_weight=COALESCE(EXCLUDED.chargeable_weight,mayavi_jepo_tracking.chargeable_weight),jp_code=COALESCE(NULLIF(EXCLUDED.jp_code,''),mayavi_jepo_tracking.jp_code),booking_date=COALESCE(EXCLUDED.booking_date,mayavi_jepo_tracking.booking_date),imported_by=EXCLUDED.imported_by,import_file=EXCLUDED.import_file,updated_at=NOW()",
     [JSON.stringify(part.map(r=>({...r,weight:r.weight,jp_code:r.jpCode,booking_date:r.bookingDate||''}))),session.username,fileName]);
   }
-  return json({ok:true,saved:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,
+  return json({ok:true,saved:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingFields:parsed.missingFields,
    missingDates:parsed.missingDates,message:'JEPO Excel saved. Existing verified tracking and delivered dates are retained.'});
  }catch(e){console.error('jepo_tracking_upload',String(e?.message||e).slice(0,220));return json({ok:false,error:'JEPO Excel upload failed; please verify file and retry.'},503);}
 }
