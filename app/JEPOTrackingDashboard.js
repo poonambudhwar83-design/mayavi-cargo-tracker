@@ -87,7 +87,7 @@ export default function JEPOTrackingDashboard(){
    if(action==='preview'){
     setPreview(data);setMessage('Preview ready: Excel headings, booking dates and AWB numbers check karke Save karein.');
    }else{
-    setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in Excel, '+data.missingDates+' rows without valid booking date. Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
+    setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in Excel, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
     setPreview(null);setFile(null);await load(false);
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
@@ -154,6 +154,9 @@ export default function JEPOTrackingDashboard(){
       </div>)}
      </div>
      <p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>
+    {preview.missingFields?.length>0&&<p style={{fontSize:13,fontWeight:800,color:'#9a3412',background:'#fff7ed',padding:10,borderRadius:8}}>
+     Excel mein identify nahi hue: {preview.missingFields.join(', ')}. Baaki AWB records load ho sakte hain; missing values blank rahengi. Booking Date missing ho to TAT calculate nahi hoga.
+    </p>}
      <div style={{overflowX:'auto',maxHeight:275}}>
       <table style={{borderCollapse:'collapse',whiteSpace:'nowrap',fontSize:12}}>
        <thead><tr>{['AWB','Service','Vendor','Consignee','Destination','Weight','JEPO Code','Booking Date'].map(h=><th key={h} style={{padding:8,background:'#eaf2ff',textAlign:'left'}}>{h}</th>)}</tr></thead>
