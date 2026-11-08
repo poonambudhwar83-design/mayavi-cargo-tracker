@@ -2,6 +2,7 @@ import {neon} from '@neondatabase/serverless';
 import ExcelJS from 'exceljs';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {parseJepoExcel} from '../../../lib/jepoExcelImport.js';
+import {csvAsJepoWorkbook} from '../../../lib/jepoCsvImport.js';
 import {ensureJepoTrackingTable,syncJepoTrackingAwbs} from '../../../lib/jepoTrackingStore.js';
 import {cleanJepoTrackingNo} from '../../../lib/jepoBranchTracking.js';
 
@@ -47,14 +48,18 @@ export async function POST(request){
   const action=String(form.get('action')||'preview');
   if(!['preview','save'].includes(action))return json({ok:false,error:'Unsupported action.'},400);
   const file=form.get('file');
-  if(!file||typeof file.arrayBuffer!=='function')return json({ok:false,error:'Select JEPO Excel workbook.'},400);
-  if(!/\.xlsx$/i.test(file.name||''))return json({ok:false,error:'Please use an .xlsx Excel workbook.'},400);
-  if(!file.size||file.size>10*1024*1024)return json({ok:false,error:'Excel file should be 10 MB or smaller.'},413);
-  const workbook=new ExcelJS.Workbook();
-  try{await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()));}
-  catch{return json({ok:false,error:'Excel workbook could not be opened.'},422);}
+  if(!file||typeof file.arrayBuffer!=='function')return json({ok:false,error:'Select JEPO CSV or Excel workbook.'},400);
+  if(!/\.(xlsx|csv)$/i.test(file.name||''))return json({ok:false,error:'Please upload a .csv or .xlsx file.'},400);
+  if(!file.size||file.size>10*1024*1024)return json({ok:false,error:'CSV or Excel file should be 10 MB or smaller.'},413);
+  const isCsv=/\.csv$/i.test(file.name||'');
+  let workbook;
+  try{
+   const bytes=Buffer.from(await file.arrayBuffer());
+   if(isCsv)workbook=csvAsJepoWorkbook(bytes,file.name);
+   else{workbook=new ExcelJS.Workbook();await workbook.xlsx.load(bytes);}
+  }catch(e){return json({ok:false,error:String(e?.message||'CSV/Excel file could not be opened.')},422);}
   let parsed;
-  try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:Number(form.get('headerRow')||0)});}
+  try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:isCsv?1:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
   if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
