@@ -381,7 +381,7 @@ assert.ok(ui.includes("onClick={()=>switchSheet('SUMMARY')}"));
 assert.ok(ui.includes("sheet==='SUMMARY'||"));
 assert.ok(ui.includes("dailySummary.map(r=><tr key={r.branch+'|'+r.date}"));
 assert.ok(ui.includes("sheet==='SUMMARY'&&<section"));
-assert.ok(ui.includes("sheet!=='SUMMARY'&&<div className={styles.scroller}"));
+assert.ok(ui.includes("sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div className={styles.scroller}"),'Daily Summary and Monthly Data both hide the raw Active/Delivered ledger.');
 assert.ok(ui.includes("if(sheet==='SUMMARY'){"));
 assert.ok(ui.includes("Daily Summary"));
 assert.ok(ui.includes("Total Branch Amount (₹)"));
