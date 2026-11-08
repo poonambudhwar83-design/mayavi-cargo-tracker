@@ -182,7 +182,7 @@ export default function JEPOTrackingDashboard(){
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
       {tab==='ACTIVE'&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
-     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO auto tracking checks active AWBs hourly • Pending shipments show live scan status, not an invented delivery date.</p>
+     <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks run twice per hour in rotating batches • Pending shipments show live scan status, not an invented delivery date.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
        <thead><tr>{['#',...columns.map(c=>c[1]),'Live Check'].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
