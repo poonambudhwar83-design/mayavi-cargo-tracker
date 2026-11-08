@@ -14,6 +14,7 @@ import AuditDataAnalysisDashboard from './AuditDataAnalysisDashboard.js';
 import AccountDashboard from './AccountDashboard.js';
 import ExportFinanceSection from './ExportFinanceSection.js';
 import BranchLoadsDashboard from './BranchLoadsDashboard.js';
+import JEPOTrackingDashboard from './JEPOTrackingDashboard.js';
 import HaryanaAdminDashboard from './HaryanaAdminDashboard.js';
 
 const FALLBACK_USERS=[
@@ -212,6 +213,8 @@ export default function UnifiedDashboard(){
     ?<HaryanaAdminDashboard currentUser={session} onLogout={logout}/>
     :branchSelected
     ?<BranchLoadsDashboard currentUser={session}/>
+    :session?.role==='admin'&&selectedDashboard==='JEPO_TRACKING'
+      ?<JEPOTrackingDashboard/>
     :session?.role==='admin'&&selectedDashboard==='MONTHLY'
        ?<MonthlyDashboard/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
@@ -254,6 +257,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('ACCOUNT')} style={{...topAccountButton,background:selectedDashboard==='ACCOUNT'?'#dbeafe':'#fff',color:'#17419b'}}>ACCOUNT</button>}
        {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('NOTES')} style={{...topAccountButton,background:selectedDashboard==='NOTES'?'#dbeafe':'#fff',color:'#17419b'}}>NOTES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('BRANCH_LOADS')} style={{...topAccountButton,background:selectedDashboard==='BRANCH_LOADS'?'#dbeafe':'#fff',color:'#17419b'}}>JIND / KARNAL LOADS</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('JEPO_TRACKING')} style={{...topAccountButton,background:selectedDashboard==='JEPO_TRACKING'?'#dbeafe':'#fff',color:'#17419b'}}>JEPO TRACKING</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
       {(branchLogin||haryanaLogin||accountsLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
