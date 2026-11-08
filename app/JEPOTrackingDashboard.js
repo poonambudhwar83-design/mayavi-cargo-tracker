@@ -64,7 +64,7 @@ function summaryTable(items,title){
   </div>
  </section>;
 }
-export default function JEPOTrackingDashboard(){
+export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState('');
@@ -136,7 +136,8 @@ export default function JEPOTrackingDashboard(){
     </div>
     <button style={button} disabled={fetching||busy} onClick={()=>void load()}>{fetching?'Loading…':'Reload Saved Data'}</button>
    </div>
-   <section style={panel}>
+   {readOnly&&<p style={{margin:'12px 0',padding:11,background:'#eff6ff',borderRadius:9,color:'#1d4e89',fontSize:13,fontWeight:800}}>Haryana Admin • JEPO Tracking read-only view • Active, Delivered, Daily Load, Weekly Load and TAT Summary</p>}
+   {!readOnly&&<section style={panel}>
     <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO CSV / Excel</h2>
     <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
      <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setMessage('')}}/>
@@ -177,7 +178,7 @@ export default function JEPOTrackingDashboard(){
       </table>
      </div>}
     </div>}
-   </section>
+   </section>}
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:14}}>
     {metrics.map(([label,value])=><div key={label} style={{background:'#fff',border:'1px solid #dce7f3',padding:13,borderRadius:12}}>
      <div style={{color:'#5c718b',fontSize:12,fontWeight:700}}>{label}</div>
@@ -204,12 +205,12 @@ export default function JEPOTrackingDashboard(){
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
       <select aria-label="Filter Destination" value={destination} onChange={e=>setDestination(e.target.value)} style={control}><option value="">All Destinations</option>{destinations.map(s=><option key={s}>{s}</option>)}</select>
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':'jepo_active')}>Export CSV</button>
-      {tab==='ACTIVE'&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
+      {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
      <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks run every 5 minutes in batches of up to 100 AWBs • Pending shipments show live scan status, not an invented delivery date.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
-       <thead><tr>{['#',...columns.map(c=>c[1]),'Live Check'].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
+       <thead><tr>{['#',...columns.map(c=>c[1]),...(!readOnly?['Live Check']:[])].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
        <tbody>{visible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#f7fbff':'white'}}>
         <td style={{padding:9,borderBottom:'1px solid #e9eef5'}}>{i+1}</td>
         {columns.map(([key])=>{
@@ -221,9 +222,9 @@ export default function JEPOTrackingDashboard(){
           {v===null||v===undefined||v===''?'—':key==='tat'?v+' d':v}{key==='status'&&r.trackingError?' ⚠':''}
          </td>;
         })}
-        <td style={{padding:8,borderBottom:'1px solid #e9eef5'}}><button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button></td>
+        {!readOnly&&<td style={{padding:8,borderBottom:'1px solid #e9eef5'}}><button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button></td>}
        </tr>)}
-       {!visible.length&&<tr><td colSpan={columns.length+2} style={{padding:20,textAlign:'center',color:'#637891'}}>No AWBs in this sheet yet. Upload Excel to begin.</td></tr>}
+       {!visible.length&&<tr><td colSpan={columns.length+(readOnly?1:2)} style={{padding:20,textAlign:'center',color:'#637891'}}>No AWBs in this sheet yet. Upload Excel to begin.</td></tr>}
        </tbody>
       </table>
      </div>
