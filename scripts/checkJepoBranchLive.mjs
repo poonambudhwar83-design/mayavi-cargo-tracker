@@ -111,7 +111,7 @@ for(const route of ['/api/cron/jepo-branches','/api/branch-loads/jepo-live']){
 
 assert.ok(browser.includes('await waitForJepoInput(page)'), 'JEPO input polling must survive early redirects.');
 assert.ok(!browser.includes('await page.waitForFunction('), 'No frame-bound Puppeteer waits on navigable JEPO pages.');
-assert.ok(browser.includes('waitForJepoResult(page,beforeResult)'), 'JEPO result polling must survive page navigations.');
+assert.ok(browser.includes('waitForJepoResult(page,beforeResult,{allowProgressOnly})'), 'JEPO result polling must survive page navigations.');
 assert.ok(!browser.includes('await page.waitForFunction(previous=>'), 'Never bind result wait to the old frame after submitting Track.');
 assert.ok(browser.includes('if(!page||page.isClosed())page=await browser.newPage()'), 'Replace unusable tabs between AWBs.');
 assert.ok(browser.includes('for(let attempt=0;attempt<2;attempt++)'), 'Retry detached-frame AWBs before marking them failed.');
@@ -120,7 +120,7 @@ assert.ok(browser.includes('if(++consecutiveDetachments>=5)'), 'Repeated frame d
 assert.ok(browser.includes('https://jepoexpress.com/track'));
 assert.ok(browser.includes('freshResult:true'));
 assert.ok(browser.includes('beforeResult'));
-assert.ok(browser.includes('validateJepoLiveResult({...snapshot,submittedAwb:awb,freshResult:true},awb)'));
+assert.ok(browser.includes('validateJepoLiveResult(liveResult,awb)'));
 assert.ok(browser.includes("let cursor=0"), 'Browser workers must share bounded work queue.');
 assert.ok(browser.includes("await Promise.all(Array.from"), 'JEPO tracking must use parallel browser tabs.');
 assert.ok(browser.includes("if(typeof onResult==='function')await onResult(results[index])"), 'Persist results without waiting for the last shipment.');
