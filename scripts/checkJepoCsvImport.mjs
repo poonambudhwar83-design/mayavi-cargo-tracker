@@ -24,6 +24,14 @@ assert.equal(parsed.records[1].awb,'535272');
 assert.equal(parsed.records[1].vendor,'OVERSEAS LOG.');
 assert.equal(parsed.records[1].bookingDate,'2026-11-08');
 
+// Repeated AWB in the same uploaded CSV is acknowledged with source row numbers.
+const repeated=csv+'\r\nJP001,535271,FEDEX,TPL,"Jane, Smith",UK,3.5,07/11/2026,repeat\r\n';
+parsed=parseJepoExcel(csvAsJepoWorkbook(Buffer.from(repeated,'utf8'),'repeat.csv'),{headerRow:1});
+assert.equal(parsed.records.length,2);
+assert.equal(parsed.duplicates,1);
+assert.equal(parsed.repeatedUniqueCount,1);
+assert.deepEqual(parsed.repeatedAwbs[0],{awb:'535271',firstRow:2,rows:[2,4],count:2});
+
 // Excel's explicit sep=; export with six known fields must preserve missing date.
 csv='sep=;\r\nACCOUNT CODE;AWB;SERVICE;VENDOR;CONSIGNEE NAME;CHARG. WEIGHT\r\n'
  +'JP003;535273;ARAMEX;ICL;"Test; Receiver";6.25\r\n';
