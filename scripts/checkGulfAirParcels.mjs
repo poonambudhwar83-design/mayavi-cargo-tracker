@@ -159,6 +159,67 @@ assert.equal(departedBelowFold.shipment.arrivalDate,'');
 assert.equal(departedBelowFold.shipment.partShipments.reduce((n,p)=>n+p.pieces,0),55);
 assert.equal(departedBelowFold.shipment.partShipments.reduce((n,p)=>n+p.weight,0),1260);
 
+
+// 05 Nov 2026 actual screenshots: BOTH physical loads departed from BAH.
+// A later KK booking text must not override the 16:43 explicit GF134 DEP.
+const screenshotParsed=parseGulfAirParcelsPage({
+  resultText:'Tracking number 07295019411',
+  rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH), Bahrain\nTo\nIndira Gandhi Intl (DEL), Delhi\nWeight\n1260.0 kg\nPieces\n55',
+  leftText:'AWB 07295019411',
+  timelineRows:[...splitRows,
+    '05 Nov 2026 14:25 Departed on Flight (DEP). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 31, weight: 710.0 Bahrain Intl (BAH), Bahrain',
+    '05 Nov 2026 16:43 Departed (DEP). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 31, weight: 710.0 Bahrain Intl (BAH), Bahrain',
+    '05 Nov 2026 17:07 Departed on flight (KK). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 31, weight: 710.0 Bahrain Intl (BAH), Bahrain'
+  ]
+},splitAwb);
+assert.equal(screenshotParsed.ok,true,screenshotParsed.reason);
+assert.equal(screenshotParsed.shipment.status,'IN TRANSIT');
+assert.equal(screenshotParsed.shipment.partShipments.length,2);
+assert.equal(screenshotParsed.shipment.totalPieces,55);
+assert.equal(screenshotParsed.shipment.totalWeight,1260);
+assert.equal(screenshotParsed.shipment.partShipments.find(p=>p.flightNo==='GF130').status,'DEPARTED');
+assert.equal(screenshotParsed.shipment.partShipments.find(p=>p.flightNo==='GF130').partKey,'GF|24|550.000');
+const screenshotGF134=screenshotParsed.shipment.partShipments.find(p=>p.flightNo==='GF134');
+assert.equal(screenshotGF134.status,'DEPARTED');
+assert.equal(screenshotGF134.partKey,'GF|31|710.000');
+assert.equal(screenshotGF134.departureDate,'2026-11-05');
+assert.equal(screenshotGF134.departureTime,'19:13');
+assert.equal(screenshotParsed.shipment.arrivalDate,'');
+assert.equal(screenshotParsed.shipment.arrivedPieces,0);
+// AWB matching must be exact; never read another 072 cargo record.
+assert.equal(parseGulfAirParcelsPage({
+  rightText:'Tracking number\n07295019412\nFrom\nBahrain Intl (BAH)\nTo\nIndira Gandhi Intl (DEL)\nWeight\n1260.0\nPieces\n55',
+  timelineRows:splitRows
+},splitAwb).ok,false);
+// Equal sized parts are different when carried by two real flights.
+const equalSplit=parseGulfAirParcelsPage({
+  resultText:'Tracking number 07295019411',
+  rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH)\nTo\nIndira Gandhi Intl (DEL)\nWeight\n1000.0\nPieces\n40',
+  timelineRows:[
+    '05 Nov 2026 10:00 Booked (KK). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 20, weight: 500.0 Bahrain Intl (BAH), Bahrain',
+    '05 Nov 2026 12:00 Departed (DEP). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 20, weight: 500.0 Bahrain Intl (BAH), Bahrain',
+    '05 Nov 2026 10:00 Booked (KK). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 20, weight: 500.0 Bahrain Intl (BAH), Bahrain',
+    '05 Nov 2026 16:00 Departed (DEP). Flight GF134 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 20, weight: 500.0 Bahrain Intl (BAH), Bahrain'
+  ]
+},splitAwb);
+assert.equal(equalSplit.ok,true,equalSplit.reason);
+assert.equal(equalSplit.shipment.partShipments.length,2);
+assert.equal(new Set(equalSplit.shipment.partShipments.map(p=>p.partKey)).size,2);
+assert.equal(equalSplit.shipment.partShipments.reduce((n,p)=>n+p.pieces,0),40);
+assert.equal(equalSplit.shipment.partShipments.reduce((n,p)=>n+p.weight,0),1000);
+assert.equal(equalSplit.shipment.arrivalDate,'');
+
+// Guard the previously broken Gulf per-part PATCH and Docs Received flow.
+const gulfShipmentsApi=readFileSync('app/api/shipments/route.js','utf8');
+const gulfSharedTrack=readFileSync('app/api/track/route.js','utf8');
+const gulfDashboard=readFileSync('app/DashboardClient.js','utf8');
+assert.ok(gulfShipmentsApi.includes("['065','072','098','176','312','229']"));
+assert.ok(gulfShipmentsApi.includes("body?.operation==='docsReceived'"));
+assert.ok(gulfSharedTrack.includes("if(!(mawb.startsWith('072-')||"));
+assert.ok(gulfSharedTrack.includes("(mawb.startsWith('072-')||mawb.startsWith('065-')"));
+assert.ok(gulfDashboard.includes('<th>Docs Received</th>'));
+assert.ok(gulfDashboard.includes("operation:'docsReceived'"));
+
 // Simulate a virtualized tracking history: initial viewport only shows BKD,
 // while older/deeper scrolling reveals the GF134 DEP event.
 const visited=[];
