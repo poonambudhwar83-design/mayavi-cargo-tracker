@@ -770,9 +770,15 @@ async function handle(mawb,fallback={}){
   // CX only: Cathay can return an empty site shell or a terminal record
   // with no dated flight movement. Never overwrite a user's AWB-verified
   // snapshot with that incomplete response or imply that it is live.
+  // An AWB-matched RCS record is valid even before the first departure flight.
+  // Keep its received pieces, weight and booking date; flight/ETA remain pending.
+  const cxRcsVerified=Boolean(directResult?.shipment?.bookingDate&&
+    (Number(directResult.shipment.weight)>0||
+     Number(directResult.shipment.pieces)>0||
+     Number(directResult.shipment.bags)>0));
   const cathayIncomplete=Boolean(cathayFastPath&&directResult?.ok&&
     Array.isArray(directResult?.debug?.terminalFlights)&&
-    directResult.debug.terminalFlights.length===0&&
+    directResult.debug.terminalFlights.length===0&&!cxRcsVerified&&
     !/Booking\s+Status|Current\s+status|Shipment\s+History/i.test(
       String(directResult?.debug?.browser?.pageSample||'')));
   if(cathayFastPath&&(!directResult?.ok||cathayIncomplete)){

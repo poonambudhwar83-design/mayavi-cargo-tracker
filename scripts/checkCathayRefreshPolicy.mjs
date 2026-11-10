@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { cathayRefreshDecision, CX_ACTIVE_ARRIVED_RETRY_MS } from '../lib/cathayRefreshPolicy.js';
+const now=Date.parse('2026-11-10T08:00:00Z');
+const settled={status:'ARRIVED',flightNo:'CX695',arrivalDate:'2026-11-06',arrivalTime:'21:19',arrivalIsActual:true};
+assert.equal(CX_ACTIVE_ARRIVED_RETRY_MS,300000);
+assert.equal(cathayRefreshDecision(settled,'ACTIVE',now,new Date(now-6*60000).toISOString()).due,true);
+assert.equal(cathayRefreshDecision(settled,'ACTIVE',now,new Date(now-2*60000).toISOString()).due,false);
+assert.equal(cathayRefreshDecision(settled,'SKIP',now,new Date(now-6*60000).toISOString()).due,false);
+assert.equal(cathayRefreshDecision({status:'BOOKED',flightNo:'',arrivalDate:'',arrivalTime:''},'ACTIVE',now,new Date(now).toISOString()).due,true);
+console.log('CX active polling cadence and new-AWB retries passed.');
