@@ -173,6 +173,36 @@ const collected=await collectGulfAirParcelsHistory(historyMock);
 assert.ok(collected.some(row=>row.includes('GF134')&&row.includes('DEP')));
 assert.ok(visited.includes(1),'Gulf reader must scroll beyond the initially visible rows');
 
+// An empty result can echo the AWB input and show dated marketing text.
+assert.equal(parseGulfAirParcelsPage({
+  resultText:'Tracking number 07295019411\n31 Oct 2026 Read the latest Shipping Report. The parcel was delivered across supported services.',
+  leftText:'31 Oct 2026 Read the latest Shipping Report. Delivered packages everywhere.',
+  rightText:'Tracking number 07295019411'
+},'07295019411').ok,false,'Marketing text must never become a fake DLV cargo event');
+
+// Regression: an actual GF130 arrival must preserve the GF130 departure
+// and must not mark all 55 master pieces arrived while GF134 is still booked.
+const partialArrival=parseGulfAirParcelsPage({
+  resultText:'Tracking number 07295019411',
+  rightText:'Tracking number\n07295019411\nFrom\nBahrain Intl (BAH)\nTo\nIndira Gandhi Intl (DEL)\nWeight\n1260.0\nPieces\n55',
+  leftText:'AWB 07295019411',
+  timelineRows:[...splitRows,
+    '06 Nov 2026 13:10 Arrived (ARR). Flight GF130 to Indira Gandhi Intl (DEL), Delhi, India, pieces: 24, weight: 550.0 Bahrain Intl (BAH), Bahrain']
+},splitAwb);
+assert.equal(partialArrival.ok,true,partialArrival.reason);
+const gf130Arrived=partialArrival.shipment.partShipments.find(p=>p.flightNo==='GF130');
+assert.equal(gf130Arrived.status,'ARRIVED');
+assert.equal(gf130Arrived.departureDate,'2026-11-06');
+assert.equal(gf130Arrived.departureTime,'01:16');
+assert.equal(gf130Arrived.arrivalDate,'2026-11-06');
+assert.equal(gf130Arrived.arrivalTime,'13:10');
+assert.equal(partialArrival.shipment.arrivedPieces,24);
+assert.equal(partialArrival.shipment.pendingPieces,31);
+assert.equal(partialArrival.shipment.status,'PART ARRIVED');
+assert.equal(partialArrival.shipment.arrivalIsActual,false);
+assert.equal(partialArrival.shipment.arrivalDate,'');
+assert.equal(partialArrival.shipment.partShipments.length,2);
+
 const dashboardSource=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"),
   'Gulf Air 072 is eligible for independent physical part rows.');
