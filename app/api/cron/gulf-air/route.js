@@ -1,6 +1,7 @@
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {safeAirlineMovementPatch} from '../../../../lib/activeAirlineCron.js';
+import {mergePartMail,mergePartCustoms} from '../../../../lib/partMail.js';
 import {readableGulfFailure} from '../../../../lib/gulfAirDiagnostics.js';
 
 export const runtime='nodejs';
@@ -54,6 +55,12 @@ async function trackOne(sql,origin,key,row){
     trackingError:verified?'':(reason||'No current verified 072 tracking data')
   };
   if(verified&&result.serverSaved!==true){
+    // Preserve operator decisions even if the adapter could not save itself.
+    // The dedicated 072 cron must not reset Mail/Customs to false on refresh.
+    if(Array.isArray(movement.partShipments)&&Array.isArray(row.data?.partShipments)){
+      movement.partShipments=mergePartCustoms(
+        mergePartMail(movement.partShipments,row.data.partShipments),row.data.partShipments);
+    }
     // The airline adapter normally persists its own fully verified response.
     // This fallback may copy only airline fields, never client/admin/finance data.
     Object.assign(patch,movement);
