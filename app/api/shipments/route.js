@@ -352,6 +352,30 @@ export async function PATCH(request){
     if(!auth.allowed)return Response.json({ok:false,error:'Login required.'},{status:401});
     const body=await request.json();
     const awb=normalize(body?.mawb||body?.awb||'');
+    // Operator-owned Import documentation flag. A targeted JSON patch
+    // avoids overwriting tracking, Customs, Mail or another user's edits.
+    if(body?.operation==='docsReceived'){
+      if(!awb||typeof body?.docsReceived!=='boolean')
+        return Response.json({ok:false,error:'Invalid Docs Received update.'},{status:400});
+      const sql=db();
+      const [existing]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+      if(!existing)return Response.json({ok:false,error:'Shipment not found. Refresh the dashboard.'},{status:404});
+      if(!['IMPORT','OTHER_COUNTRIES_IMPORT'].includes(shipmentType(existing.data?.shipmentType)))
+        return Response.json({ok:false,error:'Docs Received is available for Import only.'},{status:400});
+      if(auth.session?.role==='haryana_admin'&&shipmentType(existing.data?.shipmentType)!=='IMPORT')
+        return Response.json({ok:false,error:'Import masters only.'},{status:403});
+      if(isOtherCountries(existing.data||{})&&!canViewOtherCountries(auth.session,auth.internal))
+        return Response.json({ok:false,error:'Admin authorization required.'},{status:403});
+      const checked=body.docsReceived,now=new Date().toISOString();
+      const actor=String(auth.session?.displayName||auth.session?.username||'Operator');
+      const patch={docsReceived:checked,docsReceivedAt:checked?now:'',docsReceivedBy:checked?actor:''};
+      const [saved]=await sql`UPDATE mayavi_shipments
+        SET data=data||${JSON.stringify(patch)}::jsonb,version=version+1,updated_at=now()
+        WHERE awb=${awb}
+        RETURNING awb,data,version,updated_at,tracking_checked_at`;
+      return Response.json({ok:true,row:{...saved,
+        data:dataForViewer(sanitizeShipment(saved.data||{},saved.awb),auth.session,auth.internal)}});
+    }
     // A repeated MAWB alerts the ORIGINAL master throughout Mayavi, including
     // Active Masters in other open browser sessions. This SQL update touches
     // only alert metadata, never client, customs, carrier or account data.
@@ -389,7 +413,7 @@ export async function PATCH(request){
     const kuwaitBulkMail=body?.operation==='kuwaitMasterMail';
     const kuwaitBulkCustoms=body?.operation==='kuwaitMasterCustoms';
     const kuwaitBulk=kuwaitBulkMail||kuwaitBulkCustoms;
-    const supportedPart=Boolean(awb&&['065','098','176','312','229'].some(prefix=>awb.startsWith(prefix)));
+    const supportedPart=Boolean(awb&&['065','072','098','176','312','229'].some(prefix=>awb.startsWith(prefix)));
     if(!awb||partKey.length>256||(
         kuwaitBulk
           ? (!awb.startsWith('229')||Boolean(partKey)||
