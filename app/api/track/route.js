@@ -122,7 +122,7 @@ async function loadStoredTrackingFallback(mawb=''){
   }catch{return{};}
 }
 async function persistAirIndiaVirginResult(mawb,shipment={}){
-  if(!(mawb.startsWith('065-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')||mawb.startsWith('910-')))return{saved:false,skipped:true};
+  if(!(mawb.startsWith('072-')||mawb.startsWith('065-')||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('160-')||mawb.startsWith('098-')||mawb.startsWith('157-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('607-')||mawb.startsWith('932-')||mawb.startsWith('738-')||mawb.startsWith('807-')||mawb.startsWith('229-')||mawb.startsWith('141-')||mawb.startsWith('900-')||mawb.startsWith('910-')))return{saved:false,skipped:true};
   const url=trackingDbUrl();if(!url)return{saved:false,reason:'NO_DATABASE_URL'};
   const awb=String(mawb).replace(/\D/g,'');
   const sql=neon(url);
@@ -134,7 +134,7 @@ async function persistAirIndiaVirginResult(mawb,shipment={}){
     const savedParts=Array.isArray(existing?.[0]?.data?.partShipments)?existing[0].data.partShipments:[];
     // Operator Mail/Customs choices persist by stable physical-part identity.
     tracked.partShipments=mergePartMail(tracked.partShipments,savedParts);
-    if((mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('312-')||mawb.startsWith('229-'))&&tracked.partShipments.length>=2){
+    if((mawb.startsWith('072-')||mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('312-')||mawb.startsWith('229-'))&&tracked.partShipments.length>=2){
       tracked.partShipments=mergePartCustoms(tracked.partShipments,savedParts);
       tracked.customsCleared=false;
       tracked.customsClearedAt='';
