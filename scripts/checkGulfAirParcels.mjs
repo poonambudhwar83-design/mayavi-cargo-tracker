@@ -268,6 +268,11 @@ const dashboardSource=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"),
   'Gulf Air 072 is eligible for independent physical part rows.');
 
+// A 072 row should open the user-verified full-AWB ParcelsApp permalink,
+// not a generic landing page that loses the AWB number.
+const dashboardDirect=readFileSync('app/DashboardClient.js','utf8');
+assert.ok(dashboardDirect.includes("if(n.startsWith('072-'))return `https://parcelsapp.com/en/tracking/${allDigits}`;"));
+assert.ok(dashboardDirect.includes("'PARCELS LIVE ↗'"));
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
