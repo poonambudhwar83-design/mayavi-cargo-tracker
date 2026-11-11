@@ -21,7 +21,7 @@ assert.equal(jepoIsFedexService('EX-DEL-SELF-US'),false);
 assert.equal(jepoLoadWeek('2026-11-01').start,'2026-10-26');
 assert.equal(jepoLoadWeek('2026-11-01').end,'2026-11-01');
 assert.equal(jepoLoadWeek('2026-11-02').start,'2026-11-02');
-assert.deepEqual(JEPO_LOAD_COUNTRIES,['UK','USA','Canada','Australia']);
+assert.deepEqual(JEPO_LOAD_COUNTRIES,['UK','USA','Canada','Australia','Other Countries']);
 assert.deepEqual(JEPO_FEDEX_COUNTRIES,['UK','USA','Canada','Australia','Other Countries']);
 
 const shipments=[
@@ -38,11 +38,16 @@ const shipments=[
  {awb:'11',vendor:'TRANSIT POINT LOGISTICS PRIVATE LIMITED',service:'SELF',destination:'UK',bookingDate:'2026-11-03',weight:null}
 ];
 const daily=buildJepoLoadSummary(shipments,{period:'daily'});
-assert.equal(daily.shipments,5); // never include ICL / FedEx in TPL or Overseas
-assert.equal(daily.kg,25);
+assert.equal(daily.shipments,10); // ICL FedEx service is now shown as FedEx without adding it to TPL or Overseas
+assert.equal(daily.kg,45);
 assert.equal(daily.missingBookingDates,1);
 assert.equal(daily.missingWeights,1);
 assert.equal(daily.rows.find(x=>x.periodStart==='2026-11-02'&&x.vendor==='TPL').countries.USA.kg,4.5);
+assert.equal(daily.rows.find(x=>x.periodStart==='2026-11-02'&&x.vendor==='FedEx').countries['Other Countries'].kg,3);
+assert.equal(daily.rows.some(x=>x.periodStart==='2026-11-01'&&x.vendor==='FedEx'),false);
+assert.deepEqual(daily.vendorTotals.map(x=>x.vendor),['TPL','Overseas','FedEx']);
+assert.equal(buildJepoLoadSummary(shipments,{period:'daily',vendor:'DHL'}).rows.length,0);
+assert.equal(buildJepoLoadSummary(shipments,{period:'daily',vendor:'DHL'}).vendorTotals.length,0);
 assert.equal(daily.rows.find(x=>x.periodStart==='2026-11-03'&&x.vendor==='Overseas').countries.Australia.shipments,1);
 assert.deepEqual(jepoLoadAvailableMonths(shipments),['2026-11']);
 
@@ -50,8 +55,27 @@ const weekly=buildJepoLoadSummary(shipments,{period:'weekly'});
 assert.equal(weekly.rows.find(x=>x.periodStart==='2026-10-26').kg,5);
 assert.equal(weekly.rows.find(x=>x.periodStart==='2026-11-02'&&x.vendor==='TPL').kg,4.5);
 assert.equal(weekly.rows.find(x=>x.periodStart==='2026-11-02'&&x.vendor==='Overseas').kg,15.5);
+assert.equal(weekly.rows.find(x=>x.periodStart==='2026-11-02'&&x.vendor==='FedEx').kg,20);
+assert.equal(weekly.rows.some(x=>x.periodStart==='2026-10-26'&&x.vendor==='FedEx'),false);
 assert.equal(buildJepoLoadSummary(shipments,{period:'daily',vendor:'TPL'}).shipments,3);
 assert.equal(buildJepoLoadSummary(shipments,{period:'daily',month:'2026-10'}).shipments,0);
+assert.equal(jepoLoadVendor('Aramax'),'Aramex');
+assert.equal(jepoLoadVendor('Aramex Express'),'Aramex');
+assert.equal(jepoLoadVendor('DHL EXPRESS'),'DHL');
+assert.equal(jepoLoadVendor('ICL','EX-DEL-DHL'),'DHL');
+assert.equal(jepoLoadVendor('ICL','EX-DEL-ARAMEX'),'Aramex');
+const expanded=[
+ {awb:'D1',vendor:'DHL EXPRESS',service:'DHL',destination:'Canada',bookingDate:'2026-11-02',weight:5},
+ {awb:'A1',vendor:'ICL',service:'EX-DEL-ARAMAX',destination:'UK',bookingDate:'2026-11-03',weight:4},
+ {awb:'F1',vendor:'FedEx',service:'FEDEX',destination:'USA',bookingDate:'2026-11-02',weight:6}
+];
+const expandedDaily=buildJepoLoadSummary(expanded,{period:'daily'});
+assert.deepEqual(expandedDaily.rows.filter(r=>r.periodStart==='2026-11-02').map(r=>r.vendor),['FedEx','DHL']);
+assert.deepEqual(expandedDaily.rows.filter(r=>r.periodStart==='2026-11-03').map(r=>r.vendor),['Aramex']);
+const expandedWeekly=buildJepoLoadSummary(expanded,{period:'weekly'});
+assert.deepEqual(expandedWeekly.rows.map(r=>r.vendor),['FedEx','DHL','Aramex']);
+assert.equal(expandedWeekly.shipments,3);
+assert.equal(buildJepoLoadSummary(expanded,{period:'weekly',vendor:'TPL'}).rows.length,0);
 
 const fedex=buildJepoFedexDailySummary(shipments);
 assert.equal(fedex.shipments,5);
@@ -73,4 +97,4 @@ assert.ok(page.includes('<JEPOLoadSummary records={rows} period="weekly"/>'));
 assert.ok(page.includes('<JEPOFedexLoadSummary records={rows}/>'));
 assert.ok(partners.includes('Download CSV'));
 assert.ok(fedexUI.includes('Download FedEx CSV'));
-console.log('JEPO Daily TPL/Overseas, Monday-Sunday Weekly and distinct FedEx country load regression passed.');
+console.log('JEPO Daily and weekly load regression for TPL, Overseas, FedEx, DHL and Aramex passed.');
