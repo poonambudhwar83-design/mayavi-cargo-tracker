@@ -35,8 +35,16 @@ function downloadCsv(rows,name){
  const a=document.createElement('a');a.href=url;a.download=name+'.csv';
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
+function downloadDuplicateCsv(rows){
+ const headers=['AWB','Duplicate Occurrences','Repeated in Excel','Already Saved Repeats','Uploads with Duplicates','Excel Rows (Last Upload)','Last File','Acknowledged By','Last Acknowledged At','Record Status'];
+ const data=rows.map(r=>[r.awb,r.count,r.fileRepeats,r.alreadySavedRepeats,r.uploadEvents,r.excelRows,r.file,r.acknowledgedBy,r.acknowledgedAt,r.inTracking?(r.trackingStatus||'Active'):'Deleted']);
+ const body=[headers,...data].map(line=>line.map(csvEscape).join(',')).join('\r\n');
+ const url=URL.createObjectURL(new Blob(['\ufeff'+body],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='jepo_duplicate_awbs.csv';
+ document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
 export default function JEPOTrackingDashboard({readOnly=false}){
- const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
+ const [rows,setRows]=useState([]),[duplicateRows,setDuplicateRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
  const [duplicatesAcknowledged,setDuplicatesAcknowledged]=useState(false),[deleteTarget,setDeleteTarget]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
@@ -46,7 +54,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   try{
    const res=await fetch(API,{cache:'no-store',credentials:'include'});
    const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Unable to load.');
-   setRows(data.rows||[]);setLastLoad(new Date());
+   setRows(data.rows||[]);setDuplicateRows(data.duplicateRows||[]);setLastLoad(new Date());
   }catch(e){if(showError)setMessage(e.message||'JEPO records unavailable.');}
   finally{setFetching(false);}
  }
@@ -103,12 +111,13 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    &&(!service||r.service===service)&&(!destination||r.destination===destination)
    &&(tab!=='ACTIVE'||trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
  }),[source,search,service,destination,trackingStage,tab]);
+ const duplicateVisible=useMemo(()=>duplicateRows.filter(r=>[r.awb,r.file,r.acknowledgedBy].join(' ').toLowerCase().includes(search.trim().toLowerCase())),[duplicateRows,search]);
  const valid=useMemo(()=>delivered.map(tatValue).filter(v=>v!==null),[delivered]);
  const avg=valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length*10)/10:null;
  const awaiting=rows.filter(r=>jepoTrackingState(r)==='AWAITING_FIRST_CHECK').length;
  const retryNeeded=rows.filter(r=>jepoTrackingState(r)==='RETRY_NEEDED').length;
  const metrics=[
-  ['All JEPO AWBs',rows.length],['Active',active.length],['Delivered',delivered.length],
+  ['All JEPO AWBs',rows.length],['Active',active.length],['Delivered',delivered.length],['Duplicate AWBs',duplicateRows.length],
   ['Awaiting First Check',awaiting],['Retry Needed',retryNeeded],
   ['Verified TAT',valid.length],['Average Delivered TAT',avg===null?'—':avg+' days']
  ];
@@ -184,11 +193,29 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    </div>
    <section style={panel}>
     <div style={{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center'}}>
-     {[['ACTIVE','Active ('+active.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
-      <button key={id} onClick={()=>setTab(id)} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
+     {[['ACTIVE','Active ('+active.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DUPLICATES','Duplicate AWBs ('+duplicateRows.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
+      <button key={id} onClick={()=>{setTab(id);if(id==='DUPLICATES')setSearch('')}} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
-    {tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
+    {tab==='DUPLICATES'?<div style={{marginTop:14}}>
+     <p style={{fontSize:13,color:'#576b85',margin:'0 0 10px'}}>Duplicate AWBs acknowledged during saved Excel / CSV imports are recorded here permanently. Counts include repeated Excel rows and AWBs already saved before an import. Only one shipment is kept per AWB; tracking status and delivered data stay intact. Historical duplicates from older imports cannot be recovered automatically.</p>
+     <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap',marginBottom:12}}>
+      <input aria-label="Search duplicate JEPO AWB" placeholder="Search duplicate AWB, file or acknowledger…" style={{...control,flex:'1 1 220px'}} value={search} onChange={e=>setSearch(e.target.value)}/>
+      <button style={button} disabled={!duplicateVisible.length} onClick={()=>downloadDuplicateCsv(duplicateVisible)}>Export Duplicate CSV</button>
+     </div>
+     <p style={{fontSize:12,color:'#687d93'}}>{duplicateVisible.length} duplicate AWB numbers • Most recently acknowledged first • Deleting a shipment does not erase its duplicate audit history.</p>
+     <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
+      <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
+       <thead><tr>{['#','AWB No.','Repeat Occurrences','Repeated in Excel','Already Saved Repeats','Duplicate Uploads','Excel Rows (Last Upload)','Last File','Acknowledged By','Last Acknowledged','Record','Action'].map(h=><th key={h} style={{background:'#efeaff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #d7c7fb'}}>{h}</th>)}</tr></thead>
+       <tbody>{duplicateVisible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#faf7ff':'white'}}>
+        {[i+1,r.awb,r.count,r.fileRepeats,r.alreadySavedRepeats,r.uploadEvents,r.excelRows||'—',r.file||'—',r.acknowledgedBy||'—',r.acknowledgedAt?new Date(r.acknowledgedAt).toLocaleString('en-IN',{hour12:false}):'—',r.inTracking?(r.trackingStatus==='DELIVERED'?'Delivered':'Active'):'Deleted'].map((v,j)=><td key={j} style={{padding:9,borderBottom:'1px solid #e9eef5',fontWeight:j===1?800:400}}>{v}</td>)}
+        <td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>{r.inTracking?<button style={{...button,padding:'5px 9px'}} onClick={()=>{setSearch(r.awb);setTab(r.trackingStatus==='DELIVERED'?'DELIVERED':'ACTIVE')}}>View AWB</button>:'Audit only'}</td>
+       </tr>)}
+       {!duplicateVisible.length&&<tr><td colSpan={12} style={{padding:20,color:'#637891',textAlign:'center'}}>No saved duplicate acknowledgement records yet. Duplicates from new saved imports will appear here.</td></tr>}
+       </tbody>
+      </table>
+     </div>
+    </div>:tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
      <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0',alignItems:'center'}}>
       <input aria-label="Search JEPO AWB" placeholder="Search AWB, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
