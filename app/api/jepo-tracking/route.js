@@ -80,6 +80,9 @@ export async function POST(request){
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
   await ensureJepoTrackingTable(sql);
   const existingAwbs=await existingJepoAwbs(sql,parsed.records);
+  const requiresAcknowledgement=parsed.duplicates>0||existingAwbs.length>0;
+  if(action==='save'&&requiresAcknowledgement&&String(form.get('acknowledgeDuplicates')||'')!=='true')
+   return json({ok:false,error:'Duplicate AWBs found. Please preview, review and acknowledge repeated or already saved AWBs before saving.',duplicates:parsed.duplicates,previouslySavedCount:existingAwbs.length},409);
   if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
    repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,
@@ -111,4 +114,18 @@ export async function PATCH(request){
   const result=await syncJepoTrackingAwbs(sql,existing.map(x=>x.awb));
   return json({ok:true,...result});
  }catch(e){console.error('jepo_tracking_refresh',String(e?.message||e).slice(0,180));return json({ok:false,error:'JEPO website is temporarily unavailable. Previous status is safe.'},503);}
+}
+
+export async function DELETE(request){
+ try{
+  const sql=db();
+  if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
+  const body=await request.json().catch(()=>({}));
+  const awb=cleanJepoTrackingNo(body.awb);
+  if(!awb||body.confirm!==true)return json({ok:false,error:'Select an AWB and confirm deletion.'},400);
+  await ensureJepoTrackingTable(sql);
+  const deleted=await sql.query("DELETE FROM mayavi_jepo_tracking WHERE awb=$1 RETURNING awb,status",[awb]);
+  if(!deleted.length)return json({ok:false,error:'JEPO AWB not found or already deleted.'},404);
+  return json({ok:true,awb:deleted[0].awb,status:deleted[0].status,message:'JEPO AWB deleted.'});
+ }catch(e){console.error('jepo_tracking_delete',String(e?.message||e).slice(0,180));return json({ok:false,error:'Could not delete JEPO AWB. No other records were changed.'},503);}
 }
