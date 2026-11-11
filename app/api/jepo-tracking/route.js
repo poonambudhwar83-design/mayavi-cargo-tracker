@@ -48,13 +48,40 @@ async function existingJepoAwbs(sql,records=[]){
  return matches;
 }
 
+// Persist duplicate acknowledgements separately from the unique AWB tracking rows.
+// This audit remains accessible even if the underlying shipment is later deleted.
+async function ensureDuplicateAuditTable(sql){
+ await sql.query("CREATE TABLE IF NOT EXISTS mayavi_jepo_duplicate_audit (awb TEXT PRIMARY KEY, duplicate_occurrences INTEGER NOT NULL DEFAULT 0, file_repeat_occurrences INTEGER NOT NULL DEFAULT 0, existing_awb_occurrences INTEGER NOT NULL DEFAULT 0, upload_events INTEGER NOT NULL DEFAULT 0, last_excel_rows TEXT NOT NULL DEFAULT '', last_import_file TEXT NOT NULL DEFAULT '', last_acknowledged_by TEXT NOT NULL DEFAULT '', last_acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+ await sql.query("CREATE INDEX IF NOT EXISTS mayavi_jepo_duplicate_audit_seen_idx ON mayavi_jepo_duplicate_audit(last_seen_at DESC)");
+}
+async function saveDuplicateAudit(sql,{parsed,existingAwbs,fileName,username}){
+ const previouslySaved=new Set(existingAwbs);
+ const repeated=new Map(parsed.repeatedAwbs.map(r=>[r.awb,r]));
+ const all=[...new Set([...previouslySaved,...repeated.keys()])].map(awb=>{
+  const sameFile=repeated.get(awb);
+  const extraInFile=sameFile?Math.max(0,Number(sameFile.count||1)-1):0;
+  const alreadySaved=previouslySaved.has(awb)?1:0;
+  return {awb,duplicateCount:extraInFile+alreadySaved,fileRepeats:extraInFile,existingRepeats:alreadySaved,
+   excelRows:sameFile?.rows?.join(', ')||''};
+ }).filter(r=>r.duplicateCount>0);
+ if(!all.length)return 0;
+ await ensureDuplicateAuditTable(sql);
+ for(let i=0;i<all.length;i+=200){
+  const batch=all.slice(i,i+200);
+  await sql.query("INSERT INTO mayavi_jepo_duplicate_audit (awb,duplicate_occurrences,file_repeat_occurrences,existing_awb_occurrences,upload_events,last_excel_rows,last_import_file,last_acknowledged_by) SELECT x.awb,x.duplicate_count,x.file_repeats,x.existing_repeats,1,x.excel_rows,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,duplicate_count int,file_repeats int,existing_repeats int,excel_rows text) ON CONFLICT (awb) DO UPDATE SET duplicate_occurrences=mayavi_jepo_duplicate_audit.duplicate_occurrences+EXCLUDED.duplicate_occurrences,file_repeat_occurrences=mayavi_jepo_duplicate_audit.file_repeat_occurrences+EXCLUDED.file_repeat_occurrences,existing_awb_occurrences=mayavi_jepo_duplicate_audit.existing_awb_occurrences+EXCLUDED.existing_awb_occurrences,upload_events=mayavi_jepo_duplicate_audit.upload_events+1,last_excel_rows=EXCLUDED.last_excel_rows,last_import_file=EXCLUDED.last_import_file,last_acknowledged_by=EXCLUDED.last_acknowledged_by,last_acknowledged_at=NOW(),last_seen_at=NOW()",
+   [JSON.stringify(batch.map(x=>({awb:x.awb,duplicate_count:x.duplicateCount,file_repeats:x.fileRepeats,existing_repeats:x.existingRepeats,excel_rows:x.excelRows}))),fileName,username]);
+ }
+ return all.length;
+}
 export async function GET(request){
  try{
   const sql=db();
   if(!await auth(request,sql,{readOnlyAllowed:true}))return json({ok:false,error:'Admin or Haryana Admin login required.'},403);
   await ensureJepoTrackingTable(sql);
   const rows=await sql.query("SELECT "+columns+" FROM mayavi_jepo_tracking ORDER BY CASE WHEN status='DELIVERED' THEN 1 ELSE 0 END, booking_date DESC NULLS LAST, created_at DESC LIMIT 20000");
-  return json({ok:true,rows:rows.map(rowData)});
+  await ensureDuplicateAuditTable(sql);
+  const duplicateRows=await sql.query("SELECT d.awb,d.duplicate_occurrences,d.file_repeat_occurrences,d.existing_awb_occurrences,d.upload_events,d.last_excel_rows,d.last_import_file,d.last_acknowledged_by,d.last_acknowledged_at,d.first_seen_at,d.last_seen_at,(t.awb IS NOT NULL) AS in_tracking,COALESCE(t.status,'') AS tracking_status FROM mayavi_jepo_duplicate_audit d LEFT JOIN mayavi_jepo_tracking t ON t.awb=d.awb ORDER BY d.last_seen_at DESC LIMIT 20000");
+  return json({ok:true,rows:rows.map(rowData),duplicateRows:duplicateRows.map(x=>({awb:x.awb,count:Number(x.duplicate_occurrences),fileRepeats:Number(x.file_repeat_occurrences),alreadySavedRepeats:Number(x.existing_awb_occurrences),uploadEvents:Number(x.upload_events),excelRows:x.last_excel_rows,file:x.last_import_file,acknowledgedBy:x.last_acknowledged_by,acknowledgedAt:x.last_acknowledged_at,firstSeenAt:x.first_seen_at,lastSeenAt:x.last_seen_at,inTracking:x.in_tracking,trackingStatus:x.tracking_status}))});
  }catch(e){console.error('jepo_tracking_get',String(e?.message||e).slice(0,180));return json({ok:false,error:'JEPO Tracking records could not be loaded.'},503);}
 }
 export async function POST(request){
@@ -95,7 +122,8 @@ export async function POST(request){
    await sql.query("INSERT INTO mayavi_jepo_tracking (awb,service,vendor,consignee,destination,chargeable_weight,jp_code,booking_date,imported_by,import_file) SELECT x.awb,x.service,x.vendor,x.consignee,x.destination,x.weight,x.jp_code,NULLIF(x.booking_date,'')::date,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,service text,vendor text,consignee text,destination text,weight numeric,jp_code text,booking_date text) ON CONFLICT (awb) DO UPDATE SET service=COALESCE(NULLIF(EXCLUDED.service,''),mayavi_jepo_tracking.service),vendor=COALESCE(NULLIF(EXCLUDED.vendor,''),mayavi_jepo_tracking.vendor),consignee=COALESCE(NULLIF(EXCLUDED.consignee,''),mayavi_jepo_tracking.consignee),destination=COALESCE(NULLIF(EXCLUDED.destination,''),mayavi_jepo_tracking.destination),chargeable_weight=COALESCE(EXCLUDED.chargeable_weight,mayavi_jepo_tracking.chargeable_weight),jp_code=COALESCE(NULLIF(EXCLUDED.jp_code,''),mayavi_jepo_tracking.jp_code),booking_date=COALESCE(EXCLUDED.booking_date,mayavi_jepo_tracking.booking_date),imported_by=EXCLUDED.imported_by,import_file=EXCLUDED.import_file,updated_at=NOW()",
     [JSON.stringify(part.map(r=>({...r,weight:r.weight,jp_code:r.jpCode,booking_date:r.bookingDate||''}))),session.username,fileName]);
   }
-  return json({ok:true,saved:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingFields:parsed.missingFields,
+  const recordedDuplicates=await saveDuplicateAudit(sql,{parsed,existingAwbs,fileName,username:session.username});
+  return json({ok:true,saved:parsed.records.length,recordedDuplicates,invalid:parsed.invalid,duplicates:parsed.duplicates,missingFields:parsed.missingFields,
    repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,
    previouslySavedCount:existingAwbs.length,previouslySavedAwbs:existingAwbs.slice(0,200),
    missingDates:parsed.missingDates,message:'JEPO AWBs saved. Repeated AWBs acknowledged and existing verified tracking retained.'});
