@@ -38,6 +38,7 @@ function downloadCsv(rows,name){
 export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
+ const [duplicatesAcknowledged,setDuplicatesAcknowledged]=useState(false),[deleteTarget,setDeleteTarget]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
  async function load(showError=true){
@@ -54,17 +55,30 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   if(!file){setMessage('Pehle JEPO .csv ya .xlsx file select karein.');return;}
   setBusy(true);setMessage('');
   try{
-   const form=new FormData();form.append('file',file);form.append('action',action);
+   const form=new FormData();form.append('file',file);form.append('action',action);form.append('acknowledgeDuplicates',String(duplicatesAcknowledged));
    const res=await fetch(API,{method:'POST',body:form,credentials:'include'});
    const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Excel upload failed.');
    if(action==='preview'){
-    setPreview(data);setDuplicateNotice(null);setMessage('Preview ready: Excel headings aur repeated AWB acknowledgement check karke Save karein.');
+    setPreview(data);setDuplicateNotice(null);setDuplicatesAcknowledged(false);setMessage('Preview ready: Excel headings aur repeated AWB acknowledgement check karke Save karein.');
    }else{
     setMessage('Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in file, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
-    setDuplicateNotice(data);setPreview(null);setFile(null);await load(false);
+    setDuplicateNotice(data);setPreview(null);setDuplicatesAcknowledged(false);setFile(null);await load(false);
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
   }catch(e){setMessage(e.message||'Excel upload failed.');}finally{setBusy(false);}
+ }
+ async function deleteAwb(){
+  if(!deleteTarget?.awb)return;
+  const awb=deleteTarget.awb;
+  setBusy(true);setMessage('');
+  try{
+   const res=await fetch(API,{method:'DELETE',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({awb,confirm:true})});
+   const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'AWB delete failed.');
+   setDeleteTarget(null);
+   setMessage('Deleted JEPO AWB '+awb+' from Active / Delivered and summaries.');
+   await load(false);
+  }catch(e){setMessage(e.message||'Could not delete AWB.');}
+  finally{setBusy(false);}
  }
  async function refresh(awbs){
   if(!awbs?.length)return;
@@ -111,9 +125,9 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    {!readOnly&&<section style={panel}>
     <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO CSV / Excel</h2>
     <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
-     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setMessage('')}}/>
+     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setDuplicatesAcknowledged(false);setMessage('')}}/>
      <button style={{...button,background:'#e6f0ff'}} onClick={()=>void upload('preview')} disabled={!file||busy}>1. Preview Excel</button>
-     <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!preview||!file||busy}>2. Save AWBs</button>
+     <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!preview||!file||busy||Boolean((preview?.duplicates||0)+(preview?.previouslySavedCount||0))&&!duplicatesAcknowledged}>2. Save AWBs</button>
     </div>
     <p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Supports <b>.csv</b> (JEPO downloaded export) and <b>.xlsx</b>. CSV Row 1 headings: Account Code → JEPO Code; AWB → AWB No.; CHARG. WEIGHT → Chargeable Weight. Columns: AWB No. · Service · Vendor · Consignee Name · Destination · Chargeable Weight · JP Code · Booking Date. Uploading the same AWB again updates its Excel information without creating a second row or wiping the last verified delivery status.</p>
     {message&&<p role="status" style={{padding:10,borderRadius:8,background:'#ecf3ff',color:'#174477',fontSize:13,marginBottom:0}}>{message}</p>}
@@ -138,6 +152,10 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        </span>)}
       </div>}
       {((preview||duplicateNotice).previouslySavedAwbs||[]).length>0&&<div style={{marginTop:7,fontSize:12}}>Already saved AWBs (first 25): {((preview||duplicateNotice).previouslySavedAwbs||[]).slice(0,25).join(', ')}</div>}
+      {preview&&<label style={{display:'flex',alignItems:'flex-start',gap:8,marginTop:12,padding:'9px 10px',background:'#fff',borderRadius:8,cursor:'pointer',fontWeight:700}}>
+       <input type="checkbox" checked={duplicatesAcknowledged} onChange={e=>setDuplicatesAcknowledged(e.target.checked)} style={{width:18,height:18,accentColor:'#7c3aed',flexShrink:0}}/>
+       I acknowledge these repeated / already saved AWB numbers. Save will update existing Excel details without adding duplicate shipments or removing verified tracking.
+      </label>}
      </div>}
     {preview?.missingFields?.length>0&&<p style={{fontSize:13,fontWeight:800,color:'#9a3412',background:'#fff7ed',padding:10,borderRadius:8}}>
      Excel mein identify nahi hue: {preview.missingFields.join(', ')}. Baaki AWB records load ho sakte hain; missing values blank rahengi. Booking Date missing ho to TAT calculate nahi hoga.
@@ -150,6 +168,14 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      </div>}
     </div>}
    </section>}
+   {!readOnly&&deleteTarget&&<div role="alertdialog" aria-label="Confirm JEPO AWB deletion" style={{...panel,border:'2px solid #dc2626',background:'#fff7f7'}}>
+    <strong style={{color:'#9f1239'}}>Delete JEPO AWB {deleteTarget.awb}?</strong>
+    <p style={{fontSize:13,margin:'8px 0'}}>Consignee: {deleteTarget.consignee||'—'}. This removes the shipment from Active, Delivered, monthly reports and TAT summaries. This cannot be undone.</p>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+     <button style={button} disabled={busy} onClick={()=>setDeleteTarget(null)}>Cancel — keep AWB</button>
+     <button style={{...button,background:'#b91c1c',color:'#fff'}} disabled={busy} onClick={()=>void deleteAwb()}>{busy?'Deleting…':'Confirm Delete'}</button>
+    </div>
+   </div>}
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:14}}>
     {metrics.map(([label,value])=><div key={label} style={{background:'#fff',border:'1px solid #dce7f3',padding:13,borderRadius:12}}>
      <div style={{color:'#5c718b',fontSize:12,fontWeight:700}}>{label}</div>
@@ -177,7 +203,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks every 2 minutes, up to 100 AWBs per batch • Awaiting First Check means not yet processed; Retry Needed means no verified status from the last website check. These are queue labels, not shipment statuses.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
-       <thead><tr>{['#',...columns.map(c=>c[1]),...(!readOnly?['Live Check']:[])].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
+       <thead><tr>{['#',...columns.map(c=>c[1]),...(!readOnly?['Actions']:[])].map(h=><th key={h} style={{background:'#e8f1ff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #cdddeb'}}>{h}</th>)}</tr></thead>
        <tbody>{visible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#f7fbff':'white'}}>
         <td style={{padding:9,borderBottom:'1px solid #e9eef5'}}>{i+1}</td>
         {columns.map(([key])=>{
@@ -190,7 +216,12 @@ export default function JEPOTrackingDashboard({readOnly=false}){
           {v===null||v===undefined||v===''?'—':key==='tat'?v+' d':v}{key==='status'&&r.trackingError?' ⚠':''}
          </td>;
         })}
-        {!readOnly&&<td style={{padding:8,borderBottom:'1px solid #e9eef5'}}><button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button></td>}
+        {!readOnly&&<td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>
+         <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button>
+          <button aria-label={'Delete JEPO AWB '+r.awb} style={{...button,padding:'5px 9px',color:'#b91c1c',borderColor:'#f5baba',background:'#fff1f2'}} disabled={busy} onClick={()=>setDeleteTarget({awb:r.awb,consignee:r.consignee})}>Delete</button>
+         </div>
+        </td>}
        </tr>)}
        {!visible.length&&<tr><td colSpan={columns.length+(readOnly?1:2)} style={{padding:20,textAlign:'center',color:'#637891'}}>No AWBs in this sheet yet. Upload Excel to begin.</td></tr>}
        </tbody>
