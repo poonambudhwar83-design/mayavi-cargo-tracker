@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {ledgerAwb,validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
-import {exportClientKey,exportIsDhl,exportSplitScheme,validEiciAmount,buildExportClientLedgerRows} from '../../../lib/exportClientLedger.js';
+import {exportClientKey,exportIsDhl,exportIsM5,exportSplitScheme,validEiciAmount,buildExportClientLedgerRows} from '../../../lib/exportClientLedger.js';
 import {selectedProfitMonth,profitMonths,currentProfitMonth} from '../../../lib/profitPeriod.js';
 
 export const runtime='nodejs';
@@ -87,6 +87,7 @@ export async function PATCH(request){
         AND UPPER(TRIM(COALESCE(NULLIF(data->>'clientName',''),data->>'client','Unassigned Client')))=${key} LIMIT 1`;
       if(!exists.length)return reply({ok:false,error:'Export client not found.'},404);
       if(exportIsDhl(key))return reply({ok:false,error:'DHL uses a fixed ₹19 account minus ₹8 commission.'},400);
+      if(exportIsM5(key))return reply({ok:false,error:'M5 has a fixed ₹2 account + ₹4 cash rate.'},400);
       await sql`INSERT INTO mayavi_export_client_split(client_key,scheme,updated_by)
         VALUES(${key},${scheme},${admin.username})
         ON CONFLICT(client_key) DO UPDATE SET scheme=EXCLUDED.scheme,

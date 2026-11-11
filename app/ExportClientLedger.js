@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {ledgerAwb,validLedgerDate,validReceiptAmount} from '../lib/importClientLedger.js';
-import {validEiciAmount} from '../lib/exportClientLedger.js';
+import {validEiciAmount,exportIsM5} from '../lib/exportClientLedger.js';
 
 const API='/api/export-client-ledger';
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
@@ -170,6 +170,7 @@ export default function ExportClientLedger(){
       {client&&selectedClientRows.length>0&&<label style={{display:'grid',gap:5,fontSize:12,fontWeight:800}}>Account / Cash Rate Per kg
         {selectedScheme==='DHL'
           ?<div style={{...field,fontWeight:800}}>DHL ₹19 account − ₹8 commission</div>
+          :exportIsM5(client)?<div style={{...field,fontWeight:800}}>M5 ₹2 Account + ₹4 Cash (fixed)</div>
           :<select style={field} disabled={busy} value={selectedScheme} onChange={e=>void saveSplit(e.target.value)}>
             <option value="3_ACCOUNT_3_CASH">₹3 Account + ₹3 Cash</option>
             <option value="2_ACCOUNT_4_CASH">₹2 Account + ₹4 Cash</option>
@@ -242,7 +243,7 @@ export default function ExportClientLedger(){
     </section>
     <p style={{fontSize:12,color:'#53647a',lineHeight:1.5}}>
       Account = Account Gross − DHL Commission + EICI + 18% GST. Cash = cash rate × master weight.
-      DHL: ₹19/kg Account Gross and ₹8/kg Commission (net ₹11/kg Account; no Cash split). Other clients: ₹3/kg Account and ₹3/kg Cash by default; a client may be set to ₹2/kg Account and ₹4/kg Cash. The EICI field is the total EICI rupee amount for the MAWB; until entered, GST is not included. Each master MAWB is billed once, including part shipments. This ledger does not change Export Profit formulas or Import ledger data.
+      DHL: ₹19/kg Account Gross and ₹8/kg Commission (net ₹11/kg Account; no Cash split). M5: ₹2/kg Account + ₹4/kg Cash fixed. Other clients: ₹3/kg Account + ₹3/kg Cash by default; other special clients may be set to ₹2/kg Account + ₹4/kg Cash. The EICI field is the total EICI rupee amount for the MAWB; until entered, GST is not included. Each master MAWB is billed once, including part shipments. This ledger does not change Export Profit formulas or Import ledger data.
     </p>
   </main>;
 }
