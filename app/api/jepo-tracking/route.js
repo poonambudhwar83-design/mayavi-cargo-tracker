@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import ExcelJS from 'exceljs';
+import {createHash} from 'node:crypto';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {parseJepoExcel} from '../../../lib/jepoExcelImport.js';
 import {csvAsJepoWorkbook} from '../../../lib/jepoCsvImport.js';
@@ -73,6 +74,44 @@ async function saveDuplicateAudit(sql,{parsed,existingAwbs,fileName,username}){
  }
  return all.length;
 }
+// Older imports only stored the unique AWB row, not duplicate occurrences.
+// An administrator can restore the duplicate audit by scanning the original
+// CSV/XLSX without overwriting shipment records or incrementing counts on
+// a second scan of the same source file.
+async function ensureHistoricalScanTables(sql){
+ await sql.query("CREATE TABLE IF NOT EXISTS mayavi_jepo_historical_scans (file_hash TEXT PRIMARY KEY, file_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'STARTED', scanned_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ)");
+ await sql.query("CREATE TABLE IF NOT EXISTS mayavi_jepo_historical_scan_awbs (file_hash TEXT NOT NULL REFERENCES mayavi_jepo_historical_scans(file_hash), awb TEXT NOT NULL, occurrences INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(file_hash,awb))");
+ await sql.query("CREATE INDEX IF NOT EXISTS mayavi_jepo_historical_scan_awbs_awb_idx ON mayavi_jepo_historical_scan_awbs(awb)");
+ await sql.query("CREATE TABLE IF NOT EXISTS mayavi_jepo_historical_duplicate_events (file_hash TEXT NOT NULL, awb TEXT NOT NULL, file_repeats INTEGER NOT NULL, previous_repeats INTEGER NOT NULL, PRIMARY KEY(file_hash,awb))");
+}
+async function previousHistoricalAwbs(sql,records,fileHash){
+ const matches=new Set();
+ for(let i=0;i<records.length;i+=500){
+  const awbs=records.slice(i,i+500).map(r=>r.awb);
+  const rows=await sql.query("SELECT DISTINCT h.awb FROM mayavi_jepo_historical_scan_awbs h JOIN mayavi_jepo_historical_scans s ON s.file_hash=h.file_hash WHERE s.status='COMPLETED' AND h.file_hash<>$2 AND h.awb IN (SELECT jsonb_array_elements_text($1::jsonb))",[JSON.stringify(awbs),fileHash]);
+  for(const row of rows)matches.add(row.awb);
+ }
+ return [...matches];
+}
+async function recordHistoricalDuplicates(sql,{parsed,fileHash,fileName,username,previousAwbs}){
+ const previous=new Set(previousAwbs);
+ const repeated=new Map(parsed.repeatedAwbs.map(r=>[r.awb,r]));
+ const duplicates=[...new Set([...previous,...repeated.keys()])].map(awb=>{
+  const repeatedItem=repeated.get(awb);
+  const fileRepeats=repeatedItem?Math.max(0,Number(repeatedItem.count||1)-1):0;
+  const previousRepeats=previous.has(awb)?1:0;
+  return {awb,file_repeats:fileRepeats,previous_repeats:previousRepeats,excel_rows:repeatedItem?.rows?.join(', ')||''};
+ }).filter(x=>x.file_repeats+x.previous_repeats>0);
+ await ensureDuplicateAuditTable(sql);
+ for(let i=0;i<duplicates.length;i+=150){
+  const batch=duplicates.slice(i,i+150);
+  // The audit event's unique (file_hash, AWB) key makes retries idempotent.
+  // The event insert and count increment happen in one atomic SQL statement.
+  await sql.query("WITH events AS (INSERT INTO mayavi_jepo_historical_duplicate_events (file_hash,awb,file_repeats,previous_repeats) SELECT $2,x.awb,x.file_repeats,x.previous_repeats FROM jsonb_to_recordset($1::jsonb) AS x(awb text,file_repeats int,previous_repeats int,excel_rows text) ON CONFLICT DO NOTHING RETURNING awb,file_repeats,previous_repeats) INSERT INTO mayavi_jepo_duplicate_audit (awb,duplicate_occurrences,file_repeat_occurrences,existing_awb_occurrences,upload_events,last_excel_rows,last_import_file,last_acknowledged_by) SELECT e.awb,e.file_repeats+e.previous_repeats,e.file_repeats,e.previous_repeats,1,COALESCE(x.excel_rows,''),$3,$4 FROM events e JOIN jsonb_to_recordset($1::jsonb) AS x(awb text,file_repeats int,previous_repeats int,excel_rows text) ON x.awb=e.awb ON CONFLICT (awb) DO UPDATE SET duplicate_occurrences=mayavi_jepo_duplicate_audit.duplicate_occurrences+EXCLUDED.duplicate_occurrences,file_repeat_occurrences=mayavi_jepo_duplicate_audit.file_repeat_occurrences+EXCLUDED.file_repeat_occurrences,existing_awb_occurrences=mayavi_jepo_duplicate_audit.existing_awb_occurrences+EXCLUDED.existing_awb_occurrences,upload_events=mayavi_jepo_duplicate_audit.upload_events+1,last_excel_rows=EXCLUDED.last_excel_rows,last_import_file=EXCLUDED.last_import_file,last_acknowledged_by=EXCLUDED.last_acknowledged_by,last_acknowledged_at=NOW(),last_seen_at=NOW()",
+   [JSON.stringify(batch),fileHash,fileName,username]);
+ }
+ return duplicates.length;
+}
 export async function GET(request){
  try{
   const sql=db();
@@ -90,15 +129,16 @@ export async function POST(request){
   if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
   const form=await request.formData();
   const action=String(form.get('action')||'preview');
-  if(!['preview','save'].includes(action))return json({ok:false,error:'Unsupported action.'},400);
+  if(!['preview','save','historical-preview','historical-save'].includes(action))return json({ok:false,error:'Unsupported action.'},400);
   const file=form.get('file');
   if(!file||typeof file.arrayBuffer!=='function')return json({ok:false,error:'Select JEPO CSV or Excel workbook.'},400);
   if(!/\.(xlsx|csv)$/i.test(file.name||''))return json({ok:false,error:'Please upload a .csv or .xlsx file.'},400);
   if(!file.size||file.size>10*1024*1024)return json({ok:false,error:'CSV or Excel file should be 10 MB or smaller.'},413);
   const isCsv=/\.csv$/i.test(file.name||'');
-  let workbook;
+  let workbook,fileHash;
   try{
    const bytes=Buffer.from(await file.arrayBuffer());
+   fileHash=createHash('sha256').update(bytes).digest('hex');
    if(isCsv)workbook=csvAsJepoWorkbook(bytes,file.name);
    else{workbook=new ExcelJS.Workbook();await workbook.xlsx.load(bytes);}
   }catch(e){return json({ok:false,error:String(e?.message||'CSV/Excel file could not be opened.')},422);}
@@ -106,17 +146,36 @@ export async function POST(request){
   try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:isCsv?1:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
   await ensureJepoTrackingTable(sql);
-  const existingAwbs=await existingJepoAwbs(sql,parsed.records);
+  const historical=action.startsWith('historical-');
+  if(historical)await ensureHistoricalScanTables(sql);
+  const previousScan=historical?await sql.query("SELECT status FROM mayavi_jepo_historical_scans WHERE file_hash=$1 LIMIT 1",[fileHash]):[];
+  const alreadyScanned=previousScan[0]?.status==='COMPLETED';
+  const existingAwbs=historical?(alreadyScanned?[]:await previousHistoricalAwbs(sql,parsed.records,fileHash)):await existingJepoAwbs(sql,parsed.records);
   const requiresAcknowledgement=parsed.duplicates>0||existingAwbs.length>0;
-  if(action==='save'&&requiresAcknowledgement&&String(form.get('acknowledgeDuplicates')||'')!=='true')
+  if(['save','historical-save'].includes(action)&&requiresAcknowledgement&&String(form.get('acknowledgeDuplicates')||'')!=='true')
    return json({ok:false,error:'Duplicate AWBs found. Please preview, review and acknowledge repeated or already saved AWBs before saving.',duplicates:parsed.duplicates,previouslySavedCount:existingAwbs.length},409);
-  if(action==='preview')return json({ok:true,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
+  if(['preview','historical-preview'].includes(action))return json({ok:true,historical,alreadyScanned,sheetName:parsed.sheetName,headerRow:parsed.headerRow,mapping:parsed.columnMapping,columnMatches:parsed.columnMatches,missingFields:parsed.missingFields,
    total:parsed.records.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingDates:parsed.missingDates,
    repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,
    previouslySavedCount:existingAwbs.length,previouslySavedAwbs:existingAwbs.slice(0,200),
    preview:parsed.records.slice(0,12)});
   const fileName=String(file.name||'jepo.xlsx').replace(/[/\\\u0000-\u001f]/g,'_').slice(0,150);
   const session=readSession(request);
+  if(action==='historical-save'){
+   if(alreadyScanned)return json({ok:true,alreadyScanned:true,message:'This original Excel/CSV file has already been scanned. No duplicate counts were added.'});
+   // The file is hashed, so the same old export cannot inflate counts if rescanned.
+   await sql.query("INSERT INTO mayavi_jepo_historical_scans(file_hash,file_name,scanned_by) VALUES($1,$2,$3) ON CONFLICT(file_hash) DO NOTHING",[fileHash,fileName,session.username]);
+   for(let i=0;i<parsed.records.length;i+=200){
+    const part=parsed.records.slice(i,i+200);
+    const repeated=new Map(parsed.repeatedAwbs.map(item=>[item.awb,item.count]));
+    await sql.query("INSERT INTO mayavi_jepo_historical_scan_awbs (file_hash,awb,occurrences) SELECT $2,x.awb,x.occurrences FROM jsonb_to_recordset($1::jsonb) AS x(awb text,occurrences int) ON CONFLICT DO NOTHING",
+     [JSON.stringify(part.map(item=>({awb:item.awb,occurrences:repeated.get(item.awb)||1}))),fileHash]);
+   }
+   const historicalDuplicates=await recordHistoricalDuplicates(sql,{parsed,fileHash,fileName,username:session.username,previousAwbs:existingAwbs});
+   await sql.query("UPDATE mayavi_jepo_historical_scans SET status='COMPLETED',completed_at=NOW() WHERE file_hash=$1",[fileHash]);
+   return json({ok:true,historical:true,recordedDuplicates:historicalDuplicates,duplicates:parsed.duplicates,repeatedAwbs:parsed.repeatedAwbs,repeatedUniqueCount:parsed.repeatedUniqueCount,previouslySavedCount:existingAwbs.length,previouslySavedAwbs:existingAwbs.slice(0,200),
+    message:'Historical duplicate scan saved. Shipment tracking records were not changed.'});
+  }
   for(let i=0;i<parsed.records.length;i+=200){
    const part=parsed.records.slice(i,i+200);
    await sql.query("INSERT INTO mayavi_jepo_tracking (awb,service,vendor,consignee,destination,chargeable_weight,jp_code,booking_date,imported_by,import_file) SELECT x.awb,x.service,x.vendor,x.consignee,x.destination,x.weight,x.jp_code,NULLIF(x.booking_date,'')::date,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,service text,vendor text,consignee text,destination text,weight numeric,jp_code text,booking_date text) ON CONFLICT (awb) DO UPDATE SET service=COALESCE(NULLIF(EXCLUDED.service,''),mayavi_jepo_tracking.service),vendor=COALESCE(NULLIF(EXCLUDED.vendor,''),mayavi_jepo_tracking.vendor),consignee=COALESCE(NULLIF(EXCLUDED.consignee,''),mayavi_jepo_tracking.consignee),destination=COALESCE(NULLIF(EXCLUDED.destination,''),mayavi_jepo_tracking.destination),chargeable_weight=COALESCE(EXCLUDED.chargeable_weight,mayavi_jepo_tracking.chargeable_weight),jp_code=COALESCE(NULLIF(EXCLUDED.jp_code,''),mayavi_jepo_tracking.jp_code),booking_date=COALESCE(EXCLUDED.booking_date,mayavi_jepo_tracking.booking_date),imported_by=EXCLUDED.imported_by,import_file=EXCLUDED.import_file,updated_at=NOW()",
