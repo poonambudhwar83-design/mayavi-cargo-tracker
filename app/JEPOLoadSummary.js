@@ -44,7 +44,7 @@ export default function JEPOLoadSummary({records=[],period='daily'}){
    <div>
     <h2 style={{fontSize:20,margin:'0 0 5px',color:'#1d446e'}}>{isWeekly?'Weekly Load Summary':'Daily Load Summary'}</h2>
     <p style={{margin:0,fontSize:12,color:'#586d85'}}>
-     TPL / Overseas ko UK, USA, Canada aur Australia mein diya gaya load •
+     TPL / Overseas / FedEx / DHL / Aramex ka country-wise booked load •
      Date source: JEPO Excel Booking Date • Weight: Chargeable Weight (kg)
      {isWeekly?' • Monday–Sunday weeks':''}
     </p>
@@ -52,7 +52,7 @@ export default function JEPOLoadSummary({records=[],period='daily'}){
    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
     <label style={{fontSize:12,fontWeight:750}}>Vendor
      <select aria-label="Load vendor" value={vendor} onChange={e=>setVendor(e.target.value)} style={{...fieldStyle,display:'block',marginTop:4}}>
-      <option value="ALL">TPL + Overseas</option>
+      <option value="ALL">All Vendors</option>
       {JEPO_LOAD_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
      </select>
     </label>
@@ -92,7 +92,7 @@ export default function JEPOLoadSummary({records=[],period='daily'}){
       <td style={{padding:10,whiteSpace:'nowrap',borderBottom:'1px solid #e4ebf3',fontWeight:700}}>
        {dateLabel(r.periodStart)}{isWeekly?<span style={{display:'block',fontSize:11,color:'#708399',fontWeight:500}}>to {dateLabel(r.periodEnd)}</span>:null}
       </td>
-      <td style={{padding:10,borderBottom:'1px solid #e4ebf3',fontWeight:800,color:r.vendor==='TPL'?'#1f5090':'#78439e'}}>{r.vendor}</td>
+      <td style={{padding:10,borderBottom:'1px solid #e4ebf3',fontWeight:800,color:['TPL','FedEx','DHL'].includes(r.vendor)?'#1f5090':'#78439e'}}>{r.vendor}</td>
       {JEPO_LOAD_COUNTRIES.map(country=><td key={country} style={{padding:10,borderBottom:'1px solid #e4ebf3'}}>
        <b style={{whiteSpace:'nowrap'}}>{formatKg(r.countries[country].kg)} kg</b>
        <div style={{fontSize:11,color:'#708399',whiteSpace:'nowrap'}}>{r.countries[country].shipments} shipments</div>
@@ -100,14 +100,14 @@ export default function JEPOLoadSummary({records=[],period='daily'}){
       <td style={{padding:10,borderBottom:'1px solid #e4ebf3',fontWeight:900,whiteSpace:'nowrap',color:'#174d83'}}>{formatKg(r.kg)} kg</td>
       <td style={{padding:10,borderBottom:'1px solid #e4ebf3',fontWeight:800}}>{formatCount(r.shipments)}</td>
      </tr>)}
-     {!summary.rows.length&&<tr><td colSpan={8} style={{padding:24,textAlign:'center',color:'#6a7e96'}}>
-      No matching TPL/Overseas load for selected month and vendor.
+     {!summary.rows.length&&<tr><td colSpan={JEPO_LOAD_COUNTRIES.length+4} style={{padding:24,textAlign:'center',color:'#6a7e96'}}>
+      No shipments for this vendor in the selected period. Vendors without loads are hidden.
      </td></tr>}
     </tbody>
    </table>
   </div>
   <div style={{display:'flex',flexWrap:'wrap',gap:10,margin:'10px 0',color:'#566a83',fontSize:12}}>
-   <span>One saved AWB = one shipment; repeated uploads are not counted twice.</span>
+   <span>One saved AWB = one shipment; repeated uploads are not counted twice. Vendors without shipments on a day or week are omitted automatically.</span>
    {summary.missingBookingDates>0&&<strong style={{color:'#9a3412'}}>Missing Booking Dates: {summary.missingBookingDates}</strong>}
    {summary.missingWeights>0&&<strong style={{color:'#9a3412'}}>Missing chargeable weight: {summary.missingWeights} shipments (counted as shipments, kg excluded)</strong>}
    {isWeekly&&month&&<span>Month filter includes only bookings in {month}; weeks crossing month boundaries may be partial.</span>}
