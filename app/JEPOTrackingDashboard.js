@@ -220,7 +220,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
         {[i+1,r.awb,r.count,r.fileRepeats,r.alreadySavedRepeats,r.uploadEvents,r.excelRows||'—',r.file||'—',r.acknowledgedBy||'—',r.acknowledgedAt?new Date(r.acknowledgedAt).toLocaleString('en-IN',{hour12:false}):'—',r.inTracking?(r.trackingStatus==='DELIVERED'?'Delivered':'Active'):'Deleted'].map((v,j)=><td key={j} style={{padding:9,borderBottom:'1px solid #e9eef5',fontWeight:j===1?800:400}}>{v}</td>)}
         <td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>{r.inTracking?<button style={{...button,padding:'5px 9px'}} onClick={()=>{setSearch(r.awb);setTab(r.trackingStatus==='DELIVERED'?'DELIVERED':'ACTIVE')}}>View AWB</button>:'Audit only'}</td>
        </tr>)}
-       {!duplicateVisible.length&&<tr><td colSpan={12} style={{padding:20,color:'#637891',textAlign:'center'}}>No duplicate AWB audit records have been saved yet. The 2,752 historic tracking records were deduplicated on import, so prior repeats cannot be inferred from the saved AWBs. Use “Scan Old CSV for Duplicates” above with the original JEPO export file(s) to restore their duplicate history without changing shipments.</td></tr>}
+       {!duplicateVisible.length&&<tr><td colSpan={12} style={{padding:20,color:'#637891',textAlign:'center'}}>No duplicate AWB audit records have been saved yet. Earlier JEPO Tracking imports kept one row per AWB, so prior repeats cannot be inferred from the saved records. Use “Scan Old CSV for Duplicates” above with the original JEPO export file(s) to restore their duplicate history without changing shipments.</td></tr>}
        </tbody>
       </table>
      </div>
