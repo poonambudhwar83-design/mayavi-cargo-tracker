@@ -36,7 +36,7 @@ function downloadCsv(rows,name){
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 function downloadDuplicateCsv(rows){
- const headers=['AWB','Duplicate Occurrences','Repeated in Excel','Already Saved Repeats','Uploads with Duplicates','Excel Rows (Last Upload)','Last File','Acknowledged By','Last Acknowledged At','Record Status'];
+ const headers=['AWB','Duplicate Occurrences','Repeated in Excel','Already Saved Repeats','Uploads with Duplicates','Excel Rows (Last Upload)','Last File','Detected By','Last Detected At','Record Status'];
  const data=rows.map(r=>[r.awb,r.count,r.fileRepeats,r.alreadySavedRepeats,r.uploadEvents,r.excelRows,r.file,r.acknowledgedBy,r.acknowledgedAt,r.inTracking?(r.trackingStatus||'Active'):'Deleted']);
  const body=[headers,...data].map(line=>line.map(csvEscape).join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+body],{type:'text/csv;charset=utf-8'}));
@@ -46,7 +46,7 @@ function downloadDuplicateCsv(rows){
 export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[duplicateRows,setDuplicateRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
- const [duplicatesAcknowledged,setDuplicatesAcknowledged]=useState(false),[historicalMode,setHistoricalMode]=useState(false),[deleteTarget,setDeleteTarget]=useState(null);
+ const [deleteTarget,setDeleteTarget]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
  async function load(showError=true){
@@ -60,23 +60,23 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  }
  useEffect(()=>{void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load(false)},120000);return()=>clearInterval(timer)},[]);
  async function upload(action){
-  if(!file){setMessage('Pehle JEPO .csv ya .xlsx file select karein.');return;}
+  if(!file){setMessage('Select a JEPO .csv or .xlsx file.');return;}
   setBusy(true);setMessage('');
   try{
-   const requestAction=historicalMode?(action==='preview'?'historical-preview':'historical-save'):action;
-   const form=new FormData();form.append('file',file);form.append('action',requestAction);form.append('acknowledgeDuplicates',String(duplicatesAcknowledged));
+   const form=new FormData();form.append('file',file);form.append('action',action);
    const res=await fetch(API,{method:'POST',body:form,credentials:'include'});
-   const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Excel upload failed.');
+   const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'JEPO file upload failed.');
    if(action==='preview'){
-    setPreview(data);setDuplicateNotice(null);setDuplicatesAcknowledged(false);
-    setMessage(data.alreadyScanned?'This original CSV / Excel has already been scanned. Duplicate counts were not added twice.':historicalMode?'Historical preview ready: check repeated AWBs from this file and previously scanned original files. Confirm to save only duplicate audit.':'Preview ready: Excel headings aur repeated AWB acknowledgement check karke Save karein.');
+    setPreview(data);setDuplicateNotice(null);
+    setMessage('Preview checked: '+number(data.total)+' unique AWBs; '+number(data.duplicates)+' repeated rows inside the file; '+number(data.previouslySavedCount)+' AWBs already saved. Duplicates will be recorded separately automatically when imported.');
    }else{
-    setMessage(historicalMode?(data.alreadyScanned?'This file was already scanned; no duplicates were counted twice.':'Historical scan completed: '+number(data.recordedDuplicates)+' duplicate AWB numbers recorded. Tracking data was not changed.'):'Saved '+number(data.saved)+' AWBs. '+data.invalid+' invalid rows, '+data.duplicates+' duplicate entries in file, '+data.missingDates+' rows without valid booking date.'+(data.missingFields?.length?' Missing columns: '+data.missingFields.join(', ')+'.':'')+' Live tracking will start in the next scheduled refresh; you can also refresh selected AWBs now.');
-    setDuplicateNotice(data);setPreview(null);setDuplicatesAcknowledged(false);setFile(null);await load(false);
-    if(historicalMode)setTab('DUPLICATES');
+    setMessage('Imported '+number(data.newAwbs)+' new AWBs. '+number(data.recordedDuplicates)+' duplicate AWB numbers auto-moved to Duplicate AWBs history. Existing shipment records and tracking were not overwritten.'+(data.invalid?' Invalid rows: '+data.invalid+'.':'')+(data.missingDates?' Missing booking dates: '+data.missingDates+'.':''));
+    setDuplicateNotice(data);setPreview(null);setFile(null);
+    await load(false);
+    if(data.recordedDuplicates>0){setTab('DUPLICATES');setSearch('');}
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
-  }catch(e){setMessage(e.message||'Excel upload failed.');}finally{setBusy(false);}
+  }catch(e){setMessage(e.message||'JEPO upload failed.');}finally{setBusy(false);}
  }
  async function deleteAwb(){
   if(!deleteTarget?.awb)return;
@@ -135,22 +135,16 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    </div>
    {readOnly&&<p style={{margin:'12px 0',padding:11,background:'#eff6ff',borderRadius:9,color:'#1d4e89',fontSize:13,fontWeight:800}}>Haryana Admin • JEPO Tracking read-only view • Active, Delivered, Daily Load, Weekly Load and TAT Summary</p>}
    {!readOnly&&<section style={panel}>
-    <h2 style={{fontSize:17,margin:'0 0 10px'}}>{historicalMode?'Restore Historical Duplicate AWBs':'Import JEPO CSV / Excel'}</h2>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-     <button style={{...button,background:!historicalMode?'#205ca1':'#eef4fa',color:!historicalMode?'#fff':'#23466a'}} disabled={busy} onClick={()=>{setHistoricalMode(false);setFile(null);setPreview(null);setDuplicateNotice(null);setDuplicatesAcknowledged(false);setMessage('');const el=document.getElementById('jepo-upload');if(el)el.value='';}}>Upload New AWBs</button>
-     <button style={{...button,background:historicalMode?'#205ca1':'#eef4fa',color:historicalMode?'#fff':'#23466a'}} disabled={busy} onClick={()=>{setHistoricalMode(true);setFile(null);setPreview(null);setDuplicateNotice(null);setDuplicatesAcknowledged(false);setMessage('');const el=document.getElementById('jepo-upload');if(el)el.value='';}}>Scan Old CSV for Duplicates</button>
-    </div>
-    {historicalMode&&<p style={{fontSize:13,padding:10,background:'#fff7ed',color:'#854d0e',borderRadius:8,marginBottom:12}}>To restore previously unrecorded duplicates, select an original JEPO CSV / Excel file. This scan checks repeated AWBs within the file and across other original files scanned in this mode. It <b>does not add, edit, delete or retrack shipments</b>. Each exact original file is counted only once. Original source files are needed because saved tracking rows contain unique AWBs only.</p>}
+    <h2 style={{fontSize:17,margin:'0 0 10px'}}>Import JEPO CSV / Excel</h2>
     <div style={{display:'flex',flexWrap:'wrap',gap:9,alignItems:'center'}}>
-     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setDuplicatesAcknowledged(false);setMessage('')}}/>
-     <button style={{...button,background:'#e6f0ff'}} onClick={()=>void upload('preview')} disabled={!file||busy}>1. {historicalMode?'Preview Old CSV':'Preview Excel'}</button>
-     <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!preview||!file||busy||Boolean(preview?.alreadyScanned)||(Boolean((preview?.duplicates||0)+(preview?.previouslySavedCount||0))&&!duplicatesAcknowledged)}>2. {historicalMode?'Save Duplicate Audit Only':'Save AWBs'}</button>
+     <input id="jepo-upload" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{...control,maxWidth:'100%'}} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setDuplicateNotice(null);setMessage('')}}/>
+     <button style={{...button,background:'#e6f0ff'}} onClick={()=>void upload('preview')} disabled={!file||busy}>Preview (Optional)</button>
+     <button style={{...button,background:'#166b56',color:'#fff'}} onClick={()=>void upload('save')} disabled={!file||busy}>Upload &amp; Auto-sort AWBs</button>
     </div>
-    {!historicalMode&&<p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Supports <b>.csv</b> (JEPO downloaded export) and <b>.xlsx</b>. CSV Row 1 headings: Account Code → JEPO Code; AWB → AWB No.; CHARG. WEIGHT → Chargeable Weight. Columns: AWB No. · Service · Vendor · Consignee Name · Destination · Chargeable Weight · JP Code · Booking Date. Uploading the same AWB again updates its Excel information without creating a second row or wiping the last verified delivery status.</p>}
+    <p style={{margin:'10px 0 0',fontSize:12,color:'#61748b'}}>Each AWB is kept only once in main JEPO Tracking. When the same AWB is found again (in the file or already saved), the extra entry is automatically recorded in Duplicate AWBs. The original status, delivery date, and other shipment details are not overwritten. No manual acknowledgement or old-file scanning needed for new imports.</p>
     {message&&<p role="status" style={{padding:10,borderRadius:8,background:'#ecf3ff',color:'#174477',fontSize:13,marginBottom:0}}>{message}</p>}
     {(preview||duplicateNotice)&&<div style={{marginTop:12}}>
-     {preview&&<strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}{historicalMode?' · Historical scan only':''}</strong>}
-     {preview?.alreadyScanned&&<p style={{color:'#9a3412',fontWeight:800}}>This exact file has already been scanned. Select another original file to check for older duplicates.</p>}
+     {preview&&<strong>Preview: {preview.total} unique AWBs · {preview.sheetName} · heading row {preview.headerRow}</strong>}
      {preview&&<div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
       {[
        ['awb','AWB No.'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
@@ -161,19 +155,15 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      </div>}
      {preview&&<p style={{fontSize:12,color:'#5e738a'}}>Invalid rows: {preview.invalid} · Duplicate Excel AWBs: {preview.duplicates} · Missing booking dates: {preview.missingDates}</p>}
     {(preview||duplicateNotice)&&((preview||duplicateNotice).duplicates>0||(preview||duplicateNotice).previouslySavedCount>0)&&<div style={{background:'#f3e8ff',color:'#5b21b6',padding:'12px 14px',borderRadius:10,border:'2px solid #a78bfa',margin:'12px 0',fontSize:13}}>
-      <strong>Duplicate AWB Acknowledgement</strong>
+      <strong>Duplicate AWBs — detected automatically</strong>
       <p style={{margin:'5px 0 8px'}}>Same file mein {number((preview||duplicateNotice).duplicates||0)} repeated entries (unique repeated AWBs: {(preview||duplicateNotice).repeatedUniqueCount||0}).
-       {historicalMode?' Previously scanned original source files mein ':' Pehle se saved JEPO Tracking mein '}{(preview||duplicateNotice).previouslySavedCount||0} AWBs match hue. {historicalMode?'Only the duplicate audit is saved; existing live shipment data stays unchanged.':'Duplicate row nahi banegi; purana live tracking aur Delivered status safe rahega.'}</p>
+       Pehle se saved JEPO Tracking mein {(preview||duplicateNotice).previouslySavedCount||0} AWBs match hue. Extra entries Duplicate AWBs mein automatically jaayengi; original live tracking aur Delivered details safe rahengi.</p>
       {((preview||duplicateNotice).repeatedAwbs||[]).length>0&&<div style={{maxHeight:120,overflowY:'auto',borderTop:'1px solid #c4b5fd',paddingTop:7}}>
        {((preview||duplicateNotice).repeatedAwbs||[]).slice(0,40).map(item=><span key={item.awb} style={{display:'inline-block',padding:'4px 8px',background:'#ede9fe',borderRadius:7,margin:3,fontWeight:750}}>
         {item.awb} × {item.count} (Excel row {item.rows?.join(', ')||item.firstRow})
        </span>)}
       </div>}
-      {((preview||duplicateNotice).previouslySavedAwbs||[]).length>0&&<div style={{marginTop:7,fontSize:12}}>{historicalMode?'Previously scanned source AWBs':'Already saved AWBs'} (first 25): {((preview||duplicateNotice).previouslySavedAwbs||[]).slice(0,25).join(', ')}</div>}
-      {preview&&<label style={{display:'flex',alignItems:'flex-start',gap:8,marginTop:12,padding:'9px 10px',background:'#fff',borderRadius:8,cursor:'pointer',fontWeight:700}}>
-       <input type="checkbox" checked={duplicatesAcknowledged} onChange={e=>setDuplicatesAcknowledged(e.target.checked)} style={{width:18,height:18,accentColor:'#7c3aed',flexShrink:0}}/>
-       {historicalMode?'I acknowledge these repeated AWBs in the original source file(s). Save only duplicate history; do not change any tracked shipments.':'I acknowledge these repeated / already saved AWB numbers. Save will update existing Excel details without adding duplicate shipments or removing verified tracking.'}
-      </label>}
+      {((preview||duplicateNotice).previouslySavedAwbs||[]).length>0&&<div style={{marginTop:7,fontSize:12}}>Already saved AWBs (first 25): {((preview||duplicateNotice).previouslySavedAwbs||[]).slice(0,25).join(', ')}</div>}
      </div>}
     {preview?.missingFields?.length>0&&<p style={{fontSize:13,fontWeight:800,color:'#9a3412',background:'#fff7ed',padding:10,borderRadius:8}}>
      Excel mein identify nahi hue: {preview.missingFields.join(', ')}. Baaki AWB records load ho sakte hain; missing values blank rahengi. Booking Date missing ho to TAT calculate nahi hoga.
@@ -207,20 +197,20 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
     {tab==='DUPLICATES'?<div style={{marginTop:14}}>
-     <p style={{fontSize:13,color:'#576b85',margin:'0 0 10px'}}>Duplicate AWBs acknowledged during saved Excel / CSV imports are recorded here permanently. Counts include repeated Excel rows and AWBs already saved before an import. Only one shipment is kept per AWB; tracking status and delivered data stay intact. Historical duplicates from older imports need a scan of the original source file(s); unique shipment records alone cannot show which original rows repeated.</p>
+     <p style={{fontSize:13,color:'#576b85',margin:'0 0 10px'}}>Newly detected repeated AWBs are automatically recorded here during import, without acknowledgement. Main tracking keeps just one shipment per AWB. Duplicates merged by older imports cannot be reconstructed from the already-unique records.</p>
      <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap',marginBottom:12}}>
-      <input aria-label="Search duplicate JEPO AWB" placeholder="Search duplicate AWB, file or acknowledger…" style={{...control,flex:'1 1 220px'}} value={search} onChange={e=>setSearch(e.target.value)}/>
+      <input aria-label="Search duplicate JEPO AWB" placeholder="Search duplicate AWB or file…" style={{...control,flex:'1 1 220px'}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <button style={button} disabled={!duplicateVisible.length} onClick={()=>downloadDuplicateCsv(duplicateVisible)}>Export Duplicate CSV</button>
      </div>
-     <p style={{fontSize:12,color:'#687d93'}}>{duplicateVisible.length} duplicate AWB numbers • Most recently acknowledged first • Deleting a shipment does not erase its duplicate audit history.</p>
+     <p style={{fontSize:12,color:'#687d93'}}>{duplicateVisible.length} duplicate AWB numbers • Most recently detected first • Deleting a shipment does not erase its duplicate history.</p>
      <div style={{overflowX:'auto',border:'1px solid #d8e5f2',borderRadius:10,maxHeight:650}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,whiteSpace:'nowrap',width:'100%'}}>
-       <thead><tr>{['#','AWB No.','Repeat Occurrences','Repeated in Excel','Already Saved Repeats','Duplicate Uploads','Excel Rows (Last Upload)','Last File','Acknowledged By','Last Acknowledged','Record','Action'].map(h=><th key={h} style={{background:'#efeaff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #d7c7fb'}}>{h}</th>)}</tr></thead>
+       <thead><tr>{['#','AWB No.','Repeat Occurrences','Repeated in Excel','Already Saved Repeats','Duplicate Uploads','Excel Rows (Last Upload)','Last File','Detected By','Last Detected','Record','Action'].map(h=><th key={h} style={{background:'#efeaff',position:'sticky',top:0,zIndex:1,textAlign:'left',padding:'10px 9px',borderBottom:'1px solid #d7c7fb'}}>{h}</th>)}</tr></thead>
        <tbody>{duplicateVisible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#faf7ff':'white'}}>
         {[i+1,r.awb,r.count,r.fileRepeats,r.alreadySavedRepeats,r.uploadEvents,r.excelRows||'—',r.file||'—',r.acknowledgedBy||'—',r.acknowledgedAt?new Date(r.acknowledgedAt).toLocaleString('en-IN',{hour12:false}):'—',r.inTracking?(r.trackingStatus==='DELIVERED'?'Delivered':'Active'):'Deleted'].map((v,j)=><td key={j} style={{padding:9,borderBottom:'1px solid #e9eef5',fontWeight:j===1?800:400}}>{v}</td>)}
         <td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>{r.inTracking?<button style={{...button,padding:'5px 9px'}} onClick={()=>{setSearch(r.awb);setTab(r.trackingStatus==='DELIVERED'?'DELIVERED':'ACTIVE')}}>View AWB</button>:'Audit only'}</td>
        </tr>)}
-       {!duplicateVisible.length&&<tr><td colSpan={12} style={{padding:20,color:'#637891',textAlign:'center'}}>No duplicate AWB audit records have been saved yet. Earlier JEPO Tracking imports kept one row per AWB, so prior repeats cannot be inferred from the saved records. Use “Scan Old CSV for Duplicates” above with the original JEPO export file(s) to restore their duplicate history without changing shipments.</td></tr>}
+       {!duplicateVisible.length&&<tr><td colSpan={12} style={{padding:20,color:'#637891',textAlign:'center'}}>No duplicates recorded by the automatic import checker yet. Existing JEPO tracking rows are already unique. Any repeated AWB detected in a new import will appear here automatically.</td></tr>}
        </tbody>
       </table>
      </div>
