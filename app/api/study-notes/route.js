@@ -103,7 +103,7 @@ export async function GET(request){
   try{
     const sql=database(),auth=await notesAccess(request,sql,true);
     if(auth.error)return reply({ok:false,error:auth.error},auth.status);
-    await ensureTable(sql);
+    if(auth.session.role==='admin')await ensureTable(sql);
     const rows=await sql`SELECT * FROM mayavi_study_notes ORDER BY created_at DESC LIMIT 5000`;
     return reply({ok:true,rows:rows.map(format)});
   }catch(e){console.error('study_notes_get',e?.message);return reply({ok:false,error:'Unable to load study records.'},503);}
