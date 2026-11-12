@@ -496,17 +496,16 @@ export default function StudyNotesDashboard(){
           <div className={styles.tableWrap}><table>
             <thead><tr>
               <th>Source</th>
-              <th>Theory Total</th><th>Theory Attempted</th><th>Theory Pending</th>
+              <th>Theory Total</th><th>Theory Attempted</th>
               <th>Theory Corrected</th><th>Theory Incorrect</th><th>Incorrect Theory Nos.</th>
               <th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
-              <th>Overall Marks</th><th>Overall %</th>
+              <th>Overall Marks</th><th>Overall %</th><th>Theory Pending</th>
             </tr></thead>
             <tbody>{group.records.map(row=><tr key={row.id}>
               
               <td className={styles.sourceCell}>{row.source||'—'}</td>
               <td>{row.theoryTotal}</td>
               <td>{row.theoryDone}</td>
-              <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
               <td>{row.theoryCorrected===null||row.theoryCorrected===undefined?'—':row.theoryCorrected}</td>
               <td>{theoryIncorrect(row.theoryDone,row.theoryCorrected)===null?'—':
                 theoryIncorrect(row.theoryDone,row.theoryCorrected)}</td>
@@ -519,6 +518,7 @@ export default function StudyNotesDashboard(){
                 row.marksObtained+' / '+row.totalMarks}</td>
               <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':
                 marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
+              <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
             </tr>)}</tbody>
           </table></div>
             </div>
