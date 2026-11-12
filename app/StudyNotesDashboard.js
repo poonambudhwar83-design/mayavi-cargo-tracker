@@ -86,7 +86,15 @@ export default function StudyNotesDashboard(){
           const key=row.topic.trim().toLowerCase();
           if(topicOrder[key]===undefined)topicOrder[key]=Object.keys(topicOrder).length;
         }
-        return {...section,topics,topicOrder,totals:studyTotals(topics)};
+        const grouped=new Map();
+        for(const row of topics){
+          const key=row.topic.trim().toLowerCase();
+          if(!grouped.has(key))grouped.set(key,{
+            key,topic:row.topic,topicIndex:topicOrder[key],records:[]});
+          grouped.get(key).records.push(row);
+        }
+        return {...section,topics,topicOrder,
+          topicGroups:[...grouped.values()],totals:studyTotals(topics)};
       });
   },[filtered,chapterRegistry,subject]);
 
@@ -437,20 +445,34 @@ export default function StudyNotesDashboard(){
             {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}
           </small>
         </div>
-        {!section.topics.length?<p className={styles.empty}>No subtopics in this chapter yet. Select it above to add one.</p>:<>
-          <h4 className={styles.resultSubheading}>MCQs</h4>
+        {!section.topics.length?<p className={styles.empty}>No subtopics in this chapter yet. Select it above to add one.</p>:
+        <div className={styles.chapterSubtopics}>
+          {section.topicGroups.map(group=><section className={styles.subtopicGroup} key={group.key}>
+            <div className={styles.subtopicHeading}>
+              <span className={styles.subtopicNumber}>{studyTopicNumber('Chapter '+section.chapterIndex,
+                group.topicIndex,section.chapterIndex)}</span>
+              <strong>{group.topic}</strong>
+              <small>{group.records.length} {group.records.length===1?'source':'sources'}</small>
+              <button type="button" disabled={busy} onClick={()=>{
+                setEditId('');
+                setDraft({...blank(),chapter:section.chapter,topic:group.topic});
+                setSourceSelection('');setOtherSource('');
+                setMessage('Choose a source for '+group.topic+'.');
+                window.scrollTo({top:0,behavior:'smooth'});
+              }}>+ Add Source</button>
+            </div>
+            <div className={styles.subtopicBlock}>
+              <h4 className={styles.subtopicSectionLabel}>MCQs</h4>
           <div className={styles.tableWrap}><table>
             <thead><tr>
-              <th>No.</th><th>Subtopic</th><th>Source</th>
+              <th>Source</th>
               <th>MCQ Done / Total</th><th>MCQ Pending</th>
               <th>MCQ Attempted</th><th>MCQ Corrected</th>
               <th>MCQ Incorrect</th><th>Incorrect MCQ Nos.</th><th>MCQ %</th>
               <th>Actions</th>
             </tr></thead>
-            <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
-              <td className={styles.serial}>{studyTopicNumber('Chapter '+section.chapterIndex,
-                section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
-              <td className={styles.topic}>{row.topic}</td>
+            <tbody>{group.records.map(row=><tr key={row.id}>
+              
               <td className={styles.sourceCell}>{row.source||'—'}</td>
               <td>{row.mcqDone} / {row.mcqTotal}</td>
               <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
@@ -468,19 +490,19 @@ export default function StudyNotesDashboard(){
               </div></td>
             </tr>)}</tbody>
           </table></div>
-          <h4 className={styles.resultSubheading}>Theory</h4>
+            </div>
+            <div className={styles.subtopicBlock}>
+              <h4 className={styles.subtopicSectionLabel}>Theory</h4>
           <div className={styles.tableWrap}><table>
             <thead><tr>
-              <th>No.</th><th>Subtopic</th><th>Source</th>
+              <th>Source</th>
               <th>Theory Total</th><th>Theory Attempted</th><th>Theory Pending</th>
               <th>Theory Corrected</th><th>Theory Incorrect</th><th>Incorrect Theory Nos.</th>
               <th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
               <th>Overall Marks</th><th>Overall %</th>
             </tr></thead>
-            <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
-              <td className={styles.serial}>{studyTopicNumber('Chapter '+section.chapterIndex,
-                section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
-              <td className={styles.topic}>{row.topic}</td>
+            <tbody>{group.records.map(row=><tr key={row.id}>
+              
               <td className={styles.sourceCell}>{row.source||'—'}</td>
               <td>{row.theoryTotal}</td>
               <td>{row.theoryDone}</td>
@@ -499,7 +521,9 @@ export default function StudyNotesDashboard(){
                 marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
             </tr>)}</tbody>
           </table></div>
-        </>}
+            </div>
+          </section>)}
+        </div>}
       </article>)}
     </section>
   </main>;
