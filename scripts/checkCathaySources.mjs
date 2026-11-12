@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { annotateCathaySources } from '../lib/cathaySourceMap.js';
 import {parseCathayTrackingApi,parseCathayBookingDateOnly} from '../lib/cathay-browser-fallback.js';
 import {parseCathaySeptemberBookingStatus,parseCathaySeptemberTimeline} from '../lib/cathay-september-browser-fallback.js';
@@ -132,5 +133,28 @@ assert.equal(parseCathayBookingDateOnly(cxFlightLabel,mawb,
   {origin:'HKG',destination:'DEL'})?.flightNo,'CX695');
 assert.equal(parseCathayBookingDateOnly(cxFlightLabel,mawb,
   {origin:'HKG',destination:'DEL'})?.arrivalDate,'2026-11-14');
+
+
+// Preserve the exact production path which restored CX679 + estimated arrival:
+// verified Cathay Terminal flight -> official Cathay Pacific flight status ->
+// guarded Mayavi shipment save. Fail build if later edits remove this wiring.
+const workingCxAdapter=readFileSync('lib/cathay.js','utf8');
+assert.ok(workingCxAdapter.includes('async function fetchTerminalBrowser('),
+  'CX secure browser Terminal fallback must be retained');
+assert.ok(workingCxAdapter.includes('async function enrichWithOfficialFlight('),
+  'CX official flight-status enrichment must be retained');
+assert.ok(workingCxAdapter.includes('let terminal=await fetchTerminal(mawb,terminalProbes)'),
+  'CX AWB-matched Terminal fetch must stay first');
+assert.ok(workingCxAdapter.includes('terminal=await fetchTerminalBrowser(mawb,terminalProbes)'),
+  'CX verified Terminal browser fallback must remain active');
+assert.ok(workingCxAdapter.includes('const enriched=await enrichWithOfficialFlight(terminal.shipment,terminal.flights)'),
+  'CX flight number and ETA must continue into the shipment');
+assert.ok(workingCxAdapter.includes('shipment=await retainSavedCathayData(mawb,shipment)'),
+  'CX verified flight/ETA must be saved without erasing history');
+assert.ok(workingCxAdapter.includes('arrivalIsActual:Boolean(actual.date&&actual.time)'),
+  'CX estimated arrival must never be marked as actual');
+const workingCxCron=readFileSync('app/api/cron/cathay/route.js','utf8');
+assert.ok(workingCxCron.includes("frequency:'every 5 minutes'"),
+  'Keep the working CX 5-minute refresh schedule');
 
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
