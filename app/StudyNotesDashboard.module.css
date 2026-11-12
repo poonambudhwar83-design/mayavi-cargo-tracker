@@ -353,3 +353,62 @@
 .chapterTone8.chapter .subtopicBlock .tableWrap{
   background:#fff;
 }
+
+/* Compact, friendly summary. All numbers reflect SAVED practice only. */
+.notesTabs{display:flex;align-items:center;gap:8px;margin:10px 0 14px}
+.notesTabs button{padding:9px 20px;border-radius:9px;border:1px solid #d5e2ed;
+  background:#fff;color:#34546f;font-size:13px;font-weight:850;cursor:pointer}
+.notesTabs button.notesTabActive{background:#205b98;border-color:#205b98;color:#fff}
+.progressPanel{background:#fff;border:1px solid #dee7f0;border-radius:14px;
+  padding:18px 19px 20px;margin-bottom:16px;box-shadow:0 2px 12px rgba(28,63,110,.04)}
+.progressIntro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.progressIntro h2{margin:0 0 5px;font-size:19px;color:#203a5e}
+.progressIntro p{margin:0;color:#687e92;font-size:12px;line-height:1.6}
+.summaryStatus{padding:7px 11px;border-radius:18px;background:#eef4ff;
+  color:#26558a;font-size:11px;font-weight:800}
+.summaryCards{display:grid;grid-template-columns:2fr repeat(3,minmax(0,1fr));
+  gap:10px;margin:17px 0 24px}
+.summaryMainCard,.summaryCard{border:1px solid #dce7f2;border-radius:12px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:7px;background:#f9fbfe}
+.summaryMainCard{background:linear-gradient(112deg,#eaf4ff,#f1faff);border-color:#cce1f5}
+.summaryMainCard span,.summaryCard span{font-size:11px;font-weight:800;color:#59728e}
+.summaryMainCard strong{font-size:28px;font-weight:900;color:#1a4e86}
+.summaryCard strong{font-size:25px;font-weight:900;color:#255179}
+.summaryMainCard small{font-size:11px;color:#6b7f94}
+.summaryProgressTrack,.summaryChapterTrack{width:100%;height:9px;
+  border-radius:30px;background:#dbe7f1;overflow:hidden}
+.summaryProgressTrack>div{height:100%;background:#2181c5;border-radius:30px}
+.summaryListHeading{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  flex-wrap:wrap;margin:0 0 10px}
+.summaryListHeading h3{font-size:15px;color:#26486c;margin:0}
+.summaryListHeading small{color:#75849a;font-size:11px}
+.summaryChapterList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.summaryChapterCard{--chapter-accent:#2860a8;--chapter-tint:#eaf2ff;--chapter-ink:#244568;
+  padding:14px 15px;border:1px solid #e3ebf2;border-left:4px solid var(--chapter-accent);
+  border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:11px}
+.summaryChapterTop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.summaryChapterBadge{flex:none;min-width:30px;min-height:30px;border-radius:8px;
+  display:grid;place-items:center;background:var(--chapter-accent);color:#fff;
+  font-weight:900;font-size:12px}
+.summaryChapterText{flex:1;min-width:115px;display:flex;flex-direction:column;gap:2px}
+.summaryChapterText strong{font-size:13px;color:#24435f;overflow-wrap:anywhere}
+.summaryChapterText small{font-size:11px;color:#7a8ca1}
+.summaryNeedsRevision,.summaryPending,.summaryOnTrack{display:inline-block;border-radius:14px;
+  padding:6px 9px;font-size:10px;font-weight:850;white-space:nowrap}
+.summaryNeedsRevision{background:#fff0e8;color:#a94825}
+.summaryPending{background:#fff7e8;color:#95631a}
+.summaryOnTrack{background:#eaf6ef;color:#2c7550}
+.summaryChapterBottom{display:flex;align-items:center;gap:10px}
+.summaryChapterBottom strong{font-size:13px;color:var(--chapter-ink);min-width:64px;text-align:right}
+.summaryChapterTrack{height:8px}
+.summaryChapterTrack>div{height:100%;border-radius:20px;background:var(--chapter-accent)}
+.summaryMiniDetails{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#718198}
+.summaryMiniDetails b{color:#405873}
+.summaryFootnote{font-size:11px;color:#71869a;margin:14px 0 0;line-height:1.5}
+@media(max-width:950px){.summaryCards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){
+  .summaryChapterList{grid-template-columns:1fr}
+  .summaryCards{gap:8px}.summaryMainCard,.summaryCard{padding:11px 12px}
+  .summaryMainCard strong{font-size:25px}.summaryCard strong{font-size:22px}
+  .progressPanel{padding:13px 11px}
+}
