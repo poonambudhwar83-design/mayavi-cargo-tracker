@@ -466,16 +466,15 @@ export default function StudyNotesDashboard(){
           <div className={styles.tableWrap}><table>
             <thead><tr>
               <th>Source</th>
-              <th>MCQ Done / Total</th><th>MCQ Pending</th>
+              <th>MCQ Done / Total</th>
               <th>MCQ Attempted</th><th>MCQ Corrected</th>
               <th>MCQ Incorrect</th><th>Incorrect MCQ Nos.</th><th>MCQ %</th>
-              <th>Actions</th>
+              <th>Actions</th><th>MCQ Pending</th>
             </tr></thead>
             <tbody>{group.records.map(row=><tr key={row.id}>
               
               <td className={styles.sourceCell}>{row.source||'—'}</td>
               <td>{row.mcqDone} / {row.mcqTotal}</td>
-              <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
               <td>{row.mcqAttempted===null||row.mcqAttempted===undefined?'—':row.mcqAttempted}</td>
               <td>{row.mcqCorrected===null||row.mcqCorrected===undefined?'—':row.mcqCorrected}</td>
               <td>{mcqIncorrect(row.mcqAttempted,row.mcqCorrected)===null?'—':
@@ -488,6 +487,7 @@ export default function StudyNotesDashboard(){
                 <button type="button" className={styles.delete} disabled={busy}
                   onClick={()=>remove(row)}>Delete</button>
               </div></td>
+              <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
             </tr>)}</tbody>
           </table></div>
             </div>
