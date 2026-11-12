@@ -383,7 +383,7 @@
 .summaryListHeading h3{font-size:15px;color:#26486c;margin:0}
 .summaryListHeading small{color:#75849a;font-size:11px}
 .summaryChapterList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.summaryChapterCard{--chapter-accent:#2860a8;--chapter-tint:#eaf2ff;--chapter-ink:#244568;
+.summaryChapterCard{
   padding:14px 15px;border:1px solid #e3ebf2;border-left:4px solid var(--chapter-accent);
   border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:11px}
 .summaryChapterTop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
