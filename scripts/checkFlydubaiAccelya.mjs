@@ -144,6 +144,7 @@ assert.equal(bookedFinal?.arrivalDate,'','Booked flight date alone is NOT an arr
 assert.equal(bookedFinal?.arrivalIsActual,false);
 const labelledEta=parseFlydubaiText(
   bookedDateOnly.replace('Tracking Details','Expected Arrival DEL: 3 Nov 2026 09:20\\nTracking Details'),[],awb);
+console.log('FZ_LINE147_DIAG',JSON.stringify({booked:bookedFinal?.pieces,labelled:labelledEta?.pieces,raw:bookedDateOnly.slice(-240)}));
 assert.equal(labelledEta?.arrivalDate,'2026-11-03');
 assert.equal(labelledEta?.arrivalTime,'09:20');
 assert.equal(labelledEta?.arrivalIsActual,false);
