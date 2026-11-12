@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { annotateCathaySources } from '../lib/cathaySourceMap.js';
-import {parseCathayTrackingApi} from '../lib/cathay-browser-fallback.js';
+import {parseCathayTrackingApi,parseCathayBookingDateOnly} from '../lib/cathay-browser-fallback.js';
 import {parseCathaySeptemberBookingStatus,parseCathaySeptemberTimeline} from '../lib/cathay-september-browser-fallback.js';
 const mawb='160-18860310';
 const terminal={shipment:{mawb,origin:'HKG',destination:'DEL',
@@ -94,5 +94,43 @@ assert.equal(sept?.arrivalTime,'00:05');
 assert.equal(sept?.arrivalIsActual,true);
 assert.equal(parseCathaySeptemberTimeline(septPage,mawb,
   {origin:'HKG',destination:'DEL'})?.arrivalTime,'00:05');
+
+
+// The Booking Details panel is below the first viewport. Its confirmed CX
+// flight number and final-destination arrival DATE must survive without a
+// published arrival clock. A booked flight date is not an actual arrival.
+const cxBookingLower=[
+  'AWB 160-18860310', 'Booking Details', 'Confirmed (allotment)',
+  'HKG to DEL', 'CX679 12 NOV 2026',
+  'DEL Arrival Date: 13 NOV 2026', 'Shipment History'
+].join('\n');
+const cxLower=parseCathayBookingDateOnly(cxBookingLower,mawb,
+  {origin:'HKG',destination:'DEL'});
+assert.ok(cxLower,'lower Booking Details must be parsed');
+assert.equal(cxLower.flightNo,'CX679');
+assert.equal(cxLower.flightDate,'2026-11-12');
+assert.equal(cxLower.arrivalDate,'2026-11-13');
+assert.equal(cxLower.scheduledArrivalDate,'2026-11-13');
+assert.equal(cxLower.arrivalTime,'');
+assert.equal(cxLower.arrivalIsActual,false);
+assert.equal(parseCathayBookingDateOnly(cxBookingLower,'160-18860311',
+  {origin:'HKG',destination:'DEL'}),null,'no neighboring AWB');
+assert.equal(parseCathayBookingDateOnly(cxBookingLower,mawb,
+  {origin:'HKG',destination:'LHR'}),null,'no unrelated destination');
+const cxFlightOnly=cxBookingLower.replace('DEL Arrival Date: 13 NOV 2026','');
+assert.equal(parseCathayBookingDateOnly(cxFlightOnly,mawb,
+  {origin:'HKG',destination:'DEL'})?.flightNo,'CX679');
+assert.equal(parseCathayBookingDateOnly(cxFlightOnly,mawb,
+  {origin:'HKG',destination:'DEL'})?.arrivalDate,undefined,
+  'flight departure date must never be assumed to be arrival');
+const cxFlightLabel=[
+  'AWB 160-18860310','Booking Status','HKG to DEL',
+  'Flight No. CX695','Scheduled Arrival at DEL: 14 NOV 2026',
+  'Shipment History'
+].join('\n');
+assert.equal(parseCathayBookingDateOnly(cxFlightLabel,mawb,
+  {origin:'HKG',destination:'DEL'})?.flightNo,'CX695');
+assert.equal(parseCathayBookingDateOnly(cxFlightLabel,mawb,
+  {origin:'HKG',destination:'DEL'})?.arrivalDate,'2026-11-14');
 
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
