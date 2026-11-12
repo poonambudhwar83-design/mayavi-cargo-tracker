@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { STUDY_SUBJECTS, studyTotals, pending, theoryIncorrect, marksPercentage, studyTopicNumber } from '../lib/studyNotes.js';
+import { STUDY_SUBJECTS, STUDY_SOURCES, studyTotals, pending, theoryIncorrect, mcqIncorrect, mcqAccuracy, marksPercentage, studyTopicNumber, chapterSerial } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
-const blank=()=>({chapter:'',topic:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',theoryCorrected:'',totalMarks:'',marksObtained:'',
+const CHAPTERS_API='/api/study-chapters';
+const blank=()=>({chapter:'',topic:'',source:'',mcqAttempted:'',mcqCorrected:'',mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:'',theoryCorrected:'',totalMarks:'',marksObtained:'',
   mcqMarksTotal:'',mcqMarksObtained:'',theoryMarksTotal:'',theoryMarksObtained:'',
   incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const number=v=>v===''?0:Number(v);
@@ -14,6 +15,12 @@ const friendly=subject=>subject==='Mathematics'?'Maths':subject;
 export default function StudyNotesDashboard(){
   const [subject,setSubject]=useState('Physics');
   const [rows,setRows]=useState([]);
+  const [chapterRegistry,setChapterRegistry]=useState([]);
+  const [showNewChapter,setShowNewChapter]=useState(false);
+  const [chapterNumber,setChapterNumber]=useState('1');
+  const [chapterTitle,setChapterTitle]=useState('');
+  const [sourceSelection,setSourceSelection]=useState('');
+  const [otherSource,setOtherSource]=useState('');
   const [draft,setDraft]=useState(blank);
   const [editId,setEditId]=useState('');
   const [busy,setBusy]=useState(false);
@@ -27,6 +34,15 @@ export default function StudyNotesDashboard(){
         const data=await response.json();
         if(!response.ok||!data.ok)throw Error(data.error||'Unable to load notes.');
         if(active)setRows(data.rows||[]);
+        const chapterResponse=await fetch(CHAPTERS_API,{credentials:'include',cache:'no-store'});
+        const chapterData=await chapterResponse.json();
+        if(!chapterResponse.ok||!chapterData.ok)
+          throw Error(chapterData.error||'Unable to load chapters.');
+        if(active){
+          setChapterRegistry(chapterData.chapters||[]);
+          const first=(chapterData.chapters||[]).find(x=>x.subject==='Physics');
+          if(first)setDraft(old=>old.chapter?old:{...old,chapter:first.title});
+        }
       }catch(e){if(active)setMessage(e?.message||'Unable to load notes.')}
       finally{if(active)setLoading(false);}
     })();
@@ -47,32 +63,50 @@ export default function StudyNotesDashboard(){
   const previewIncorrect=theoryIncorrect(draft.theoryDone,draft.theoryCorrected);
   const chapters=useMemo(()=>{
     const map=new Map();
+    for(const c of chapterRegistry.filter(c=>c.subject===subject)){
+      map.set(c.title.trim(),{chapter:c.title.trim(),chapterIndex:c.number,topics:[]});
+    }
+    // Newly created chapters can exist before their first subtopic.
+    // Legacy chapters are never hidden even if the registry is unavailable.
     for(const row of filtered){
       const key=row.chapter.trim();
-      if(!map.has(key))map.set(key,[]);
-      map.get(key).push(row);
+      if(!map.has(key))map.set(key,{
+        chapter:key,chapterIndex:chapterSerial(key,map.size+1),topics:[]});
+      map.get(key).topics.push(row);
     }
-    return [...map].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true,sensitivity:'base'}))
-      .map(([chapter,topics],chapterIndex)=>({
-        chapter,chapterIndex:chapterIndex+1,
-        // Original entry order: editing a topic must NOT change its 1.1/1.2 number.
-        topics:topics.sort((a,b)=>
+    return [...map.values()]
+      .sort((a,b)=>a.chapterIndex-b.chapterIndex||
+        a.chapter.localeCompare(b.chapter,undefined,{numeric:true}))
+      .map(section=>{
+        const topics=section.topics.sort((a,b)=>
           (Date.parse(a.createdAt||'')||0)-(Date.parse(b.createdAt||'')||0)||
-          a.topic.localeCompare(b.topic,undefined,{numeric:true,sensitivity:'base'})),
-        totals:studyTotals(topics)
-      }));
-  },[filtered]);
+          a.topic.localeCompare(b.topic,undefined,{numeric:true}));
+        const topicOrder={};
+        for(const row of topics){
+          const key=row.topic.trim().toLowerCase();
+          if(topicOrder[key]===undefined)topicOrder[key]=Object.keys(topicOrder).length;
+        }
+        return {...section,topics,topicOrder,totals:studyTotals(topics)};
+      });
+  },[filtered,chapterRegistry,subject]);
 
   function choose(next){
     setSubject(next);
     setEditId('');
-    setDraft(blank());
+    const first=chapterRegistry.find(c=>c.subject===next);
+    setDraft({...blank(),chapter:first?.title||''});
+    setSourceSelection('');setOtherSource('');setShowNewChapter(false);
     setMessage('');
   }
   function update(field,value){setDraft(old=>({...old,[field]:value}));}
   function edit(row){
     setSubject(row.subject);setEditId(row.id);
-    setDraft({chapter:row.chapter,topic:row.topic,mcqTotal:String(row.mcqTotal),
+    setSourceSelection(STUDY_SOURCES.includes(row.source)?row.source:row.source?'Other':'');
+    setOtherSource(STUDY_SOURCES.includes(row.source)?'':row.source||'');
+    setDraft({chapter:row.chapter,topic:row.topic,source:row.source||'',
+      mcqAttempted:row.mcqAttempted==null?'':String(row.mcqAttempted),
+      mcqCorrected:row.mcqCorrected==null?'':String(row.mcqCorrected),
+      mcqTotal:String(row.mcqTotal),
       mcqDone:String(row.mcqDone),theoryTotal:String(row.theoryTotal),theoryDone:String(row.theoryDone),
       theoryCorrected:row.theoryCorrected===null||row.theoryCorrected===undefined?'':String(row.theoryCorrected),
       totalMarks:row.totalMarks===null?'':String(row.totalMarks),
@@ -86,12 +120,44 @@ export default function StudyNotesDashboard(){
     setMessage('Editing '+row.topic+'.');
     window.scrollTo({top:0,behavior:'smooth'});
   }
-  function reset(){setEditId('');setDraft(blank());setMessage('');}
+  function reset(){
+    setEditId('');setDraft(old=>({...blank(),chapter:old.chapter}));
+    setSourceSelection('');setOtherSource('');setMessage('');
+  }
+  function newSubtopic(){
+    if(editId){setEditId('');}
+    setDraft(old=>({...blank(),chapter:old.chapter}));
+    setSourceSelection('');setOtherSource('');
+    setMessage('Ready to add another subtopic to this chapter.');
+  }
+  async function createChapter(){
+    if(busy)return;
+    const number=Number(chapterNumber);
+    if(!Number.isInteger(number)||number<1||number>500){
+      setMessage('Enter a valid chapter number (1–500).');return;
+    }
+    setBusy(true);setMessage('');
+    try{
+      const response=await fetch(CHAPTERS_API,{method:'POST',credentials:'include',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({subject,number,title:chapterTitle})});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw Error(data.error||'Unable to add chapter.');
+      setChapterRegistry(old=>[...old,data.chapter]);
+      setDraft(old=>({...old,chapter:data.chapter.title,topic:''}));
+      setShowNewChapter(false);setChapterTitle('');
+      setMessage('Chapter '+number+' added. Add its first subtopic below.');
+    }catch(e){setMessage(e?.message||'Unable to add chapter.');}
+    finally{setBusy(false);}
+  }
   async function save(event){
     event.preventDefault();
     if(busy)return;
     setMessage('');
-    const payload={...draft,subject,mcqTotal:number(draft.mcqTotal),
+    const payload={...draft,subject,source:draft.source.trim(),
+      mcqAttempted:draft.mcqAttempted===''?null:number(draft.mcqAttempted),
+      mcqCorrected:draft.mcqCorrected===''?null:number(draft.mcqCorrected),
+      mcqTotal:number(draft.mcqTotal),
       mcqDone:number(draft.mcqDone),theoryTotal:number(draft.theoryTotal),
       theoryDone:number(draft.theoryDone),
       theoryCorrected:draft.theoryCorrected===''?null:number(draft.theoryCorrected),
@@ -102,6 +168,17 @@ export default function StudyNotesDashboard(){
       theoryMarksTotal:draft.theoryMarksTotal===''?null:draft.theoryMarksTotal,
       theoryMarksObtained:draft.theoryMarksObtained===''?null:draft.theoryMarksObtained,
       ...(editId?{id:editId}:{})};
+    if(!payload.chapter.trim()||!payload.topic.trim()||(!editId&&!payload.source)){
+      setMessage('Select a chapter, enter the subtopic and choose a source.');return;
+    }
+    if(payload.mcqCorrected!==null&&
+      (payload.mcqAttempted===null||payload.mcqCorrected>payload.mcqAttempted)){
+      setMessage('MCQ Corrected cannot exceed MCQ Attempted.');return;
+    }
+    if([payload.mcqAttempted,payload.mcqCorrected].some(x=>
+      x!==null&&(!Number.isInteger(x)||x<0||x>100000))){
+      setMessage('MCQ Attempted / Corrected must be valid whole numbers.');return;
+    }
     if([payload.mcqTotal,payload.mcqDone,payload.theoryTotal,payload.theoryDone]
       .some(x=>!Number.isInteger(x)||x<0||x>100000)){
       setMessage('Please enter valid whole-number counts.');return;
@@ -144,7 +221,9 @@ export default function StudyNotesDashboard(){
       const data=await response.json();
       if(!response.ok||!data.ok)throw Error(data.error||'Unable to save notes.');
       setRows(old=>editId?old.map(row=>row.id===editId?data.row:row):[data.row,...old]);
-      setDraft(blank());setEditId('');setMessage('Saved successfully.');
+      setDraft({...blank(),chapter:payload.chapter,topic:payload.topic});
+      setSourceSelection('');setOtherSource('');
+      setEditId('');setMessage('Saved. The chapter and subtopic are selected for the next source.');
     }catch(e){setMessage(e?.message||'Unable to save notes.');}
     finally{setBusy(false);}
   }
@@ -156,7 +235,7 @@ export default function StudyNotesDashboard(){
       const data=await response.json();
       if(!response.ok||!data.ok)throw Error(data.error||'Unable to delete.');
       setRows(old=>old.filter(item=>item.id!==row.id));
-      if(editId===row.id){setEditId('');setDraft(blank());}
+      if(editId===row.id){setEditId('');setDraft({...blank(),chapter:row.chapter});}
       setMessage('Topic removed.');
     }catch(e){setMessage(e?.message||'Unable to delete.');}
     finally{setBusy(false);}
