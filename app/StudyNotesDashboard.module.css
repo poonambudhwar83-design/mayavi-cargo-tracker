@@ -189,3 +189,36 @@
   .chapterNumber{padding:5px 8px;font-size:11px}
   .chapterTitle{font-size:14px}
 }
+
+/* Within ONE coloured chapter, each subtopic owns its MCQ row and theory row.
+   Neutral inside dividers avoid making subtopics look like new chapters. */
+.chapterSubtopics{display:flex;flex-direction:column;gap:0}
+.subtopicGroup{padding:10px 12px 13px;border-top:1px solid #e2eaf3;background:#fff}
+.subtopicGroup:first-child{border-top:0}
+.subtopicHeading{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  padding:9px 11px;margin-bottom:9px;
+  background:#f7f9fc;border:1px solid #e4ebf2;border-radius:7px;
+}
+.subtopicNumber{font-weight:900;font-size:12px;color:var(--chapter-ink,#274c75)}
+.subtopicHeading strong{font-weight:800;font-size:13px;color:#243b55;overflow-wrap:anywhere}
+.subtopicHeading small{font-size:11px;color:#708097}
+.subtopicHeading button{
+  margin-left:auto;border:1px solid #cbd8e6;border-radius:6px;
+  background:#fff;color:#285174;padding:6px 9px;font-size:11px;
+  cursor:pointer;font-weight:750
+}
+.subtopicHeading button:disabled{opacity:.5;cursor:wait}
+.subtopicBlock{padding:1px 0}
+.subtopicBlock+.subtopicBlock{margin-top:8px;border-top:1px dashed #dce5ed;padding-top:7px}
+.subtopicSectionLabel{margin:5px 0 6px;padding-left:2px;font-size:12px;
+  font-weight:850;color:#365570}
+.subtopicGroup .tableWrap{border:1px solid #e4ebf2;border-radius:6px}
+.subtopicGroup .tableWrap table{min-width:760px}
+.subtopicGroup .tableWrap td{padding:9px 11px}
+.subtopicGroup .tableWrap th{padding:10px 11px}
+@media(max-width:560px){
+  .subtopicGroup{padding:9px 8px 11px}
+  .subtopicHeading{padding:8px;gap:6px}
+  .subtopicHeading button{margin-left:0}
+}
