@@ -222,3 +222,134 @@
   .subtopicHeading{padding:8px;gap:6px}
   .subtopicHeading button{margin-left:0}
 }
+
+/* PHYSICS-VIVID-CHAPTER-PALETTE
+   Full-colour chapter banners (blue, purple, teal, rose, amber, green,
+   indigo and terracotta). CSS-module class selectors are explicit so the
+   chapter accent cannot silently disappear when class names are hashed. */
+.chapterTone1.chapter .chapterHeading,
+.chapterTone2.chapter .chapterHeading,
+.chapterTone3.chapter .chapterHeading,
+.chapterTone4.chapter .chapterHeading,
+.chapterTone5.chapter .chapterHeading,
+.chapterTone6.chapter .chapterHeading,
+.chapterTone7.chapter .chapterHeading,
+.chapterTone8.chapter .chapterHeading{
+  background:linear-gradient(110deg,var(--chapter-accent),var(--chapter-ink));
+  border-bottom:2px solid var(--chapter-accent);
+}
+.chapterTone1.chapter .chapterHeading h3,
+.chapterTone2.chapter .chapterHeading h3,
+.chapterTone3.chapter .chapterHeading h3,
+.chapterTone4.chapter .chapterHeading h3,
+.chapterTone5.chapter .chapterHeading h3,
+.chapterTone6.chapter .chapterHeading h3,
+.chapterTone7.chapter .chapterHeading h3,
+.chapterTone8.chapter .chapterHeading h3,
+.chapterTone1.chapter .chapterTitle,
+.chapterTone2.chapter .chapterTitle,
+.chapterTone3.chapter .chapterTitle,
+.chapterTone4.chapter .chapterTitle,
+.chapterTone5.chapter .chapterTitle,
+.chapterTone6.chapter .chapterTitle,
+.chapterTone7.chapter .chapterTitle,
+.chapterTone8.chapter .chapterTitle,
+.chapterTone1.chapter .chapterHeading small,
+.chapterTone2.chapter .chapterHeading small,
+.chapterTone3.chapter .chapterHeading small,
+.chapterTone4.chapter .chapterHeading small,
+.chapterTone5.chapter .chapterHeading small,
+.chapterTone6.chapter .chapterHeading small,
+.chapterTone7.chapter .chapterHeading small,
+.chapterTone8.chapter .chapterHeading small{
+  color:#fff;
+}
+.chapterTone1.chapter .chapterNumber,
+.chapterTone2.chapter .chapterNumber,
+.chapterTone3.chapter .chapterNumber,
+.chapterTone4.chapter .chapterNumber,
+.chapterTone5.chapter .chapterNumber,
+.chapterTone6.chapter .chapterNumber,
+.chapterTone7.chapter .chapterNumber,
+.chapterTone8.chapter .chapterNumber{
+  background:rgba(255,255,255,.96);
+  color:var(--chapter-ink);
+  box-shadow:0 1px 4px rgba(0,0,0,.1);
+}
+.chapterTone1.chapter .chapterHeading .pendingCount,
+.chapterTone2.chapter .chapterHeading .pendingCount,
+.chapterTone3.chapter .chapterHeading .pendingCount,
+.chapterTone4.chapter .chapterHeading .pendingCount,
+.chapterTone5.chapter .chapterHeading .pendingCount,
+.chapterTone6.chapter .chapterHeading .pendingCount,
+.chapterTone7.chapter .chapterHeading .pendingCount,
+.chapterTone8.chapter .chapterHeading .pendingCount{
+  background:#fff1f3;color:#a81731;
+  display:inline-block;padding:2px 5px;border-radius:5px;
+}
+.chapterTone1.chapter .chapterSubtopics,
+.chapterTone2.chapter .chapterSubtopics,
+.chapterTone3.chapter .chapterSubtopics,
+.chapterTone4.chapter .chapterSubtopics,
+.chapterTone5.chapter .chapterSubtopics,
+.chapterTone6.chapter .chapterSubtopics,
+.chapterTone7.chapter .chapterSubtopics,
+.chapterTone8.chapter .chapterSubtopics,
+.chapterTone1.chapter .subtopicGroup,
+.chapterTone2.chapter .subtopicGroup,
+.chapterTone3.chapter .subtopicGroup,
+.chapterTone4.chapter .subtopicGroup,
+.chapterTone5.chapter .subtopicGroup,
+.chapterTone6.chapter .subtopicGroup,
+.chapterTone7.chapter .subtopicGroup,
+.chapterTone8.chapter .subtopicGroup{
+  background:var(--chapter-pale);
+}
+.chapterTone1.chapter .subtopicHeading,
+.chapterTone2.chapter .subtopicHeading,
+.chapterTone3.chapter .subtopicHeading,
+.chapterTone4.chapter .subtopicHeading,
+.chapterTone5.chapter .subtopicHeading,
+.chapterTone6.chapter .subtopicHeading,
+.chapterTone7.chapter .subtopicHeading,
+.chapterTone8.chapter .subtopicHeading{
+  background:var(--chapter-tint);
+  border-color:var(--chapter-border);
+  border-left:4px solid var(--chapter-accent);
+}
+.chapterTone1.chapter .subtopicHeading strong,
+.chapterTone2.chapter .subtopicHeading strong,
+.chapterTone3.chapter .subtopicHeading strong,
+.chapterTone4.chapter .subtopicHeading strong,
+.chapterTone5.chapter .subtopicHeading strong,
+.chapterTone6.chapter .subtopicHeading strong,
+.chapterTone7.chapter .subtopicHeading strong,
+.chapterTone8.chapter .subtopicHeading strong,
+.chapterTone1.chapter .subtopicNumber,
+.chapterTone2.chapter .subtopicNumber,
+.chapterTone3.chapter .subtopicNumber,
+.chapterTone4.chapter .subtopicNumber,
+.chapterTone5.chapter .subtopicNumber,
+.chapterTone6.chapter .subtopicNumber,
+.chapterTone7.chapter .subtopicNumber,
+.chapterTone8.chapter .subtopicNumber,
+.chapterTone1.chapter .subtopicSectionLabel,
+.chapterTone2.chapter .subtopicSectionLabel,
+.chapterTone3.chapter .subtopicSectionLabel,
+.chapterTone4.chapter .subtopicSectionLabel,
+.chapterTone5.chapter .subtopicSectionLabel,
+.chapterTone6.chapter .subtopicSectionLabel,
+.chapterTone7.chapter .subtopicSectionLabel,
+.chapterTone8.chapter .subtopicSectionLabel{
+  color:var(--chapter-ink);
+}
+.chapterTone1.chapter .subtopicBlock .tableWrap,
+.chapterTone2.chapter .subtopicBlock .tableWrap,
+.chapterTone3.chapter .subtopicBlock .tableWrap,
+.chapterTone4.chapter .subtopicBlock .tableWrap,
+.chapterTone5.chapter .subtopicBlock .tableWrap,
+.chapterTone6.chapter .subtopicBlock .tableWrap,
+.chapterTone7.chapter .subtopicBlock .tableWrap,
+.chapterTone8.chapter .subtopicBlock .tableWrap{
+  background:#fff;
+}
