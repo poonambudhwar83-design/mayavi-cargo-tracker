@@ -59,10 +59,21 @@ async function ensureTable(sql){
     ADD COLUMN IF NOT EXISTS theory_marks_total NUMERIC(12,2)`;
   await sql`ALTER TABLE mayavi_study_notes
     ADD COLUMN IF NOT EXISTS theory_marks_obtained NUMERIC(12,2)`;
+  // Additional source + MCQ marking columns are nullable/add-only.
+  // Every older topic, question number and manually entered mark is retained.
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS mcq_attempted INTEGER`;
+  await sql`ALTER TABLE mayavi_study_notes
+    ADD COLUMN IF NOT EXISTS mcq_corrected INTEGER`;
 }
 const format=row=>({
   id:row.id,subject:row.subject,chapter:row.chapter,topic:row.topic,
+  source:row.source||'',
   mcqTotal:row.mcq_total,mcqDone:row.mcq_done,
+  mcqAttempted:row.mcq_attempted===null?null:Number(row.mcq_attempted),
+  mcqCorrected:row.mcq_corrected===null?null:Number(row.mcq_corrected),
   theoryTotal:row.theory_total,theoryDone:row.theory_done,
   theoryCorrected:row.theory_corrected===null?null:Number(row.theory_corrected),
   totalMarks:row.total_marks===null?null:Number(row.total_marks),
@@ -103,13 +114,15 @@ export async function POST(request){
     await sql`INSERT INTO mayavi_study_notes
       (id,subject,chapter,topic,mcq_total,mcq_done,theory_total,theory_done,
        total_marks,marks_obtained,incorrect_mcq_numbers,incorrect_theory_numbers,
-       mcq_marks_total,mcq_marks_obtained,theory_marks_total,theory_marks_obtained,theory_corrected)
+       mcq_marks_total,mcq_marks_obtained,theory_marks_total,theory_marks_obtained,theory_corrected,
+       source,mcq_attempted,mcq_corrected)
       VALUES (${id},${entry.subject},${entry.chapter},${entry.topic},
         ${entry.mcqTotal},${entry.mcqDone},${entry.theoryTotal},${entry.theoryDone},
         ${entry.totalMarks},${entry.marksObtained},
         ${entry.incorrectMcqNumbers},${entry.incorrectTheoryNumbers},
         ${entry.mcqMarksTotal},${entry.mcqMarksObtained},
-        ${entry.theoryMarksTotal},${entry.theoryMarksObtained},${entry.theoryCorrected})`;
+        ${entry.theoryMarksTotal},${entry.theoryMarksObtained},${entry.theoryCorrected},
+        ${entry.source},${entry.mcqAttempted},${entry.mcqCorrected})`;
     return reply({ok:true,row:await find(sql,id)},201);
   }catch(e){console.error('study_notes_save',e?.message);return reply({ok:false,error:'Unable to save study record.'},503);}
 }
@@ -122,7 +135,9 @@ export async function PATCH(request){
     let entry;try{entry=parseStudyEntry(body);}catch(e){return invalid(e);}
     await ensureTable(sql);
     const rows=await sql`UPDATE mayavi_study_notes SET subject=${entry.subject},
-      chapter=${entry.chapter},topic=${entry.topic},mcq_total=${entry.mcqTotal},
+      chapter=${entry.chapter},topic=${entry.topic},source=${entry.source},
+      mcq_attempted=${entry.mcqAttempted},mcq_corrected=${entry.mcqCorrected},
+      mcq_total=${entry.mcqTotal},
       mcq_done=${entry.mcqDone},theory_total=${entry.theoryTotal},
       theory_done=${entry.theoryDone},theory_corrected=${entry.theoryCorrected},
       total_marks=${entry.totalMarks},
