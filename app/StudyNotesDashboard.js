@@ -428,9 +428,9 @@ export default function StudyNotesDashboard(){
       <h2>{friendly(subject)} <span>{chapters.length} chapters</span></h2>
       {loading?<p className={styles.empty}>Loading saved notes…</p>:
       !chapters.length?<p className={styles.empty}>No chapters yet. Use + Add Chapter above.</p>:
-      chapters.map(section=><article className={styles.chapter} key={section.chapter}>
+      chapters.map(section=><article className={`${styles.chapter} ${styles['chapterTone'+(((Number(section.chapterIndex)||1)-1)%8+1)]}`} key={section.chapter}>
         <div className={styles.chapterHeading}>
-          <h3>Chapter {section.chapterIndex} · {section.chapter}</h3>
+          <h3><span className={styles.chapterNumber}>Chapter {section.chapterIndex}</span><span className={styles.chapterTitle}>{section.chapter}</span></h3>
           <small>{Object.keys(section.topicOrder).length} subtopics • {section.topics.length} source entries •
             <span className={styles.pendingCount}> MCQ pending {section.totals.mcqPending}</span> •
             <span className={styles.pendingCount}> Theory pending {section.totals.theoryPending}</span>
