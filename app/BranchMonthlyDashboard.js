@@ -1,5 +1,5 @@
 'use client';
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {aggregateBranchMonthly,branchMonths} from '../lib/branchMonthlySummary.js';
 import {branchPayoutForRecord,totalJepoForLoad,statusLabel} from '../lib/branchLoads.js';
 
@@ -40,12 +40,31 @@ function SummaryTable({title,items,headName='Branch'}){
   </div>
  </section>;
 }
-export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchFilter='ALL',onBranchChange=()=>{}}){
- const [selectedMonth,setSelectedMonth]=useState('');
+export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchFilter='ALL',onBranchChange=()=>{},selectedMonth='',onMonthChange=()=>{},showProfit=false}){
+ const [profitSnapshot,setProfitSnapshot]=useState(null);
  const [busy,setBusy]=useState(false);
  const months=useMemo(()=>branchMonths(records),[records]);
- const month=selectedMonth||months[0]||'';
+ const month=selectedMonth&&months.includes(selectedMonth)?selectedMonth:months[0]||'';
  const report=useMemo(()=>aggregateBranchMonthly(records,{month}),[records,month]);
+ // Profit = booked income minus expenses within the selected month only.
+ useEffect(()=>{
+  if(!showProfit||!month){setProfitSnapshot(null);return;}
+  const controller=new AbortController();
+  setProfitSnapshot(null);
+  fetch('/api/branch-profit?month='+encodeURIComponent(month),{credentials:'include',cache:'no-store',signal:controller.signal})
+   .then(async response=>{
+    const result=await response.json();
+    if(!response.ok||!result.ok)throw new Error(result.error||'Unable to read monthly profit');
+    return result;
+   })
+   .then(result=>{if(!controller.signal.aborted)setProfitSnapshot({month,incomes:result.incomes||{},expenses:result.expenses||[]});})
+   .catch(error=>{if(!controller.signal.aborted)setProfitSnapshot({month,error:error?.message||'Unavailable'});});
+  return ()=>controller.abort();
+ },[month,showProfit]);
+ const selectedBranches=branchFilter==='ALL'?['JIND','KARNAL']:[branchFilter];
+ const profitIncome=profitSnapshot?.incomes?selectedBranches.reduce((t,b)=>t+Number(profitSnapshot.incomes[b]||0),0):0;
+ const profitExpenses=(profitSnapshot?.expenses||[]).reduce((t,r)=>t+(selectedBranches.includes(r.branch)?Number(r.amount||0):0),0);
+ const monthlyProfit=profitIncome-profitExpenses;
  const overall=useMemo(()=>aggregateBranchMonthly(records),[records]);
  const history=overall.history.filter(r=>branchFilter==='ALL'||r.branch===branchFilter);
  const {main,details}=fileRows(history,report.selectedRows);
@@ -80,7 +99,7 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
      </select>
     </label>}
     <label style={{fontSize:12,fontWeight:750}}>Booking Month
-     <select aria-label="Monthly booking month" style={{display:'block',marginTop:4,padding:'9px 11px',border:'1px solid #b8c9de',borderRadius:8}} value={month} onChange={e=>setSelectedMonth(e.target.value)}>
+     <select aria-label="Monthly booking month" style={{display:'block',marginTop:4,padding:'9px 11px',border:'1px solid #b8c9de',borderRadius:8}} value={month} onChange={e=>onMonthChange(e.target.value)}>
       {months.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}
       {!months.length&&<option value="">No saved months</option>}
      </select>
@@ -90,10 +109,30 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
    </div>
   </div>
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(154px,1fr))',gap:9,marginTop:12}}>
-   {[['Shipments',fmt(report.grand.loads)],['Weight',fmt(report.grand.weight)+' kg'],['Amount',rupee(report.grand.amount)],['Received',rupee(report.grand.received)],['Balance',rupee(report.grand.balance)],['Paid to JEPO',rupee(report.grand.paidToJepo)],['Paid to Branch',rupee(report.grand.paidToBranch)],['Delivered / Active',fmt(report.grand.delivered)+' / '+fmt(report.grand.active)]].map(([label,value])=>
+   {[['Shipments',fmt(report.grand.loads)],['Weight',fmt(report.grand.weight)+' kg'],['Amount',rupee(report.grand.amount)],['Received',rupee(report.grand.received)],['Balance',rupee(report.grand.balance)],['Paid to JEPO • Base',rupee(report.grand.paidToJepo)],['Total JEPO incl. Extras',rupee(report.grand.totalJepo)],['Paid to Branch',rupee(report.grand.paidToBranch)],['Delivered / Active',fmt(report.grand.delivered)+' / '+fmt(report.grand.active)],...(showProfit&&month?[['Net Profit • '+month,profitSnapshot?.month!==month?'Loading…':profitSnapshot.error?'Unavailable':rupee(monthlyProfit)]]:[])].map(([label,value])=>
     <div key={label} style={wrap}><div style={{fontSize:12,color:'#61748b',fontWeight:750}}>{label}</div><strong style={{display:'block',color:'#194a81',fontSize:18,marginTop:6}}>{value}</strong></div>)}
   </div>
-  <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
+  <section style={wrap} aria-label="All Saved Loads for selected month">
+   <h3 style={{margin:'0 0 8px',color:'#194875'}}>{monthLabel(month)} • All Saved Loads ({report.selectedRows.length})</h3>
+   <p style={{margin:'0 0 12px',fontSize:12,color:'#60758b'}}>All saved Active + Delivered loads booked in the selected month. The final three columns and bottom row give monthly weight and payouts.</p>
+   <div style={{maxHeight:480,overflowX:'auto'}}>
+    <table style={{borderCollapse:'collapse',minWidth:1190,width:'100%',fontSize:12}}>
+     <thead><tr>{['Booking Date','Branch','Tracking No','Service','Country','Amount','Received','Balance','Status','Weight (kg)','Paid to Branch (₹)','Total Paid to JEPO incl. Extras (₹)'].map(h=><th key={h} style={head}>{h}</th>)}</tr></thead>
+     <tbody>{report.selectedRows.map(r=><tr key={r.id}>
+      {[date(r.date),r.branch,r.trackingNo||'—',r.service||'—',r.destination||'—',rupee(r.amount),rupee(r.received),rupee(r.balance),r.liveStatus||statusLabel(r.status),fmt(r.weight)+' kg',rupee(branchPayoutForRecord(r)),rupee(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true}))].map((v,i)=><td key={i} style={{...cell,fontWeight:i>=9?700:400}}>{v}</td>)}
+     </tr>)}
+     {!report.selectedRows.length&&<tr><td colSpan={12} style={cell}>No saved loads for this month</td></tr>}
+     </tbody>
+     <tfoot><tr>
+      <td colSpan={9} style={{...head,fontWeight:900,position:'static'}}>MONTH TOTAL • {report.grand.loads} saved loads</td>
+      <td style={{...head,fontWeight:900,position:'static'}}>{fmt(report.grand.weight)} kg</td>
+      <td style={{...head,fontWeight:900,position:'static'}}>{rupee(report.grand.paidToBranch)}</td>
+      <td style={{...head,fontWeight:900,position:'static'}}>{rupee(report.grand.totalJepo)}</td>
+     </tr></tfoot>
+    </table>
+   </div>
+  </section>
+  <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:12}}>
    <SummaryTable title={monthLabel(month)+' • Branch Comparison'} items={report.branches}/>
    <SummaryTable title="Service-wise Summary" items={report.byService} headName="Service"/>
    <SummaryTable title="Destination-wise Summary" items={report.byCountry} headName="Destination"/>
@@ -110,17 +149,6 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
     </tbody></table>
    </div>
   </section>
-  <section style={wrap}>
-   <h3 style={{margin:'0 0 10px',color:'#194875'}}>{monthLabel(month)} • All Saved Loads ({report.selectedRows.length})</h3>
-   <div style={{maxHeight:450,overflowX:'auto'}}>
-    <table style={{borderCollapse:'collapse',minWidth:1100,width:'100%',fontSize:12}}>
-     <thead><tr>{['Booking Date','Branch','Tracking No','Service','Country','Weight','Amount','Received','Balance','Paid to JEPO','Paid to Branch','Status'].map(h=><th key={h} style={head}>{h}</th>)}</tr></thead>
-     <tbody>{report.selectedRows.map(r=><tr key={r.id}>
-      {[date(r.date),r.branch,r.trackingNo||'—',r.service||'—',r.destination||'—',fmt(r.weight)+' kg',rupee(r.amount),rupee(r.received),rupee(r.balance),rupee(r.paidToJepo),rupee(branchPayoutForRecord(r)),r.liveStatus||statusLabel(r.status)].map((v,i)=><td key={i} style={cell}>{v}</td>)}
-     </tr>)}
-     {!report.selectedRows.length&&<tr><td colSpan={12} style={cell}>No saved loads for this month</td></tr>}
-     </tbody></table>
-   </div>
-  </section>
+
  </section>;
 }
