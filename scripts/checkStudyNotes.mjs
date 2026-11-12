@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {STUDY_SUBJECTS,STUDY_SOURCES,parseStudyEntry,studyTotals,pending,theoryIncorrect,mcqIncorrect,mcqAccuracy,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
+import {STUDY_SUBJECTS,STUDY_SOURCES,parseStudyEntry,studyTotals,pending,theoryIncorrect,mcqIncorrect,mcqAccuracy,marksPercentage,chapterSerial,studyTopicNumber,studyProgressSummary} from '../lib/studyNotes.js';
 assert.deepEqual(STUDY_SUBJECTS,[
  'Physics','Mathematics','Chemistry','Biology','Sociology','English','Hindi'
 ]);
@@ -216,7 +216,10 @@ assert.ok(!page.includes('row.serialNumber'),'Serial numbers are calculated, not
 assert.ok(page.includes('pending(row.mcqTotal,row.mcqDone)'));
 assert.ok(page.includes('pending(row.theoryTotal,row.theoryDone)'));
 const api=readFileSync('app/api/study-notes/route.js','utf8');
-assert.ok(api.includes('session.role!==\'admin\''));
+assert.ok(api.includes("notesAccess(request,sql,true)"));
+assert.ok(api.includes("const sql=database(),auth=await notesAccess(request,sql);"));
+assert.ok(api.includes("session.username==='joya'"));
+assert.ok(api.includes("session.branchScope==='STUDY_NOTES'"));
 assert.ok(api.includes('mayavi_study_notes'));
 assert.ok(api.includes('createdAt:row.created_at'),
   'Use immutable creation time so edits do not reorder topic serials');
@@ -292,7 +295,7 @@ const mcqStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>MC
 const theoryStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>Theory');
 assert.ok(mcqStart>=0&&theoryStart>mcqStart,'MCQs must appear directly above Theory in each subtopic');
 const mcqTable=resultsMarkup.slice(mcqStart,theoryStart);
-assert.ok(mcqTable.includes('<th>Actions</th><th>MCQ Pending</th>'),
+assert.ok(mcqTable.includes('{!readOnly&&<th>Actions</th>}<th>MCQ Pending</th>'),
   'MCQ Pending must be the last column after the Edit/Delete actions');
 assert.ok(mcqTable.indexOf('onClick={()=>remove(row)}>Delete</button>')<
   mcqTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>'),
@@ -316,5 +319,55 @@ assert.ok(theoryTable.indexOf("row.marksObtained+' / '+row.totalMarks")<
   'Theory pending data cell must follow the other data columns');
 assert.equal(theoryTable.match(/<th>Theory Pending<\/th>/g)?.length,1);
 assert.equal(theoryTable.match(/pending\(row.theoryTotal,row.theoryDone\)/g)?.length,1);
+
+
+const summaryExample=studyProgressSummary([
+  parseStudyEntry({subject:'Physics',chapter:'Physical Quantities',topic:'Forces',source:'Tuition',
+    mcqTotal:20,mcqDone:10,mcqAttempted:10,mcqCorrected:5,
+    theoryTotal:10,theoryDone:5}),
+  parseStudyEntry({subject:'Physics',chapter:'Physical Quantities',topic:'Forces',source:'Rocket Revise',
+    mcqTotal:10,mcqDone:10,mcqAttempted:10,mcqCorrected:8,
+    theoryTotal:5,theoryDone:5})
+],[
+  {subject:'Physics',title:'Physical Quantities',number:1},
+  {subject:'Physics',title:'Motion',number:2}
+],'Physics');
+assert.equal(summaryExample.chapterCount,2);
+assert.equal(summaryExample.chapters[0].subtopics,1);
+assert.equal(summaryExample.chapters[0].pending,15);
+assert.equal(summaryExample.chapters[0].grade,65);
+assert.equal(summaryExample.chapters[0].status,'Needs revision');
+assert.equal(summaryExample.chapters[1].status,'Not started');
+assert.equal(summaryExample.total,45);
+assert.equal(summaryExample.done,30);
+assert.equal(summaryExample.pending,15);
+assert.equal(summaryExample.progress,66.67);
+assert.equal(summaryExample.chaptersCompleted,0);
+assert.equal(summaryExample.chaptersNeedRevision,1);
+assert.equal(studyProgressSummary([],[{subject:'Physics',title:'New',number:3}],'Physics').progress,null,
+  'An empty registered chapter must not claim syllabus progress');
+const auth=readFileSync('lib/mayaviAuth.js','utf8');
+const route=readFileSync('app/api/study-chapters/route.js','utf8');
+const dashboard=readFileSync('app/UnifiedDashboard.js','utf8');
+assert.ok(auth.includes("if(branchScope==='STUDY_NOTES'){"));
+assert.ok(auth.includes("normalizeUsername(payload.username)!=='joya'"));
+assert.ok(auth.includes("['/api/auth','/api/study-notes','/api/study-chapters']"));
+assert.ok(route.includes("notesAccess(request,sql,true)"));
+assert.ok(route.includes("notesAccess(request,sql);"));
+assert.ok(route.includes("session.username==='joya'"));
+assert.ok(dashboard.includes("<StudyNotesDashboard readOnly/>"));
+assert.ok(dashboard.includes("data.session.branchScope==='STUDY_NOTES'"));
+assert.ok(dashboard.includes("const notesLogin=Boolean("));
+assert.ok(page.includes("export default function StudyNotesDashboard({readOnly=false})"));
+assert.ok(page.includes("if(readOnly||busy)return;"));
+assert.ok(page.includes("if(readOnly)return;"));
+assert.ok(page.includes("{view==='NOTES'&&!readOnly&&<section"));
+assert.ok(page.includes("{!readOnly&&<th>Actions</th>}"));
+assert.ok(page.includes("{!readOnly&&<td><div className={styles.rowActions}>"));
+assert.ok(page.includes("{!readOnly&&<button type=\"button\" disabled={busy}"));
+assert.ok(page.includes("view==='SUMMARY'&&<section"));
+assert.ok(page.includes("studyProgressSummary(rows,chapterRegistry,subject)"));
+assert.ok(css.includes(".progressPanel{"));
+assert.ok(css.includes(".summaryChapterList{"));
 
 console.log('NOTES seven subjects, chapter topics, question counts, admin access, CRUD and navigation tests passed.');
