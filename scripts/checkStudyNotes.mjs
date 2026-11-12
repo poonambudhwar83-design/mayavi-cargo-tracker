@@ -300,4 +300,21 @@ assert.ok(mcqTable.indexOf('onClick={()=>remove(row)}>Delete</button>')<
 assert.equal(mcqTable.match(/<th>MCQ Pending<\/th>/g)?.length,1);
 assert.equal(mcqTable.match(/pending\(row.mcqTotal,row.mcqDone\)/g)?.length,1);
 
+
+// The two available Physics chapters must visibly differ, with a strong,
+// accessible full-width colour rather than nearly identical pale panels.
+assert.ok(css.includes('PHYSICS-VIVID-CHAPTER-PALETTE'));
+assert.ok(css.includes('.chapterTone1.chapter .chapterHeading'));
+assert.ok(css.includes('.chapterTone2.chapter .chapterHeading'));
+assert.ok(css.includes('background:linear-gradient(110deg,var(--chapter-accent),var(--chapter-ink))'));
+assert.ok(css.includes('background:var(--chapter-tint)'));
+const theoryTable=resultsMarkup.slice(theoryStart,resultsMarkup.indexOf('</section>)}',theoryStart));
+assert.ok(theoryTable.includes('<th>Overall %</th><th>Theory Pending</th>'),
+  'Theory Pending must appear last after all marks and percentages');
+assert.ok(theoryTable.indexOf("row.marksObtained+' / '+row.totalMarks")<
+  theoryTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>'),
+  'Theory pending data cell must follow the other data columns');
+assert.equal(theoryTable.match(/<th>Theory Pending<\/th>/g)?.length,1);
+assert.equal(theoryTable.match(/pending\(row.theoryTotal,row.theoryDone\)/g)?.length,1);
+
 console.log('NOTES seven subjects, chapter topics, question counts, admin access, CRUD and navigation tests passed.');
