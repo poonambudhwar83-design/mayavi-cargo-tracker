@@ -448,7 +448,7 @@ export default function StudyNotesDashboard(){
               <th>Actions</th>
             </tr></thead>
             <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
-              <td className={styles.serial}>{studyTopicNumber(section.chapter,
+              <td className={styles.serial}>{studyTopicNumber('Chapter '+section.chapterIndex,
                 section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
               <td className={styles.topic}>{row.topic}</td>
               <td className={styles.sourceCell}>{row.source||'—'}</td>
@@ -478,7 +478,7 @@ export default function StudyNotesDashboard(){
               <th>Overall Marks</th><th>Overall %</th>
             </tr></thead>
             <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
-              <td className={styles.serial}>{studyTopicNumber(section.chapter,
+              <td className={styles.serial}>{studyTopicNumber('Chapter '+section.chapterIndex,
                 section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
               <td className={styles.topic}>{row.topic}</td>
               <td className={styles.sourceCell}>{row.source||'—'}</td>
