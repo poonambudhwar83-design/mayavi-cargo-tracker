@@ -89,11 +89,15 @@ export async function GET(request){
         Number(b.unresolved)-Number(a.unresolved)||
         Number(b.recent)-Number(a.recent)||a.checkedAt-b.checkedAt)
       .slice(0,MAX_PER_TICK);
-    // The old approved-independent pipeline worked after the Terminal
-    // published a dated Departure Flight. Check that public Terminal every
-    // 5 minutes without spending 80 seconds on a 403 browser lookup.
-    // Retry public Booking Details once every 30 minutes and on manual refresh.
-    const fastRefresh=new Date(now).getUTCMinutes()%30!==0;
+    // September terminal-first tracking now runs through a certificate-
+    // verifying browser when Node's TLS chain is incomplete. Prefer this
+    // proven AWB-specific RCS/departure path every five minutes.
+    // Cathay's public Booking Status has been returning HTTP 403; attempting
+    // its full browser flow each half-hour made the entire cron time out.
+    // Probe Booking Status only at UTC 00:00/06:00/12:00/18:00, with
+    // on-demand manual refresh retaining the full September fallback.
+    const clock=new Date(now);
+    const fastRefresh=!(clock.getUTCHours()%6===0&&clock.getUTCMinutes()===0);
     const results=[];
     for(let i=0;i<candidate.length;i+=BATCH_SIZE){
       const settled=await Promise.allSettled(
