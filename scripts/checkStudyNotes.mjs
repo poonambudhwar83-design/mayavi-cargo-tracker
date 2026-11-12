@@ -1,9 +1,27 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {STUDY_SUBJECTS,parseStudyEntry,studyTotals,pending,theoryIncorrect,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
+import {STUDY_SUBJECTS,STUDY_SOURCES,parseStudyEntry,studyTotals,pending,theoryIncorrect,mcqIncorrect,mcqAccuracy,marksPercentage,chapterSerial,studyTopicNumber} from '../lib/studyNotes.js';
 assert.deepEqual(STUDY_SUBJECTS,[
  'Physics','Mathematics','Chemistry','Biology','Sociology','English','Hindi'
 ]);
+assert.deepEqual(STUDY_SOURCES,[
+  'Rocket Revise','Tuition','Examinent','Save My Exams',
+  'Physics & Maths Tutor','Other'
+]);
+assert.equal(mcqIncorrect(20,18),2);
+assert.equal(mcqAccuracy(20,18),90);
+assert.equal(mcqAccuracy(0,0),null);
+assert.equal(mcqAccuracy(null,null),null);
+const sourced=parseStudyEntry({subject:'Physics',chapter:'Chapter 1',
+  topic:'Speed',source:'Rocket Revise',mcqTotal:25,mcqDone:20,
+  mcqAttempted:20,mcqCorrected:18});
+assert.equal(sourced.source,'Rocket Revise');
+assert.equal(sourced.mcqAttempted,20);
+assert.equal(sourced.mcqCorrected,18);
+assert.throws(()=>parseStudyEntry({subject:'Physics',chapter:'Chapter 1',
+  topic:'Speed',mcqAttempted:10,mcqCorrected:11}),/MCQ Corrected cannot exceed/);
+assert.equal(parseStudyEntry({subject:'Physics',chapter:'Chapter 1',
+  topic:'Speed',source:'School Question Bank'}).source,'School Question Bank');
 assert.equal(pending(25,7),18);
 assert.equal(pending(3,9),0);
 assert.equal(theoryIncorrect(18,12),6);
@@ -107,6 +125,7 @@ assert.equal(mixed.theoryPercentage,80);
 assert.deepEqual(studyTotals([a,{...a,topic:'Velocity',mcqTotal:5,mcqDone:5,
   theoryTotal:3,theoryDone:3}]),{
   topics:2,mcqTotal:25,mcqDone:17,mcqPending:8,
+  mcqAttempted:0,mcqCorrected:0,mcqIncorrect:0,mcqGradedTopics:0,
   theoryTotal:13,theoryDone:6,theoryPending:7,theoryCorrected:0,theoryIncorrect:0,theoryGradedTopics:0,
   totalMarks:0,marksObtained:0,percentage:null,markedTopics:0,
   mcqMarksTotal:0,mcqMarksObtained:0,mcqPercentage:null,mcqMarkedTopics:0,
@@ -121,7 +140,7 @@ assert.throws(()=>parseStudyEntry({...input,mcqTotal:-1}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:1.5}),/whole number/);
 assert.throws(()=>parseStudyEntry({...input,mcqTotal:100001}),/range/);
 assert.deepEqual(parseStudyEntry({...input,mcqTotal:'',mcqDone:'',theoryTotal:'',theoryDone:''}),
-  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',mcqTotal:0,mcqDone:0,theoryTotal:0,theoryDone:0,theoryCorrected:null,totalMarks:null,marksObtained:null,mcqMarksTotal:null,mcqMarksObtained:null,theoryMarksTotal:null,theoryMarksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
+  {subject:'Physics',chapter:'Chapter 1',topic:'Motion',source:'',mcqTotal:0,mcqDone:0,mcqAttempted:null,mcqCorrected:null,theoryTotal:0,theoryDone:0,theoryCorrected:null,totalMarks:null,marksObtained:null,mcqMarksTotal:null,mcqMarksObtained:null,theoryMarksTotal:null,theoryMarksObtained:null,incorrectMcqNumbers:'',incorrectTheoryNumbers:''});
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 assert.ok(nav.includes("selectedDashboard==='NOTES'\n      ?<StudyNotesDashboard/>"));
 assert.ok(nav.includes("selectedDashboard==='ADMIN_NOTES'\n      ?<AdminNotesDashboard currentUser={session}/>"));
@@ -160,7 +179,13 @@ assert.ok(page.includes('MCQ Marks Obtained'));
 assert.ok(page.includes('Theory Total Marks'));
 assert.ok(page.includes('Theory Marks Obtained'));
 assert.ok(page.includes('Overall Marks'));
-assert.ok(page.includes('<th>MCQ Marks</th>'));
+assert.ok(page.includes('<th>MCQ Attempted</th>'));
+assert.ok(page.includes('<th>MCQ Corrected</th>'));
+assert.ok(page.includes('<th>MCQ Incorrect</th>'));
+assert.ok(page.includes('<th>MCQ %</th>'));
+assert.ok(page.includes('<th>MCQ Done / Total</th>'));
+assert.ok(page.includes('<th>MCQ Pending</th>'));
+assert.ok(page.includes('<th>Incorrect MCQ Nos.</th>'));
 assert.ok(page.includes('<th>Theory Total Marks</th>'));
 assert.ok(page.includes('<th>Theory Marks Obtained</th>'));
 assert.ok(page.includes('<th>Theory Corrected</th>'));
@@ -175,7 +200,8 @@ assert.ok(page.includes('marksPercentage(row.totalMarks,row.marksObtained)'));
 assert.ok(page.includes("totals.percentage.toFixed(2)+'%'"));
 assert.ok(page.includes("const API='/api/study-notes'"));
 assert.ok(page.includes('chapters.map(section=>'));
-assert.ok(page.includes("studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)"));
+assert.ok(page.includes("section.topicOrder[row.topic.trim().toLowerCase()]"),
+  'The same subtopic must retain its chapter numbering across sources');
 assert.ok(page.includes("a.createdAt||''"));
 assert.ok(page.includes("section.topics.map((row,topicIndex)"));
 assert.ok(page.includes('<th>No.</th>'));
@@ -196,6 +222,12 @@ for(const field of ['mcq_marks_total','mcq_marks_obtained','theory_marks_total',
   assert.ok(api.includes('ADD COLUMN IF NOT EXISTS '+field));
   assert.ok(api.includes(field+'='));
 }
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS source TEXT'));
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS mcq_attempted'));
+assert.ok(api.includes('ADD COLUMN IF NOT EXISTS mcq_corrected'));
+assert.ok(api.includes('source:row.source'));
+assert.ok(api.includes('mcqAttempted:row.mcq_attempted'));
+assert.ok(api.includes('mcqCorrected:row.mcq_corrected'));
 assert.ok(api.includes('ADD COLUMN IF NOT EXISTS theory_corrected'));
 assert.ok(api.includes('theory_corrected=${entry.theoryCorrected}'));
 assert.ok(api.includes('theoryCorrected:row.theory_corrected===null?null:Number(row.theory_corrected)'));
@@ -210,4 +242,22 @@ assert.ok(api.includes('export async function GET(request)'));
 assert.ok(api.includes('export async function POST(request)'));
 assert.ok(api.includes('export async function PATCH(request)'));
 assert.ok(api.includes('export async function DELETE(request)'));
+
+assert.ok(page.includes("const CHAPTERS_API='/api/study-chapters'"));
+assert.ok(page.includes("STUDY_SOURCES.map(x=>"));
+assert.ok(page.includes("sourceSelection==='Other'"));
+assert.ok(page.includes("onClick={createChapter}"));
+assert.ok(page.includes("setDraft({...blank(),chapter:payload.chapter,topic:payload.topic})"));
+assert.ok(page.includes('aria-label="MCQ entries"'));
+assert.ok(page.includes('aria-label="Theory entries"'));
+assert.equal(page.match(/className={styles.compactEntryRow}/g)?.length,2,
+  'MCQ and Theory must each have their own input row');
+assert.ok(page.includes('<th>Source</th>'));
+const chapterApi=readFileSync('app/api/study-chapters/route.js','utf8');
+assert.ok(chapterApi.includes('mayavi_study_chapters'));
+assert.ok(chapterApi.includes('preserveExistingChapters(sql)'));
+assert.ok(chapterApi.includes('MIN(created_at)'),
+  'Existing Physics Chapter 1 must be preserved by creation order');
+assert.ok(chapterApi.includes('export async function POST(request)'));
+
 console.log('NOTES seven subjects, chapter topics, question counts, admin access, CRUD and navigation tests passed.');
