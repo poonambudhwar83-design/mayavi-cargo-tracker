@@ -260,4 +260,21 @@ assert.ok(chapterApi.includes('MIN(created_at)'),
   'Existing Physics Chapter 1 must be preserved by creation order');
 assert.ok(chapterApi.includes('export async function POST(request)'));
 
+
+// Chapter colour identity follows stable chapter numbers, not a mutable row
+// index. It must never alter counts or saved chapters and must keep red pending
+// question indicators independent of the chapter's accent.
+assert.ok(page.includes("styles['chapterTone'+(((Number(section.chapterIndex)||1)-1)%8+1)]"));
+assert.ok(page.includes('className={styles.chapterNumber}'));
+assert.ok(page.includes('className={styles.chapterTitle}'));
+for(let number=1;number<=8;number++){
+  assert.ok(css.includes('.chapterTone'+number+'{'),
+    'Every chapter palette tone must be present: '+number);
+}
+assert.ok(css.includes('.chapter[class*="chapterTone"] .chapterHeading'));
+assert.ok(css.includes('.chapter[class*="chapterTone"] .tableWrap th'));
+assert.ok(css.includes('.chapterNumber{'));
+assert.ok(css.includes('.stats .pendingCard span,.stats .pendingCard b,.pendingCount{color:#b91c1c'),
+  'Chapter colours must not conceal red pending counts');
+
 console.log('NOTES seven subjects, chapter topics, question counts, admin access, CRUD and navigation tests passed.');
