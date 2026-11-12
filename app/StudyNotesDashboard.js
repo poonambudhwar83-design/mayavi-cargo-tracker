@@ -268,34 +268,103 @@ export default function StudyNotesDashboard(){
       <div><span>PERCENTAGE</span><b>{totals.percentage===null?'—':totals.percentage.toFixed(2)+'%'}</b></div>
     </section>
     <section className={styles.formPanel}>
-      <h2>{editId?'Edit Topic':'Add Topic'} <span>· {friendly(subject)}</span></h2>
+      <div className={styles.formHeading}>
+        <h2>{editId?'Edit Subtopic':'Add Subtopic'} <span>· {friendly(subject)}</span></h2>
+        <button type="button" className={styles.chapterAddButton} disabled={busy}
+          onClick={()=>{
+            const occupied=new Set(chapterRegistry.filter(c=>c.subject===subject).map(c=>c.number));
+            let next=1;while(occupied.has(next))next++;
+            setChapterNumber(String(next));setChapterTitle('');setShowNewChapter(old=>!old);
+          }}>+ Add Chapter</button>
+      </div>
+      {showNewChapter&&<div className={styles.newChapterFields}>
+        <label>Chapter No.
+          <input type="number" min="1" max="500" step="1" value={chapterNumber}
+            onChange={e=>setChapterNumber(e.target.value)} placeholder="1, 2, 3"/>
+        </label>
+        <label>Chapter Name (optional)
+          <input value={chapterTitle} maxLength={120} onChange={e=>setChapterTitle(e.target.value)}
+            placeholder="e.g. Physical Quantities"/>
+        </label>
+        <button type="button" disabled={busy} onClick={createChapter}>Save Chapter</button>
+      </div>}
       <form onSubmit={save}>
-        {/* A single scrollable row replaces the repeated stacked count,
-            formula and marks panels. Every saved field remains editable. */}
-        <div className={styles.compactEntryScroll} aria-label="Topic details — scroll horizontally for all columns" tabIndex={0}>
+        <div className={styles.noteIdentity}>
+          <label>Chapter
+            <select value={draft.chapter} required
+              onChange={e=>setDraft(old=>({...old,chapter:e.target.value,topic:''}))}>
+              <option value="">Select Chapter</option>
+              {chapters.map(section=><option key={section.chapter} value={section.chapter}>
+                {'Chapter '+section.chapterIndex+' · '+section.chapter}
+              </option>)}
+            </select>
+          </label>
+          <label>Subtopic
+            <input list="study-subtopic-choices" value={draft.topic} maxLength={180}
+              required onChange={e=>update('topic',e.target.value)}
+              placeholder="e.g. 1.1 Measurement"/>
+            <datalist id="study-subtopic-choices">
+              {[...new Set((chapters.find(c=>c.chapter===draft.chapter)?.topics||[])
+                .map(x=>x.topic))].map(x=><option key={x} value={x}/>)}
+            </datalist>
+          </label>
+          <label>Source
+            <select value={sourceSelection} required={!editId} onChange={e=>{
+              const next=e.target.value;
+              setSourceSelection(next);setOtherSource('');
+              update('source',next==='Other'?'':next);
+            }}>
+              <option value="">Select Source</option>
+              {STUDY_SOURCES.map(x=><option key={x} value={x}>{x}</option>)}
+            </select>
+          </label>
+          {sourceSelection==='Other'&&<label>Other Source Name
+            <input value={otherSource} required maxLength={120}
+              onChange={e=>{setOtherSource(e.target.value);update('source',e.target.value);}}
+              placeholder="Type your source name"/>
+          </label>}
+        </div>
+        <h3 className={styles.notesTypeHeading}>MCQs</h3>
+        <div className={styles.compactEntryScroll} aria-label="MCQ entries" tabIndex={0}>
           <div className={styles.compactEntryRow}>
-            <label className={styles.compactChapter}>Chapter
-              <input value={draft.chapter} maxLength={120} required
-                onChange={e=>update('chapter',e.target.value)} placeholder="Chapter 1"/>
+            <label className={styles.compactPair}>MCQ Done / Total
+              <span className={styles.pairInputs}>
+                <input type="number" inputMode="numeric" min="0" max="100000" step="1"
+                  title="MCQ Done" placeholder="Done" value={draft.mcqDone}
+                  onChange={e=>update('mcqDone',e.target.value)}/>
+                <span>/</span>
+                <input type="number" inputMode="numeric" min="0" max="100000" step="1"
+                  title="MCQ Total" placeholder="Total" value={draft.mcqTotal}
+                  onChange={e=>update('mcqTotal',e.target.value)}/>
+              </span>
             </label>
-            <label className={styles.compactTopic}>Topic
-              <input value={draft.topic} maxLength={180} required
-                onChange={e=>update('topic',e.target.value)} placeholder="Topic name"/>
-            </label>
+            <div className={styles.compactCalculated}><span>MCQ Pending</span>
+              <output className={styles.pendingCount}>{pending(draft.mcqTotal,draft.mcqDone)}</output>
+            </div>
             {[
-              ['mcqTotal','MCQ Total'],['mcqDone','MCQ Done']
+              ['mcqAttempted','MCQ Attempted'],['mcqCorrected','MCQ Corrected']
             ].map(([field,label])=><label className={styles.compactNumber} key={field}>{label}
-              <input type="number" inputMode="numeric" min="0" max="100000" step="1"
-                placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
+              <input type="number" min="0" max="100000" step="1" inputMode="numeric"
+                placeholder="—" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
             </label>)}
-            <div className={styles.compactCalculated} title="MCQ Total minus MCQ Done">
-              <span>MCQ Pending</span><output className={styles.pendingCount}>{pending(draft.mcqTotal,draft.mcqDone)}</output>
+            <div className={styles.compactCalculated}><span>MCQ Incorrect</span>
+              <output>{mcqIncorrect(draft.mcqAttempted,draft.mcqCorrected)===null?'—':
+                mcqIncorrect(draft.mcqAttempted,draft.mcqCorrected)}</output>
             </div>
             <label className={styles.compactWrong}>Incorrect MCQ Question Numbers
               <input type="text" maxLength={600} placeholder="e.g. 2, 5, 9"
                 value={draft.incorrectMcqNumbers}
                 onChange={e=>update('incorrectMcqNumbers',e.target.value)}/>
             </label>
+            <div className={styles.compactCalculated}><span>MCQ %</span>
+              <output>{mcqAccuracy(draft.mcqAttempted,draft.mcqCorrected)===null?'—':
+                mcqAccuracy(draft.mcqAttempted,draft.mcqCorrected).toFixed(2)+'%'}</output>
+            </div>
+          </div>
+        </div>
+        <h3 className={styles.notesTypeHeading}>Theory</h3>
+        <div className={styles.compactEntryScroll} aria-label="Theory entries" tabIndex={0}>
+          <div className={styles.compactEntryRow}>
             {[
               ['theoryTotal','Total Theory Questions'],['theoryDone','Theory Attempted'],
               ['theoryCorrected','Theory Corrected']
@@ -303,31 +372,17 @@ export default function StudyNotesDashboard(){
               <input type="number" inputMode="numeric" min="0" max="100000" step="1"
                 placeholder="0" value={draft[field]} onChange={e=>update(field,e.target.value)}/>
             </label>)}
-            <div className={styles.compactCalculated} title="Theory Total minus Attempted">
-              <span>Theory Pending</span><output className={styles.pendingCount}>{pending(draft.theoryTotal,draft.theoryDone)}</output>
+            <div className={styles.compactCalculated}><span>Theory Pending</span>
+              <output className={styles.pendingCount}>{pending(draft.theoryTotal,draft.theoryDone)}</output>
             </div>
-            <div className={styles.compactCalculated} title="Theory Attempted minus Corrected">
-              <span>Theory Incorrect</span><output>{previewIncorrect===null?'—':previewIncorrect}</output>
+            <div className={styles.compactCalculated}><span>Theory Incorrect</span>
+              <output>{previewIncorrect===null?'—':previewIncorrect}</output>
             </div>
             <label className={styles.compactWrong}>Incorrect Theory Question Numbers
               <input type="text" maxLength={600} placeholder="e.g. 3, 7"
                 value={draft.incorrectTheoryNumbers}
                 onChange={e=>update('incorrectTheoryNumbers',e.target.value)}/>
             </label>
-            <label className={styles.compactMarks}>MCQ Total Marks
-              <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder="Manual" value={draft.mcqMarksTotal}
-                onChange={e=>update('mcqMarksTotal',e.target.value)}/>
-            </label>
-            <label className={styles.compactMarks}>MCQ Marks Obtained
-              <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
-                placeholder="Manual" value={draft.mcqMarksObtained}
-                onChange={e=>update('mcqMarksObtained',e.target.value)}/>
-            </label>
-            <div className={styles.compactCalculated}><span>MCQ %</span>
-              <output>{marksPercentage(draft.mcqMarksTotal,draft.mcqMarksObtained)===null?'—':
-                marksPercentage(draft.mcqMarksTotal,draft.mcqMarksObtained).toFixed(2)+'%'}</output>
-            </div>
             <label className={styles.compactMarks}>Theory Total Marks (manual)
               <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
                 placeholder="Manual" value={draft.theoryMarksTotal}
@@ -342,23 +397,29 @@ export default function StudyNotesDashboard(){
               <output>{marksPercentage(theoryPreviewTotal,theoryPreviewObtained)===null?'—':
                 marksPercentage(theoryPreviewTotal,theoryPreviewObtained).toFixed(2)+'%'}</output>
             </div>
-            <div className={styles.compactCalculated}><span>Overall Marks</span>
-              <output>{hasSplitDraft||draft.totalMarks!==''?combinedDraftObtained+' / '+combinedDraftTotal:'—'}</output>
-            </div>
-            <div className={styles.compactCalculated}><span>Overall %</span>
-              <output>{marksPercentage(combinedDraftTotal,combinedDraftObtained)===null?'—':
-                marksPercentage(combinedDraftTotal,combinedDraftObtained).toFixed(2)+'%'}</output>
-            </div>
           </div>
         </div>
-        {draft.totalMarks!==''&&
-          <p className={styles.compactLegacyHint}>{hasSplitDraft
-            ?'Existing overall marks will be updated from the manually entered MCQ/Theory marks when saved.'
-            :'Existing overall marks remain saved: '+draft.marksObtained+' / '+draft.totalMarks+'.'}</p>}
+        <details className={styles.legacyMarksDetails}>
+          <summary>Previously saved MCQ / Overall Marks (optional)</summary>
+          <div className={styles.legacyMarksFields}>
+            {[
+              ['mcqMarksTotal','MCQ Total Marks'],['mcqMarksObtained','MCQ Marks Obtained'],
+              ['totalMarks','Total Marks'],['marksObtained','Marks Obtained']
+            ].map(([field,label])=><label key={field}>{label}
+              <input type="number" inputMode="decimal" min="0" max="1000000" step="0.01"
+                placeholder="Manual" value={draft[field]}
+                onChange={e=>update(field,e.target.value)}/>
+            </label>)}
+            <div>Overall Marks: {hasSplitDraft||draft.totalMarks!==''?combinedDraftObtained+' / '+combinedDraftTotal:'—'}</div>
+            <div>Overall %: {marksPercentage(combinedDraftTotal,combinedDraftObtained)===null?'—':
+              marksPercentage(combinedDraftTotal,combinedDraftObtained).toFixed(2)+'%'}</div>
+          </div>
+        </details>
         <div className={styles.actions}>
-          <button type="submit" disabled={busy}>{busy?'Saving…':editId?'Save Changes':'+ Save Topic'}</button>
+          <button type="submit" disabled={busy}>{busy?'Saving…':editId?'Save Changes':'+ Save Subtopic / Source'}</button>
           {editId&&<button type="button" className={styles.cancel} disabled={busy} onClick={reset}>Cancel</button>}
-          <small>All details are in one row. Scroll sideways for more columns; Theory marks remain manual and saved question numbers stay editable.</small>
+          <button type="button" className={styles.cancel} disabled={busy} onClick={newSubtopic}>+ New Subtopic</button>
+          <small>Select the same subtopic again for another source. The selected chapter stays unchanged.</small>
         </div>
       </form>
     </section>
