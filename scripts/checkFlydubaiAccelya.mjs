@@ -156,4 +156,31 @@ assert.equal(card?.scheduledArrivalDate,'2026-11-04');
 assert.equal(card?.scheduledArrivalTime,'13:15');
 assert.equal(card?.arrivalIsActual,false);
 
+
+
+// Regression: carrier timeline prints a date year on one line and the
+// independently labelled piece quantity on the next. Never save 2026 pieces.
+const yearSplit=[
+  'Track Shipment Doc. No.: 141-53630301 Courier',
+  'KUWAIT (KWI)',
+  'DELHI (DEL)',
+  'Tracking Details',
+  'Milestones',
+  'KWI, 8:30 AM,',
+  'Departed to DWC on Flight FZ-3036, 12 Nov 2026, KWI-DWC',
+  'Pieces: 24',
+  'DWC, 11:39 PM,',
+  'Booked on Flight FZ-3097, 12 Nov 2026, DWC-DEL',
+  'Pieces: 24'
+].join('\n');
+const splitParsed=parseFlydubaiText(yearSplit,[],awb);
+assert.equal(splitParsed?.pieces,'24');
+assert.equal(splitParsed?.bags,'24');
+assert.notEqual(splitParsed?.masterPieces,'2026');
+const masterOverride=parseFlydubaiText(
+  yearSplit+'\nShow Details\nTotal Pieces: 30\nGross Weight: 2000 KG',[],awb);
+assert.equal(masterOverride?.pieces,'30',
+  'AWB-level Show Details total must override part-load quantities');
+assert.equal(masterOverride?.masterPieces,'30');
+
 console.log('Flydubai Accelya parsing regression passed: AWB match, no false success from prefilled search, weight/pieces.');
