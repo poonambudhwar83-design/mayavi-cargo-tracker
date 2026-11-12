@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { STUDY_SUBJECTS, STUDY_SOURCES, studyTotals, pending, theoryIncorrect, mcqIncorrect, mcqAccuracy, marksPercentage, studyTopicNumber, chapterSerial } from '../lib/studyNotes.js';
+import { STUDY_SUBJECTS, STUDY_SOURCES, studyTotals, pending, theoryIncorrect, mcqIncorrect, mcqAccuracy, marksPercentage, studyTopicNumber, chapterSerial, studyProgressSummary } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
 const API='/api/study-notes';
@@ -12,8 +12,9 @@ const blank=()=>({chapter:'',topic:'',source:'',mcqAttempted:'',mcqCorrected:'',
 const number=v=>v===''?0:Number(v);
 const friendly=subject=>subject==='Mathematics'?'Maths':subject;
 
-export default function StudyNotesDashboard(){
+export default function StudyNotesDashboard({readOnly=false}){
   const [subject,setSubject]=useState('Physics');
+  const [view,setView]=useState(readOnly?'SUMMARY':'NOTES');
   const [rows,setRows]=useState([]);
   const [chapterRegistry,setChapterRegistry]=useState([]);
   const [showNewChapter,setShowNewChapter]=useState(false);
@@ -51,6 +52,7 @@ export default function StudyNotesDashboard(){
 
   const filtered=useMemo(()=>rows.filter(row=>row.subject===subject),[rows,subject]);
   const totals=useMemo(()=>studyTotals(filtered),[filtered]);
+  const summary=useMemo(()=>studyProgressSummary(rows,chapterRegistry,subject),[rows,chapterRegistry,subject]);
   const theoryPreviewTotal=draft.theoryMarksTotal;
   const theoryPreviewObtained=draft.theoryMarksObtained;
   // Attempted and corrected counts do not write or prefill theory marks.
@@ -108,6 +110,7 @@ export default function StudyNotesDashboard(){
   }
   function update(field,value){setDraft(old=>({...old,[field]:value}));}
   function edit(row){
+    if(readOnly)return;
     setSubject(row.subject);setEditId(row.id);
     setSourceSelection(STUDY_SOURCES.includes(row.source)?row.source:row.source?'Other':'');
     setOtherSource(STUDY_SOURCES.includes(row.source)?'':row.source||'');
@@ -139,7 +142,7 @@ export default function StudyNotesDashboard(){
     setMessage('Ready to add another subtopic to this chapter.');
   }
   async function createChapter(){
-    if(busy)return;
+    if(readOnly||busy)return;
     const number=Number(chapterNumber);
     if(!Number.isInteger(number)||number<1||number>500){
       setMessage('Enter a valid chapter number (1–500).');return;
@@ -160,7 +163,7 @@ export default function StudyNotesDashboard(){
   }
   async function save(event){
     event.preventDefault();
-    if(busy)return;
+    if(readOnly||busy)return;
     setMessage('');
     const payload={...draft,subject,source:draft.source.trim(),
       mcqAttempted:draft.mcqAttempted===''?null:number(draft.mcqAttempted),
@@ -236,6 +239,7 @@ export default function StudyNotesDashboard(){
     finally{setBusy(false);}
   }
   async function remove(row){
+    if(readOnly)return;
     if(!window.confirm('Delete this topic from Notes?'))return;
     setBusy(true);setMessage('');
     try{
@@ -252,9 +256,9 @@ export default function StudyNotesDashboard(){
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div>
-        <small>PRIVATE • ADMIN</small>
+        <small>{readOnly?'STUDY NOTES • READ ONLY':'PRIVATE • ADMIN'}</small>
         <h1>NOTES</h1>
-        <p>Chapter-wise study record. Topics are numbered automatically (1.1, 1.2, 1.3…).</p>
+        <p>{readOnly?'Your chapter progress, practice and revision focus in one place.':'Chapter-wise study record. Topics are numbered automatically (1.1, 1.2, 1.3…).'}</p>
       </div>
     </header>
     <nav className={styles.subjects} aria-label="Study subjects">
@@ -262,7 +266,60 @@ export default function StudyNotesDashboard(){
         className={subject===item?styles.selected:''}
         aria-pressed={subject===item} onClick={()=>choose(item)}>{friendly(item)}</button>)}
     </nav>
-    <section className={styles.stats} aria-label="Selected subject summary">
+    <div className={styles.notesTabs} role="group" aria-label="Notes view">
+      <button type="button" className={view==='NOTES'?styles.notesTabActive:''}
+        onClick={()=>setView('NOTES')}>Notes</button>
+      <button type="button" className={view==='SUMMARY'?styles.notesTabActive:''}
+        onClick={()=>setView('SUMMARY')}>Summary</button>
+    </div>
+    {view==='SUMMARY'&&<section className={styles.progressPanel} aria-label="Simple study summary">
+      <div className={styles.progressIntro}>
+        <div><h2>{friendly(subject)} · Study Summary</h2>
+          <p>Based on questions entered in Notes. Chapters or syllabus not entered here are not included.</p></div>
+        <span className={styles.summaryStatus}>{summary.chapterCount} saved chapters</span>
+      </div>
+      <div className={styles.summaryCards}>
+        <div className={styles.summaryMainCard}>
+          <span>Recorded Practice Completed</span>
+          <strong>{summary.progress===null?'—':summary.progress.toFixed(1)+'%'}</strong>
+          <div className={styles.summaryProgressTrack}><div style={{width:(summary.progress??0)+'%'}}/></div>
+          <small>{summary.done} of {summary.total} saved questions</small>
+        </div>
+        <div className={styles.summaryCard}><span>MCQs Pending</span><strong>{summary.mcqPending}</strong></div>
+        <div className={styles.summaryCard}><span>Theory Pending</span><strong>{summary.theoryPending}</strong></div>
+        <div className={styles.summaryCard}><span>Chapters to Revise</span><strong>{summary.chaptersNeedRevision}</strong></div>
+      </div>
+      <div className={styles.summaryListHeading}>
+        <h3>Chapter-by-Chapter</h3>
+        <small>Revision is flagged only when graded accuracy or marks are below 75%.</small>
+      </div>
+      {!summary.chapters.length?<p className={styles.empty}>No chapters saved for this subject yet.</p>:
+      <div className={styles.summaryChapterList}>
+        {summary.chapters.map(chapter=><article key={chapter.number+'-'+chapter.chapter}
+          className={`${styles.summaryChapterCard} ${styles['chapterTone'+((chapter.number-1)%8+1)]}`}>
+          <div className={styles.summaryChapterTop}>
+            <span className={styles.summaryChapterBadge}>{chapter.number}</span>
+            <div className={styles.summaryChapterText}>
+              <strong>{chapter.chapter}</strong>
+              <small>{chapter.subtopics} subtopics · {chapter.done}/{chapter.total} questions done</small>
+            </div>
+            <span className={chapter.focus?styles.summaryNeedsRevision:
+              chapter.pending?styles.summaryPending:styles.summaryOnTrack}>{chapter.status}</span>
+          </div>
+          <div className={styles.summaryChapterBottom}>
+            <div className={styles.summaryChapterTrack}><div style={{width:(chapter.progress??0)+'%'}}/></div>
+            <strong>{chapter.progress===null?'Not started':chapter.progress.toFixed(1)+'%'}</strong>
+          </div>
+          <div className={styles.summaryMiniDetails}>
+            <span>MCQ pending: <b>{chapter.mcqPending}</b></span>
+            <span>Theory pending: <b>{chapter.theoryPending}</b></span>
+            <span>Result: <b>{chapter.grade===null?'Not marked':chapter.grade.toFixed(1)+'%'}</b></span>
+          </div>
+        </article>)}
+      </div>}
+      <p className={styles.summaryFootnote}>Progress means completed practice questions ÷ recorded questions—not official exam syllabus completion. Review is suggested from available marked results.</p>
+    </section>}
+    {view==='NOTES'&&<section className={styles.stats} aria-label="Selected subject summary">
       <div><span>TOPICS</span><b>{totals.topics}</b></div>
       <div><span>MCQs DONE</span><b>{totals.mcqDone} / {totals.mcqTotal}</b></div>
       <div className={styles.pendingCard}><span>MCQs PENDING</span><b>{totals.mcqPending}</b></div>
@@ -274,8 +331,8 @@ export default function StudyNotesDashboard(){
       <div><span>THEORY MARKS</span><b>{totals.theoryMarkedTopics?totals.theoryMarksObtained+' / '+totals.theoryMarksTotal+' ('+totals.theoryPercentage.toFixed(2)+'%)':'—'}</b></div>
       <div><span>MARKS OBTAINED / TOTAL</span><b>{totals.markedTopics?totals.marksObtained+' / '+totals.totalMarks:'—'}</b></div>
       <div><span>PERCENTAGE</span><b>{totals.percentage===null?'—':totals.percentage.toFixed(2)+'%'}</b></div>
-    </section>
-    <section className={styles.formPanel}>
+    </section>}
+    {view==='NOTES'&&!readOnly&&<section className={styles.formPanel}>
       <div className={styles.formHeading}>
         <h2>{editId?'Edit Subtopic':'Add Subtopic'} <span>· {friendly(subject)}</span></h2>
         <button type="button" className={styles.chapterAddButton} disabled={busy}
@@ -430,9 +487,9 @@ export default function StudyNotesDashboard(){
           <small>Select the same subtopic again for another source. The selected chapter stays unchanged.</small>
         </div>
       </form>
-    </section>
+    </section>}
     {message&&<p role="status" className={styles.message}>{message}</p>}
-    <section className={styles.chapters}>
+    {view==='NOTES'&&<section className={styles.chapters}>
       <h2>{friendly(subject)} <span>{chapters.length} chapters</span></h2>
       {loading?<p className={styles.empty}>Loading saved notes…</p>:
       !chapters.length?<p className={styles.empty}>No chapters yet. Use + Add Chapter above.</p>:
@@ -453,13 +510,13 @@ export default function StudyNotesDashboard(){
                 group.topicIndex,section.chapterIndex)}</span>
               <strong>{group.topic}</strong>
               <small>{group.records.length} {group.records.length===1?'source':'sources'}</small>
-              <button type="button" disabled={busy} onClick={()=>{
+              {!readOnly&&<button type="button" disabled={busy} onClick={()=>{
                 setEditId('');
                 setDraft({...blank(),chapter:section.chapter,topic:group.topic});
                 setSourceSelection('');setOtherSource('');
                 setMessage('Choose a source for '+group.topic+'.');
                 window.scrollTo({top:0,behavior:'smooth'});
-              }}>+ Add Source</button>
+              }}>+ Add Source</button>}
             </div>
             <div className={styles.subtopicBlock}>
               <h4 className={styles.subtopicSectionLabel}>MCQs</h4>
@@ -469,7 +526,7 @@ export default function StudyNotesDashboard(){
               <th>MCQ Done / Total</th>
               <th>MCQ Attempted</th><th>MCQ Corrected</th>
               <th>MCQ Incorrect</th><th>Incorrect MCQ Nos.</th><th>MCQ %</th>
-              <th>Actions</th><th>MCQ Pending</th>
+              {!readOnly&&<th>Actions</th>}<th>MCQ Pending</th>
             </tr></thead>
             <tbody>{group.records.map(row=><tr key={row.id}>
               
@@ -482,11 +539,11 @@ export default function StudyNotesDashboard(){
               <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
               <td>{mcqAccuracy(row.mcqAttempted,row.mcqCorrected)===null?'—':
                 mcqAccuracy(row.mcqAttempted,row.mcqCorrected).toFixed(2)+'%'}</td>
-              <td><div className={styles.rowActions}>
+              {!readOnly&&<td><div className={styles.rowActions}>
                 <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
                 <button type="button" className={styles.delete} disabled={busy}
                   onClick={()=>remove(row)}>Delete</button>
-              </div></td>
+              </div></td>}
               <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
             </tr>)}</tbody>
           </table></div>
@@ -525,6 +582,6 @@ export default function StudyNotesDashboard(){
           </section>)}
         </div>}
       </article>)}
-    </section>
+    </section>}
   </main>;
 }
