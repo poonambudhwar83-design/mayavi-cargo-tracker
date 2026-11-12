@@ -12,15 +12,19 @@ function database(){
   if(!url)throw Error('Mayavi database unavailable.');
   return neon(url);
 }
-async function adminOnly(request,sql){
+async function notesAccess(request,sql,readOnly=false){
   const session=readSession(request);
   if(!session)return {error:'Please log in to Mayavi.',status:401};
-  if(session.role!=='admin')return {error:'Admin access only.',status:403};
-  const users=await sql`SELECT role,is_active FROM mayavi_users
+  const [user]=await sql`SELECT role,is_active,branch_scope,session_version FROM mayavi_users
     WHERE lower(username)=${String(session.username||'').toLowerCase()} LIMIT 1`;
-  if(users[0]?.role!=='admin'||!users[0]?.is_active)
-    return {error:'Admin account is not active.',status:403};
-  return {session};
+  if(!user?.is_active||Number(user.session_version)!==Number(session.sessionVersion))
+    return {error:'Session is no longer active.',status:403};
+  if(session.role==='admin'&&user.role==='admin'&&!user.branch_scope)
+    return {session};
+  if(readOnly&&session.role==='employee'&&user.role==='employee'&&
+    session.username==='joya'&&session.branchScope==='STUDY_NOTES'&&user.branch_scope==='STUDY_NOTES')
+    return {session};
+  return {error:'Admin access only. Joya has read-only Notes access.',status:403};
 }
 async function ensureChapters(sql){
   await sql`CREATE TABLE IF NOT EXISTS mayavi_study_chapters (
@@ -81,7 +85,7 @@ const formatted=row=>({id:row.id,subject:row.subject,
   number:Number(row.chapter_number),title:row.title});
 export async function GET(request){
   try{
-    const sql=database(),auth=await adminOnly(request,sql);
+    const sql=database(),auth=await notesAccess(request,sql,true);
     if(auth.error)return reply({ok:false,error:auth.error},auth.status);
     await ensureChapters(sql);
     await preserveExistingChapters(sql);
@@ -93,7 +97,7 @@ export async function GET(request){
 }
 export async function POST(request){
   try{
-    const sql=database(),auth=await adminOnly(request,sql);
+    const sql=database(),auth=await notesAccess(request,sql);
     if(auth.error)return reply({ok:false,error:auth.error},auth.status);
     const body=await request.json().catch(()=>({}));
     const subject=String(body.subject||'').trim();
