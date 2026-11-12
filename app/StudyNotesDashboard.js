@@ -427,46 +427,79 @@ export default function StudyNotesDashboard(){
     <section className={styles.chapters}>
       <h2>{friendly(subject)} <span>{chapters.length} chapters</span></h2>
       {loading?<p className={styles.empty}>Loading saved notes…</p>:
-      !chapters.length?<p className={styles.empty}>No topics yet. Add the first topic above.</p>:
+      !chapters.length?<p className={styles.empty}>No chapters yet. Use + Add Chapter above.</p>:
       chapters.map(section=><article className={styles.chapter} key={section.chapter}>
         <div className={styles.chapterHeading}>
-          <h3>{section.chapter}</h3>
-          <small>{section.topics.length} topics • <span className={styles.pendingCount}>MCQ pending {section.totals.mcqPending}</span> • <span className={styles.pendingCount}>Theory pending {section.totals.theoryPending}</span>
-            {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}</small>
+          <h3>Chapter {section.chapterIndex} · {section.chapter}</h3>
+          <small>{Object.keys(section.topicOrder).length} subtopics • {section.topics.length} source entries •
+            <span className={styles.pendingCount}> MCQ pending {section.totals.mcqPending}</span> •
+            <span className={styles.pendingCount}> Theory pending {section.totals.theoryPending}</span>
+            {section.totals.percentage!==null?' • Marks '+section.totals.marksObtained+'/'+section.totals.totalMarks+' ('+section.totals.percentage.toFixed(2)+'%)':''}
+          </small>
         </div>
-        <div className={styles.tableWrap}><table>
-          <thead><tr><th>No.</th><th>Topic</th><th>MCQ Done / Total</th><th>MCQ Pending</th>
-            <th>Theory Total</th><th>Theory Attempted</th><th>Theory Pending</th>
-            <th>Theory Corrected</th><th>Theory Incorrect</th>
-            <th>Incorrect MCQ Nos.</th><th>Incorrect Theory Nos.</th>
-            <th>MCQ Marks</th><th>MCQ %</th><th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
-            <th>Overall Marks</th><th>Overall %</th><th>Actions</th></tr></thead>
-          <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
-            <td className={styles.serial}>{studyTopicNumber(section.chapter,topicIndex,section.chapterIndex)}</td>
-            <td className={styles.topic}>{row.topic}</td>
-            <td>{row.mcqDone} / {row.mcqTotal}</td>
-            <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
-            <td>{row.theoryTotal}</td>
-            <td>{row.theoryDone}</td>
-            <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
-            <td>{row.theoryCorrected===null||row.theoryCorrected===undefined?'—':row.theoryCorrected}</td>
-            <td>{theoryIncorrect(row.theoryDone,row.theoryCorrected)===null?'—':theoryIncorrect(row.theoryDone,row.theoryCorrected)}</td>
-            <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
-            <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
-            <td>{row.mcqMarksTotal===null||row.mcqMarksTotal===undefined?'—':row.mcqMarksObtained+' / '+row.mcqMarksTotal}</td>
-            <td>{marksPercentage(row.mcqMarksTotal,row.mcqMarksObtained)===null?'—':marksPercentage(row.mcqMarksTotal,row.mcqMarksObtained).toFixed(2)+'%'}</td>
-            <td>{row.theoryMarksTotal===null||row.theoryMarksTotal===undefined?'—':row.theoryMarksTotal}</td>
-            <td>{row.theoryMarksObtained===null||row.theoryMarksObtained===undefined?'—':row.theoryMarksObtained}</td>
-            <td>{marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained)===null?'—':marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained).toFixed(2)+'%'}</td>
-            <td>{row.totalMarks===null||row.totalMarks===undefined?'—':row.marksObtained+' / '+row.totalMarks}</td>
-            <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
-            <td><div className={styles.rowActions}>
-              <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
-              <button type="button" className={styles.delete} disabled={busy}
-                onClick={()=>remove(row)}>Delete</button>
-            </div></td>
-          </tr>)}</tbody>
-        </table></div>
+        {!section.topics.length?<p className={styles.empty}>No subtopics in this chapter yet. Select it above to add one.</p>:<>
+          <h4 className={styles.resultSubheading}>MCQs</h4>
+          <div className={styles.tableWrap}><table>
+            <thead><tr>
+              <th>No.</th><th>Subtopic</th><th>Source</th>
+              <th>MCQ Done / Total</th><th>MCQ Pending</th>
+              <th>MCQ Attempted</th><th>MCQ Corrected</th>
+              <th>MCQ Incorrect</th><th>Incorrect MCQ Nos.</th><th>MCQ %</th>
+              <th>Actions</th>
+            </tr></thead>
+            <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
+              <td className={styles.serial}>{studyTopicNumber(section.chapter,
+                section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
+              <td className={styles.topic}>{row.topic}</td>
+              <td className={styles.sourceCell}>{row.source||'—'}</td>
+              <td>{row.mcqDone} / {row.mcqTotal}</td>
+              <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
+              <td>{row.mcqAttempted===null||row.mcqAttempted===undefined?'—':row.mcqAttempted}</td>
+              <td>{row.mcqCorrected===null||row.mcqCorrected===undefined?'—':row.mcqCorrected}</td>
+              <td>{mcqIncorrect(row.mcqAttempted,row.mcqCorrected)===null?'—':
+                mcqIncorrect(row.mcqAttempted,row.mcqCorrected)}</td>
+              <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
+              <td>{mcqAccuracy(row.mcqAttempted,row.mcqCorrected)===null?'—':
+                mcqAccuracy(row.mcqAttempted,row.mcqCorrected).toFixed(2)+'%'}</td>
+              <td><div className={styles.rowActions}>
+                <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
+                <button type="button" className={styles.delete} disabled={busy}
+                  onClick={()=>remove(row)}>Delete</button>
+              </div></td>
+            </tr>)}</tbody>
+          </table></div>
+          <h4 className={styles.resultSubheading}>Theory</h4>
+          <div className={styles.tableWrap}><table>
+            <thead><tr>
+              <th>No.</th><th>Subtopic</th><th>Source</th>
+              <th>Theory Total</th><th>Theory Attempted</th><th>Theory Pending</th>
+              <th>Theory Corrected</th><th>Theory Incorrect</th><th>Incorrect Theory Nos.</th>
+              <th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
+              <th>Overall Marks</th><th>Overall %</th>
+            </tr></thead>
+            <tbody>{section.topics.map((row,topicIndex)=><tr key={row.id}>
+              <td className={styles.serial}>{studyTopicNumber(section.chapter,
+                section.topicOrder[row.topic.trim().toLowerCase()],section.chapterIndex)}</td>
+              <td className={styles.topic}>{row.topic}</td>
+              <td className={styles.sourceCell}>{row.source||'—'}</td>
+              <td>{row.theoryTotal}</td>
+              <td>{row.theoryDone}</td>
+              <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
+              <td>{row.theoryCorrected===null||row.theoryCorrected===undefined?'—':row.theoryCorrected}</td>
+              <td>{theoryIncorrect(row.theoryDone,row.theoryCorrected)===null?'—':
+                theoryIncorrect(row.theoryDone,row.theoryCorrected)}</td>
+              <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
+              <td>{row.theoryMarksTotal===null||row.theoryMarksTotal===undefined?'—':row.theoryMarksTotal}</td>
+              <td>{row.theoryMarksObtained===null||row.theoryMarksObtained===undefined?'—':row.theoryMarksObtained}</td>
+              <td>{marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained)===null?'—':
+                marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained).toFixed(2)+'%'}</td>
+              <td>{row.totalMarks===null||row.totalMarks===undefined?'—':
+                row.marksObtained+' / '+row.totalMarks}</td>
+              <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':
+                marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </>}
       </article>)}
     </section>
   </main>;
