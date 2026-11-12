@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { normalizeMawb } from '../lib/airlines.js';
+import { parseTerminal } from '../lib/cathay.js';
+import { cathayRefreshDecision } from '../lib/cathayRefreshPolicy.js';
+import { refreshScope } from '../lib/autoRefreshScope.js';
 import { annotateCathaySources } from '../lib/cathaySourceMap.js';
 import {parseCathayTrackingApi,parseCathayBookingDateOnly} from '../lib/cathay-browser-fallback.js';
 import {parseCathaySeptemberBookingStatus,parseCathaySeptemberTimeline} from '../lib/cathay-september-browser-fallback.js';
@@ -156,5 +160,46 @@ assert.ok(workingCxAdapter.includes('arrivalIsActual:Boolean(actual.date&&actual
 const workingCxCron=readFileSync('app/api/cron/cathay/route.js','utf8');
 assert.ok(workingCxCron.includes("frequency:'every 5 minutes'"),
   'Keep the working CX 5-minute refresh schedule');
+
+
+// New 160 masters (not a one-off lookup for the successful CX679 master) must
+// use the same dynamic terminal parser, route, flight and cron eligibility.
+// These identifiers are synthetic fixtures; never create production rows.
+for(const newMawb of ['160-23456789','160-76543210']){
+  assert.equal(normalizeMawb(newMawb.replace('-','')),newMawb);
+  const terminalHtml=[
+    'Master AWB '+newMawb,'AWB Type Export HKG DEL',
+    'Received from Shipper 12 NOV 2026 09:30 4 133.0',
+    'Departure Flight CX679 12 NOV 2026 20:15 (STD) 4 133.0',
+    'Received from Flight'
+  ].join(' ');
+  const fresh=parseTerminal(terminalHtml,newMawb);
+  assert.ok(fresh,'Any new 160 AWB should parse when Cathay publishes a valid card');
+  assert.equal(fresh.shipment.mawb,newMawb);
+  assert.equal(fresh.shipment.flightNo,'CX679');
+  assert.equal(fresh.shipment.pieces,'4');
+  assert.equal(fresh.shipment.weight,'133.0');
+  assert.equal(fresh.shipment.arrivalDate,'');
+  assert.equal(fresh.shipment.arrivalIsActual,false);
+  const newActive={mawb:newMawb,shipmentType:'IMPORT',
+    customsCleared:false,status:'BOOKED',
+    lastChecked:'2026-11-12T11:40:00Z'};
+  const now=Date.parse('2026-11-12T11:40:00Z');
+  const scope=refreshScope(newActive,new Date(now));
+  assert.equal(scope,'ACTIVE');
+  assert.equal(cathayRefreshDecision(newActive,scope,now,newActive.lastChecked).due,true,
+    'A newly saved CX AWB must be eligible on its FIRST cron tick');
+}
+assert.equal(parseTerminal([
+  'Master AWB 160-23456789','AWB Type Export HKG DEL',
+  'Received from Shipper 12 NOV 2026 09:30 4 133.0'
+].join(' '),'160-76543210'),null,
+  'Do not attach a different master AWB card to the new one');
+assert.ok(workingCxCron.includes("LIKE '160%'"),
+  'The cron database query must discover all 160 AWBs, not an old hardcoded master');
+assert.ok(workingCxCron.includes('PREFIX.test(digits(x.row.awb))'),
+  'All valid 160 masters must pass a single dynamic format guard');
+assert.ok(workingCxAdapter.includes('if(!terminal)terminal=await fetchTerminalBrowser(mawb,terminalProbes)'),
+  'New CX AWBs must retry dynamic official browser even when HTTP has no usable result');
 
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
