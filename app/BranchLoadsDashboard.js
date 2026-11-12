@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
 import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+import {branchMonths} from '../lib/branchMonthlySummary.js';
 import {inclusiveTatDays,summarizeBranchTat} from '../lib/branchTatSummary.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import styles from './BranchLoadsDashboard.module.css';
@@ -101,6 +102,7 @@ export default function BranchLoadsDashboard({currentUser}){
   const [checkingDuplicate,setCheckingDuplicate]=useState(false);
   const [editing,setEditing]=useState('new');
   const [sheet,setSheet]=useState('ACTIVE');
+  const [selectedMonthlyMonth,setSelectedMonthlyMonth]=useState('');
   const [saveRequestId,setSaveRequestId]=useState(()=>newSaveRequestId());
   const [draft,setDraft]=useState(()=>fresh(userBranch||'JIND'));
   const [search,setSearch]=useState('');
@@ -228,7 +230,13 @@ export default function BranchLoadsDashboard({currentUser}){
   }
   const totals=useMemo(()=>sumLedgerTotals(shown),[shown]); // current sheet footer / CSV
   const tatSummary=useMemo(()=>summarizeBranchTat(shown),[shown]); // delivered-only, same branch/search filters
-  const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]); // Active + Delivered
+  // In Monthly Data, the top financial cards must show only the selected
+  // booking month (Active + Delivered); other tabs retain all-time overview.
+  const monthlyMonths=useMemo(()=>branchMonths(matchingRows),[matchingRows]);
+  const monthlyMonth=selectedMonthlyMonth&&monthlyMonths.includes(selectedMonthlyMonth)?selectedMonthlyMonth:monthlyMonths[0]||'';
+  const monthlyRows=useMemo(()=>matchingRows.filter(r=>String(r.date||'').slice(0,7)===monthlyMonth),[matchingRows,monthlyMonth]);
+  const overviewTotals=useMemo(()=>sumLedgerTotals(sheet==='MONTHLY'?monthlyRows:matchingRows),[sheet,monthlyRows,matchingRows]);
+  const overviewPeriod=sheet==='MONTHLY'?(monthlyMonth||'Selected Month'):'Active + Delivered';
   // Every commodity may have an optional Extra Cost. Keep this column visible
   // and keep Total JEPO last, for consistent branch and CSV accounting.
   const hasExtraCostColumn=true;
@@ -706,13 +714,13 @@ export default function BranchLoadsDashboard({currentUser}){
           {lastUpdated&&<span style={{color:'#526b81',fontWeight:500}}> • Screen updated {lastUpdated}</span>}
         </p></div>
     </header>
-    <div className={styles.metrics} aria-label="Active and Delivered combined summary">
-      <div><span>Total Load • Active + Delivered</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
-      <div><span>Amount • Active + Delivered</span><strong>{fmt(overviewTotals.amount)}</strong></div>
-      <div><span>Received • Active + Delivered</span><strong>{fmt(overviewTotals.received)}</strong></div>
-      <div><span>Balance • Active + Delivered</span><strong>{fmt(overviewTotals.balance)}</strong></div>
-      <div><span>Paid to JEPO • Active + Delivered</span><strong>{fmt(overviewTotals.paidToJepo)}</strong></div>
-      <div><span>Paid to Branch • Active + Delivered</span><strong>{fmt(overviewTotals.paidToBranch)}</strong><small className={styles.branchCashLabel}>Cash included: {fmt(overviewTotals.cashBranch)} (Extra Cost remainder)</small></div>
+    <div className={styles.metrics} aria-label={sheet==='MONTHLY'?'Selected booking month totals':'Active and Delivered combined summary'}>
+      <div><span>{'Total Load • '+overviewPeriod}</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
+      <div><span>{'Amount • '+overviewPeriod}</span><strong>{fmt(overviewTotals.amount)}</strong></div>
+      <div><span>{'Received • '+overviewPeriod}</span><strong>{fmt(overviewTotals.received)}</strong></div>
+      <div><span>{'Balance • '+overviewPeriod}</span><strong>{fmt(overviewTotals.balance)}</strong></div>
+      <div><span>{'Paid to JEPO • '+overviewPeriod}</span><strong>{fmt(overviewTotals.paidToJepo)}</strong></div>
+      <div><span>{'Paid to Branch • '+overviewPeriod}</span><strong>{fmt(overviewTotals.paidToBranch)}</strong><small className={styles.branchCashLabel}>Cash included: {fmt(overviewTotals.cashBranch)} (Extra Cost remainder)</small></div>
     </div>
     {message&&<div className={styles.message} role="status" aria-live="polite">{message}</div>}
     <form noValidate onSubmit={save}>
@@ -737,7 +745,7 @@ export default function BranchLoadsDashboard({currentUser}){
     </nav>
 
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch. Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
-      {sheet==='MONTHLY'&&<BranchMonthlyDashboard records={matchingRows} isAdmin={isAdmin} branchFilter={filter} onBranchChange={setFilter}/>}
+      {sheet==='MONTHLY'&&<BranchMonthlyDashboard records={matchingRows} isAdmin={isAdmin} branchFilter={filter} onBranchChange={setFilter} selectedMonth={monthlyMonth} onMonthChange={setSelectedMonthlyMonth} showProfit={currentUser?.role==='admin'}/>}
        {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
         <div className={styles.summaryHeader}>
           <div>
