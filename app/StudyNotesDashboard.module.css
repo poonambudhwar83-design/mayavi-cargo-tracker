@@ -144,3 +144,48 @@
   .pairInputs input{width:74px}
   .formHeading{align-items:flex-start}
 }
+
+/* Stable chapter-colour key: based on the saved chapter number, never the
+   row order. Eight distinctive tones repeat for very long subject lists. */
+.chapterTone1{--chapter-accent:#285bb2;--chapter-ink:#1d467e;--chapter-tint:#eaf2ff;--chapter-border:#bfd1f1;--chapter-pale:#f3f7ff}
+.chapterTone2{--chapter-accent:#7b47b8;--chapter-ink:#62348d;--chapter-tint:#f2eafe;--chapter-border:#dcc7f5;--chapter-pale:#faf6ff}
+.chapterTone3{--chapter-accent:#007e83;--chapter-ink:#076166;--chapter-tint:#e5f6f4;--chapter-border:#b3e0dc;--chapter-pale:#f0fbf9}
+.chapterTone4{--chapter-accent:#b04b72;--chapter-ink:#8b2f50;--chapter-tint:#fff0f5;--chapter-border:#efc6d7;--chapter-pale:#fff7fa}
+.chapterTone5{--chapter-accent:#a15b15;--chapter-ink:#784011;--chapter-tint:#fff3e2;--chapter-border:#f1d5aa;--chapter-pale:#fff9f0}
+.chapterTone6{--chapter-accent:#267047;--chapter-ink:#1a5937;--chapter-tint:#e9f7ed;--chapter-border:#b6dec5;--chapter-pale:#f4fbf6}
+.chapterTone7{--chapter-accent:#43599e;--chapter-ink:#33457b;--chapter-tint:#ecf0ff;--chapter-border:#c7d1f1;--chapter-pale:#f5f7ff}
+.chapterTone8{--chapter-accent:#a74d32;--chapter-ink:#81371f;--chapter-tint:#fff0e9;--chapter-border:#f0c5b5;--chapter-pale:#fff8f4}
+.chapter[class*="chapterTone"]{
+  border-color:var(--chapter-border);
+  border-left:5px solid var(--chapter-accent);
+  box-shadow:0 1px 4px rgb(25 48 78 / 5%);
+}
+.chapter[class*="chapterTone"] .chapterHeading{
+  background:var(--chapter-tint);
+  border-bottom:1px solid var(--chapter-border);
+  padding:14px 16px;
+}
+.chapter[class*="chapterTone"] .chapterHeading h3{
+  color:var(--chapter-ink);
+  display:flex;align-items:center;flex-wrap:wrap;gap:10px;
+}
+.chapterNumber{
+  display:inline-flex;align-items:center;flex:none;
+  background:var(--chapter-accent);color:#fff;
+  border-radius:7px;padding:6px 11px;
+  font-size:12px;line-height:1.25;font-weight:900;
+  white-space:nowrap;
+}
+.chapterTitle{font-size:16px;font-weight:900;color:var(--chapter-ink)}
+.chapter[class*="chapterTone"] .resultSubheading{color:var(--chapter-ink)}
+.chapter[class*="chapterTone"] .tableWrap th{
+  background:var(--chapter-pale);color:var(--chapter-ink);
+  border-bottom-color:var(--chapter-border);
+}
+.chapter[class*="chapterTone"] .serial{color:var(--chapter-ink)}
+.chapter[class*="chapterTone"] .chapterHeading small{color:var(--chapter-ink)}
+@media(max-width:560px){
+  .chapter[class*="chapterTone"] .chapterHeading{padding:10px 11px}
+  .chapterNumber{padding:5px 8px;font-size:11px}
+  .chapterTitle{font-size:14px}
+}
