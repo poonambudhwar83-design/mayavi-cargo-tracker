@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { normalizeMawb } from '../lib/airlines.js';
 import { parseTerminal } from '../lib/cathay.js';
 import { cathayRefreshDecision } from '../lib/cathayRefreshPolicy.js';
@@ -201,5 +202,25 @@ assert.ok(workingCxCron.includes('PREFIX.test(digits(x.row.awb))'),
   'All valid 160 masters must pass a single dynamic format guard');
 assert.ok(workingCxAdapter.includes('if(!terminal)terminal=await fetchTerminalBrowser(mawb,terminalProbes)'),
   'New CX AWBs must retry dynamic official browser even when HTTP has no usable result');
+
+
+/**
+ * User-approved CX production lock (12 Nov 2026).
+ * On every Vercel production build, reject accidental edits to the locked
+ * Cathay-only modules. A deliberate CX change requires explicitly updating
+ * the recovery snapshot and the expected hashes in cx-working-lock.json.
+ * Shared airlines/financial/tracker modules remain independently editable.
+ */
+const cxLock=JSON.parse(readFileSync('scripts/cx-working-lock.json','utf8'));
+assert.equal(cxLock.recoveryBranch,'cx-locked-working-2026-11-12');
+for(const [lockedPath,expectedGitBlobSha] of Object.entries(cxLock.files)){
+  const bytes=readFileSync(lockedPath);
+  const actualGitBlobSha=createHash('sha1')
+    .update('blob '+bytes.length+'\0')
+    .update(bytes).digest('hex');
+  assert.equal(actualGitBlobSha,expectedGitBlobSha,
+    'CX LOCK: '+lockedPath+' differs from the user-approved working version. '+
+    'Do not alter CX code without an explicit CX unlock/change request.');
+}
 
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
