@@ -274,7 +274,11 @@ assert.equal(branchPayoutForRecord({...paidCase,status:'IN_TRANSIT'}),765);
 assert.equal(branchPayoutForRecord({...paidCase,status:'AT_JIND_OFFICE'}),765);
 assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED',commodity:'Household and Medicine',extraCost:'1000',bottleCount:null}),615);
 assert.equal(branchPayoutForRecord({...paidCase,status:'DELIVERED',commodity:'Household and Electronics',extraCost:'800',bottleCount:null}),1115);
-assert.ok(ui.includes('const overviewTotals=useMemo(()=>sumLedgerTotals(matchingRows),[matchingRows]);'));
+// All-time overview remains on Active/Delivered, but Monthly Data cards use
+// only loads booked during the month chosen in the monthly report.
+assert.ok(ui.includes("sumLedgerTotals(sheet==='MONTHLY'?monthlyRows:matchingRows)"));
+assert.ok(ui.includes('const monthlyMonth=selectedMonthlyMonth'));
+assert.ok(ui.includes('selectedMonth={monthlyMonth} onMonthChange={setSelectedMonthlyMonth}'));
 assert.ok(ui.includes('const totals=useMemo(()=>sumLedgerTotals(shown),[shown]);'));
 assert.ok(ui.includes('Cash included: {fmt(overviewTotals.cashBranch)}'));
 assert.ok(ui.includes('branchPayoutForRecord(r),r.destination'));
