@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { annotateCathaySources } from '../lib/cathaySourceMap.js';
 import {parseCathayTrackingApi} from '../lib/cathay-browser-fallback.js';
+import {parseCathaySeptemberBookingStatus,parseCathaySeptemberTimeline} from '../lib/cathay-september-browser-fallback.js';
 const mawb='160-18860310';
 const terminal={shipment:{mawb,origin:'HKG',destination:'DEL',
   pieces:'3',bags:'3',weight:'65.0',bookingDate:'2026-10-31',status:'BOOKED'}};
@@ -74,4 +75,24 @@ const octActual=parseCathayTrackingApi(JSON.stringify({
 }),mawb);
 assert.equal(octActual.arrivalIsActual,true);
 assert.equal(octActual.arrivalTime,'23:58');
+
+// The untouched September 19 backup's Booking Status date/time parser remains
+// executable and handles final-station actual arrival after exact-AWB gating.
+const septPage=[
+  'AWB 160-18860310', 'Current status: Booking Received', 'Booking Status',
+  'HKG to DEL', 'CX679', '3 pc(s) | 65 kg',
+  'HKG 31 OCT 2026 20:15 Actual',
+  'DEL 01 NOV 2026 00:05 Actual',
+  'Shipment History'
+].join('\n');
+const sept=parseCathaySeptemberBookingStatus(septPage,mawb,
+  {origin:'HKG',destination:'DEL'});
+assert.equal(sept?.flightNo,'CX679');
+assert.equal(sept?.pieces,'3');
+assert.equal(sept?.arrivalDate,'2026-11-01');
+assert.equal(sept?.arrivalTime,'00:05');
+assert.equal(sept?.arrivalIsActual,true);
+assert.equal(parseCathaySeptemberTimeline(septPage,mawb,
+  {origin:'HKG',destination:'DEL'})?.arrivalTime,'00:05');
+
 console.log('CX Terminal RCS + Booking Details source mapping and AWB guards passed.');
