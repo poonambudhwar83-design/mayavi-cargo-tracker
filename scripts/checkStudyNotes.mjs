@@ -200,11 +200,18 @@ assert.ok(page.includes('marksPercentage(row.totalMarks,row.marksObtained)'));
 assert.ok(page.includes("totals.percentage.toFixed(2)+'%'"));
 assert.ok(page.includes("const API='/api/study-notes'"));
 assert.ok(page.includes('chapters.map(section=>'));
-assert.ok(page.includes("section.topicOrder[row.topic.trim().toLowerCase()]"),
+assert.ok(page.includes("topicOrder[key]"),
   'The same subtopic must retain its chapter numbering across sources');
+assert.ok(page.includes("topicGroups:[...grouped.values()]"));
+assert.ok(page.includes("section.topicGroups.map(group=>"));
+assert.ok(page.includes("group.records.map(row=>"));
 assert.ok(page.includes("a.createdAt||''"));
-assert.ok(page.includes("section.topics.map((row,topicIndex)"));
-assert.ok(page.includes('<th>No.</th>'));
+assert.ok(page.includes("section.topicGroups.map(group=>"));
+assert.ok(page.includes('className={styles.subtopicNumber}'));
+assert.ok(page.includes('className={styles.subtopicSectionLabel}>MCQs'));
+assert.ok(page.includes('className={styles.subtopicSectionLabel}>Theory'));
+assert.ok(css.includes('.subtopicGroup{'));
+assert.ok(css.includes('.subtopicBlock+.subtopicBlock{'));
 assert.ok(!page.includes('row.serialNumber'),'Serial numbers are calculated, not manually stored');
 assert.ok(page.includes('pending(row.mcqTotal,row.mcqDone)'));
 assert.ok(page.includes('pending(row.theoryTotal,row.theoryDone)'));
@@ -276,5 +283,21 @@ assert.ok(css.includes('.chapter[class*="chapterTone"] .tableWrap th'));
 assert.ok(css.includes('.chapterNumber{'));
 assert.ok(css.includes('.stats .pendingCard span,.stats .pendingCard b,.pendingCount{color:#b91c1c'),
   'Chapter colours must not conceal red pending counts');
+
+
+// Subtopic UI order and MCQ pending at the extreme right after Delete.
+// Theory follows MCQ inside that same subtopic and chapter article.
+const resultsMarkup=page.slice(page.indexOf('chapters.map(section=><article'));
+const mcqStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>MCQs');
+const theoryStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>Theory');
+assert.ok(mcqStart>=0&&theoryStart>mcqStart,'MCQs must appear directly above Theory in each subtopic');
+const mcqTable=resultsMarkup.slice(mcqStart,theoryStart);
+assert.ok(mcqTable.includes('<th>Actions</th><th>MCQ Pending</th>'),
+  'MCQ Pending must be the last column after the Edit/Delete actions');
+assert.ok(mcqTable.indexOf('onClick={()=>remove(row)}>Delete</button>')<
+  mcqTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>'),
+  'MCQ pending value must display after Delete');
+assert.equal(mcqTable.match(/<th>MCQ Pending<\/th>/g)?.length,1);
+assert.equal(mcqTable.match(/pending\(row.mcqTotal,row.mcqDone\)/g)?.length,1);
 
 console.log('NOTES seven subjects, chapter topics, question counts, admin access, CRUD and navigation tests passed.');
