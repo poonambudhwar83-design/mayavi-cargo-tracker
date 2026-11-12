@@ -87,8 +87,10 @@ export async function GET(request){
   try{
     const sql=database(),auth=await notesAccess(request,sql,true);
     if(auth.error)return reply({ok:false,error:auth.error},auth.status);
-    await ensureChapters(sql);
-    await preserveExistingChapters(sql);
+    if(auth.session.role==='admin'){
+      await ensureChapters(sql);
+      await preserveExistingChapters(sql);
+    }
     const rows=await sql`SELECT id,subject,chapter_number,title
       FROM mayavi_study_chapters ORDER BY subject,chapter_number`;
     return reply({ok:true,chapters:rows.map(formatted)});
