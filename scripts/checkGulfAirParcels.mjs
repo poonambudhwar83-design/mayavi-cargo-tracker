@@ -272,9 +272,9 @@ assert.ok(dashboardSource.includes("prefix!=='229'&&prefix!=='072')return[row];"
 // not a generic landing page that loses the AWB number.
 const dashboardDirect=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(dashboardDirect.includes("if(n.startsWith('072-'))return `https://parcelsapp.com/en/tracking/${allDigits}`;"));
-assert.ok(dashboardDirect.includes("'PARCELS LIVE ↗'"));
+assert.ok(dashboardDirect.includes("'PARCELS LIVE ↻'"));
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
-assert.ok(dashboardDirect.includes("if(digits(r.mawb).startsWith('072'))void refreshByMawb(r.mawb,{silent:false});"),
+assert.ok(dashboardDirect.includes("if(digits(r.mawb).startsWith('072')){void refreshByMawb(r.mawb,{silent:false});return;}"),
   'PARCELS LIVE click must also trigger a background Mayavi refresh for this Gulf AWB.');
 assert.ok(dashboardDirect.includes("const endpoint=n.startsWith('072-')?'/api/gulf-track':'/api/track'"),
   'Gulf 072 click refresh must run in the dedicated regional backend.');
@@ -283,8 +283,8 @@ assert.ok(gulfSource.includes("const directPage=await publicPageLookup(mawb,deta
 assert.ok(gulfSource.indexOf('const directPage=await publicPageLookup(mawb,detailsUrl);')<
   gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
   'Mayavi direct result URL must be attempted before Parcels public form fallback.');
-assert.ok(gulfSource.includes("const isDirectDetails=startUrl===directDetailsUrl"),
-  'Direct Parcels result page must not require the initial Track Package form.');
+assert.ok(gulfSource.includes('const submitted=await submitGulfAirParcelsForm(page,mawb);'),
+  'Mayavi backend must physically click Track Package even when it opens the direct AWB link.');
 const gulfCron=readFileSync('app/api/cron/gulf-air/route.js','utf8');
 const cronSettings=JSON.parse(readFileSync('vercel.json','utf8'));
 assert.ok(gulfSource.includes('collectGulfAirParcelsHistory(resultPage)'),
