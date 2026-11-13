@@ -12,7 +12,7 @@ export const maxDuration=260;
 const PREFIX=/^160\d{8}$/;
 const MAX_PER_TICK=4; // Check multiple unresolved CX AWBs so one carrier-blocked AWB cannot starve others.
 const BATCH_SIZE=4;
-const ATTEMPT_TIMEOUT_MS=165000;
+const ATTEMPT_TIMEOUT_MS=85000;
 const MAX_ATTEMPTS=1; // Upstream empty pages cannot be fixed by immediate duplicate requests; retry next cycle.
 const digits=value=>String(value||'').replace(/\D/g,'');
 
@@ -92,12 +92,12 @@ export async function GET(request){
     // September terminal-first tracking now runs through a certificate-
     // verifying browser when Node's TLS chain is incomplete. Prefer this
     // proven AWB-specific RCS/departure path every five minutes.
-    // For new/unaccepted masters the terminal cannot provide booking allotments.
-    // Run the guarded September lower Booking Status reader every 15 minutes,
-    // not just four times a day. Other 5-minute ticks remain terminal-fast.
-    // Allow the complete browser attempt enough time without duplicate browsers.
+    // Cathay's public Booking Status has been returning HTTP 403; attempting
+    // its full browser flow each half-hour made the entire cron time out.
+    // Probe Booking Status only at UTC 00:00/06:00/12:00/18:00, with
+    // on-demand manual refresh retaining the full September fallback.
     const clock=new Date(now);
-    const fastRefresh=clock.getUTCMinutes()%15!==0;
+    const fastRefresh=!(clock.getUTCHours()%6===0&&clock.getUTCMinutes()===0);
     const results=[];
     for(let i=0;i<candidate.length;i+=BATCH_SIZE){
       const settled=await Promise.allSettled(

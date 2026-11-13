@@ -5,12 +5,12 @@
   "recoveryBranch": "cx-locked-working-2026-11-12",
   "note": "Keep the verified terminal-first CX pipeline, official flight-status arrival extraction and September booking fallback unchanged unless the owner explicitly requests a CX unlock.",
   "files": {
-    "lib/cathay.js": "12f7e50eeadeb89fe149d0076aeffd49da33976a",
-    "lib/cathay-browser-fallback.js": "1934b2537cd10f0b36adeea387c00917bca2e5f7",
+    "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
+    "lib/cathay-browser-fallback.js": "247ae43e88c36f13d424a61b2ccff20b49138ab2",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "60fc97c1b2d3d7e2d4dc336b5b7e439801428554",
     "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
-    "app/api/cron/cathay/route.js": "2ed900696fdc5704168f0c341e514088112d7dab",
+    "app/api/cron/cathay/route.js": "b03efff776e2e15d9fa274c079c7a62c329439dd",
     "app/api/cathay-region/route.js": "89dc7e2c7b4a7c19af3ed214f4570ed5b953a11d",
     "lib/cathayBookingApi.js": "485be39789730f8394eab1b3bfe9e921a8936404"
   }
