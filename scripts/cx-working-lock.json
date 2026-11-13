@@ -3,10 +3,10 @@
   "lockedAt": "2026-11-12",
   "sourceCommit": "d99862852a25488106b0bf08ee6a58e98c33ae21",
   "recoveryBranch": "cx-locked-working-2026-11-12",
-  "note": "Owner-approved 2026-11-13 CX recovery combines Oct ZIP physical AWB typing + Tab and multi-scroll booking capture with Nov-12 terminal-first adapter and Sept parser; failed CX refresh hourly with generic polling disabled.",
+  "note": "Owner-approved CX recovery: Oct physical keyboard+Tab and official home-page fallback when Track & Trace subpage has no AWB input; Sept browser parser and Nov-12 terminal-first sources retained, failed AWB hourly cooldown.",
   "files": {
     "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
-    "lib/cathay-browser-fallback.js": "c9b950948861757ceaa0715f29709e5dd1534525",
+    "lib/cathay-browser-fallback.js": "52437c2be64395e710fd41952fd46b7725d7759f",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "60fc97c1b2d3d7e2d4dc336b5b7e439801428554",
     "lib/cathayRefreshPolicy.js": "aeb81579102801206435a2754537639f3a662df6",
