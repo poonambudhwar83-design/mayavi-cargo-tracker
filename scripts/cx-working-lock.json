@@ -3,14 +3,14 @@
   "lockedAt": "2026-11-12",
   "sourceCommit": "d99862852a25488106b0bf08ee6a58e98c33ae21",
   "recoveryBranch": "cx-locked-working-2026-11-12",
-  "note": "Keep the verified terminal-first CX pipeline, official flight-status arrival extraction and September booking fallback unchanged unless the owner explicitly requests a CX unlock.",
+  "note": "Owner-requested 2026-11-13 exception: retain November-12 Terminal, flight-status and September browser readers; limit failed/unavailable CX AWB retries to hourly with no duplicate generic cron tracking.",
   "files": {
     "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
     "lib/cathay-browser-fallback.js": "2a85c0148c50e995a6702410f9b19b11b7e1394b",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "60fc97c1b2d3d7e2d4dc336b5b7e439801428554",
-    "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
-    "app/api/cron/cathay/route.js": "b03efff776e2e15d9fa274c079c7a62c329439dd",
+    "lib/cathayRefreshPolicy.js": "aeb81579102801206435a2754537639f3a662df6",
+    "app/api/cron/cathay/route.js": "440510a916e4cdf7110ea940a7f7d503685384bb",
     "app/api/cathay-region/route.js": "89dc7e2c7b4a7c19af3ed214f4570ed5b953a11d",
     "lib/cathayBookingApi.js": "485be39789730f8394eab1b3bfe9e921a8936404"
   }
