@@ -1,12 +1,12 @@
 {
   "title": "Cathay CX working production lock",
   "lockedAt": "2026-11-13",
-  "sourceCommit": "2830f6e81bbdd1e6fecad1272c825346a91396c9",
+  "sourceCommit": "7ca18668277b7f6bdfebd6cab7e40d49cc2d1b80",
   "recoveryBranch": "cx-locked-working-2026-11-12",
-  "note": "13 Nov 2026 owner-requested CX repair: new blank AWB full-booking fallback with throttling; original 12 Nov browser restored with safe hydration/reload and native AWB suffix entry. Preserve operator data; recovery branch unchanged.",
+  "note": "Owner specifically requested restoring deep-scroll Booking Status / Booking Details CX workflow on 13 Nov 2026. Keep existing AWB-bound parsers and scroll logic, with form-hydration wait; 12 Nov recovery branch remains unchanged.",
   "files": {
     "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
-    "lib/cathay-browser-fallback.js": "247ae43e88c36f13d424a61b2ccff20b49138ab2",
+    "lib/cathay-browser-fallback.js": "61388de2443dc8b1386b7af32c4d147330913844",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "29058d964b0941834b6978c092c696bc2015d539",
     "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
