@@ -64,14 +64,18 @@ const browserMock={
     async press(keys){flow.push('KEYS:'+keys);},
     async type(value){inputEl.value=value;flow.push('TYPE:'+value);}
   },
-  async evaluate(fn,element){flow.push('READ_DOM');return fn(element);}
+  async evaluate(fn,element){
+    flow.push('READ_DOM');
+    if(String(fn).includes('HTMLInputElement.prototype')){inputEl.value='';return;}
+    return fn(element);
+  }
 };
 const submission=await submitGulfAirParcelsForm(browserMock,awb);
 assert.equal(submission.ok,true);
 assert.equal(submission.method,'PHYSICAL_INPUT_AND_BUTTON_CLICK');
 assert.equal(submission.awbEntered,'07295056684');
 assert.equal(inputEl.value,'07295056684');
-assert.deepEqual(flow,['FOCUS_AWB_INPUT','KEYS:Backspace','TYPE:07295056684','READ_DOM','READ_DOM','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
+assert.deepEqual(flow,['FOCUS_AWB_INPUT','READ_DOM','TYPE:07295056684','READ_DOM','READ_DOM','READ_DOM','READ_DOM','PHYSICAL_TRACK_CLICK']);
 
 
 // Regression from the actual ParcelsApp Gulf Air UI: two booked legs,
