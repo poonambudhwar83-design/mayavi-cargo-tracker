@@ -924,7 +924,7 @@ export default function DashboardClient({isAdmin=false,haryanaMode=false,current
         const lt=Math.max(Date.parse(lr._dbUpdatedAt||0)||0,Date.parse(lr.lastChecked||0)||0);
         out.push(key.startsWith('071')||key.startsWith('098')||key.startsWith('160')||key.startsWith('232')||key.startsWith('312')||key.startsWith('176')||key.startsWith('141')||key.startsWith('065')||st>=lt?sr:lr);
       }
-      for(const lr of localMap.values())if(haryanaMode?shipmentTypeOf(lr.shipmentType)==='IMPORT':isAdmin||!isPrivateType(lr.shipmentType))out.push(lr);
+      // Deleted masters must not be revived from stale browser backups. The shared database is authoritative.
       return dedupeRowsByMawb(out);
     });
     setShared(true);
