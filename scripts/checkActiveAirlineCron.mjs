@@ -26,6 +26,7 @@ assert.deepEqual(selected.map(x=>x.awb),[
   '06511493672','09832251715','22922222222','93244444444'
 ].sort().sort((a,b)=>a.localeCompare(b)));
 assert.ok(selected.every(x=>!x.awb.startsWith('072')));
+assert.ok(selected.every(x=>!x.awb.startsWith('160')));
 assert.ok(selected.length<=BATCH_SIZE);
 // EK recent Customs Cleared remains eligible, without refreshing old archives.
 const ekCleared=activeAirlineCandidates([

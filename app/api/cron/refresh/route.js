@@ -176,7 +176,11 @@ export async function GET(request){
   const saudiaRapid=new URL(request.url).pathname==='/api/cron/saudia';
   // Airline polling is limited to the Active sheet; cleared/archived masters
   // continue to be displayed and remain editable but do not trigger carrier calls.
-  const rows=selected.filter(item=>item.scope==='ACTIVE'&&(!saudiaRapid||normalize(item.row.mawb||item.row.awb).startsWith('065-'))).map(item=>item.row);
+  // Dedicated CX cron owns Cathay: do not launch duplicate full browser probes
+  // from this shared two-hour catch-up job while CX is unavailable.
+  const rows=selected.filter(item=>item.scope==='ACTIVE'&&
+    !normalize(item.row.mawb||item.row.awb).startsWith('160-')&&
+    (!saudiaRapid||normalize(item.row.mawb||item.row.awb).startsWith('065-'))).map(item=>item.row);
   const scopeCounts={
     active:selected.filter(item=>item.scope==='ACTIVE').length,
     clearedLast72Hours:selected.filter(item=>item.scope==='CLEARED_RECENT').length,

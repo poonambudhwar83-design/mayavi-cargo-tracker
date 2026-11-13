@@ -23,7 +23,7 @@ function internalKey(){
     process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED||'';
   return db?createHash('sha256').update('mayavi-cron|'+db).digest('hex'):'';
 }
-async function refreshOne(row,origin,key,fast=false){
+async function refreshOne(sql,row,origin,key,fast=false){
   const awb=digits(row.awb),mawb=awb.slice(0,3)+'-'+awb.slice(3),start=Date.now();
   const trackingOrigin=process.env.MAYAVI_TRACKING_ORIGIN||'https://tracker.mayavicargo.com';
   let lastError='Tracking request failed',lastStatus=0;
@@ -40,10 +40,15 @@ async function refreshOne(row,origin,key,fast=false){
       const saved=response.ok&&result?.ok===true&&result?.serverSaved===true;
       const s=result?.shipment||{};
       const detailsComplete=Boolean(s.flightNo&&s.arrivalDate&&s.arrivalTime);
-      if(saved)return {mawb,ok:true,attempts:attempt,fast,detailsComplete,
-        incomplete:!detailsComplete,status:s.status||'',
-        arrivalDate:s.arrivalDate||'',arrivalTime:s.arrivalTime||'',
-        error:'',httpStatus:response.status,elapsedMs:Date.now()-start};
+      if(saved){
+        // A successful verification clears the CX-only failure cooldown.
+        await sql.query("UPDATE mayavi_shipments SET data=data || $1::jsonb WHERE awb=$2",
+          [JSON.stringify({cxAutoAttemptAt:new Date().toISOString(),cxAutoLastError:''}),awb]);
+        return {mawb,ok:true,attempts:attempt,fast,detailsComplete,
+          incomplete:!detailsComplete,status:s.status||'',
+          arrivalDate:s.arrivalDate||'',arrivalTime:s.arrivalTime||'',
+          error:'',httpStatus:response.status,elapsedMs:Date.now()-start};
+      }
       const failure=result?.trackingError||result?.error||result?.reason;
       lastError=(typeof failure==='string'?failure:failure?JSON.stringify(failure):
         'HTTP '+response.status).slice(0,180);
@@ -54,6 +59,13 @@ async function refreshOne(row,origin,key,fast=false){
     }
     if(attempt<MAX_ATTEMPTS)await new Promise(resolve=>setTimeout(resolve,500));
   }
+  // Persist a failure-only timestamp without overwriting an operator's shipment.
+  // The CX scheduling policy will retry this AWB after its cooldown, not 5 min.
+  try{
+    await sql.query("UPDATE mayavi_shipments SET data=data || $1::jsonb WHERE awb=$2",
+      [JSON.stringify({cxAutoAttemptAt:new Date().toISOString(),
+        cxAutoLastError:lastError}),awb]);
+  }catch(e){console.warn('cathay_failure_cooldown_save_failed',mawb,String(e?.message||e).slice(0,150));}
   console.warn('cathay_refresh_attempts_exhausted',JSON.stringify({mawb,attempts:MAX_ATTEMPTS,error:lastError}));
   return {mawb,ok:false,attempts:MAX_ATTEMPTS,fast,error:lastError,
     httpStatus:lastStatus,elapsedMs:Date.now()-start};
@@ -101,7 +113,7 @@ export async function GET(request){
     const results=[];
     for(let i=0;i<candidate.length;i+=BATCH_SIZE){
       const settled=await Promise.allSettled(
-        candidate.slice(i,i+BATCH_SIZE).map(x=>refreshOne(x.row,
+        candidate.slice(i,i+BATCH_SIZE).map(x=>refreshOne(sql,x.row,
           new URL(request.url).origin,key,fastRefresh)));
       for(const s of settled)results.push(s.status==='fulfilled'?s.value:
         {ok:false,error:String(s.reason?.message||s.reason).slice(0,160)});
