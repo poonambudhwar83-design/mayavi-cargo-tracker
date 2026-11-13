@@ -1,12 +1,12 @@
 {
   "title": "Cathay CX working production lock",
   "lockedAt": "2026-11-13",
-  "sourceCommit": "2ab8e4c26793b0923a8e8d747ed35719cfbc56d1",
+  "sourceCommit": "7295ce9764017c62659145bb8f3150f830a5361b",
   "recoveryBranch": "cx-locked-working-2026-11-12",
-  "note": "13 Nov 2026 owner explicitly requested September 19 ZIP recovery. CX browser code restored from locked working source and cross-checked against September ZIP DOC-20260919-WA0093.zip; preserved lower Booking Status/Details deep-scroll and exact-AWB guards, with bounded form-readiness retry. Previous 12 Nov recovery branch remains intact.",
+  "note": "Owner requested original 19 Sep 2026 ZIP CX flow. Preserve exact-AWB verification and below-the-fold Booking Status/Details scroll. Optional anonymous tracking HTTP 403 must no longer terminate official browser inspection early. Existing airline code is unchanged.",
   "files": {
     "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
-    "lib/cathay-browser-fallback.js": "49477f97068feae2aec9a35285f0a92b7c129ead",
+    "lib/cathay-browser-fallback.js": "43e7b933a043a59057e394bed77f091e506341ea",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "29058d964b0941834b6978c092c696bc2015d539",
     "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
