@@ -6,7 +6,7 @@
   "note": "Keep the verified terminal-first CX pipeline, official flight-status arrival extraction and September booking fallback unchanged unless the owner explicitly requests a CX unlock.",
   "files": {
     "lib/cathay.js": "12f7e50eeadeb89fe149d0076aeffd49da33976a",
-    "lib/cathay-browser-fallback.js": "1943f4b8d0b821ec6ba997dd5e32e6a50c1b01a5",
+    "lib/cathay-browser-fallback.js": "af18f78429180dc7eb9e5525ac1cd6e161d43212",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
     "lib/cathay-september-browser-fallback.js": "60fc97c1b2d3d7e2d4dc336b5b7e439801428554",
     "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
