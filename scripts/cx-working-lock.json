@@ -1,16 +1,16 @@
 {
   "title": "Cathay CX working production lock",
-  "lockedAt": "2026-11-13",
-  "sourceCommit": "7295ce9764017c62659145bb8f3150f830a5361b",
+  "lockedAt": "2026-11-12",
+  "sourceCommit": "d99862852a25488106b0bf08ee6a58e98c33ae21",
   "recoveryBranch": "cx-locked-working-2026-11-12",
-  "note": "Owner requested original 19 Sep 2026 ZIP CX flow. Preserve exact-AWB verification and below-the-fold Booking Status/Details scroll. Optional anonymous tracking HTTP 403 must no longer terminate official browser inspection early. Existing airline code is unchanged.",
+  "note": "Keep the verified terminal-first CX pipeline, official flight-status arrival extraction and September booking fallback unchanged unless the owner explicitly requests a CX unlock.",
   "files": {
     "lib/cathay.js": "9ca984d6d5f1501229572280790b97eec724032b",
-    "lib/cathay-browser-fallback.js": "43e7b933a043a59057e394bed77f091e506341ea",
+    "lib/cathay-browser-fallback.js": "247ae43e88c36f13d424a61b2ccff20b49138ab2",
     "lib/cathay-september.js": "145c387ef68b390d48085a66aba6b5ec84935da3",
-    "lib/cathay-september-browser-fallback.js": "29058d964b0941834b6978c092c696bc2015d539",
+    "lib/cathay-september-browser-fallback.js": "60fc97c1b2d3d7e2d4dc336b5b7e439801428554",
     "lib/cathayRefreshPolicy.js": "a93b7372415791c78e2ea2d2d9a1f5f7903d8857",
-    "app/api/cron/cathay/route.js": "2bcc92c3841ccbc39d74db4813f521e55b6a3a80",
+    "app/api/cron/cathay/route.js": "b03efff776e2e15d9fa274c079c7a62c329439dd",
     "app/api/cathay-region/route.js": "89dc7e2c7b4a7c19af3ed214f4570ed5b953a11d",
     "lib/cathayBookingApi.js": "485be39789730f8394eab1b3bfe9e921a8936404"
   }
