@@ -173,6 +173,12 @@ export async function POST(request){
       if(!incomingAwb)throw new Error('Invalid MAWB.');
       let rowForSave={...row};
       const [existingRow]=await sql`SELECT data FROM mayavi_shipments WHERE awb=${incomingAwb} LIMIT 1`;
+      // CX tracking and stale browser saves may update only an existing master.
+      // An explicit operator ADD (markEntry) is required to create a new CX master.
+      // Without this guard, an in-flight refresh can recreate a just-deleted test MAWB.
+      if(incomingAwb.startsWith('160')&&!existingRow&&!markEntry){
+        return Response.json({ok:false,error:`CX MAWB ${incomingAwb} is not in shared masters. Refresh cannot recreate a deleted MAWB.`},{status:409});
+      }
       if(auth.session?.role==='haryana_admin'&&(
         shipmentType(rowForSave.shipmentType)!=='IMPORT'||
         (existingRow&&shipmentType(existingRow.data?.shipmentType)!=='IMPORT'))){
