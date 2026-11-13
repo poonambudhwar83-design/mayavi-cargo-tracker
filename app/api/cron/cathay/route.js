@@ -14,6 +14,15 @@ const MAX_PER_TICK=4; // Check multiple unresolved CX AWBs so one carrier-blocke
 const BATCH_SIZE=4;
 const ATTEMPT_TIMEOUT_MS=85000;
 const MAX_ATTEMPTS=1; // Upstream empty pages cannot be fixed by immediate duplicate requests; retry next cycle.
+const FULL_BOOKING_RETRY_MS=30*60*1000;
+// On a newly entered CX master, the terminal may have no RCS record yet.
+// Give its official Booking Status browser a bounded attempt instead of
+// silently skipping it for six hours. Keep repeated attempts throttled.
+function fullBookingFallbackDue(candidate,now,fastRefresh){
+  if(!fastRefresh||!candidate.missing||!candidate.unresolved)return false;
+  const previous=Date.parse(candidate.row.data?.cxFullBookingAttemptAt||'');
+  return !Number.isFinite(previous)||now-previous>=FULL_BOOKING_RETRY_MS;
+}
 const digits=value=>String(value||'').replace(/\D/g,'');
 
 function internalKey(){
@@ -100,11 +109,32 @@ export async function GET(request){
     const fastRefresh=!(clock.getUTCHours()%6===0&&clock.getUTCMinutes()===0);
     const results=[];
     for(let i=0;i<candidate.length;i+=BATCH_SIZE){
+      const batch=candidate.slice(i,i+BATCH_SIZE);
+      const fullBooking=batch.map(x=>fullBookingFallbackDue(x,now,fastRefresh));
       const settled=await Promise.allSettled(
-        candidate.slice(i,i+BATCH_SIZE).map(x=>refreshOne(x.row,
-          new URL(request.url).origin,key,fastRefresh)));
-      for(const s of settled)results.push(s.status==='fulfilled'?s.value:
-        {ok:false,error:String(s.reason?.message||s.reason).slice(0,160)});
+        batch.map((x,j)=>refreshOne(x.row,new URL(request.url).origin,
+          key,fastRefresh&&!fullBooking[j])));
+      for(let j=0;j<settled.length;j++){
+        const s=settled[j];
+        const result=s.status==='fulfilled'?s.value:
+          {ok:false,error:String(s.reason?.message||s.reason).slice(0,160)};
+        results.push({...result,fullBookingFallback:fullBooking[j]});
+        if(fullBooking[j]){
+          // Persist only the probe's diagnostic; never write guesses into
+          // flight, weight, arrival, customs, mail or user-owned fields.
+          const diagnostic={cxFullBookingAttemptAt:new Date().toISOString(),
+            cxFullBookingLastError:result.ok?'':String(result.error||'Cathay booking status not verified').slice(0,180)};
+          try{
+            await sql`UPDATE mayavi_shipments
+              SET data=data||${JSON.stringify(diagnostic)}::jsonb,
+                  updated_at=now(),version=version+1
+              WHERE awb=${digits(batch[j].row.awb)}`;
+          }catch(error){
+            console.warn('cathay_full_booking_diagnostic_save_failed',
+              digits(batch[j].row.awb),String(error?.message||error).slice(0,150));
+          }
+        }
+      }
     }
     const summary={ok:true,carrier:'CX',frequency:'every 5 minutes',
       mode:fastRefresh?'terminal-fast':'terminal-and-booking-details',
