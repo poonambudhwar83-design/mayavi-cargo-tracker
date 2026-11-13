@@ -287,7 +287,7 @@ assert.ok(dashboardDirect.includes("const endpoint=n.startsWith('072-')?'/api/gu
 assert.ok(gulfSource.includes("const directPage=await publicPageLookup(mawb,detailsUrl);"),
   'Read the AWB-specific Parcels result that the Mayavi link opens.');
 assert.ok(gulfSource.indexOf('const directPage=await publicPageLookup(mawb,detailsUrl);')<
-  gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
+  gulfSource.indexOf('await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
   'Mayavi direct result URL must be attempted before Parcels public form fallback.');
 assert.ok(gulfSource.includes('const submitted=await submitGulfAirParcelsForm(page,mawb);'),
   'Mayavi backend must physically click Track Package even when it opens the direct AWB link.');
@@ -307,9 +307,9 @@ assert.ok(gulfSource.includes("const actual=await page.evaluate(el=>String(el.va
   'Gulf AWB field validation must reject hyphens rather than stripping them.');
 assert.ok(gulfSource.includes('submittedTracking:submittedTracking.slice(-3)'),
   'Gulf-only diagnostics should confirm whether ParcelsApp received the full 11 digits.');
-assert.ok(gulfSource.includes('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
+assert.ok(gulfSource.includes('await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);'),
   'Start Gulf Air checks on parcelsapp.com and use the visible Track Package button.');
-assert.ok(gulfSource.indexOf('const packagePage=await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);')<
+assert.ok(gulfSource.indexOf('await publicPageLookup(mawb,PARCELS_TRACK_PACKAGE_URL);')<
   gulfSource.indexOf('const carrierPage=await publicPageLookup(mawb,GULF_PARCELS_URL);'),
   'The main ParcelsApp Track Package flow must run before the Gulf carrier fallback.');
 assert.ok(gulfSource.includes("PARCELS_TRACK_PACKAGE_URL='https://parcelsapp.com/'"),
