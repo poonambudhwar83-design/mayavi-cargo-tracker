@@ -274,7 +274,7 @@ const dashboardDirect=readFileSync('app/DashboardClient.js','utf8');
 assert.ok(dashboardDirect.includes("if(n.startsWith('072-'))return `https://parcelsapp.com/en/tracking/${allDigits}`;"));
 assert.ok(dashboardDirect.includes("'PARCELS LIVE ↗'"));
 const gulfSource=readFileSync('lib/gulfAirParcels.js','utf8');
-assert.ok(dashboardDirect.includes("if(digits(r.mawb).startsWith('072'))void refreshByMawb(r.mawb,{silent:true});"),
+assert.ok(dashboardDirect.includes("if(digits(r.mawb).startsWith('072'))void refreshByMawb(r.mawb,{silent:false});"),
   'PARCELS LIVE click must also trigger a background Mayavi refresh for this Gulf AWB.');
 assert.ok(dashboardDirect.includes("const endpoint=n.startsWith('072-')?'/api/gulf-track':'/api/track'"),
   'Gulf 072 click refresh must run in the dedicated regional backend.');
