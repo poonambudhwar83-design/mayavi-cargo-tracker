@@ -348,7 +348,7 @@ assert.ok(page.includes("if(readOnly)return;"));
 assert.ok(page.includes("{view==='NOTES'&&!readOnly&&<section"));
 assert.ok(page.includes("{!readOnly&&<th>Actions</th>}"));
 assert.ok(page.includes("{!readOnly&&<td rowSpan={2}><div className={styles.rowActions}>"));
-assert.ok(page.includes("{!readOnly&&<button type=\"button\" disabled={busy}"));
+assert.ok(page.includes("{!readOnly&&group.records[0]?.id===row.id&&<button"));
 assert.ok(page.includes("view==='SUMMARY'&&<section"));
 assert.ok(page.includes("studyProgressSummary(rows,chapterRegistry,subject)"));
 assert.ok(css.includes(".progressPanel{"));
