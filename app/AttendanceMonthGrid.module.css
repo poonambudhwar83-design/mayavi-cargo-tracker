@@ -105,3 +105,13 @@
 .clear{color:#b91c1c;background:#fff1f2;margin-right:auto}
 .save{color:#fff;background:#1d6a53;border-color:#1d6a53!important}
 @media(max-width:500px){.modal{padding:15px}.modalFields{grid-template-columns:1fr}.modal footer button{flex:1 1 auto}.clear{margin:0}.dayCell{height:50px!important}}
+
+
+/* Attendance-only Delete / Restore lives beside every staff name. */
+.employeeTools{display:flex;align-items:center;justify-content:space-between;gap:5px;min-height:16px;margin-top:2px}
+.employeeTools small{font-size:9px;color:#b45309}
+.employeeTools button{font-family:inherit;font-size:10px;font-weight:850;border-radius:5px;
+ padding:2px 5px;white-space:nowrap;cursor:pointer;line-height:1.3}
+.deleteEmployee{color:#b91c1c;background:#fff1f2;border:1px solid #fecdd3}
+.restoreEmployee{color:#166534;background:#dcfce7;border:1px solid #bbf7d0}
+.employeeTools button:disabled{opacity:.45;cursor:not-allowed}
