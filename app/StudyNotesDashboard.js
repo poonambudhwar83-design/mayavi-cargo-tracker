@@ -534,6 +534,15 @@ export default function StudyNotesDashboard({readOnly=false}){
                     <td rowSpan={2} className={styles.registerTopicCell}>
                       <span className={styles.registerTopicNumber}>{subtopicNumber}</span>
                       <strong>{group.topic}</strong>
+                      {!readOnly&&group.records[0]?.id===row.id&&<button
+                        className={styles.registerAddSource} type="button" disabled={busy}
+                        onClick={()=>{
+                          setEditId('');
+                          setDraft({...blank(),chapter:section.chapter,topic:group.topic});
+                          setSourceSelection('');setOtherSource('');
+                          setMessage('Choose a source for '+group.topic+'.');
+                          window.scrollTo({top:0,behavior:'smooth'});
+                        }}>+ Add Source</button>}
                     </td>
                     <td rowSpan={2} className={styles.registerSourceCell}>{row.source||'—'}</td>
                     <td><span className={styles.registerTypeMcq}>MCQs</span></td>
