@@ -62,3 +62,46 @@
  .editButton{opacity:.85}
  .scroll{max-height:66vh}
 }
+
+/* Every calendar cell is a real editable select, including previously blank days. */
+.dayCell{padding:2px!important;height:51px!important}
+.cellSelect{
+ appearance:none;-webkit-appearance:none;display:block;box-sizing:border-box;
+ width:100%;height:37px;min-width:0;padding:3px 2px 11px;
+ border:1px solid transparent;border-radius:6px;text-align:center;text-align-last:center;
+ color:#91a5be;background:transparent;font-size:12px;font-weight:900;
+ cursor:pointer;line-height:1.25;
+}
+.cellSelect:focus-visible{outline:2px solid #4781d2;outline-offset:-2px}
+.cellSelect:disabled{opacity:.5;cursor:not-allowed}
+.dayCell[data-status=PRESENT] .cellSelect{color:#166534;background:#dcfce7;border-color:#a7efb9}
+.dayCell[data-status=HALF_DAY] .cellSelect{color:#a65d14;background:#ffedd5;border-color:#fed7aa}
+.dayCell[data-status=PAID_LEAVE] .cellSelect,.dayCell[data-status=SICK_LEAVE] .cellSelect{color:#4338ca;background:#e0e7ff;border-color:#c7d2fe}
+.dayCell[data-status=UNPAID_LEAVE] .cellSelect{color:#92400e;background:#fef3c7;border-color:#fde68a}
+.dayCell[data-status=ABSENT] .cellSelect{color:#b91c1c;background:#fee2e2;border-color:#fecaca}
+.dayCell[data-status=HOLIDAY] .cellSelect{color:#0369a1;background:#e0f2fe;border-color:#bae6fd}
+.dayCell[data-status=WEEK_OFF] .cellSelect{color:#475569;background:#e2e8f0;border-color:#cbd5e1}
+.editButton{opacity:1;right:2px;bottom:2px;width:16px;height:15px;z-index:2;font-size:11px;color:#1d5c9b;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.lateDot{z-index:2;right:2px;top:2px}
+.savingMark{position:absolute;top:3px;left:3px;font-size:11px;font-weight:900;color:#1e40af;pointer-events:none}
+.modalShade{position:fixed;inset:0;z-index:11000;background:rgba(16,36,66,.55);display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box}
+.modal{background:#fff;color:#163d67;border-radius:16px;box-shadow:0 18px 55px rgba(10,29,54,.35);width:min(560px,100%);max-height:90vh;overflow:auto;padding:21px;box-sizing:border-box}
+.modal header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #e1eafa;padding-bottom:13px}
+.modal header small{font-size:10px;color:#5578a4;font-weight:900;letter-spacing:1px}
+.modal h3{font-size:21px;font-weight:900;margin:4px 0;color:#174d83}
+.modal header p{font-size:12px;color:#667e99;margin:0}
+.close{border:0;background:#eff5fc;color:#315c8c;border-radius:7px;padding:7px 9px;cursor:pointer}
+.modalFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.modalFields label{display:grid;gap:6px;font-size:12px;color:#234c77;font-weight:850;min-width:0}
+.modalFields input,.modalFields select,.modalFields textarea{box-sizing:border-box;width:100%;border-radius:8px;border:1px solid #b8cce4;background:#fff;color:#173e6b;padding:10px;font-size:13px;font-weight:500;min-height:40px;font-family:inherit}
+.modalFields textarea{resize:vertical;min-height:85px}
+.modalFields input:disabled{background:#f1f5f9;color:#94a3b8}
+.wideField{grid-column:1/-1}
+.lateHint{font-size:12px;line-height:1.5;color:#527393;background:#eff6ff;border-radius:8px;padding:10px;margin:13px 0}
+.modal footer{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.modal footer button{padding:10px 13px;border:1px solid #c9d9eb;border-radius:9px;font-weight:850;font-size:12px;cursor:pointer}
+.modal footer button:disabled{opacity:.5;cursor:wait}
+.cancel{color:#345981;background:#f3f7fc}
+.clear{color:#b91c1c;background:#fff1f2;margin-right:auto}
+.save{color:#fff;background:#1d6a53;border-color:#1d6a53!important}
+@media(max-width:500px){.modal{padding:15px}.modalFields{grid-template-columns:1fr}.modal footer button{flex:1 1 auto}.clear{margin:0}.dayCell{height:50px!important}}
