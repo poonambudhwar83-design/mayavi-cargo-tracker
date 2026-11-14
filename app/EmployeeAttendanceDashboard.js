@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceRollup,deriveLateMinutes,attendanceLabel} from '../lib/employeeAttendance.js';
+import AttendanceMonthGrid from './AttendanceMonthGrid.js';
 
 const API='/api/employee-attendance';
 const ink='#17365a',muted='#5e738b',border='#d9e5f2';
@@ -25,6 +26,8 @@ export default function EmployeeAttendanceDashboard(){
  const [draft,setDraft]=useState(freshDay),[adding,setAdding]=useState(false),[profile,setProfile]=useState({employeeName:'',companyName:'',designation:'',salaryAmount:'0',reportingTime:''});
  const [startTime,setStartTime]=useState(''),[statusNote,setStatusNote]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
  const [companies,setCompanies]=useState([]),[designations,setDesignations]=useState([]);
+ const [showAdvanced,setShowAdvanced]=useState(false);
+ const [savingKey,setSavingKey]=useState('');
  const load=useCallback(async()=>{
   setLoading(true);
   try{
@@ -60,7 +63,40 @@ export default function EmployeeAttendanceDashboard(){
   }catch(e){setStatusNote(e.message||'Could not save.');return false;}
   finally{setBusy(false);}
  }
- const editDay=row=>{setDraft({employeeId:row.employeeId,date:row.date,status:row.status,checkIn:row.checkIn||'',manualLateMinutes:row.lateMinutes===null?'':String(row.lateMinutes),remarks:row.remarks||''});document.getElementById('attendance-day-form')?.scrollIntoView({behavior:'smooth',block:'center'});};
+ const editDay=row=>{setShowAdvanced(true);setDraft({employeeId:row.employeeId,date:row.date,status:row.status,checkIn:row.checkIn||'',manualLateMinutes:row.lateMinutes===null?'':String(row.lateMinutes),remarks:row.remarks||''});setTimeout(()=>document.getElementById('attendance-day-form')?.scrollIntoView({behavior:'smooth',block:'center'}),40);};
+ async function quickMark(emp,date,status,current){
+  if(current?.status===status||savingKey||!emp.isActive)return;
+  const cellKey=emp.id+'|'+date;
+  setSavingKey(cellKey);setStatusNote('');
+  try{
+   const payload={action:'save_day',employeeId:emp.id,date,status,checkIn:'',manualLateMinutes:null,remarks:current?.remarks||''};
+   const response=await fetch(API,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+   const result=await response.json();
+   if(!response.ok||!result.ok)throw Error(result.error||'Attendance could not be saved.');
+   setEntries(prev=>[...prev.filter(e=>!(e.employeeId===emp.id&&e.date===date)),
+    {employeeId:emp.id,date,status,checkIn:'',expectedStart:status==='PRESENT'||status==='HALF_DAY'?emp.reportingTime||'':'',
+     lateMinutes:null,remarks:current?.remarks||'',updatedAt:new Date().toISOString()}]);
+   setStatusNote('✓ '+emp.employeeName+' • '+formatDate(date)+' • '+attendanceLabel(status)+' saved.');
+  }catch(e){setStatusNote(e?.message||'Could not mark attendance.');}
+  finally{setSavingKey('');}
+ }
+ function openCellEditor(emp,date,row){
+  editDay(row||{employeeId:emp.id,date,status:'PRESENT',checkIn:'',lateMinutes:null,remarks:''});
+ }
+ function downloadMonthlySheet(dates){
+  const code={PRESENT:'P',HALF_DAY:'HD',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
+  const lookup=new Map(entries.map(e=>[e.employeeId+'|'+e.date,e]));
+  const summaryById=new Map(sums.map(x=>[x.id,x]));
+  const lines=[['Employee','Company',...dates.map(date=>date+' '+weekday(date)),'Present Days','Leave Days','Absent Days','Late Days','Late Minutes']];
+  for(const emp of list){
+   const total=summaryById.get(emp.id)||{};
+   lines.push([emp.employeeName,emp.companyName||'',...dates.map(date=>{
+    const row=lookup.get(emp.id+'|'+date);
+    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):'';
+   }),total.present||0,total.leaveDays||0,total.absent||0,total.lateDays||0,total.lateMinutes||0]);
+  }
+  downloadCsv(lines,'monthly-attendance-sheet-'+month);
+ }
  const pickEmployee=e=>setDraft(d=>({...d,employeeId:e.id,date:d.date.slice(0,7)===month?d.date:month+'-01',status:'PRESENT',checkIn:'',manualLateMinutes:'',remarks:''}));
  async function saveDay(ev){ev.preventDefault();if(!draft.employeeId||!draft.date)return;
   if(await save('save_day',{...draft,manualLateMinutes:draft.manualLateMinutes===''?null:draft.manualLateMinutes})){
@@ -98,9 +134,17 @@ export default function EmployeeAttendanceDashboard(){
     <div style={{display:'flex',gap:9,alignItems:'end',flexWrap:'wrap'}}>
      <Field label="REPORT MONTH"><input type="month" min="2020-01" max="2100-12" value={month} onChange={e=>{setMonth(e.target.value);setDraft(d=>({...d,date:e.target.value+'-01'}))}} style={{...input,minWidth:160}}/></Field>
      <button style={btn} disabled={loading} type="button" onClick={()=>void load()}>{loading?'Loading…':'Refresh'}</button>
+     <button style={{...btn,background:showAdvanced?'#dbeafe':'#fff'}} type="button" onClick={()=>setShowAdvanced(v=>!v)}>{showAdvanced?'Hide Employee Management':'Manage Employees / Late Details'}</button>
     </div>
    </header>
    {statusNote&&<p role="status" style={{padding:'11px 14px',background:'#e7f0ff',borderRadius:10,color:'#184b88',fontWeight:750,fontSize:13}}>{statusNote}</p>}
+   <div style={{display:'flex',gap:9,alignItems:'end',flexWrap:'wrap',padding:'10px 12px',borderRadius:11,marginBottom:12,background:'#e8f2ff',border:'1px solid #d2e3f6'}}>
+    <Field label="COMPANY"><select aria-label="Filter attendance grid by company" value={company} onChange={e=>setCompany(e.target.value)} style={input}><option value="">All Companies</option>{companies.map(c=><option value={c} key={c}>{c}</option>)}</select></Field>
+    <Field label="FIND EMPLOYEE" wide><input aria-label="Search attendance grid employee" type="search" placeholder="Search employee…" value={search} onChange={e=>setSearch(e.target.value)} style={input}/></Field>
+    <label style={{fontSize:12,fontWeight:800,color:muted,display:'flex',gap:7,alignItems:'center',paddingBottom:10}}><input type="checkbox" checked={includeArchived} onChange={e=>setIncludeArchived(e.target.checked)}/>Archived</label>
+   </div>
+   <AttendanceMonthGrid month={month} employees={list} entries={entries} savingKey={savingKey}
+    onQuickMark={quickMark} onEdit={openCellEditor} onExport={downloadMonthlySheet}/>
    <section aria-label="Employee attendance monthly overview" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10,marginBottom:17}}>
     <StatCard label="Employees" value={rolled.employees} note="Selected staff"/>
     <StatCard label="Present Days" value={fmt(rolled.present)}/>
@@ -109,6 +153,7 @@ export default function EmployeeAttendanceDashboard(){
     <StatCard label="Late Arrivals" value={fmt(rolled.lateDays)}/>
     <StatCard label="Late Minutes" value={fmt(rolled.lateMinutes)}/>
    </section>
+   {showAdvanced&&<>
    <section style={{...pane,marginBottom:16}} aria-label="Staff filters and employee management">
     <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:11}}>
      <h2 style={{fontSize:17,margin:0}}>Staff Directory <small style={{fontSize:12,color:muted}}>· {active.length} active of {employees.length} total</small></h2>
@@ -206,6 +251,7 @@ export default function EmployeeAttendanceDashboard(){
      </table>
     </div>
    </section>
+   </>}
   </div>
  </main>;
 }
