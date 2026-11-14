@@ -61,6 +61,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
  const [exporting,setExporting]=useState('');
+ const [followupDrafts,setFollowupDrafts]=useState({});
+ const [savingFollowup,setSavingFollowup]=useState('');
  async function load(showError=true){
   setFetching(true);
   try{
@@ -121,6 +123,22 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   }catch(e){setMessage(e.message||'Could not delete AWB.');}
   finally{setBusy(false);}
  }
+ async function saveFollowup(row){
+  const text=followupDrafts[row.awb];
+  if(typeof text!=='string')return;
+  setSavingFollowup(row.awb);setMessage('');
+  try{
+   const res=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},credentials:'include',
+    body:JSON.stringify({action:'save_followup_remarks',awb:row.awb,remarks:text})});
+   const data=await res.json();
+   if(!res.ok||!data.ok)throw Error(data.error||'Follow-up remarks could not be saved.');
+   setRows(current=>current.map(r=>r.awb===row.awb?{...r,followupRemarks:data.followupRemarks,
+    followupUpdatedBy:data.followupUpdatedBy,followupUpdatedAt:data.followupUpdatedAt}:r));
+   setFollowupDrafts(current=>{const next={...current};if(next[row.awb]===text)delete next[row.awb];return next;});
+   setMessage('Follow-up remarks saved for '+row.awb+'.');
+  }catch(e){setMessage(e.message||'Could not save follow-up remarks.');}
+  finally{setSavingFollowup('');}
+ }
  async function exportOverdue(format){
   setExporting(format);setMessage('');
   try{
@@ -146,12 +164,12 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const todayIst=jepoTodayIst(lastLoad||new Date());
  const overdue=useMemo(()=>jepoOverdueRows(active,todayIst),[active,todayIst]);
  const source=tab==='DELIVERED'?delivered:tab==='OVERDUE'?overdue:active;
- const viewColumns=tab==='OVERDUE'?[...columns,['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)']]:columns;
+ const viewColumns=tab==='OVERDUE'?[...columns,['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)'],['followupRemarks','Follow-up Remarks']]:columns;
  const services=useMemo(()=>[...new Set(rows.map(x=>x.service).filter(Boolean))].sort(),[rows]);
  const destinations=useMemo(()=>[...new Set(rows.map(x=>x.destination).filter(Boolean))].sort(),[rows]);
  const visible=useMemo(()=>source.filter(r=>{
   const needle=search.trim().toLowerCase();
-  return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.customerName,r.destination,r.jpCode,r.carrierAwb,r.liveStatus].join(' ').toLowerCase().includes(needle))
+  return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.customerName,r.destination,r.jpCode,r.carrierAwb,r.liveStatus,r.followupRemarks].join(' ').toLowerCase().includes(needle))
    &&(!service||r.service===service)&&(!destination||r.destination===destination)
    &&(tab!=='ACTIVE'||trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
  }),[source,search,service,destination,trackingStage,tab]);
@@ -276,7 +294,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
     </div>:tab==='DAILY'?<><JEPOOverallLoadSummary records={rows} period="daily"/><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<><JEPOOverallLoadSummary records={rows} period="weekly"/><JEPOLoadSummary records={rows} period="weekly"/></>:tab==='MONTHLY_LOAD'?<JEPOOverallLoadSummary records={rows} period="monthly"/>:tab==='CUSTOMER_LOAD'?<JEPOCustomerLoadSummary records={rows}/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
      {tab==='OVERDUE'&&<div role="note" style={{marginTop:14,padding:'12px 14px',borderRadius:9,border:'1px solid #f1d1a2',background:'#fffaf0',color:'#7c4816',fontSize:13}}>
       <strong>{overdue.length} packets overdue • still not delivered • {overdue.filter(jepoIsOutForDelivery).length} Out for Delivery</strong>
-      <div style={{marginTop:5}}>Booking Date ke 30 din poore hone ke baad, 31st day se packet automatic yahan dikhega. Delivered status/date milte hi yahan se hat jayega. Yeh Active records ka filtered view hai, koi duplicate copy nahi.</div>
+      <div style={{marginTop:5}}>Booking Date ke 30 din poore hone ke baad, 31st day se packet automatic yahan dikhega. Delivered status/date milte hi yahan se hat jayega. Employee follow-up ka reason Follow-up Remarks mein likhkar Save Remarks karein; yeh live tracking se alag save hoga.</div>
       <small style={{display:'block',marginTop:5}}>As of {day(todayIst)} (IST) • Out for Delivery first, then Days Overdue (highest first) • Missing/invalid Booking Dates are excluded.</small>
      </div>}
      <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0',alignItems:'center'}}>
@@ -304,6 +322,23 @@ export default function JEPOTrackingDashboard({readOnly=false}){
          if(key==='bookingDate')return <td key={key} style={{padding:9,borderBottom:'1px solid #e9eef5',minWidth:110}}>
           <strong style={{display:'block',color:'#244a76'}}>{day(r.bookingDate)}</strong>
           <small style={{display:'block',marginTop:3,color:'#657890',fontSize:11}}>{jepoBookingWeekday(r.bookingDate)||'—'}</small>
+         </td>;
+         if(key==='followupRemarks')return <td key={key} style={{padding:'7px 9px',borderBottom:'1px solid #e9eef5',minWidth:300,maxWidth:400,whiteSpace:'normal'}}>
+          {readOnly?<span style={{display:'block',maxHeight:110,overflowY:'auto',whiteSpace:'pre-wrap'}}>{r.followupRemarks||'—'}</span>:
+           <div style={{display:'grid',gap:6}}>
+            <textarea aria-label={'Follow-up Remarks for '+r.awb} value={followupDrafts[r.awb]??r.followupRemarks??''}
+             onChange={e=>setFollowupDrafts(current=>({...current,[r.awb]:e.target.value}))}
+             maxLength={1000} rows={2} placeholder="Employee follow-up, reason for delay, action taken…"
+             style={{width:'100%',minWidth:270,boxSizing:'border-box',resize:'vertical',border:'1px solid #c3d4e9',borderRadius:7,padding:'7px 8px',fontSize:12,color:'#23415d',background:'#fff'}}/>
+            <div style={{display:'flex',gap:8,justifyContent:'space-between',alignItems:'center'}}>
+             <small style={{color:'#6e8093'}} title={r.followupUpdatedAt?new Date(r.followupUpdatedAt).toLocaleString('en-IN',{hour12:false}):''}>
+              {r.followupUpdatedBy?'Saved by '+r.followupUpdatedBy:'Not yet followed up'}
+             </small>
+             <button type="button" style={{...button,padding:'5px 9px',background:'#e5f5ee',color:'#16633d'}}
+              disabled={Boolean(savingFollowup)||followupDrafts[r.awb]===undefined||followupDrafts[r.awb].trim()===(r.followupRemarks||'').trim()}
+              onClick={()=>void saveFollowup(r)}>{savingFollowup===r.awb?'Saving…':'Save Remarks'}</button>
+            </div>
+           </div>}
          </td>;
          let v=key==='tat'?tatValue(r):key==='ageDays'?jepoDaysSinceBooking(r.bookingDate,todayIst):key==='overdueDays'?jepoOverdueDays(r,todayIst):r[key];
          if(['bookingDate','deliveredOn'].includes(key))v=day(v);
