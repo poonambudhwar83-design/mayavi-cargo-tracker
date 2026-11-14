@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 import {parseJepoExcel,inspectJepoExcel} from '../lib/jepoExcelImport.js';
+import {parseJepoCustomerMap,normalizeJepoJpCode} from '../lib/jepoCustomerMapping.js';
 
 // 132 columns, scrambled fields, header row is far from A1.
 const workbook=new ExcelJS.Workbook();
@@ -106,4 +107,38 @@ assert.equal(withGoods.records[0].goodsDescription,'Books and clothes');
 assert.equal(withGoods.records[0].bookingDate,'2026-11-01');
 assert.ok(!withGoods.missingFields.includes('Goods Description'));
 console.log('JEPO optional Goods Description mapping verified for new Excel/CSV imports.');
+
+// A separate customer master has NO AWB column. It must match JP codes, never
+// use consignee names as customer names, and reject conflicting duplicates.
+const customerMaster=new ExcelJS.Workbook();
+const customers=customerMaster.addWorksheet('Customer Master');
+customers.getRow(3).getCell(4).value='ACCOUNT CODE';
+customers.getRow(3).getCell(9).value='Customer Name';
+customers.getRow(3).getCell(15).value='Consignee Name';
+customers.getRow(4).getCell(4).value='JEP001';
+customers.getRow(4).getCell(9).value='Alpha Shipper';
+customers.getRow(4).getCell(15).value='Different Receiver';
+customers.getRow(5).getCell(4).value='jep002';
+customers.getRow(5).getCell(9).value='Beta Shipper';
+customers.getRow(6).getCell(4).value='JEP001';
+customers.getRow(6).getCell(9).value='Alpha Shipper';
+let mapped=parseJepoCustomerMap(customerMaster);
+assert.equal(mapped.headerRow,3);
+assert.equal(mapped.records.length,2);
+assert.equal(mapped.duplicates,1);
+assert.equal(mapped.conflicts.length,0);
+assert.deepEqual(mapped.records,[{jpCode:'JEP001',customerName:'Alpha Shipper'},{jpCode:'JEP002',customerName:'Beta Shipper'}]);
+assert.equal(normalizeJepoJpCode(' jep002 '),'JEP002');
+customers.getRow(7).getCell(4).value='JEP001';
+customers.getRow(7).getCell(9).value='Conflicting Shipper';
+mapped=parseJepoCustomerMap(customerMaster);
+assert.equal(mapped.conflicts.length,1);
+assert.equal(mapped.conflicts[0].jpCode,'JEP001');
+const customerRoute=(await import('node:fs')).readFileSync('app/api/jepo-tracking/route.js','utf8');
+assert.ok(customerRoute.includes("action==='preview_customers'||action==='save_customers'"));
+assert.ok(customerRoute.includes("CREATE TABLE IF NOT EXISTS mayavi_jepo_customer_codes"));
+assert.ok(customerRoute.includes("ON CONFLICT (jp_code) DO UPDATE"));
+assert.ok(customerRoute.includes("customerName:customers.get(normalizeJepoJpCode(row.jp_code))"));
+console.log('JEPO customer master mapped by JP Code, excludes consignee, rejects conflicts.');
+
 console.log('JEPO Excel detection checks passed for 132 columns, mixed row layouts and booking dates.');
