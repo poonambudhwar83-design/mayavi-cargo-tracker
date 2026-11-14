@@ -12,7 +12,7 @@ export function attendanceMonthDates(month){
  const days=new Date(Date.UTC(year,m,0)).getUTCDate();
  return Array.from({length:days},(_,i)=>month+'-'+String(i+1).padStart(2,'0'));
 }
-export default function AttendanceMonthGrid({month,employees=[],entries=[],savingKey='',onQuickMark=()=>{},onSaveDetails=async()=>false,onClearDay=async()=>false,onExport=()=>{}}){
+export default function AttendanceMonthGrid({month,employees=[],entries=[],savingKey='',onQuickMark=()=>{},onSaveDetails=async()=>false,onClearDay=async()=>false,onExport=()=>{},onRemoveEmployee=()=>{},onRestoreEmployee=()=>{}}){
  const [editor,setEditor]=useState(null);
  const dates=useMemo(()=>attendanceMonthDates(month),[month]);
  const byDay=useMemo(()=>new Map(entries.map(row=>[String(row.employeeId)+'|'+row.date,row])),[entries]);
@@ -64,7 +64,19 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tr></thead>
     <tbody>
      {summaries.map((employee,rowIndex)=><tr key={employee.id}>
-      <th scope="row" className={styles.employeeCell}><span title={employee.employeeName}>{rowIndex+1}. {employee.employeeName}</span>{!employee.isActive&&<small>Archived</small>}</th>
+      <th scope="row" className={styles.employeeCell}>
+       <span title={employee.employeeName}>{rowIndex+1}. {employee.employeeName}</span>
+       <div className={styles.employeeTools}>
+        {!employee.isActive&&<small>Archived</small>}
+        {employee.attendanceHidden?<button type="button" className={styles.restoreEmployee}
+         aria-label={'Restore employee to Attendance: '+employee.employeeName}
+         disabled={Boolean(savingKey)} onClick={()=>onRestoreEmployee(employee)}>Restore</button>:
+         <button type="button" className={styles.deleteEmployee}
+          aria-label={'Delete employee from Attendance: '+employee.employeeName}
+          disabled={Boolean(savingKey)} title="Remove from Attendance list only; salary and saved records stay safe"
+          onClick={()=>onRemoveEmployee(employee)}>Delete</button>}
+       </div>
+      </th>
       <td className={styles.companyCell} title={employee.companyName||''}>{employee.companyName||'—'}</td>
       {dates.map(date=>{
        const row=byDay.get(String(employee.id)+'|'+date);
@@ -73,7 +85,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
        const isSaving=savingKey===cellKey;
        return <td key={date} className={styles.dayCell} data-status={status||'EMPTY'} data-sunday={new Date(date+'T00:00:00Z').getUTCDay()===0?'yes':'no'}>
         <select className={styles.cellSelect} aria-label={'Edit attendance '+employee.employeeName+' on '+date}
-         value={status} disabled={Boolean(savingKey)||!employee.isActive}
+         value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}
          title={(labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
          onChange={event=>{
           const next=event.target.value;
@@ -87,7 +99,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
         <button type="button" className={styles.editButton}
          aria-label={'Edit check-in, lateness and remarks for '+employee.employeeName+' on '+date}
          title="Edit time / lateness / remarks" onClick={()=>openEditor(employee,date,row)}
-         disabled={Boolean(savingKey)||!employee.isActive}>✎</button>
+         disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}>✎</button>
         {isSaving&&<span className={styles.savingMark} aria-label="Saving">…</span>}
        </td>;
       })}
@@ -100,7 +112,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tbody>
    </table>
   </div>
-  <p className={styles.footnote}>Blank (+) means not marked, not absent. Sundays are shaded but not automatically holidays. Select + to clear an entry. Late arrivals show an orange dot.</p>
+  <p className={styles.footnote}>Blank (+) means not marked, not absent. Sundays are shaded but not automatically holidays. Select + to clear an entry. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted allows restoration without losing history.</p>
   {editor&&<div className={styles.modalShade} onMouseDown={event=>{if(event.target===event.currentTarget&&!savingKey)setEditor(null)}}>
    <div className={styles.modal} role="dialog" aria-modal="true" aria-label={'Edit attendance '+editor.employeeName+' '+editor.date}>
     <form onSubmit={submitEditor}>
