@@ -27,9 +27,9 @@ async function auth(request,sql,{readOnlyAllowed=false}={}){
  if(!user||!user.is_active||Number(user.session_version)!==Number(session.sessionVersion||0))return false;
  return isAdmin?user.role==='admin':user.role==='employee'&&user.branch_scope==='HARYANA';
 }
-const columns="awb,service,vendor,consignee,destination,goods_description,chargeable_weight,jp_code,to_char(booking_date,'YYYY-MM-DD') AS booking_date,status,live_status,carrier_awb,live_remarks,live_event_when,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,checked_at,tracking_error,import_file,created_at";
+const columns="awb,service,vendor,consignee,destination,goods_description,followup_remarks,followup_updated_by,followup_updated_at,chargeable_weight,jp_code,to_char(booking_date,'YYYY-MM-DD') AS booking_date,status,live_status,carrier_awb,live_remarks,live_event_when,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,checked_at,tracking_error,import_file,created_at";
 function rowData(row){
- return {awb:row.awb,service:row.service,vendor:row.vendor,consignee:row.consignee,destination:row.destination,goodsDescription:row.goods_description||'',
+ return {awb:row.awb,service:row.service,vendor:row.vendor,consignee:row.consignee,destination:row.destination,goodsDescription:row.goods_description||'',followupRemarks:row.followup_remarks||'',followupUpdatedBy:row.followup_updated_by||'',followupUpdatedAt:row.followup_updated_at||null,
   weight:row.chargeable_weight===null?null:Number(row.chargeable_weight),jpCode:row.jp_code,
   bookingDate:row.booking_date,status:row.status,liveStatus:row.live_status,carrierAwb:row.carrier_awb,
   liveRemarks:row.live_remarks,liveEventWhen:row.live_event_when,deliveredOn:row.delivered_on,
@@ -164,6 +164,21 @@ export async function PATCH(request){
   const sql=db();
   if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
   const body=await request.json().catch(()=>({}));
+  if(body.action==='save_followup_remarks'){
+   const awb=cleanJepoTrackingNo(body.awb);
+   if(!awb||typeof body.remarks!=='string'||body.remarks.length>1000)
+    return json({ok:false,error:'Valid AWB and follow-up remarks up to 1000 characters required.'},400);
+   const remarks=body.remarks.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g,' ').trim();
+   await ensureJepoTrackingTable(sql);
+   // Keep verified carrier progress separate; a manual follow-up must never
+   // overwrite the live tracking status, delivered date, or website remarks.
+   const session=readSession(request);
+   const saved=await sql.query("UPDATE mayavi_jepo_tracking SET followup_remarks=$2,followup_updated_by=$3,followup_updated_at=NOW(),updated_at=NOW() WHERE awb=$1 RETURNING awb,followup_remarks,followup_updated_by,followup_updated_at",
+    [awb,remarks,session?.username||'admin']);
+   return saved.length?json({ok:true,awb:saved[0].awb,followupRemarks:saved[0].followup_remarks,
+    followupUpdatedBy:saved[0].followup_updated_by,followupUpdatedAt:saved[0].followup_updated_at}):
+    json({ok:false,error:'JEPO AWB not found.'},404);
+  }
   if(body.action==='save_goods_description'){
    const awb=cleanJepoTrackingNo(body.awb);
    if(!awb||typeof body.goodsDescription!=='string'||body.goodsDescription.length>400)return json({ok:false,error:'Valid AWB and goods description up to 400 characters required.'},400);
