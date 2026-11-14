@@ -3,7 +3,8 @@ import {readFileSync} from 'node:fs';
 import {
  JEPO_LOAD_COUNTRIES,JEPO_FEDEX_COUNTRIES,jepoLoadVendor,jepoLoadCountry,
  jepoLoadWeek,buildJepoLoadSummary,buildJepoFedexDailySummary,
- jepoFedexMonths,jepoLoadAvailableMonths,jepoIsFedexService
+ jepoFedexMonths,jepoLoadAvailableMonths,jepoIsFedexService,
+ JEPO_OVERALL_LOAD_GROUPS,jepoOverallLoadMonths,jepoOverallLoadGroup,buildJepoOverallLoadSummary
 } from '../lib/jepoLoadSummary.js';
 
 assert.equal(jepoLoadVendor('TRANSIT POINT LOGISTICS PRIVATE LIMITED'),'TPL');
@@ -97,4 +98,41 @@ assert.ok(page.includes('<JEPOLoadSummary records={rows} period="weekly"/>'));
 assert.ok(page.includes('<JEPOFedexLoadSummary records={rows}/>'));
 assert.ok(partners.includes('Download CSV'));
 assert.ok(fedexUI.includes('Download FedEx CSV'));
+
+const extra=[
+ ...shipments,
+ {awb:'12',vendor:'UNLISTED LAST MILE',service:'CUSTOM',destination:'Germany',bookingDate:'2026-11-02',weight:9.25},
+ {awb:'13',vendor:'INTEGRATED COURIERS AND LOGISTICS',service:'LOCAL OTHER',destination:'USA',bookingDate:'2026-11-03',weight:2},
+ {...shipments[1]}, // Repeated AWB must count once.
+ {awb:'INVALID',vendor:'TPL',service:'SELF',bookingDate:'2026-11-32',weight:900}
+];
+const allDaily=buildJepoOverallLoadSummary(extra,{period:'daily'});
+const allWeekly=buildJepoOverallLoadSummary(extra,{period:'weekly'});
+const allMonthly=buildJepoOverallLoadSummary(extra,{period:'monthly'});
+assert.equal(allDaily.shipments,12,'All TPL, Overseas, FedEx and unknown services included once per AWB');
+assert.equal(allDaily.kg,56.25,'All booked service weights reconcile including unknown vendors');
+assert.equal(allDaily.missingWeights,1);
+assert.equal(allDaily.missingBookingDates,2);
+assert.deepEqual(allDaily.rows.map(x=>x.periodStart),['2026-11-03','2026-11-02','2026-11-01']);
+assert.equal(allDaily.rows.find(r=>r.periodStart==='2026-11-02').kg,34.75);
+assert.equal(allDaily.rows.find(r=>r.periodStart==='2026-11-02').byService['Other Services'].kg,9.25);
+assert.equal(allWeekly.rows.find(r=>r.periodStart==='2026-11-02').kg,51.25);
+assert.deepEqual(allMonthly.rows.map(r=>r.periodStart),['2026-11-01']);
+assert.equal(allMonthly.rows[0].kg,56.25);
+assert.equal(allMonthly.rows[0].shipments,12);
+assert.deepEqual(jepoOverallLoadMonths(extra),['2026-11']);
+assert.equal(jepoOverallLoadGroup({vendor:'ICL',service:'EX-DEL-FEDEX'}),'FedEx');
+assert.equal(jepoOverallLoadGroup({vendor:'random business',service:'unknown'}),'Other Services');
+assert.deepEqual(JEPO_OVERALL_LOAD_GROUPS,['TPL','Overseas','FedEx','DHL','Aramex','Other Services']);
+assert.equal(buildJepoOverallLoadSummary(extra,{period:'monthly',month:'2026-10'}).shipments,0);
+assert.ok(page.includes("['MONTHLY_LOAD','Monthly Load']"));
+assert.ok(page.includes('<JEPOOverallLoadSummary records={rows} period="daily"/>'));
+assert.ok(page.includes('<JEPOOverallLoadSummary records={rows} period="weekly"/>'));
+assert.ok(page.includes('<JEPOOverallLoadSummary records={rows} period="monthly"/>'));
+const allServicesUI=readFileSync('app/JEPOOverallLoadSummary.js','utf8');
+assert.ok(allServicesUI.includes('All Services Total Load'));
+assert.ok(allServicesUI.includes('Export All Services CSV'));
+assert.ok(allServicesUI.includes('JEPO_OVERALL_LOAD_GROUPS.map'));
+console.log('JEPO all-service daily, weekly and monthly load totals, unknown couriers, unique AWBs and exports passed.');
+
 console.log('JEPO Daily and weekly load regression for TPL, Overseas, FedEx, DHL and Aramex passed.');
