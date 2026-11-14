@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {inclusiveTatDays} from '../lib/branchTatSummary.js';
 import JEPOLoadSummary from './JEPOLoadSummary.js';
+import JEPOOverallLoadSummary from './JEPOOverallLoadSummary.js';
 import JEPOFedexLoadSummary from './JEPOFedexLoadSummary.js';
 import JEPOMonthlyDashboard from './JEPOMonthlyDashboard.js';
 import JEPOTatDashboard from './JEPOTatDashboard.js';
@@ -200,7 +201,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    </div>
    <section style={panel}>
     <div style={{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center'}}>
-     {[['ACTIVE','Active ('+active.length+')'],['OVERDUE','Overdue – Not Delivered ('+overdue.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DUPLICATES','Duplicate AWBs ('+duplicateRows.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
+     {[['ACTIVE','Active ('+active.length+')'],['OVERDUE','Overdue – Not Delivered ('+overdue.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DUPLICATES','Duplicate AWBs ('+duplicateRows.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY_LOAD','Monthly Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
       <button key={id} onClick={()=>{setTab(id);if(id==='DUPLICATES')setSearch('')}} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
@@ -222,7 +223,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        </tbody>
       </table>
      </div>
-    </div>:tab==='DAILY'?<><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<JEPOLoadSummary records={rows} period="weekly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
+    </div>:tab==='DAILY'?<><JEPOOverallLoadSummary records={rows} period="daily"/><JEPOLoadSummary records={rows} period="daily"/><JEPOFedexLoadSummary records={rows}/></>:tab==='WEEKLY'?<><JEPOOverallLoadSummary records={rows} period="weekly"/><JEPOLoadSummary records={rows} period="weekly"/></>:tab==='MONTHLY_LOAD'?<JEPOOverallLoadSummary records={rows} period="monthly"/>:tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>:tab==='TAT'?<JEPOTatDashboard records={rows}/>:<>
      {tab==='OVERDUE'&&<div role="note" style={{marginTop:14,padding:'12px 14px',borderRadius:9,border:'1px solid #f1d1a2',background:'#fffaf0',color:'#7c4816',fontSize:13}}>
       <strong>{overdue.length} packets overdue • still not delivered</strong>
       <div style={{marginTop:5}}>Booking Date ke 30 din poore hone ke baad, 31st day se packet automatic yahan dikhega. Delivered status/date milte hi yahan se hat jayega. Yeh Active records ka filtered view hai, koi duplicate copy nahi.</div>
