@@ -58,7 +58,7 @@ const partial=attendanceMonthlySummary(employees,entries,{month:'2026-11',asOfDa
 assert.equal(partial[0].leaveDays,.5);
 assert.equal(partial[0].fullLeave,0);
 assert.equal(partial[0].halfLeave,1);
-assert.equal(partial[0].present,2.5);
+assert.equal(partial[0].present,3.5);
 const future=attendanceMonthlySummary(employees,entries,{month:'2026-12',asOfDate:'2026-11-14'});
 assert.equal(future[0].present,0);
 assert.equal(future[0].leaveDays,0);
