@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,deriveLateMinutes} from '../lib/employeeAttendance.js';
 import styles from './AttendanceMonthGrid.module.css';
 
 const shortCodes={PRESENT:'P',HALF_DAY:'½',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
@@ -12,30 +12,47 @@ export function attendanceMonthDates(month){
  const days=new Date(Date.UTC(year,m,0)).getUTCDate();
  return Array.from({length:days},(_,i)=>month+'-'+String(i+1).padStart(2,'0'));
 }
-export default function AttendanceMonthGrid({month,employees=[],entries=[],savingKey='',onQuickMark=()=>{},onEdit=()=>{},onExport=()=>{}}){
- const [mark,setMark]=useState('PRESENT');
+export default function AttendanceMonthGrid({month,employees=[],entries=[],savingKey='',onQuickMark=()=>{},onSaveDetails=async()=>false,onClearDay=async()=>false,onExport=()=>{}}){
+ const [editor,setEditor]=useState(null);
  const dates=useMemo(()=>attendanceMonthDates(month),[month]);
  const byDay=useMemo(()=>new Map(entries.map(row=>[String(row.employeeId)+'|'+row.date,row])),[entries]);
  const summaries=useMemo(()=>attendanceMonthlySummary(employees,entries),[employees,entries]);
  const colCount=dates.length+6;
- return <section aria-label="Excel style monthly attendance sheet" className={styles.wrap}>
+ const isOnDuty=editor&&['PRESENT','HALF_DAY'].includes(editor.status);
+ const projectedLate=editor?deriveLateMinutes({
+  status:editor.status,checkIn:editor.checkIn,expectedStart:editor.reportingTime,manualLateMinutes:editor.manualLateMinutes
+ }):null;
+ function openEditor(emp,date,row){
+  setEditor({employeeId:emp.id,employeeName:emp.employeeName,date,
+   status:row?.status||'PRESENT',checkIn:row?.checkIn||'',
+   manualLateMinutes:row?.lateMinutes===null||row?.lateMinutes===undefined?'':String(row.lateMinutes),
+   remarks:row?.remarks||'',reportingTime:emp.reportingTime||'',existing:Boolean(row)});
+ }
+ function changeEditor(key,value){setEditor(current=>current?{...current,[key]:value}:current);}
+ async function submitEditor(event){
+  event.preventDefault();
+  if(!editor)return;
+  const ok=await onSaveDetails(editor);
+  if(ok)setEditor(null);
+ }
+ async function clearEditor(){
+  if(!editor?.existing)return;
+  const ok=await onClearDay(editor);
+  if(ok)setEditor(null);
+ }
+ return <section aria-label="Editable Excel-style monthly attendance sheet" className={styles.wrap}>
   <div className={styles.topbar}>
-   <div><h2>Monthly Attendance Sheet</h2><p>Employees on the left • dates across the top • monthly totals on the right</p></div>
+   <div><h2>Monthly Attendance Sheet</h2><p>Excel-style editable attendance • employee names fixed • every date editable</p></div>
    <button type="button" className={styles.export} onClick={()=>onExport(dates)}>Download Attendance Sheet CSV</button>
   </div>
   <div className={styles.controls}>
-   <label className={styles.picker}>Mark attendance as
-    <select aria-label="Choose attendance status for one-click marking" value={mark} onChange={e=>setMark(e.target.value)}>
-     {ATTENDANCE_STATUSES.map(status=><option key={status.value} value={status.value}>{shortCodes[status.value]} – {status.label}</option>)}
-    </select>
-   </label>
-   <span className={styles.guide}>Choose a status, then tap a date cell to save. <strong>✎</strong> opens late time / remarks.</span>
+   <span className={styles.guide}><strong>Tap a date cell to choose P / A / Leave / Half Day.</strong> Changes save directly. Tap ✎ for check-in time, late minutes, reason, or to clear the date.</span>
   </div>
   <div className={styles.legend} aria-label="Attendance code legend">
    {ATTENDANCE_STATUSES.map(item=><span key={item.value} className={styles.legendItem}><b data-status={item.value}>{shortCodes[item.value]}</b>{item.label}</span>)}
    <span className={styles.legendItem}><b className={styles.lateMark}>●</b>Late arrival</span>
   </div>
-  <div className={styles.scroll} role="region" aria-label="Monthly attendance table" tabIndex={0}>
+  <div className={styles.scroll} role="region" aria-label="Editable monthly attendance table" tabIndex={0}>
    <table className={styles.sheet}>
     <thead><tr>
      <th className={styles.empHeading}>Employee</th>
@@ -47,23 +64,31 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tr></thead>
     <tbody>
      {summaries.map((employee,rowIndex)=><tr key={employee.id}>
-      <th scope="row" className={styles.employeeCell}><span>{rowIndex+1}. {employee.employeeName}</span>{!employee.isActive&&<small>Archived</small>}</th>
-      <td className={styles.companyCell}>{employee.companyName||'—'}</td>
+      <th scope="row" className={styles.employeeCell}><span title={employee.employeeName}>{rowIndex+1}. {employee.employeeName}</span>{!employee.isActive&&<small>Archived</small>}</th>
+      <td className={styles.companyCell} title={employee.companyName||''}>{employee.companyName||'—'}</td>
       {dates.map(date=>{
        const row=byDay.get(String(employee.id)+'|'+date);
        const status=row?.status||'';
        const cellKey=employee.id+'|'+date;
-       const onSave=()=>onQuickMark(employee,date,mark,row);
        const isSaving=savingKey===cellKey;
        return <td key={date} className={styles.dayCell} data-status={status||'EMPTY'} data-sunday={new Date(date+'T00:00:00Z').getUTCDay()===0?'yes':'no'}>
-        <button type="button" className={styles.markButton} disabled={Boolean(savingKey)||!employee.isActive}
-         aria-label={employee.employeeName+', '+date+': '+(labels[status]||'Not marked')+'. Click to mark '+labels[mark]}
+        <select className={styles.cellSelect} aria-label={'Edit attendance '+employee.employeeName+' on '+date}
+         value={status} disabled={Boolean(savingKey)||!employee.isActive}
          title={(labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
-         onClick={onSave}>{isSaving?'…':shortCodes[status]||'+'}
-         {row?.lateMinutes>0&&<span className={styles.lateDot} title={row.lateMinutes+' min late'}/>}
-        </button>
-        {row&&<button type="button" className={styles.editButton} aria-label={'Edit '+employee.employeeName+' on '+date+' time and remarks'}
-         title="Edit check-in time, late minutes, reason" onClick={()=>onEdit(employee,date,row)} disabled={Boolean(savingKey)}>✎</button>}
+         onChange={event=>{
+          const next=event.target.value;
+          if(next==='')void onClearDay({employeeId:employee.id,date});
+          else void onQuickMark(employee,date,next,row);
+         }}>
+         <option value="">+</option>
+         {ATTENDANCE_STATUSES.map(item=><option key={item.value} value={item.value}>{shortCodes[item.value]} – {item.label}</option>)}
+        </select>
+        {row?.lateMinutes>0&&<span className={styles.lateDot} title={row.lateMinutes+' min late'}/>}
+        <button type="button" className={styles.editButton}
+         aria-label={'Edit check-in, lateness and remarks for '+employee.employeeName+' on '+date}
+         title="Edit time / lateness / remarks" onClick={()=>openEditor(employee,date,row)}
+         disabled={Boolean(savingKey)||!employee.isActive}>✎</button>
+        {isSaving&&<span className={styles.savingMark} aria-label="Saving">…</span>}
        </td>;
       })}
       <td className={styles.totalCell}>{employee.present}</td>
@@ -71,10 +96,44 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
       <td className={styles.totalCell} data-alert={employee.absent>0?'yes':'no'}>{employee.absent}</td>
       <td className={styles.totalCell} data-alert={employee.lateDays>0?'yes':'no'}>{employee.lateDays}</td>
      </tr>)}
-     {!summaries.length&&<tr><td colSpan={colCount} className={styles.empty}>No employees match your selection. Change company/search filter or add an employee below.</td></tr>}
+     {!summaries.length&&<tr><td colSpan={colCount} className={styles.empty}>No employees match your selection. Change company/search filter or add an employee.</td></tr>}
     </tbody>
    </table>
   </div>
-  <p className={styles.footnote}>Blank (+) means not marked, not absent. Sundays are shaded for convenience but are not automatically holidays. ½ = Half day. Late minutes are recorded in the detail editor, not guessed.</p>
+  <p className={styles.footnote}>Blank (+) means not marked, not absent. Sundays are shaded but not automatically holidays. Select + to clear an entry. Late arrivals show an orange dot.</p>
+  {editor&&<div className={styles.modalShade} onMouseDown={event=>{if(event.target===event.currentTarget&&!savingKey)setEditor(null)}}>
+   <div className={styles.modal} role="dialog" aria-modal="true" aria-label={'Edit attendance '+editor.employeeName+' '+editor.date}>
+    <form onSubmit={submitEditor}>
+     <header><div><small>EDIT ATTENDANCE</small><h3>{editor.employeeName}</h3><p>{editor.date.split('-').reverse().join('/')} • {weekday(editor.date)}</p></div>
+      <button type="button" className={styles.close} aria-label="Close attendance editor" disabled={Boolean(savingKey)} onClick={()=>setEditor(null)}>✕</button></header>
+     <div className={styles.modalFields}>
+      <label>Status
+       <select aria-label="Edit day attendance status" value={editor.status}
+        onChange={event=>{const status=event.target.value;setEditor(current=>({...current,status,checkIn:['PRESENT','HALF_DAY'].includes(status)?current.checkIn:'',manualLateMinutes:['PRESENT','HALF_DAY'].includes(status)?current.manualLateMinutes:''}))}}>
+        {ATTENDANCE_STATUSES.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
+       </select>
+      </label>
+      <label>Check-in time
+       <input aria-label="Employee actual arrival time" type="time" value={editor.checkIn} disabled={!isOnDuty}
+        onChange={event=>changeEditor('checkIn',event.target.value)}/>
+      </label>
+      <label>Late minutes (optional)
+       <input aria-label="Employee late minutes" type="number" min="0" max="1440" step="1" value={editor.manualLateMinutes} disabled={!isOnDuty} placeholder="Auto from check-in"
+        onChange={event=>changeEditor('manualLateMinutes',event.target.value)}/>
+      </label>
+      <label className={styles.wideField}>Remarks / Reason
+       <textarea aria-label="Attendance leave or late arrival reason" rows={3} maxLength={500} value={editor.remarks}
+        placeholder="Reason for leave, late arrival or follow-up…" onChange={event=>changeEditor('remarks',event.target.value)}/>
+      </label>
+     </div>
+     <p className={styles.lateHint}>Official reporting: {editor.reportingTime||'Not set'} • Late: {projectedLate===null?'Not calculated':projectedLate+' min'}</p>
+     <footer>
+      {editor.existing&&<button type="button" className={styles.clear} disabled={Boolean(savingKey)} onClick={()=>void clearEditor()}>Clear This Date</button>}
+      <button type="button" className={styles.cancel} disabled={Boolean(savingKey)} onClick={()=>setEditor(null)}>Cancel</button>
+      <button type="submit" className={styles.save} disabled={Boolean(savingKey)}>{savingKey?'Saving…':'Save Attendance'}</button>
+     </footer>
+    </form>
+   </div>
+  </div>}
  </section>;
 }
