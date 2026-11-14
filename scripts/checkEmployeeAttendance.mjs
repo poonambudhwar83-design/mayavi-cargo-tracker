@@ -57,7 +57,7 @@ assert.ok(api.includes('SET is_active=$2'),'Archive and restore employee without
 assert.ok(!api.includes('DELETE FROM mayavi_salary_employees'),'No destructive deletion of salary roster');
 assert.ok(ui.includes('Employee Attendance & Leave'));
 assert.ok(ui.includes('Save Attendance'));
-assert.ok(ui.includes('Official Reporting Time'));
+assert.ok(ui.includes('OFFICIAL REPORTING TIME'));
 assert.ok(ui.includes('Monthly Attendance Summary'));
 assert.ok(ui.includes('Download Summary CSV'));
 assert.ok(ui.includes('Download Daily Register CSV'));
