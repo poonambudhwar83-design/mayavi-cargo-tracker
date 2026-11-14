@@ -52,21 +52,21 @@ assert.ok(dashboard.includes("tab==='OVERDUE'?'jepo_overdue_not_delivered'"));
 assert.ok(dashboard.includes("readOnly={")===false || dashboard.includes('readOnly'),'Preserve access');
 console.log('JEPO overdue 31st-day, auto-delivered removal, IST midnight and export tab checks passed.');
 const reportSample={awb:'JEPO123456',bookingDate:'2026-10-01',service:'FedEx',vendor:'ICL',
- consignee:'Example Customer',destination:'UK',goodsDescription:'Textbooks and clothes',
+ consignee:'Example Customer',destination:'UK',
  weight:7.5,status:'IN_TRANSIT',liveStatus:'In Transit',liveRemarks:'Arrived at hub'};
 const reportRows=overdueExportData([reportSample],'2026-11-14');
-assert.ok(reportRows[0].includes('Goods Description'));
+assert.ok(!reportRows[0].includes('Goods Description'));
 assert.ok(reportRows[0].includes('Days Overdue'));
-assert.equal(reportRows[1][7],'Textbooks and clothes');
-assert.equal(reportRows[1][10],44);
-assert.equal(reportRows[1][11],14);
-assert.ok(OVERDUE_EXPORT_COLUMNS.length>=13);
+assert.equal(reportRows[1][7],'7.5');
+assert.equal(reportRows[1][9],44);
+assert.equal(reportRows[1][10],14);
+assert.equal(OVERDUE_EXPORT_COLUMNS.length,12);
 const pdfBytes=await createOverdueEditablePdfBytes([reportSample],'2026-11-14');
 const loadedPdf=await PDFDocument.load(pdfBytes);
 assert.equal(loadedPdf.getPageCount(),1);
 const editableFields=loadedPdf.getForm().getFields();
 assert.equal(editableFields.length,OVERDUE_EXPORT_COLUMNS.length);
-assert.equal(loadedPdf.getForm().getTextField('r1_goodsDescription').getText(),'Textbooks and clothes');
+assert.ok(!editableFields.some(field=>field.getName().includes('goodsDescription')));
 assert.equal(loadedPdf.getForm().getTextField('r1_awb').getText(),'JEPO123456');
 assert.equal(loadedPdf.getForm().getTextField('r1_overdueDays').getText(),'14');
 const pdfSource=readFileSync('lib/jepoOverdueExports.js','utf8');
@@ -74,7 +74,7 @@ assert.ok(!/^\s*form\.flatten\(/m.test(pdfSource),'PDF cells must remain editabl
 assert.ok(!pdfSource.includes("'MAYAVI'"),'No application branding in overdue report.');
 assert.ok(dashboard.includes('Download Editable PDF'));
 assert.ok(dashboard.includes('Download Excel'));
-assert.ok(dashboard.includes('Goods Description'));
-assert.ok(dashboard.includes('save_goods_description'));
-console.log('JEPO branded-free editable overdue PDF form, goods descriptions, export fields and downloads passed.');
+assert.ok(!dashboard.includes('Goods Description'));
+assert.ok(!dashboard.includes('save_goods_description'));
+console.log('JEPO branded-free editable overdue PDF form, no unsupported goods column, and downloads passed.');
 console.log('JEPO pending queue labels, retries, sort and filter regression passed.');
