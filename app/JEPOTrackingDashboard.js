@@ -9,6 +9,7 @@ import JEPOTatDashboard from './JEPOTatDashboard.js';
 import {jepoTrackingState,jepoTrackingStatusLabel,sortJepoActiveRecords} from '../lib/jepoTrackingState.js';
 import {jepoDaysSinceBooking,jepoOverdueDays,jepoOverdueRows,jepoTodayIst} from '../lib/jepoOverdue.js';
 import {downloadOverdueEditablePdf,downloadOverdueExcel} from '../lib/jepoOverdueExports.js';
+import {jepoBookingWeekday} from '../lib/jepoBookingDay.js';
 
 const API='/api/jepo-tracking';
 const panel={background:'#fff',border:'1px solid #d9e3ee',borderRadius:13,padding:16,marginTop:14};
@@ -18,7 +19,7 @@ const columns=[
  ['awb','AWB No.'],['liveRemarks','JEPO Progress'],['liveEventWhen','Progress Date/Time'],
  ['status','Tracking Status'],['carrierAwb','Forwarded AWB'],
  ['bookingDate','Booking Date'],['service','Service'],['vendor','Vendor'],['consignee','Consignee Name'],
- ['destination','Destination'],['weight','Chargeable Weight (kg)'],['jpCode','JEPO Code (Account Code)'],
+ ['destination','Destination'],['weight','Chargeable Weight (kg)'],['jpCode','JEPO Code (Account Code)'],['customerName','Customer Name'],
  ['deliveredOn','Delivered Date'],['tat','TAT (days)'],['checkedAt','Last Checked']
 ];
 const day=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
@@ -32,9 +33,10 @@ function csvEscape(value){
 }
 function downloadCsv(rows,name,overdueToday=''){
  const overdueExport=Boolean(overdueToday);
- const headers=[...columns.map(c=>c[1]),...(overdueExport?['Days Since Booking','Overdue by (days)']:[])];
+ const exportColumns=columns.flatMap(([key,label])=>key==='bookingDate'?[[key,label],['bookingDay','Booking Day']]:[[key,label]]);
+ const headers=[...exportColumns.map(c=>c[1]),...(overdueExport?['Days Since Booking','Overdue by (days)']:[])];
  const lines=[headers,...rows.map(row=>[
-  ...columns.map(([k])=>k==='tat'?tatValue(row)??'':row[k]??''),
+  ...exportColumns.map(([k])=>k==='tat'?tatValue(row)??'':k==='bookingDay'?jepoBookingWeekday(row.bookingDate):row[k]??''),
   ...(overdueExport?[jepoDaysSinceBooking(row.bookingDate,overdueToday)??'',jepoOverdueDays(row,overdueToday)??'']:[])
  ])];
  const body=lines.map(line=>line.map(csvEscape).join(',')).join('\r\n');
@@ -54,6 +56,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[duplicateRows,setDuplicateRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
  const [deleteTarget,setDeleteTarget]=useState(null);
+ const [customerFile,setCustomerFile]=useState(null),[customerPreview,setCustomerPreview]=useState(null),[customerMessage,setCustomerMessage]=useState('');
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
  const [exporting,setExporting]=useState('');
@@ -85,6 +88,24 @@ export default function JEPOTrackingDashboard({readOnly=false}){
     const input=document.getElementById('jepo-upload');if(input)input.value='';
    }
   }catch(e){setMessage(e.message||'JEPO upload failed.');}finally{setBusy(false);}
+ }
+ async function uploadCustomers(action){
+  if(!customerFile){setCustomerMessage('Select JP Code / Customer Name Excel or CSV.');return;}
+  setBusy(true);setCustomerMessage('');
+  try{
+   const form=new FormData();form.append('file',customerFile);form.append('action',action);
+   const response=await fetch(API,{method:'POST',body:form,credentials:'include'});
+   const data=await response.json();
+   if(!response.ok||!data.ok)throw Error((data.error||'Customer mapping failed.')+(data.conflicts?.length?' JP Codes: '+data.conflicts.slice(0,5).map(x=>x.jpCode).join(', '):''));
+   setCustomerPreview(data);
+   if(action==='save_customers'){
+    setCustomerMessage('Saved '+number(data.savedCodes)+' JP Code ↔ Customer Name pairs. Matching '+number(data.matchedShipments)+' existing JEPO packets; customer names now appear in Active, Overdue and Delivered.');
+    setCustomerFile(null);
+    const field=document.getElementById('jepo-customer-upload');if(field)field.value='';
+    await load(false);
+   }else setCustomerMessage('Preview: '+number(data.totalCodes)+' JP Codes and '+number(data.matchedShipments)+' matching saved JEPO packets. Check names, then Save Customer Mapping.');
+  }catch(e){setCustomerMessage(e.message||'Could not import customer names.');}
+  finally{setBusy(false);}
  }
  async function deleteAwb(){
   if(!deleteTarget?.awb)return;
@@ -129,7 +150,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const destinations=useMemo(()=>[...new Set(rows.map(x=>x.destination).filter(Boolean))].sort(),[rows]);
  const visible=useMemo(()=>source.filter(r=>{
   const needle=search.trim().toLowerCase();
-  return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.destination,r.jpCode,r.carrierAwb,r.liveStatus].join(' ').toLowerCase().includes(needle))
+  return (!needle||[r.awb,r.service,r.vendor,r.consignee,r.customerName,r.destination,r.jpCode,r.carrierAwb,r.liveStatus].join(' ').toLowerCase().includes(needle))
    &&(!service||r.service===service)&&(!destination||r.destination===destination)
    &&(tab!=='ACTIVE'||trackingStage==='ALL'||jepoTrackingState(r)===trackingStage);
  }),[source,search,service,destination,trackingStage,tab]);
@@ -195,6 +216,24 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      </div>}
     </div>}
    </section>}
+   {!readOnly&&<section style={panel} aria-label="JP Code customer name mapping">
+    <h2 style={{fontSize:17,margin:'0 0 6px'}}>JP Code → Customer Name Mapping</h2>
+    <p style={{fontSize:13,color:'#62778e',margin:'0 0 11px'}}>Upload the separate customer master sheet with JP Code / Account Code and Customer Name / Client Name. Names will match existing and future JEPO AWBs in Active, Overdue and Delivered. Consignee Name stays unchanged.</p>
+    <div style={{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center'}}>
+     <input id="jepo-customer-upload" aria-label="Upload JP Code Customer Name Excel" type="file" accept=".xlsx,.csv" style={{...control,maxWidth:'100%'}} onChange={e=>{setCustomerFile(e.target.files?.[0]||null);setCustomerPreview(null);setCustomerMessage('')}}/>
+     <button style={{...button,background:'#e6f0ff'}} disabled={!customerFile||busy} onClick={()=>void uploadCustomers('preview_customers')}>Preview Customer Mapping</button>
+     <button style={{...button,background:'#166b56',color:'#fff'}} disabled={!customerFile||busy} onClick={()=>void uploadCustomers('save_customers')}>{busy?'Processing…':'Save Customer Mapping'}</button>
+    </div>
+    {customerMessage&&<p role="status" style={{margin:'10px 0 5px',padding:10,borderRadius:7,background:'#edf6ff',fontSize:13}}>{customerMessage}</p>}
+    {customerPreview&&<>
+     <p style={{fontSize:12,color:'#61758a'}}>JP Code heading: {customerPreview.jpHeader} • Customer Name heading: {customerPreview.customerHeader} • Sheet: {customerPreview.sheetName} • Saved AWBs matched: <strong>{customerPreview.matchedShipments}</strong> • Unique JP Codes: {customerPreview.totalCodes}</p>
+     <div style={{overflowX:'auto',maxHeight:245}}>
+      <table style={{borderCollapse:'collapse',fontSize:12,minWidth:360}}><thead><tr>{['JP Code','Customer Name'].map(h=><th key={h} style={{padding:8,background:'#e8f2ff',textAlign:'left'}}>{h}</th>)}</tr></thead>
+       <tbody>{(customerPreview.preview||[]).map(row=><tr key={row.jpCode}><td style={{padding:8,borderBottom:'1px solid #ecf0f4'}}>{row.jpCode}</td><td style={{padding:8,borderBottom:'1px solid #ecf0f4'}}>{row.customerName}</td></tr>)}</tbody>
+      </table>
+     </div>
+    </>}
+   </section>}
    {!readOnly&&deleteTarget&&<div role="alertdialog" aria-label="Confirm JEPO AWB deletion" style={{...panel,border:'2px solid #dc2626',background:'#fff7f7'}}>
     <strong style={{color:'#9f1239'}}>Delete JEPO AWB {deleteTarget.awb}?</strong>
     <p style={{fontSize:13,margin:'8px 0'}}>Consignee: {deleteTarget.consignee||'—'}. This removes the shipment from Active, Delivered, monthly reports and TAT summaries. This cannot be undone.</p>
@@ -240,7 +279,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <small style={{display:'block',marginTop:5}}>As of {day(todayIst)} (IST) • Oldest bookings first • Missing/invalid Booking Dates are excluded.</small>
      </div>}
      <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0',alignItems:'center'}}>
-      <input aria-label="Search JEPO AWB" placeholder="Search AWB, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
+      <input aria-label="Search JEPO AWB" placeholder="Search AWB, customer, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
       <select aria-label="Filter Destination" value={destination} onChange={e=>setDestination(e.target.value)} style={control}><option value="">All Destinations</option>{destinations.map(s=><option key={s}>{s}</option>)}</select>
       {tab==='ACTIVE'&&<select aria-label="Filter Tracking Progress" value={trackingStage} onChange={e=>setTrackingStage(e.target.value)} style={control}>
@@ -261,6 +300,10 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        <tbody>{visible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#f7fbff':'white'}}>
         <td style={{padding:9,borderBottom:'1px solid #e9eef5'}}>{i+1}</td>
         {viewColumns.map(([key])=>{
+         if(key==='bookingDate')return <td key={key} style={{padding:9,borderBottom:'1px solid #e9eef5',minWidth:110}}>
+          <strong style={{display:'block',color:'#244a76'}}>{day(r.bookingDate)}</strong>
+          <small style={{display:'block',marginTop:3,color:'#657890',fontSize:11}}>{jepoBookingWeekday(r.bookingDate)||'—'}</small>
+         </td>;
          let v=key==='tat'?tatValue(r):key==='ageDays'?jepoDaysSinceBooking(r.bookingDate,todayIst):key==='overdueDays'?jepoOverdueDays(r,todayIst):r[key];
          if(['bookingDate','deliveredOn'].includes(key))v=day(v);
          if(key==='checkedAt')v=v?new Date(v).toLocaleString('en-IN',{hour12:false}):'—';
