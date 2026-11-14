@@ -439,3 +439,6 @@
   .registerTable td,.registerTable th{padding:9px 8px}
   .registerTable .registerTopicCell{min-width:130px}
 }
+
+.registerAddSource{display:block;margin-top:7px;padding:5px 8px;font-size:10px;font-weight:800;border:1px solid var(--chapter-border,#cbd9e8);border-radius:5px;background:#fff;color:var(--chapter-ink,#23527e);cursor:pointer}
+.registerAddSource:disabled{opacity:.55;cursor:wait}
