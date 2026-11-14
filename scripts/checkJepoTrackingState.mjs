@@ -70,7 +70,7 @@ assert.equal(loadedPdf.getForm().getTextField('r1_goodsDescription').getText(),'
 assert.equal(loadedPdf.getForm().getTextField('r1_awb').getText(),'JEPO123456');
 assert.equal(loadedPdf.getForm().getTextField('r1_overdueDays').getText(),'14');
 const pdfSource=readFileSync('lib/jepoOverdueExports.js','utf8');
-assert.ok(!/^\\s*form\\.flatten\\(/m.test(pdfSource),'PDF cells must remain editable AcroForm fields.');
+assert.ok(!/^\s*form\.flatten\(/m.test(pdfSource),'PDF cells must remain editable AcroForm fields.');
 assert.ok(!pdfSource.includes("'MAYAVI'"),'No application branding in overdue report.');
 assert.ok(dashboard.includes('Download Editable PDF'));
 assert.ok(dashboard.includes('Download Excel'));
