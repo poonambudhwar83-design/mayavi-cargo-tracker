@@ -179,40 +179,35 @@ assert.ok(page.includes('MCQ Marks Obtained'));
 assert.ok(page.includes('Theory Total Marks'));
 assert.ok(page.includes('Theory Marks Obtained'));
 assert.ok(page.includes('Overall Marks'));
-assert.ok(page.includes('<th>MCQ Attempted</th>'));
-assert.ok(page.includes('<th>MCQ Corrected</th>'));
-assert.ok(page.includes('<th>MCQ Incorrect</th>'));
-assert.ok(page.includes('<th>MCQ %</th>'));
-assert.ok(page.includes('<th>MCQ Done / Total</th>'));
-assert.ok(page.includes('<th>MCQ Pending</th>'));
-assert.ok(page.includes('<th>Incorrect MCQ Nos.</th>'));
-assert.ok(page.includes('<th>Theory Total Marks</th>'));
-assert.ok(page.includes('<th>Theory Marks Obtained</th>'));
-assert.ok(page.includes('<th>Theory Corrected</th>'));
-assert.ok(page.includes('<th>Theory Incorrect</th>'));
+// The saved records now use one handwritten-register-style table with
+// alternating MCQ / Theory lines for each source, with pending always last.
+assert.ok(page.includes('className={styles.registerTable}'));
+assert.ok(page.includes('<th>Subtopic</th><th>Source</th><th>Section</th>'));
+assert.ok(page.includes('<th>Total Questions</th><th>Done / Attempted</th><th>Corrected</th><th>Incorrect</th>'));
+assert.ok(page.includes('<th>Total Marks</th><th>Marks Obtained</th><th>%</th>'));
+assert.ok(page.includes('<th>Incorrect Question Nos.</th>'));
+assert.ok(page.includes('className={styles.registerPendingHeader}>Pending</th>'));
+assert.ok(page.includes('className={styles.registerTypeMcq}>MCQs'));
+assert.ok(page.includes('className={styles.registerTypeTheory}>Theory'));
+assert.ok(page.includes('className={styles.registerPercentage}'));
+assert.ok(page.includes("row.incorrectMcqNumbers||'—'"));
+assert.ok(page.includes("row.incorrectTheoryNumbers||'—'"));
 assert.ok(page.includes('theoryIncorrect(row.theoryDone,row.theoryCorrected)'));
-assert.ok(page.includes('<th>Overall Marks</th>'));
 assert.ok(page.includes('className={styles.pendingCard}'));
 assert.ok(page.includes('className={styles.pendingCount}'));
 assert.ok(page.includes('Total Marks'));
 assert.ok(page.includes('Marks Obtained'));
-assert.ok(page.includes('marksPercentage(row.totalMarks,row.marksObtained)'));
 assert.ok(page.includes("totals.percentage.toFixed(2)+'%'"));
 assert.ok(page.includes("const API='/api/study-notes'"));
 assert.ok(page.includes('chapters.map(section=>'));
-assert.ok(page.includes("topicOrder[key]"),
-  'The same subtopic must retain its chapter numbering across sources');
+assert.ok(page.includes("topicOrder[key]"),'Same subtopic must retain numbering across sources');
 assert.ok(page.includes("topicGroups:[...grouped.values()]"));
-assert.ok(page.includes("section.topicGroups.map(group=>"));
+assert.ok(page.includes("section.topicGroups.flatMap(group=>group.records.map(row=>"));
 assert.ok(page.includes("group.records.map(row=>"));
 assert.ok(page.includes("a.createdAt||''"));
-assert.ok(page.includes("section.topicGroups.map(group=>"));
-assert.ok(page.includes('className={styles.subtopicNumber}'));
-assert.ok(page.includes('className={styles.subtopicSectionLabel}>MCQs'));
-assert.ok(page.includes('className={styles.subtopicSectionLabel}>Theory'));
-assert.ok(css.includes('.subtopicGroup{'));
-assert.ok(css.includes('.subtopicBlock+.subtopicBlock{'));
-assert.ok(!page.includes('row.serialNumber'),'Serial numbers are calculated, not manually stored');
+assert.ok(css.includes('.registerTable{'));
+assert.ok(css.includes('.registerPendingHeader{'));
+assert.ok(!page.includes('row.serialNumber'),'Serial numbers are calculated, not stored');
 assert.ok(page.includes('pending(row.mcqTotal,row.mcqDone)'));
 assert.ok(page.includes('pending(row.theoryTotal,row.theoryDone)'));
 const api=readFileSync('app/api/study-notes/route.js','utf8');
@@ -288,38 +283,27 @@ assert.ok(css.includes('.stats .pendingCard span,.stats .pendingCard b,.pendingC
   'Chapter colours must not conceal red pending counts');
 
 
-// Subtopic UI order and MCQ pending at the extreme right after Delete.
-// Theory follows MCQ inside that same subtopic and chapter article.
+// The two-row register preserves Chapter > Subtopic > Source hierarchy.
+// MCQs precede Theory, and pending counts are the last cells of both rows.
 const resultsMarkup=page.slice(page.indexOf('chapters.map(section=><article'));
-const mcqStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>MCQs');
-const theoryStart=resultsMarkup.indexOf('className={styles.subtopicSectionLabel}>Theory');
-assert.ok(mcqStart>=0&&theoryStart>mcqStart,'MCQs must appear directly above Theory in each subtopic');
+const mcqStart=resultsMarkup.indexOf('className={styles.registerMcqRow}');
+const theoryStart=resultsMarkup.indexOf('className={styles.registerTheoryRow}');
+assert.ok(mcqStart>=0&&theoryStart>mcqStart,'MCQs must be directly above Theory');
 const mcqTable=resultsMarkup.slice(mcqStart,theoryStart);
-assert.ok(mcqTable.includes('{!readOnly&&<th>Actions</th>}<th>MCQ Pending</th>'),
-  'MCQ Pending must be the last column after the Edit/Delete actions');
 assert.ok(mcqTable.indexOf('onClick={()=>remove(row)}>Delete</button>')<
   mcqTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>'),
-  'MCQ pending value must display after Delete');
-assert.equal(mcqTable.match(/<th>MCQ Pending<\/th>/g)?.length,1);
+  'MCQ Pending must follow Edit / Delete');
 assert.equal(mcqTable.match(/pending\(row.mcqTotal,row.mcqDone\)/g)?.length,1);
-
-
-// The two available Physics chapters must visibly differ, with a strong,
-// accessible full-width colour rather than nearly identical pale panels.
+const theoryTable=resultsMarkup.slice(theoryStart,resultsMarkup.indexOf('</Fragment>',theoryStart));
+assert.ok(theoryTable.indexOf('className={styles.registerPercentage}')<
+  theoryTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>'),
+  'Theory Pending must follow Marks and %');
+assert.equal(theoryTable.match(/pending\(row.theoryTotal,row.theoryDone\)/g)?.length,1);
 assert.ok(css.includes('PHYSICS-VIVID-CHAPTER-PALETTE'));
 assert.ok(css.includes('.chapterTone1.chapter .chapterHeading'));
 assert.ok(css.includes('.chapterTone2.chapter .chapterHeading'));
 assert.ok(css.includes('background:linear-gradient(110deg,var(--chapter-accent),var(--chapter-ink))'));
 assert.ok(css.includes('background:var(--chapter-tint)'));
-const theoryTable=resultsMarkup.slice(theoryStart,resultsMarkup.indexOf('</section>)}',theoryStart));
-assert.ok(theoryTable.includes('<th>Overall %</th><th>Theory Pending</th>'),
-  'Theory Pending must appear last after all marks and percentages');
-assert.ok(theoryTable.indexOf("row.marksObtained+' / '+row.totalMarks")<
-  theoryTable.lastIndexOf('<td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>'),
-  'Theory pending data cell must follow the other data columns');
-assert.equal(theoryTable.match(/<th>Theory Pending<\/th>/g)?.length,1);
-assert.equal(theoryTable.match(/pending\(row.theoryTotal,row.theoryDone\)/g)?.length,1);
-
 
 const summaryExample=studyProgressSummary([
   parseStudyEntry({subject:'Physics',chapter:'Physical Quantities',topic:'Forces',source:'Tuition',
@@ -363,7 +347,7 @@ assert.ok(page.includes("if(readOnly||busy)return;"));
 assert.ok(page.includes("if(readOnly)return;"));
 assert.ok(page.includes("{view==='NOTES'&&!readOnly&&<section"));
 assert.ok(page.includes("{!readOnly&&<th>Actions</th>}"));
-assert.ok(page.includes("{!readOnly&&<td><div className={styles.rowActions}>"));
+assert.ok(page.includes("{!readOnly&&<td rowSpan={2}><div className={styles.rowActions}>"));
 assert.ok(page.includes("{!readOnly&&<button type=\"button\" disabled={busy}"));
 assert.ok(page.includes("view==='SUMMARY'&&<section"));
 assert.ok(page.includes("studyProgressSummary(rows,chapterRegistry,subject)"));
