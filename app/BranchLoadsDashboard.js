@@ -15,12 +15,12 @@ const API='/api/branch-loads';
 const newSaveRequestId=()=>typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():null;
 // Use one compact column profile for both Daily Load Entry and saved loads.
 // Identical colgroups plus synchronized scroll keep headings and values lined up.
-const LEDGER_WIDTHS=[98,140,92,90,116,110,100,108,134,146,156,148,184,146,166,200,120,120,124];
-const EXTRA_COST_WIDTH=132;
-const TOTAL_JEPO_WIDTH=194;
-const TAT_WIDTH=94;
-const CONFIRMATION_WIDTH=230;
-const REMARKS_WIDTH=196;
+const LEDGER_WIDTHS=[85,126,88,78,107,102,96,94,122,133,138,132,166,136,144,178,106,106,118];
+const EXTRA_COST_WIDTH=118;
+const TOTAL_JEPO_WIDTH=172;
+const TAT_WIDTH=86;
+const CONFIRMATION_WIDTH=200;
+const REMARKS_WIDTH=172;
 const ledgerWidth=(extra,delivered=false)=>LEDGER_WIDTHS.reduce((sum,width)=>sum+width,TOTAL_JEPO_WIDTH+CONFIRMATION_WIDTH+REMARKS_WIDTH)+(extra?EXTRA_COST_WIDTH:0)+(delivered?TAT_WIDTH:0);
 const ledgerColumns=(extra,delivered=false)=><colgroup>{[...LEDGER_WIDTHS.slice(0,2),...(delivered?[TAT_WIDTH]:[]),...LEDGER_WIDTHS.slice(2,-1),REMARKS_WIDTH,CONFIRMATION_WIDTH,LEDGER_WIDTHS[LEDGER_WIDTHS.length-1],...(extra?[EXTRA_COST_WIDTH]:[]),TOTAL_JEPO_WIDTH].map((width,i)=><col key={i} style={{width:width+'px'}}/>)}</colgroup>;
 const todayIST=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
@@ -743,6 +743,16 @@ export default function BranchLoadsDashboard({currentUser}){
           {lastUpdated&&<span style={{color:'#526b81',fontWeight:500}}> • Screen updated {lastUpdated}</span>}
         </p></div>
     </header>
+    <section className={styles.branchPicker} aria-label="Select Jind or Karnal branch">
+      <strong>SELECT BRANCH</strong>
+      {isAdmin?<div className={styles.branchPickerButtons} role="group" aria-label="Branch selection">
+        {[['ALL','All Branches'],['JIND','Jind'],['KARNAL','Karnal']].map(([value,label])=>
+          <button key={value} type="button" aria-pressed={filter===value}
+            className={filter===value?styles.branchPickerActive:styles.branchPickerButton}
+            onClick={()=>setFilter(value)}>{label}</button>)}
+      </div>:<span className={styles.branchPickerLocked}>{userBranch} Branch</span>}
+      <small>Selected branch applies to Active, Delivered, Daily Summary and Monthly Data.</small>
+    </section>
     <div className={styles.metrics} aria-label={sheet==='MONTHLY'?'Selected booking month totals':'Active and Delivered combined summary'}>
       <div><span>{'Total Load • '+overviewPeriod}</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
       <div><span>{'Amount • '+overviewPeriod}</span><strong>{fmt(overviewTotals.amount)}</strong></div>
@@ -811,9 +821,7 @@ export default function BranchLoadsDashboard({currentUser}){
         <div className={styles.scroller}><table className={styles.table+' '+styles.summaryTable} aria-label="Daily totals by branch">
           <thead><tr>
             <th>Date &amp; Day</th>
-            <th>Branch{isAdmin&&<select aria-label="Daily summary branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}>
-              <option value="ALL">Both</option>{BRANCHES.map(b=><option key={b} value={b}>{b}</option>)}
-            </select>}</th>
+            <th>Branch</th>
             <th className={styles.number}>Total Loads</th>
             <th className={styles.number}>Total Weight (kg)</th>
             <th className={styles.number}>Total Branch Amount (₹)</th>
@@ -899,7 +907,7 @@ export default function BranchLoadsDashboard({currentUser}){
       {sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
         <thead><tr>
-          <th>Branch{isAdmin&&<select aria-label="Branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Both</option>{BRANCHES.map(x=><option key={x} value={x}>{x}</option>)}</select>}</th>
+          <th>Branch</th>
           <th>{sheet==='DELIVERED'?'Delivery Date ↓':'Date'}</th>
           {sheet==='DELIVERED'&&<th title="Booking Date to Delivery Date, both days included">TAT (Days)</th>}
           <th>Load Received (kg)</th><th>Rate (₹/kg)</th><th>Amount (₹) • Auto</th><th>Received (₹)</th><th>Balance (₹) • Auto</th><th>JEPO Rate (₹/kg)</th><th>Amount Paid to JEPO (₹) • Auto</th><th>Amount Paid to Branch (₹) • Auto</th><th>Destination</th><th>Service</th><th>Commodity</th><th>JEPO Tracking No.</th><th>Status</th><th>Live Remarks</th><th>Entered By</th><th>Last Edited By</th><th>Remarks</th><th>UTR / Cash • Admin Yes/No</th><th>Actions</th>{hasExtraCostColumn&&<th className={styles.extraCostHeader}>Extra Cost (₹)</th>}<th className={styles.totalJepoHeader}>Total Amount Paid to JEPO (₹)</th>
