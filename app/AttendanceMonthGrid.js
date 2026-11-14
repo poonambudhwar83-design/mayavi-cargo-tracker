@@ -114,7 +114,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tbody>
    </table>
   </div>
-  <p className={styles.footnote}>Unmarked dates up to today count as Present automatically (P). Future dates are not counted. Sundays count as Present unless explicitly marked Weekly Off or Holiday. Clear (+) returns a date to automatic Present. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted allows restoration without losing history.</p>
+  <p className={styles.footnote}>Unmarked dates up to today count as Present automatically (P). Future dates are not counted. Sundays are shaded but count as Present unless explicitly marked Weekly Off or Holiday. Clear (+) returns a date to automatic Present. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted allows restoration without losing history.</p>
   {editor&&<div className={styles.modalShade} onMouseDown={event=>{if(event.target===event.currentTarget&&!savingKey)setEditor(null)}}>
    <div className={styles.modal} role="dialog" aria-modal="true" aria-label={'Edit attendance '+editor.employeeName+' '+editor.date}>
     <form onSubmit={submitEditor}>
