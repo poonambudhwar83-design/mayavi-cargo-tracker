@@ -568,7 +568,8 @@ export default function StudyNotesDashboard({readOnly=false}){
               }))}
             </tbody>
           </table>
-        </div>}}
+        </div>}
+      </article>)}
     </section>}
   </main>;
 }
