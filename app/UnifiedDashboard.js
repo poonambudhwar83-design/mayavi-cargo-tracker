@@ -8,6 +8,7 @@ import StudyNotesDashboard from './StudyNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import SalaryDashboard from './SalaryDashboard.js';
+import EmployeeAttendanceDashboard from './EmployeeAttendanceDashboard.js';
 import MonthlyExpensesDashboard from './MonthlyExpensesDashboard.js';
 import CountryLoadAnalysisDashboard from './CountryLoadAnalysisDashboard.js';
 import AuditDataAnalysisDashboard from './AuditDataAnalysisDashboard.js';
@@ -228,6 +229,8 @@ export default function UnifiedDashboard(){
       ?<ExportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='SALARY'
       ?<SalaryDashboard/>
+    :session?.role==='admin'&&selectedDashboard==='EMPLOYEE_ATTENDANCE'
+      ?<EmployeeAttendanceDashboard/>
     :session?.role==='admin'&&selectedDashboard==='MONTHLY_EXPENSES'
       ?<MonthlyExpensesDashboard/>
     :session?.role==='admin'&&selectedDashboard==='ACCOUNT'
@@ -256,6 +259,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EMPLOYEE_ATTENDANCE')} style={{...topAccountButton,background:selectedDashboard==='EMPLOYEE_ATTENDANCE'?'#dbeafe':'#fff',color:'#17419b'}}>ATTENDANCE & LEAVE</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY_EXPENSES')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY_EXPENSES'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY EXPENSES</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('OTHER_COUNTRIES')} style={{...topAccountButton,background:selectedDashboard==='OTHER_COUNTRIES'?'#dbeafe':'#fff',color:'#17419b'}}>OTHER COURIER SUMMARY</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('DATA_ANALYSIS')} style={{...topAccountButton,background:selectedDashboard==='DATA_ANALYSIS'?'#dbeafe':'#fff',color:'#17419b'}}>DATA ANALYSIS</button>}
