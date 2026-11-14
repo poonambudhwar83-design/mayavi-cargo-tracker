@@ -503,85 +503,72 @@ export default function StudyNotesDashboard({readOnly=false}){
           </small>
         </div>
         {!section.topics.length?<p className={styles.empty}>No subtopics in this chapter yet. Select it above to add one.</p>:
-        <div className={styles.chapterSubtopics}>
-          {section.topicGroups.map(group=><section className={styles.subtopicGroup} key={group.key}>
-            <div className={styles.subtopicHeading}>
-              <span className={styles.subtopicNumber}>{studyTopicNumber('Chapter '+section.chapterIndex,
-                group.topicIndex,section.chapterIndex)}</span>
-              <strong>{group.topic}</strong>
-              <small>{group.records.length} {group.records.length===1?'source':'sources'}</small>
-              {!readOnly&&<button type="button" disabled={busy} onClick={()=>{
-                setEditId('');
-                setDraft({...blank(),chapter:section.chapter,topic:group.topic});
-                setSourceSelection('');setOtherSource('');
-                setMessage('Choose a source for '+group.topic+'.');
-                window.scrollTo({top:0,behavior:'smooth'});
-              }}>+ Add Source</button>}
-            </div>
-            <div className={styles.subtopicBlock}>
-              <h4 className={styles.subtopicSectionLabel}>MCQs</h4>
-          <div className={styles.tableWrap}><table>
+        <div className={styles.registerScroll} tabIndex={0}
+          aria-label={'Chapter '+section.chapterIndex+' question register'}>
+          <table className={styles.registerTable}>
             <thead><tr>
-              <th>Source</th>
-              <th>MCQ Done / Total</th>
-              <th>MCQ Attempted</th><th>MCQ Corrected</th>
-              <th>MCQ Incorrect</th><th>Incorrect MCQ Nos.</th><th>MCQ %</th>
-              {!readOnly&&<th>Actions</th>}<th>MCQ Pending</th>
+              <th>Subtopic</th><th>Source</th><th>Section</th>
+              <th>Total Questions</th><th>Done / Attempted</th><th>Corrected</th><th>Incorrect</th>
+              <th>Total Marks</th><th>Marks Obtained</th><th>%</th>
+              <th>Incorrect Question Nos.</th>
+              {!readOnly&&<th>Actions</th>}
+              <th className={styles.registerPendingHeader}>Pending</th>
             </tr></thead>
-            <tbody>{group.records.map(row=><tr key={row.id}>
-              
-              <td className={styles.sourceCell}>{row.source||'—'}</td>
-              <td>{row.mcqDone} / {row.mcqTotal}</td>
-              <td>{row.mcqAttempted===null||row.mcqAttempted===undefined?'—':row.mcqAttempted}</td>
-              <td>{row.mcqCorrected===null||row.mcqCorrected===undefined?'—':row.mcqCorrected}</td>
-              <td>{mcqIncorrect(row.mcqAttempted,row.mcqCorrected)===null?'—':
-                mcqIncorrect(row.mcqAttempted,row.mcqCorrected)}</td>
-              <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
-              <td>{mcqAccuracy(row.mcqAttempted,row.mcqCorrected)===null?'—':
-                mcqAccuracy(row.mcqAttempted,row.mcqCorrected).toFixed(2)+'%'}</td>
-              {!readOnly&&<td><div className={styles.rowActions}>
-                <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
-                <button type="button" className={styles.delete} disabled={busy}
-                  onClick={()=>remove(row)}>Delete</button>
-              </div></td>}
-              <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
-            </tr>)}</tbody>
-          </table></div>
-            </div>
-            <div className={styles.subtopicBlock}>
-              <h4 className={styles.subtopicSectionLabel}>Theory</h4>
-          <div className={styles.tableWrap}><table>
-            <thead><tr>
-              <th>Source</th>
-              <th>Theory Total</th><th>Theory Attempted</th>
-              <th>Theory Corrected</th><th>Theory Incorrect</th><th>Incorrect Theory Nos.</th>
-              <th>Theory Total Marks</th><th>Theory Marks Obtained</th><th>Theory %</th>
-              <th>Overall Marks</th><th>Overall %</th><th>Theory Pending</th>
-            </tr></thead>
-            <tbody>{group.records.map(row=><tr key={row.id}>
-              
-              <td className={styles.sourceCell}>{row.source||'—'}</td>
-              <td>{row.theoryTotal}</td>
-              <td>{row.theoryDone}</td>
-              <td>{row.theoryCorrected===null||row.theoryCorrected===undefined?'—':row.theoryCorrected}</td>
-              <td>{theoryIncorrect(row.theoryDone,row.theoryCorrected)===null?'—':
-                theoryIncorrect(row.theoryDone,row.theoryCorrected)}</td>
-              <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
-              <td>{row.theoryMarksTotal===null||row.theoryMarksTotal===undefined?'—':row.theoryMarksTotal}</td>
-              <td>{row.theoryMarksObtained===null||row.theoryMarksObtained===undefined?'—':row.theoryMarksObtained}</td>
-              <td>{marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained)===null?'—':
-                marksPercentage(row.theoryMarksTotal,row.theoryMarksObtained).toFixed(2)+'%'}</td>
-              <td>{row.totalMarks===null||row.totalMarks===undefined?'—':
-                row.marksObtained+' / '+row.totalMarks}</td>
-              <td>{marksPercentage(row.totalMarks,row.marksObtained)===null?'—':
-                marksPercentage(row.totalMarks,row.marksObtained).toFixed(2)+'%'}</td>
-              <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
-            </tr>)}</tbody>
-          </table></div>
-            </div>
-          </section>)}
-        </div>}
-      </article>)}
+            <tbody>
+              {section.topicGroups.flatMap(group=>group.records.map(row=>{
+                // Present a mark-by-mark register without modifying saved marking.
+                // When no manual marks were entered, use attempted/corrected
+                // counts for 1-mark questions as a transparent display fallback.
+                const mcqTotalMarks=row.mcqMarksTotal??(row.mcqAttempted??null);
+                const mcqObtained=row.mcqMarksObtained??(row.mcqCorrected??null);
+                const theoryTotalMarks=row.theoryMarksTotal??(
+                  row.theoryCorrected==null?null:row.theoryDone);
+                const theoryObtained=row.theoryMarksObtained??(row.theoryCorrected??null);
+                const mcqGrade=marksPercentage(mcqTotalMarks,mcqObtained);
+                const theoryGrade=marksPercentage(theoryTotalMarks,theoryObtained);
+                const subtopicNumber=studyTopicNumber('Chapter '+section.chapterIndex,
+                  group.topicIndex,section.chapterIndex);
+                const shown=v=>v===null||v===undefined?'—':v;
+                return <Fragment key={row.id}>
+                  <tr className={styles.registerMcqRow}>
+                    <td rowSpan={2} className={styles.registerTopicCell}>
+                      <span className={styles.registerTopicNumber}>{subtopicNumber}</span>
+                      <strong>{group.topic}</strong>
+                    </td>
+                    <td rowSpan={2} className={styles.registerSourceCell}>{row.source||'—'}</td>
+                    <td><span className={styles.registerTypeMcq}>MCQs</span></td>
+                    <td>{row.mcqTotal}</td>
+                    <td>{row.mcqDone}</td>
+                    <td>{shown(row.mcqCorrected)}</td>
+                    <td>{shown(mcqIncorrect(row.mcqAttempted,row.mcqCorrected))}</td>
+                    <td>{shown(mcqTotalMarks)}</td>
+                    <td>{shown(mcqObtained)}</td>
+                    <td className={styles.registerPercentage}>{mcqGrade===null?'—':mcqGrade.toFixed(2)+'%'}</td>
+                    <td className={styles.questionNumbers}>{row.incorrectMcqNumbers||'—'}</td>
+                    {!readOnly&&<td rowSpan={2}><div className={styles.rowActions}>
+                      <button type="button" disabled={busy} onClick={()=>edit(row)}>Edit</button>
+                      <button type="button" className={styles.delete} disabled={busy}
+                        onClick={()=>remove(row)}>Delete</button>
+                    </div></td>}
+                    <td className={styles.pendingCount}>{pending(row.mcqTotal,row.mcqDone)}</td>
+                  </tr>
+                  <tr className={styles.registerTheoryRow}>
+                    <td><span className={styles.registerTypeTheory}>Theory</span></td>
+                    <td>{row.theoryTotal}</td>
+                    <td>{row.theoryDone}</td>
+                    <td>{shown(row.theoryCorrected)}</td>
+                    <td>{shown(theoryIncorrect(row.theoryDone,row.theoryCorrected))}</td>
+                    <td>{shown(theoryTotalMarks)}</td>
+                    <td>{shown(theoryObtained)}</td>
+                    <td className={styles.registerPercentage}>{theoryGrade===null?'—':theoryGrade.toFixed(2)+'%'}</td>
+                    <td className={styles.questionNumbers}>{row.incorrectTheoryNumbers||'—'}</td>
+                    <td className={styles.pendingCount}>{pending(row.theoryTotal,row.theoryDone)}</td>
+                  </tr>
+                </Fragment>;
+              }))}
+            </tbody>
+          </table>
+        </div>}}
     </section>}
   </main>;
 }
