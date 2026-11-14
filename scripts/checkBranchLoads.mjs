@@ -409,7 +409,14 @@ assert.ok(ui.includes("sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div className={sty
 assert.ok(ui.includes("if(sheet==='SUMMARY'){"));
 assert.ok(ui.includes("Daily Summary"));
 assert.ok(ui.includes("Total Branch Amount (₹)"));
-assert.ok(ui.includes("Daily summary branch filter"));
+assert.ok(ui.includes('aria-label="Branch selection"'));
+assert.ok(ui.includes("['ALL','All Branches'],['JIND','Jind'],['KARNAL','Karnal']"));
+assert.ok(ui.includes('className={styles.branchPickerActive:styles.branchPickerButton}')===false);
+assert.ok(ui.includes('styles.branchPickerActive:styles.branchPickerButton'));
+assert.ok(stylesheet.includes('.branchPickerButtons'));
+assert.ok(stylesheet.includes('.summaryTable{width:max-content!important'));
+assert.ok(!ui.includes("Daily summary branch filter"));
+assert.ok(!ui.includes('aria-label="Branch filter"'));
 assert.ok(ui.includes("sheet==='ACTIVE'&&editing==='new'"));
 assert.ok(ui.includes("Delivered Sheet ({deliveredCount})"));
 console.log('Jind/Karnal daily loads, Daily Summary and branch data isolation checks passed.');
