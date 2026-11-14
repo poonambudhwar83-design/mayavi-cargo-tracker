@@ -8,6 +8,7 @@ import JEPOMonthlyDashboard from './JEPOMonthlyDashboard.js';
 import JEPOTatDashboard from './JEPOTatDashboard.js';
 import {jepoTrackingState,jepoTrackingStatusLabel,sortJepoActiveRecords} from '../lib/jepoTrackingState.js';
 import {jepoDaysSinceBooking,jepoOverdueDays,jepoOverdueRows,jepoTodayIst} from '../lib/jepoOverdue.js';
+import {downloadOverdueEditablePdf,downloadOverdueExcel} from '../lib/jepoOverdueExports.js';
 
 const API='/api/jepo-tracking';
 const panel={background:'#fff',border:'1px solid #d9e3ee',borderRadius:13,padding:16,marginTop:14};
@@ -31,10 +32,10 @@ function csvEscape(value){
 }
 function downloadCsv(rows,name,overdueToday=''){
  const overdueExport=Boolean(overdueToday);
- const headers=[...columns.map(c=>c[1]),...(overdueExport?['Days Since Booking','Overdue by (days)']:[])];
+ const headers=[...columns.map(c=>c[1]),...(overdueExport?['Goods Description','Days Since Booking','Overdue by (days)']:[])];
  const lines=[headers,...rows.map(row=>[
   ...columns.map(([k])=>k==='tat'?tatValue(row)??'':row[k]??''),
-  ...(overdueExport?[jepoDaysSinceBooking(row.bookingDate,overdueToday)??'',jepoOverdueDays(row,overdueToday)??'']:[])
+  ...(overdueExport?[row.goodsDescription??'',jepoDaysSinceBooking(row.bookingDate,overdueToday)??'',jepoOverdueDays(row,overdueToday)??'']:[])
  ])];
  const body=lines.map(line=>line.map(csvEscape).join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+body],{type:'text/csv;charset=utf-8'}));
@@ -55,6 +56,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const [deleteTarget,setDeleteTarget]=useState(null);
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
+ const [goodsDrafts,setGoodsDrafts]=useState({});
+ const [exporting,setExporting]=useState('');
  async function load(showError=true){
   setFetching(true);
   try{
@@ -97,6 +100,28 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   }catch(e){setMessage(e.message||'Could not delete AWB.');}
   finally{setBusy(false);}
  }
+ async function saveGoodsDescription(row){
+  if(!row?.awb)return;
+  setBusy(true);setMessage('');
+  try{
+   const goodsDescription=String(goodsDrafts[row.awb]??row.goodsDescription??'').trim();
+   const res=await fetch(API,{method:'PATCH',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({action:'save_goods_description',awb:row.awb,goodsDescription})});
+   const data=await res.json();
+   if(!res.ok||!data.ok)throw Error(data.error||'Goods Description could not be saved.');
+   setGoodsDrafts(prev=>{const next={...prev};delete next[row.awb];return next;});
+   setRows(prev=>prev.map(item=>item.awb===row.awb?{...item,goodsDescription:data.goodsDescription}:item));
+   setMessage('Goods Description saved for '+row.awb+'.');
+  }catch(e){setMessage(e.message||'Unable to save goods description.');}
+  finally{setBusy(false);}
+ }
+ async function exportOverdue(format){
+  setExporting(format);setMessage('');
+  try{
+   if(format==='PDF')await downloadOverdueEditablePdf(visible,todayIst);
+   else await downloadOverdueExcel(visible,todayIst);
+  }catch(e){setMessage('Overdue '+format+' could not be downloaded: '+String(e.message||e));}
+  finally{setExporting('');}
+ }
  async function refresh(awbs){
   if(!awbs?.length)return;
   setBusy(true);setMessage('Checking JEPO live tracking for '+awbs.length+' AWB(s)…');
@@ -114,7 +139,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const todayIst=jepoTodayIst(lastLoad||new Date());
  const overdue=useMemo(()=>jepoOverdueRows(active,todayIst),[active,todayIst]);
  const source=tab==='DELIVERED'?delivered:tab==='OVERDUE'?overdue:active;
- const viewColumns=tab==='OVERDUE'?[...columns,['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)']]:columns;
+ const viewColumns=tab==='OVERDUE'?[...columns.flatMap(entry=>entry[0]==='consignee'?[entry,['goodsDescription','Goods Description']]:[entry]),['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)']]:columns;
  const services=useMemo(()=>[...new Set(rows.map(x=>x.service).filter(Boolean))].sort(),[rows]);
  const destinations=useMemo(()=>[...new Set(rows.map(x=>x.destination).filter(Boolean))].sort(),[rows]);
  const visible=useMemo(()=>source.filter(r=>{
@@ -237,6 +262,10 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        <option value="ALL">All Tracking States</option><option value="RETRY_NEEDED">Retry Needed</option>
        <option value="LIVE_UPDATED">Live Updated</option><option value="PROGRESS_ONLY">JEPO Progress Available</option><option value="AWAITING_FIRST_CHECK">Awaiting First Check</option>
       </select>}
+      {tab==='OVERDUE'&&<>
+       <button style={{...button,background:'#e8f3ff',color:'#174b85'}} disabled={!visible.length||Boolean(exporting)} onClick={()=>void exportOverdue('PDF')}>{exporting==='PDF'?'Preparing PDF…':'Download Editable PDF'}</button>
+       <button style={{...button,background:'#e9f8f0',color:'#166341'}} disabled={!visible.length||Boolean(exporting)} onClick={()=>void exportOverdue('Excel')}>{exporting==='Excel'?'Preparing Excel…':'Download Excel'}</button>
+      </>}
       <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':tab==='OVERDUE'?'jepo_overdue_not_delivered':'jepo_active',tab==='OVERDUE'?todayIst:'')}>Export CSV</button>
       {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
@@ -247,6 +276,11 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        <tbody>{visible.map((r,i)=><tr key={r.awb} style={{background:i%2?'#f7fbff':'white'}}>
         <td style={{padding:9,borderBottom:'1px solid #e9eef5'}}>{i+1}</td>
         {viewColumns.map(([key])=>{
+         if(key==='goodsDescription')return <td key={key} style={{padding:8,minWidth:185,borderBottom:'1px solid #e9eef5'}}>
+          {readOnly?(r.goodsDescription||'—'):<input aria-label={'Goods Description for '+r.awb} type="text" maxLength={400} placeholder="Enter goods description" disabled={busy}
+           style={{...control,padding:'6px 7px',width:'100%',minWidth:180}} value={goodsDrafts[r.awb]??r.goodsDescription??''}
+           onChange={event=>setGoodsDrafts(prev=>({...prev,[r.awb]:event.target.value}))}/>}
+         </td>;
          let v=key==='tat'?tatValue(r):key==='ageDays'?jepoDaysSinceBooking(r.bookingDate,todayIst):key==='overdueDays'?jepoOverdueDays(r,todayIst):r[key];
          if(['bookingDate','deliveredOn'].includes(key))v=day(v);
          if(key==='checkedAt')v=v?new Date(v).toLocaleString('en-IN',{hour12:false}):'—';
@@ -258,6 +292,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
         })}
         {!readOnly&&<td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>
          <div style={{display:'flex',alignItems:'center',gap:6}}>
+          {tab==='OVERDUE'&&<button style={{...button,padding:'5px 9px',color:'#145e43',background:'#e5f8ed'}} disabled={busy||goodsDrafts[r.awb]===undefined||goodsDrafts[r.awb]===r.goodsDescription} onClick={()=>void saveGoodsDescription(r)}>Save Goods</button>}
           <button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button>
           <button aria-label={'Delete JEPO AWB '+r.awb} style={{...button,padding:'5px 9px',color:'#b91c1c',borderColor:'#f5baba',background:'#fff1f2'}} disabled={busy} onClick={()=>setDeleteTarget({awb:r.awb,consignee:r.consignee})}>Delete</button>
          </div>
