@@ -22,7 +22,7 @@ const freshDay=()=>({employeeId:'',date:todayIST(),status:'PRESENT',checkIn:'',m
 export default function EmployeeAttendanceDashboard(){
  const [month,setMonth]=useState(()=>todayIST().slice(0,7));
  const [employees,setEmployees]=useState([]),[entries,setEntries]=useState([]);
- const [company,setCompany]=useState(''),[search,setSearch]=useState(''),[includeArchived,setIncludeArchived]=useState(false);
+ const [company,setCompany]=useState(''),[search,setSearch]=useState(''),[includeArchived,setIncludeArchived]=useState(false),[showDeleted,setShowDeleted]=useState(false);
  const [draft,setDraft]=useState(freshDay),[adding,setAdding]=useState(false),[profile,setProfile]=useState({employeeName:'',companyName:'',designation:'',salaryAmount:'0',reportingTime:''});
  const [startTime,setStartTime]=useState(''),[statusNote,setStatusNote]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
  const [companies,setCompanies]=useState([]),[designations,setDesignations]=useState([]);
@@ -42,8 +42,8 @@ export default function EmployeeAttendanceDashboard(){
  useEffect(()=>{void load();},[load]);
  const selected=employees.find(e=>e.id===draft.employeeId);
  useEffect(()=>{setStartTime(selected?.reportingTime||'');},[selected?.id,selected?.reportingTime]);
- const active=useMemo(()=>employees.filter(e=>e.isActive),[employees]);
- const list=useMemo(()=>employees.filter(e=>(includeArchived||e.isActive)&&(!company||e.companyName===company)&&(!search||e.employeeName.toLowerCase().includes(search.trim().toLowerCase()))),[employees,includeArchived,company,search]);
+ const active=useMemo(()=>employees.filter(e=>e.isActive&&!e.attendanceHidden),[employees]);
+ const list=useMemo(()=>employees.filter(e=>(includeArchived||e.isActive)&&(showDeleted||!e.attendanceHidden)&&(!company||e.companyName===company)&&(!search||e.employeeName.toLowerCase().includes(search.trim().toLowerCase()))),[employees,includeArchived,showDeleted,company,search]);
  const visibleIds=useMemo(()=>new Set(list.map(e=>e.id)),[list]);
  const sums=useMemo(()=>attendanceMonthlySummary(list,entries),[list,entries]);
  const rolled=useMemo(()=>attendanceRollup(sums),[sums]);
@@ -139,6 +139,13 @@ export default function EmployeeAttendanceDashboard(){
   }
  }
  async function addEmployee(ev){ev.preventDefault();if(await save('add_employee',profile)){setAdding(false);setProfile({employeeName:'',companyName:'',designation:'',salaryAmount:'0',reportingTime:''});}}
+ async function changeAttendanceEmployeeVisibility(emp,restore=false){
+  if(busy||savingKey)return;
+  if(!restore&&!window.confirm('Delete '+emp.employeeName+' from the Attendance list?\n\nThis will hide the employee from the active Attendance sheet. Saved attendance, salary, and past records will NOT be deleted. You can restore the employee using Show Deleted.'))return;
+  if(restore&&!window.confirm('Restore '+emp.employeeName+' to the Attendance list?'))return;
+  const ok=await save(restore?'restore_to_attendance':'remove_from_attendance',{employeeId:emp.id,confirm:true});
+  if(ok&&!restore&&draft.employeeId===emp.id)setDraft(freshDay());
+ }
  function archiveEmployee(emp){
   const next=!emp.isActive;
   if(!window.confirm((next?'Restore ':'Archive ')+emp.employeeName+'? '+(next?'Employee will return to active list.':'Existing salary and attendance history will remain saved.')))return;
@@ -177,9 +184,12 @@ export default function EmployeeAttendanceDashboard(){
     <Field label="COMPANY"><select aria-label="Filter attendance grid by company" value={company} onChange={e=>setCompany(e.target.value)} style={input}><option value="">All Companies</option>{companies.map(c=><option value={c} key={c}>{c}</option>)}</select></Field>
     <Field label="FIND EMPLOYEE" wide><input aria-label="Search attendance grid employee" type="search" placeholder="Search employee…" value={search} onChange={e=>setSearch(e.target.value)} style={input}/></Field>
     <label style={{fontSize:12,fontWeight:800,color:muted,display:'flex',gap:7,alignItems:'center',paddingBottom:10}}><input type="checkbox" checked={includeArchived} onChange={e=>setIncludeArchived(e.target.checked)}/>Archived</label>
+    <label style={{fontSize:12,fontWeight:800,color:muted,display:'flex',gap:7,alignItems:'center',paddingBottom:10}}><input type="checkbox" aria-label="Show Deleted employees" checked={showDeleted} onChange={e=>setShowDeleted(e.target.checked)}/>Show Deleted</label>
    </div>
    <AttendanceMonthGrid key={month} month={month} employees={list} entries={entries} savingKey={savingKey}
-    onQuickMark={quickMark} onSaveDetails={saveGridDetails} onClearDay={clearGridDay} onExport={downloadMonthlySheet}/>
+    onQuickMark={quickMark} onSaveDetails={saveGridDetails} onClearDay={clearGridDay} onExport={downloadMonthlySheet}
+    onRemoveEmployee={emp=>changeAttendanceEmployeeVisibility(emp,false)}
+    onRestoreEmployee={emp=>changeAttendanceEmployeeVisibility(emp,true)}/>
    <section aria-label="Employee attendance monthly overview" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10,marginBottom:17}}>
     <StatCard label="Employees" value={rolled.employees} note="Selected staff"/>
     <StatCard label="Present Days" value={fmt(rolled.present)}/>
@@ -207,7 +217,7 @@ export default function EmployeeAttendanceDashboard(){
      <Field label="REPORTING TIME"><input type="time" style={input} value={profile.reportingTime} onChange={e=>setProfile(p=>({...p,reportingTime:e.target.value}))}/></Field>
      <button type="submit" disabled={busy} style={{...btn,background:'#1c6c53',color:'#fff'}}>Save Employee</button>
     </form>}
-    <p style={{fontSize:12,color:muted,marginBottom:0}}>Archive hides an employee from new Salary/Attendance entries without deleting old salary or leave records. To change name, company, designation or salary, use Edit on the Salary page.</p>
+    <p style={{fontSize:12,color:muted,marginBottom:0}}>Delete from Attendance removes staff only from the Attendance view (not Salary); use Show Deleted to restore. Archive hides from new Salary/Attendance entries. Past salary and attendance history remain safe.</p>
     <div style={{maxHeight:300,overflow:'auto',marginTop:12,border:'1px solid '+border,borderRadius:9}}>
      <table style={{borderCollapse:'collapse',width:'100%',minWidth:720}}><thead><tr>{['Employee','Company','Designation','Reporting Time','Attendance','Manage'].map(h=><th key={h} style={header}>{h}</th>)}</tr></thead>
       <tbody>{list.map(e=><tr key={e.id} style={{background:e.isActive?'#fff':'#f5f6f9',opacity:e.isActive?1:.74}}>
@@ -215,7 +225,14 @@ export default function EmployeeAttendanceDashboard(){
        <td style={cell}>{e.companyName||'—'}</td><td style={cell}>{e.designation||'—'}</td>
        <td style={cell}>{e.reportingTime||'Not set'}</td>
        <td style={cell}><button style={{...btn,padding:'6px 10px'}} type="button" disabled={!e.isActive} onClick={()=>pickEmployee(e)}>Mark Day</button></td>
-       <td style={cell}><button type="button" disabled={busy} style={{...btn,padding:'6px 10px',background:e.isActive?'#fff1f2':'#e7f8ed',color:e.isActive?'#9e2538':'#166534'}} onClick={()=>archiveEmployee(e)}>{e.isActive?'Archive':'Restore'}</button></td>
+       <td style={cell}>
+        <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+         <button type="button" disabled={busy} style={{...btn,padding:'6px 10px',background:e.isActive?'#fff1f2':'#e7f8ed',color:e.isActive?'#9e2538':'#166534'}} onClick={()=>archiveEmployee(e)}>{e.isActive?'Archive':'Restore'}</button>
+         <button type="button" aria-label={(e.attendanceHidden?'Restore to Attendance ':'Delete from Attendance ')+e.employeeName}
+          disabled={busy||Boolean(savingKey)} style={{...btn,padding:'6px 10px',background:e.attendanceHidden?'#e7f8ed':'#fff1f2',color:e.attendanceHidden?'#166534':'#b91c1c'}}
+          onClick={()=>void changeAttendanceEmployeeVisibility(e,Boolean(e.attendanceHidden))}>{e.attendanceHidden?'Restore Attendance':'Delete'}</button>
+        </div>
+       </td>
       </tr>)}
       {!list.length&&<tr><td style={cell} colSpan={6}>No employees match these filters.</td></tr>}
       </tbody>
