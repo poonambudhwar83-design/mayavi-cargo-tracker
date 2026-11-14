@@ -26,9 +26,9 @@ async function auth(request,sql,{readOnlyAllowed=false}={}){
  if(!user||!user.is_active||Number(user.session_version)!==Number(session.sessionVersion||0))return false;
  return isAdmin?user.role==='admin':user.role==='employee'&&user.branch_scope==='HARYANA';
 }
-const columns="awb,service,vendor,consignee,destination,chargeable_weight,jp_code,to_char(booking_date,'YYYY-MM-DD') AS booking_date,status,live_status,carrier_awb,live_remarks,live_event_when,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,checked_at,tracking_error,import_file,created_at";
+const columns="awb,service,vendor,consignee,destination,goods_description,chargeable_weight,jp_code,to_char(booking_date,'YYYY-MM-DD') AS booking_date,status,live_status,carrier_awb,live_remarks,live_event_when,to_char(delivered_on,'YYYY-MM-DD') AS delivered_on,delivery_date_source,checked_at,tracking_error,import_file,created_at";
 function rowData(row){
- return {awb:row.awb,service:row.service,vendor:row.vendor,consignee:row.consignee,destination:row.destination,
+ return {awb:row.awb,service:row.service,vendor:row.vendor,consignee:row.consignee,destination:row.destination,goodsDescription:row.goods_description||'',
   weight:row.chargeable_weight===null?null:Number(row.chargeable_weight),jpCode:row.jp_code,
   bookingDate:row.booking_date,status:row.status,liveStatus:row.live_status,carrierAwb:row.carrier_awb,
   liveRemarks:row.live_remarks,liveEventWhen:row.live_event_when,deliveredOn:row.delivered_on,
@@ -117,8 +117,8 @@ export async function POST(request){
   const session=readSession(request);
   for(let i=0;i<parsed.records.length;i+=200){
    const part=parsed.records.slice(i,i+200);
-   await sql.query("INSERT INTO mayavi_jepo_tracking (awb,service,vendor,consignee,destination,chargeable_weight,jp_code,booking_date,imported_by,import_file) SELECT x.awb,x.service,x.vendor,x.consignee,x.destination,x.weight,x.jp_code,NULLIF(x.booking_date,'')::date,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,service text,vendor text,consignee text,destination text,weight numeric,jp_code text,booking_date text) ON CONFLICT (awb) DO NOTHING",
-    [JSON.stringify(part.map(r=>({...r,weight:r.weight,jp_code:r.jpCode,booking_date:r.bookingDate||''}))),session.username,fileName]);
+   await sql.query("INSERT INTO mayavi_jepo_tracking (awb,service,vendor,consignee,destination,goods_description,chargeable_weight,jp_code,booking_date,imported_by,import_file) SELECT x.awb,x.service,x.vendor,x.consignee,x.destination,COALESCE(x.goods_description,''),x.weight,x.jp_code,NULLIF(x.booking_date,'')::date,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(awb text,service text,vendor text,consignee text,destination text,goods_description text,weight numeric,jp_code text,booking_date text) ON CONFLICT (awb) DO UPDATE SET goods_description=EXCLUDED.goods_description,updated_at=NOW() WHERE mayavi_jepo_tracking.goods_description='' AND EXCLUDED.goods_description<>''",
+    [JSON.stringify(part.map(r=>({...r,goods_description:r.goodsDescription||'',weight:r.weight,jp_code:r.jpCode,booking_date:r.bookingDate||''}))),session.username,fileName]);
   }
   const recordedDuplicates=await saveDuplicateAudit(sql,{parsed,existingAwbs,fileName,username:session.username});
   return json({ok:true,saved:parsed.records.length,recordedDuplicates,newAwbs:parsed.records.length-existingAwbs.length,invalid:parsed.invalid,duplicates:parsed.duplicates,missingFields:parsed.missingFields,
@@ -132,6 +132,14 @@ export async function PATCH(request){
   const sql=db();
   if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
   const body=await request.json().catch(()=>({}));
+  if(body.action==='save_goods_description'){
+   const awb=cleanJepoTrackingNo(body.awb);
+   if(!awb||typeof body.goodsDescription!=='string'||body.goodsDescription.length>400)return json({ok:false,error:'Valid AWB and goods description up to 400 characters required.'},400);
+   await ensureJepoTrackingTable(sql);
+   const description=body.goodsDescription.replace(/[\u0000-\u001f\u007f]/g,' ').trim();
+   const saved=await sql.query("UPDATE mayavi_jepo_tracking SET goods_description=$2,updated_at=NOW() WHERE awb=$1 RETURNING awb,goods_description",[awb,description]);
+   return saved.length?json({ok:true,awb:saved[0].awb,goodsDescription:saved[0].goods_description}):json({ok:false,error:'JEPO AWB not found.'},404);
+  }
   const awbs=[...new Set((Array.isArray(body.awbs)?body.awbs:[body.awb]).map(cleanJepoTrackingNo).filter(Boolean))].slice(0,8);
   if(!awbs.length)return json({ok:false,error:'Select one or more AWB numbers.'},400);
   await ensureJepoTrackingTable(sql);
