@@ -126,7 +126,7 @@ export async function POST(request){
     preview:customerSheet.records.slice(0,10)};
    if(action==='preview_customers')return json(preview);
    const session=readSession(request);
-   const name=String(file.name||'customer-map.xlsx').replace(/[/\\\\\u0000-\u001f]/g,'_').slice(0,150);
+   const name=String(file.name||'customer-map.xlsx').replace(/[^a-zA-Z0-9_. ()-]/g,'_').slice(0,150);
    for(let i=0;i<customerSheet.records.length;i+=200){
     const batch=customerSheet.records.slice(i,i+200);
     await sql.query("INSERT INTO mayavi_jepo_customer_codes (jp_code,customer_name,source_file,updated_by) SELECT x.jp_code,x.customer_name,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(jp_code text,customer_name text) ON CONFLICT (jp_code) DO UPDATE SET customer_name=EXCLUDED.customer_name,source_file=EXCLUDED.source_file,updated_by=EXCLUDED.updated_by,updated_at=NOW()",
