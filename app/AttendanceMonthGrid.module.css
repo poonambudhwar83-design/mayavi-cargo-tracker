@@ -1,0 +1,64 @@
+.wrap{border:1px solid #cbdcf0;border-radius:14px;background:#fff;box-shadow:0 5px 18px rgba(21,57,102,.055);padding:15px;margin-bottom:16px}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.topbar h2{font-size:18px;font-weight:900;color:#173e70;margin:0 0 3px}
+.topbar p{font-size:12px;color:#657c98;margin:0 0 10px}
+.export{border:1px solid #bcd6ef;border-radius:9px;background:#e8f4ff;color:#174878;padding:10px 13px;font-size:12px;font-weight:900;cursor:pointer}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:5px 0 10px;background:#f0f6ff;border:1px solid #dceaf9;border-radius:9px;padding:9px 12px}
+.picker{display:flex;gap:8px;align-items:center;font-size:12px;color:#164673;font-weight:900}
+.picker select{padding:9px 12px;border-radius:8px;border:1px solid #a8c9e7;background:#fff;color:#184a80;font-weight:850;font-size:12px;max-width:215px}
+.guide{font-size:12px;color:#57718b}.guide strong{color:#174a86}
+.legend{display:flex;gap:7px 12px;flex-wrap:wrap;margin:8px 0 12px}
+.legendItem{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:750;color:#536b83;white-space:nowrap}
+.legendItem b{font-size:10px;font-weight:900;padding:4px 5px;min-width:22px;display:inline-block;text-align:center;border:1px solid #cbd5e1;background:#f8fafc;border-radius:5px;color:#64748b}
+.legendItem b[data-status=PRESENT]{color:#166534;background:#dcfce7;border-color:#86efac}
+.legendItem b[data-status=HALF_DAY]{color:#a25711;background:#ffedd5;border-color:#fed7aa}
+.legendItem b[data-status=PAID_LEAVE],.legendItem b[data-status=SICK_LEAVE]{color:#4338ca;background:#e0e7ff;border-color:#c7d2fe}
+.legendItem b[data-status=UNPAID_LEAVE]{color:#925316;background:#fef3c7;border-color:#fde68a}
+.legendItem b[data-status=ABSENT]{color:#b91c1c;background:#fee2e2;border-color:#fecaca}
+.legendItem b[data-status=HOLIDAY]{color:#0369a1;background:#e0f2fe;border-color:#bae6fd}
+.legendItem b[data-status=WEEK_OFF]{color:#475569;background:#e2e8f0;border-color:#cbd5e1}
+.legendItem .lateMark{background:#fff7ed;color:#ea580c;border-color:#fdba74}
+.scroll{overflow:auto;max-height:66vh;border:1px solid #d7e4f2;border-radius:9px;position:relative;overscroll-behavior:contain}
+.sheet{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font-variant-numeric:tabular-nums;font-size:12px}
+.sheet thead th{position:sticky;top:0;z-index:5;box-sizing:border-box;height:48px;background:#e3efff;border-right:1px solid #d4e1f0;border-bottom:2px solid #aac8ec;white-space:nowrap;font-size:11px;text-align:center;color:#205380}
+.empHeading,.companyHeading{min-width:162px;width:162px;left:0!important;z-index:9!important;text-align:left!important;padding-left:10px}
+.companyHeading{min-width:124px;width:124px;left:162px!important;z-index:9!important}
+.dateHeading,.sunday{min-width:42px;width:42px}
+.dateHeading span,.sunday span{display:block;font-size:12px;font-weight:900}
+.dateHeading small,.sunday small{display:block;font-size:9px;color:#64809f;font-weight:750;margin-top:3px}
+.sunday{background:#ffedd5!important;color:#a16207!important}
+.totalHeading{min-width:55px;width:55px;background:#d2e7ff!important;color:#174574!important}
+.sheet tbody th,.sheet tbody td{box-sizing:border-box;border-right:1px solid #e2e9f2;border-bottom:1px solid #e4eaf4;height:47px}
+.sheet tbody tr:nth-child(even) td,.sheet tbody tr:nth-child(even) th{background:#f8fbff}
+.employeeCell,.companyCell{position:sticky;background:#fff;z-index:3;max-width:162px;width:162px;left:0;text-align:left;padding:5px 10px;color:#193f69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.employeeCell span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:850;font-size:11px}
+.employeeCell small{display:block;font-size:9px;color:#b45309;font-weight:700}
+.companyCell{left:162px;max-width:124px;width:124px;z-index:3;font-size:10px;color:#536b87}
+.dayCell{text-align:center;min-width:42px;width:42px;position:relative;padding:2px!important}
+.dayCell[data-sunday=yes][data-status=EMPTY]{background:#fff7ed!important}
+.markButton{width:100%;height:38px;position:relative;border:1px solid transparent;border-radius:6px;cursor:pointer;background:transparent;color:#a5b4c4;font-size:12px;font-weight:900}
+.markButton:disabled{opacity:.55;cursor:default}
+.dayCell[data-status=PRESENT] .markButton{color:#166534;background:#dcfce7;border-color:#a7efb9}
+.dayCell[data-status=HALF_DAY] .markButton{color:#a65d14;background:#ffedd5;border-color:#fed7aa}
+.dayCell[data-status=PAID_LEAVE] .markButton,.dayCell[data-status=SICK_LEAVE] .markButton{color:#4338ca;background:#e0e7ff;border-color:#c7d2fe}
+.dayCell[data-status=UNPAID_LEAVE] .markButton{color:#92400e;background:#fef3c7;border-color:#fde68a}
+.dayCell[data-status=ABSENT] .markButton{color:#b91c1c;background:#fee2e2;border-color:#fecaca}
+.dayCell[data-status=HOLIDAY] .markButton{color:#0369a1;background:#e0f2fe;border-color:#bae6fd}
+.dayCell[data-status=WEEK_OFF] .markButton{color:#475569;background:#e2e8f0;border-color:#cbd5e1}
+.markButton:not(:disabled):hover{outline:2px solid #639bde;outline-offset:-2px}
+.lateDot{position:absolute;right:2px;top:2px;width:6px;height:6px;border-radius:50%;background:#d97706;box-shadow:0 0 0 1px #fff}
+.editButton{position:absolute;bottom:1px;right:1px;width:15px;height:15px;padding:0;border:0;background:#fff;border-radius:4px;font-size:10px;color:#64748b;cursor:pointer;opacity:0}
+.dayCell:hover .editButton,.editButton:focus-visible{opacity:1}
+.totalCell{min-width:55px;width:55px;text-align:center;font-size:12px;font-weight:900;color:#174e83;background:#eff7ff}
+.totalCell[data-alert=yes]{color:#9a391c;background:#fff1e9}
+.empty{text-align:center;padding:27px 12px;color:#67809a;background:#fff}
+.footnote{font-size:11px;line-height:1.5;color:#617b95;margin:10px 2px 0}
+@media(max-width:800px){
+ .wrap{padding:10px}
+ .empHeading,.employeeCell{min-width:128px;width:128px;max-width:128px}
+ .companyHeading,.companyCell{left:128px!important;min-width:95px;width:95px;max-width:95px}
+ .dateHeading,.sunday,.dayCell{min-width:37px;width:37px}
+ .sheet .markButton{height:36px}
+ .editButton{opacity:.85}
+ .scroll{max-height:66vh}
+}
