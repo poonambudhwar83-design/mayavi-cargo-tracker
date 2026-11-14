@@ -37,9 +37,12 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
         page('import-profit','Import Profit Sheet','IMPORT_PROFIT'),
         page('export-profit','Export Profit Sheet','EXPORT_PROFIT'),
         page('salary','Salary','SALARY'),
-        page('attendance','Employee Attendance','EMPLOYEE_ATTENDANCE'),
         page('monthly-expenses','Monthly Expenses','MONTHLY_EXPENSES'),
         page('account','Accounts & Summary','ACCOUNT')
+      ]});
+      // Attendance is a standalone tab, never tucked under Salary or Finance.
+      sections.push({title:'STAFF ATTENDANCE',items:[
+        page('attendance','Attendance','EMPLOYEE_ATTENDANCE')
       ]});
     }
     const operations=[
