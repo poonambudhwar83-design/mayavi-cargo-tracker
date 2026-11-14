@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary,deriveLateMinutes} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,deriveLateMinutes} from '../lib/employeeAttendance.js';
 import styles from './AttendanceMonthGrid.module.css';
 
 const shortCodes={PRESENT:'P',HALF_DAY:'½',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
@@ -16,7 +16,8 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
  const [editor,setEditor]=useState(null);
  const dates=useMemo(()=>attendanceMonthDates(month),[month]);
  const byDay=useMemo(()=>new Map(entries.map(row=>[String(row.employeeId)+'|'+row.date,row])),[entries]);
- const summaries=useMemo(()=>attendanceMonthlySummary(employees,entries),[employees,entries]);
+ const summaries=useMemo(()=>attendanceMonthlySummary(employees,entries,{month}),[employees,entries,month]);
+ const countedDates=useMemo(()=>new Set(attendanceCountedDates(month)),[month]);
  const colCount=dates.length+6;
  const isOnDuty=editor&&['PRESENT','HALF_DAY'].includes(editor.status);
  const projectedLate=editor?deriveLateMinutes({
@@ -80,13 +81,14 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
       <td className={styles.companyCell} title={employee.companyName||''}>{employee.companyName||'—'}</td>
       {dates.map(date=>{
        const row=byDay.get(String(employee.id)+'|'+date);
-       const status=row?.status||'';
+       const implicitPresent=!row&&countedDates.has(date);
+       const status=row?.status||(implicitPresent?'PRESENT':'');
        const cellKey=employee.id+'|'+date;
        const isSaving=savingKey===cellKey;
        return <td key={date} className={styles.dayCell} data-status={status||'EMPTY'} data-sunday={new Date(date+'T00:00:00Z').getUTCDay()===0?'yes':'no'}>
         <select className={styles.cellSelect} aria-label={'Edit attendance '+employee.employeeName+' on '+date}
          value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}
-         title={(labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
+         title={(implicitPresent?'Present (automatic: no attendance marked)':labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
          onChange={event=>{
           const next=event.target.value;
           if(next==='')void onClearDay({employeeId:employee.id,date});
@@ -112,7 +114,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tbody>
    </table>
   </div>
-  <p className={styles.footnote}>Blank (+) means not marked, not absent. Sundays are shaded but not automatically holidays. Select + to clear an entry. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted allows restoration without losing history.</p>
+  <p className={styles.footnote}>Unmarked dates up to today count as Present automatically (P). Future dates are not counted. Sundays count as Present unless explicitly marked Weekly Off or Holiday. Clear (+) returns a date to automatic Present. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted allows restoration without losing history.</p>
   {editor&&<div className={styles.modalShade} onMouseDown={event=>{if(event.target===event.currentTarget&&!savingKey)setEditor(null)}}>
    <div className={styles.modal} role="dialog" aria-modal="true" aria-label={'Edit attendance '+editor.employeeName+' '+editor.date}>
     <form onSubmit={submitEditor}>

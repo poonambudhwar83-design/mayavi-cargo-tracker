@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceRollup,deriveLateMinutes,attendanceLabel} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,attendanceRollup,deriveLateMinutes,attendanceLabel} from '../lib/employeeAttendance.js';
 import AttendanceMonthGrid from './AttendanceMonthGrid.js';
 
 const API='/api/employee-attendance';
@@ -45,9 +45,25 @@ export default function EmployeeAttendanceDashboard(){
  const active=useMemo(()=>employees.filter(e=>e.isActive&&!e.attendanceHidden),[employees]);
  const list=useMemo(()=>employees.filter(e=>(includeArchived||e.isActive)&&(showDeleted||!e.attendanceHidden)&&(!company||e.companyName===company)&&(!search||e.employeeName.toLowerCase().includes(search.trim().toLowerCase()))),[employees,includeArchived,showDeleted,company,search]);
  const visibleIds=useMemo(()=>new Set(list.map(e=>e.id)),[list]);
- const sums=useMemo(()=>attendanceMonthlySummary(list,entries),[list,entries]);
+ const sums=useMemo(()=>attendanceMonthlySummary(list,entries,{month}),[list,entries,month]);
  const rolled=useMemo(()=>attendanceRollup(sums),[sums]);
- const recent=useMemo(()=>entries.filter(e=>visibleIds.has(e.employeeId)).sort((a,b)=>b.date.localeCompare(a.date)||a.employeeId.localeCompare(b.employeeId)),[entries,visibleIds]);
+ const reportDays=useMemo(()=>attendanceCountedDates(month),[month]);
+ const dayLimit=reportDays[reportDays.length-1]||'';
+ const leaveTakers=useMemo(()=>sums.filter(e=>e.fullLeave>0||e.halfLeave>0)
+  .sort((a,b)=>b.leaveDays-a.leaveDays||a.employeeName.localeCompare(b.employeeName)),[sums]);
+ const leaveDatesById=useMemo(()=>{
+  const map=new Map();
+  for(const entry of entries){
+   if(!entry.date.startsWith(month+'-')||!dayLimit||entry.date>dayLimit||
+    !['HALF_DAY','PAID_LEAVE','SICK_LEAVE','UNPAID_LEAVE'].includes(entry.status))continue;
+   const previous=map.get(entry.employeeId)||[];
+   previous.push(formatDate(entry.date)+' ('+(entry.status==='HALF_DAY'?'Half':attendanceLabel(entry.status))+')');
+   map.set(entry.employeeId,previous);
+  }
+  return map;
+ },[entries,month,dayLimit]);
+ const recent=useMemo(()=>entries.filter(e=>visibleIds.has(e.employeeId)&&e.date.startsWith(month+'-')&&dayLimit&&e.date<=dayLimit)
+  .sort((a,b)=>b.date.localeCompare(a.date)||a.employeeId.localeCompare(b.employeeId)),[entries,visibleIds,month,dayLimit]);
  const shiftStart=selected?.reportingTime||'';
  const late=deriveLateMinutes({status:draft.status,checkIn:draft.checkIn,expectedStart:shiftStart,manualLateMinutes:draft.manualLateMinutes});
  const field=(k,v)=>setDraft(x=>({...x,[k]:v}));
@@ -122,13 +138,13 @@ export default function EmployeeAttendanceDashboard(){
   const code={PRESENT:'P',HALF_DAY:'HD',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
   const lookup=new Map(entries.map(e=>[e.employeeId+'|'+e.date,e]));
   const summaryById=new Map(sums.map(x=>[x.id,x]));
-  const lines=[['Employee','Company',...dates.map(date=>date+' '+weekday(date)),'Present Days','Leave Days','Absent Days','Late Days','Late Minutes']];
+  const lines=[['Employee','Company',...dates.map(date=>date+' '+weekday(date)),'Present Days','Full Leave Days','Half Leave Days','Total Leave Days','Absent Days','Late Days','Late Minutes']];
   for(const emp of list){
    const total=summaryById.get(emp.id)||{};
    lines.push([emp.employeeName,emp.companyName||'',...dates.map(date=>{
     const row=lookup.get(emp.id+'|'+date);
-    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):'';
-   }),total.present||0,total.leaveDays||0,total.absent||0,total.lateDays||0,total.lateMinutes||0]);
+    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):(dayLimit&&date<=dayLimit?'P (Auto)':'');
+   }),total.present||0,total.fullLeave||0,total.halfLeave||0,total.leaveDays||0,total.absent||0,total.lateDays||0,total.lateMinutes||0]);
   }
   downloadCsv(lines,'monthly-attendance-sheet-'+month);
  }
@@ -151,9 +167,14 @@ export default function EmployeeAttendanceDashboard(){
   if(!window.confirm((next?'Restore ':'Archive ')+emp.employeeName+'? '+(next?'Employee will return to active list.':'Existing salary and attendance history will remain saved.')))return;
   void save('set_active',{employeeId:emp.id,isActive:next});
  }
+ function downloadLeaveSummary(){
+  const lines=[['Employee','Company','Report Period','Full Leave Days','Half Leave Days','Total Leave Days','Leave Dates'],
+   ...leaveTakers.map(e=>[e.employeeName,e.companyName||'',reportDays.length?reportDays[0]+' to '+dayLimit:'No days',e.fullLeave,e.halfLeave,e.leaveDays,(leaveDatesById.get(e.id)||[]).join('; ')])];
+  downloadCsv(lines,'employee-leave-summary-'+month);
+ }
  function downloadSummary(){
-  const lines=[['Employee','Company','Designation','Marked Days','Present Days','Leave Days','Paid Leave','Sick Leave','Unpaid Leave','Absent','Company Holidays','Weekly Off','Late Days','Total Late Minutes'],
-   ...sums.map(e=>[e.employeeName,e.companyName,e.designation,e.marked,e.present,e.leaveDays,e.paidLeave,e.sickLeave,e.unpaidLeave,e.absent,e.holidays,e.weeklyOff,e.lateDays,e.lateMinutes])];
+  const lines=[['Employee','Company','Designation','Marked Days','Present Days','Auto Present Days','Full Leave Days','Half Leave Days','Total Leave Days','Paid Leave','Sick Leave','Unpaid Leave','Absent','Company Holidays','Weekly Off','Late Days','Total Late Minutes'],
+   ...sums.map(e=>[e.employeeName,e.companyName,e.designation,e.marked,e.present,e.autoPresent,e.fullLeave,e.halfLeave,e.leaveDays,e.paidLeave,e.sickLeave,e.unpaidLeave,e.absent,e.holidays,e.weeklyOff,e.lateDays,e.lateMinutes])];
   downloadCsv(lines,'employee-attendance-summary-'+month);
  }
  function downloadDetails(){
@@ -192,11 +213,34 @@ export default function EmployeeAttendanceDashboard(){
     onRestoreEmployee={emp=>changeAttendanceEmployeeVisibility(emp,true)}/>
    <section aria-label="Employee attendance monthly overview" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10,marginBottom:17}}>
     <StatCard label="Employees" value={rolled.employees} note="Selected staff"/>
-    <StatCard label="Present Days" value={fmt(rolled.present)}/>
-    <StatCard label="Leave Days" value={fmt(rolled.leaveDays)} note="Includes half-days"/>
+    <StatCard label="Present Days" value={fmt(rolled.present)} note="Unmarked days auto-present"/>
+    <StatCard label="Full Leave Days" value={fmt(rolled.fullLeave)}/>
+    <StatCard label="Half Leave Days" value={fmt(rolled.halfLeave)}/>
+    <StatCard label="Leave Days" value={fmt(rolled.leaveDays)} note="Full + half × 0.5"/>
     <StatCard label="Absent Days" value={fmt(rolled.absent)}/>
     <StatCard label="Late Arrivals" value={fmt(rolled.lateDays)}/>
     <StatCard label="Late Minutes" value={fmt(rolled.lateMinutes)}/>
+   </section>
+   <section style={{...pane,marginBottom:16}} aria-label="Monthly employee leave summary">
+    <div style={{display:'flex',gap:10,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+     <div><h2 style={{fontSize:17,margin:'0 0 4px'}}>Monthly Leave Summary · {monthTitle(month)}</h2>
+      <small style={{color:muted}}>Period: {reportDays.length?formatDate(reportDays[0])+' to '+formatDate(dayLimit):'Not started'} · Only employees with leave · Half day = 0.5 leave day · Unmarked = Present</small></div>
+     <button type="button" style={btn} disabled={!leaveTakers.length} onClick={downloadLeaveSummary}>Download Leave Summary CSV</button>
+    </div>
+    <div style={{overflowX:'auto',maxHeight:420}}>
+     <table style={{borderCollapse:'collapse',width:'100%',minWidth:740}}>
+      <thead><tr>{['Employee','Company','Full Leaves','Half Leaves','Total Leave Days','Leave Dates'].map(h=><th key={h} style={header}>{h}</th>)}</tr></thead>
+      <tbody>
+       {leaveTakers.map(e=><tr key={e.id}>
+        <td style={{...cell,fontWeight:850}}>{e.employeeName}</td><td style={cell}>{e.companyName||'—'}</td>
+        <td style={cell}>{e.fullLeave}</td><td style={cell}>{e.halfLeave}</td>
+        <td style={{...cell,fontWeight:850}}>{fmt(e.leaveDays)}</td>
+        <td style={{...cell,whiteSpace:'normal',minWidth:230}}>{(leaveDatesById.get(e.id)||[]).join(', ')||'—'}</td>
+       </tr>)}
+       {!leaveTakers.length&&<tr><td colSpan={6} style={{...cell,textAlign:'center',padding:18}}>No full-day or half-day leave marked for this period.</td></tr>}
+      </tbody>
+     </table>
+    </div>
    </section>
    {showAdvanced&&<>
    <section style={{...pane,marginBottom:16}} aria-label="Staff filters and employee management">
@@ -266,17 +310,17 @@ export default function EmployeeAttendanceDashboard(){
    </section>
    <section style={{...pane,marginBottom:16}} aria-label="Employee monthly attendance summary">
     <div style={{display:'flex',gap:10,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
-     <div><h2 style={{fontSize:17,margin:'0 0 4px'}}>Monthly Attendance Summary · {monthTitle(month)}</h2><small style={{color:muted}}>Only days with saved attendance entries are counted</small></div>
+     <div><h2 style={{fontSize:17,margin:'0 0 4px'}}>Monthly Attendance Summary · {monthTitle(month)}</h2><small style={{color:muted}}>Unmarked dates through today count as Present; future dates excluded</small></div>
      <button type="button" style={btn} disabled={!sums.length} onClick={downloadSummary}>Download Summary CSV</button>
     </div>
     <div style={{overflowX:'auto',maxHeight:460}}>
      <table style={{borderCollapse:'collapse',minWidth:1130,width:'100%'}}>
-      <thead><tr>{['Employee','Company','Present','Total Leave','Paid Leave','Sick Leave','Unpaid Leave','Absent','Holidays','Weekly Off','Late Days','Late Minutes','Marked Days'].map(h=><th key={h} style={header}>{h}</th>)}</tr></thead>
+      <thead><tr>{['Employee','Company','Present','Full Leave','Half Leave','Total Leave','Paid Leave','Sick Leave','Unpaid Leave','Absent','Holidays','Weekly Off','Late Days','Late Minutes','Marked Days'].map(h=><th key={h} style={header}>{h}</th>)}</tr></thead>
       <tbody>{sums.map(e=><tr key={e.id} style={{background:e.lateDays>3?'#fff9f1':'#fff'}}>
        <td style={{...cell,fontWeight:850}}>{e.employeeName}</td><td style={cell}>{e.companyName||'—'}</td>
-       {[e.present,e.leaveDays,e.paidLeave,e.sickLeave,e.unpaidLeave,e.absent,e.holidays,e.weeklyOff,e.lateDays,e.lateMinutes,e.marked].map((v,i)=><td key={i} style={{...cell,fontWeight:i===1||i===8?850:400,color:i===8&&v>0?'#a34120':ink}}>{fmt(v)}</td>)}
+       {[e.present,e.fullLeave,e.halfLeave,e.leaveDays,e.paidLeave,e.sickLeave,e.unpaidLeave,e.absent,e.holidays,e.weeklyOff,e.lateDays,e.lateMinutes,e.marked].map((v,i)=><td key={i} style={{...cell,fontWeight:i===1||i===8?850:400,color:i===8&&v>0?'#a34120':ink}}>{fmt(v)}</td>)}
       </tr>)}
-      {!sums.length&&<tr><td colSpan={13} style={cell}>No employee records.</td></tr>}
+      {!sums.length&&<tr><td colSpan={15} style={cell}>No employee records.</td></tr>}
       </tbody>
      </table>
     </div>
