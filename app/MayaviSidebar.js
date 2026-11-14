@@ -44,6 +44,12 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
       sections.push({title:'STAFF ATTENDANCE',items:[
         page('attendance','Attendance','EMPLOYEE_ATTENDANCE')
       ]});
+      sections.push({title:'LIBRARY',items:[
+        page('library-seats','Seat Bookings','LIBRARY_SEATS'),
+        page('library-no-seat','Without Seat','LIBRARY_NO_SEAT'),
+        page('library-renewals','Renewal List','LIBRARY_RENEWALS'),
+        page('library-expenses','Daily Expenses','LIBRARY_EXPENSES')
+      ]});
     }
     const operations=[
       ...(speedPostAllowed?[page('speed-post','Speed Post','SPEED_POST')]:[]),
