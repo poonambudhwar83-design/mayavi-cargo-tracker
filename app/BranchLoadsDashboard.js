@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BRANCHES,DESTINATIONS,SERVICES,COMMODITIES,LOAD_STATUSES,statusLabel,initialBranchStatus,amounts,requiresExtraCost,requiresBottleCount,minimumJepoExtraCost,allocateExtraCost,dateValid,decimal,jepoAmount,branchPayment,totalJepoForLoad,totalBranchForLoad,branchPayoutForRecord} from '../lib/branchLoads.js';
-import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+import {aggregateDailyBranchLoads,aggregateBranchDayTotals} from '../lib/branchDailySummary.js';
 import {branchMonths} from '../lib/branchMonthlySummary.js';
 import {inclusiveTatDays,summarizeBranchTat} from '../lib/branchTatSummary.js';
 import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
@@ -210,6 +210,7 @@ export default function BranchLoadsDashboard({currentUser}){
   },[matchingRows,sheet]);
   // Summary combines all booked loads, regardless of current delivery status.
   const dailySummary=useMemo(()=>aggregateDailyBranchLoads(shown),[shown]);
+  const dailyDateTotals=useMemo(()=>aggregateBranchDayTotals(dailySummary),[dailySummary]);
   const summaryTotals=useMemo(()=>dailySummary.reduce((t,r)=>({
     loads:t.loads+r.loads,weight:t.weight+r.weight,branchAmount:t.branchAmount+r.branchAmount
   }),{loads:0,weight:0,branchAmount:0}),[dailySummary]);
@@ -439,9 +440,9 @@ export default function BranchLoadsDashboard({currentUser}){
   function exportTableData(){
     const prefix='mayavi-'+(filter==='ALL'?'jind-karnal':filter.toLowerCase());
     if(sheet==='SUMMARY'){
-      const labels=['Date','Day','Branch','No. of Loads','Total Weight (kg)','Total Branch Amount (INR)'];
-      const data=dailySummary.map(r=>[r.date,weekday(r.date),r.branch,r.loads,Number(r.weight.toFixed(3)),Number(r.branchAmount.toFixed(2))]);
-      data.push(['TOTAL','','',summaryTotals.loads,Number(summaryTotals.weight.toFixed(3)),Number(summaryTotals.branchAmount.toFixed(2))]);
+      const labels=['Date','Day','Total Shipments','Total Weight (kg)','Total Branch Amount (INR)'];
+      const data=dailyDateTotals.map(r=>[r.date,weekday(r.date),r.loads,Number(r.weight.toFixed(3)),Number(r.branchAmount.toFixed(2))]);
+      data.push(['TOTAL','',summaryTotals.loads,Number(summaryTotals.weight.toFixed(3)),Number(summaryTotals.branchAmount.toFixed(2))]);
       return {labels,data,filename:prefix+'-daily-summary'};
     }
     const deliveredOffset=sheet==='DELIVERED'?1:0;
@@ -490,11 +491,39 @@ export default function BranchLoadsDashboard({currentUser}){
       workbook.creator='JEPO Express / Mayavi Cargo';
       workbook.created=new Date();
       const worksheet=workbook.addWorksheet(sheet==='SUMMARY'?'Daily Summary':sheet==='DELIVERED'?'Delivered Loads':'Active Loads');
+      if(sheet==='SUMMARY'){
+        const branchSheet=workbook.addWorksheet('Branch-wise Breakdown');
+        branchSheet.columns=[
+          {header:'Date',key:'date',width:16},
+          {header:'Day',key:'day',width:18},
+          {header:'Branch',key:'branch',width:15},
+          {header:'Total Shipments',key:'loads',width:20},
+          {header:'Total Weight (kg)',key:'weight',width:23},
+          {header:'Total Branch Amount (INR)',key:'amount',width:30}
+        ];
+        for(const row of dailySummary)branchSheet.addRow([
+          row.date,weekday(row.date),row.branch,row.loads,
+          Number(row.weight.toFixed(3)),Number(row.branchAmount.toFixed(2))
+        ]);
+        branchSheet.addRow(['TOTAL','',filter==='ALL'?'Both branches':filter,
+          summaryTotals.loads,Number(summaryTotals.weight.toFixed(3)),Number(summaryTotals.branchAmount.toFixed(2))]);
+        branchSheet.getRow(1).height=35;
+        branchSheet.getRow(1).eachCell(cell=>{
+          cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF174A91'}};
+          cell.font={bold:true,color:{argb:'FFFFFFFF'}};
+          cell.alignment={vertical:'middle',wrapText:true};
+        });
+        branchSheet.views=[{state:'frozen',ySplit:1}];
+        branchSheet.getColumn(5).numFmt='#,##0.000';
+        branchSheet.getColumn(6).numFmt='#,##0.00';
+        branchSheet.getRow(branchSheet.rowCount).font={bold:true,color:{argb:'FF163B74'}};
+      }
+
       worksheet.columns=labels.map((header,i)=>({
         header,key:'col'+i,
         width:/Remarks/.test(header)?34:/Destination|Commodity|Confirmation|Tracking/.test(header)?25:Math.max(15,Math.min(27,header.length+2))
       }));
-      const numericLabels=new Set(['No. of Loads','Total Weight (kg)','Total Branch Amount (INR)','Load Received (kg)',
+      const numericLabels=new Set(['No. of Loads','Total Shipments','Total Weight (kg)','Total Branch Amount (INR)','Load Received (kg)',
         'Rate (INR/kg)','Amount (INR)','Received (INR)','Balance (INR)','JEPO Rate (INR/kg)',
         'Amount Paid to JEPO (INR)','Amount Paid to Branch (INR)','No. of Bottles','Extra Cost (INR)',
         'Total Amount Paid to JEPO (INR)','TAT (Days)']);
@@ -750,11 +779,36 @@ export default function BranchLoadsDashboard({currentUser}){
         <div className={styles.summaryHeader}>
           <div>
             <h2>Daily Branch Summary</h2>
-            <p>All booked loads grouped by booking date and branch, including loads now marked Delivered.</p>
+            <p>Daily totals by booking date across Jind and Karnal; Active and Delivered both included.</p>
           </div>
-          <strong>{dailySummary.length} daily records</strong>
+          <strong>{dailyDateTotals.length} booking dates</strong>
         </div>
-        <div className={styles.scroller}><table className={styles.table+' '+styles.summaryTable}>
+        <div className={styles.scroller}><table className={styles.table+' '+styles.summaryTable} aria-label="Daily totals for Jind and Karnal">
+          <thead><tr>
+            <th>Date &amp; Day</th>
+            <th className={styles.number}>Total Shipments</th>
+            <th className={styles.number}>Total Weight (kg)</th>
+            <th className={styles.number}>Total Branch Amount (₹)</th>
+          </tr></thead>
+          <tbody>
+            {dailyDateTotals.map(r=><tr key={r.date}>
+              <td><strong>{showDate(r.date)}</strong></td>
+              <td className={styles.number}>{r.loads}</td>
+              <td className={styles.number}><strong>{weightFormat(r.weight)}</strong></td>
+              <td className={styles.summaryEarnings}>{fmt(r.branchAmount)}</td>
+            </tr>)}
+            {!loaded&&<tr><td colSpan={4}>Loading daily totals…</td></tr>}
+            {loaded&&!dailyDateTotals.length&&<tr><td colSpan={4} className={styles.empty}>No saved loads for the selected branch.</td></tr>}
+          </tbody>
+          <tfoot><tr>
+            <td>TOTAL</td>
+            <td className={styles.number}>{summaryTotals.loads}</td>
+            <td className={styles.number}>{weightFormat(summaryTotals.weight)}</td>
+            <td className={styles.summaryEarnings}>{fmt(summaryTotals.branchAmount)}</td>
+          </tr></tfoot>
+        </table></div>
+        <h3 style={{margin:'18px 0 9px',fontSize:15}}>Branch-wise Daily Breakdown</h3>
+        <div className={styles.scroller}><table className={styles.table+' '+styles.summaryTable} aria-label="Daily totals by branch">
           <thead><tr>
             <th>Date &amp; Day</th>
             <th>Branch{isAdmin&&<select aria-label="Daily summary branch filter" className={styles.headerFilter} value={filter} onChange={e=>setFilter(e.target.value)}>
