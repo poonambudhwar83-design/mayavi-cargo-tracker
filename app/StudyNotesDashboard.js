@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { STUDY_SUBJECTS, STUDY_SOURCES, studyTotals, pending, theoryIncorrect, mcqIncorrect, mcqAccuracy, marksPercentage, studyTopicNumber, chapterSerial, studyProgressSummary } from '../lib/studyNotes.js';
 import styles from './StudyNotesDashboard.module.css';
 
