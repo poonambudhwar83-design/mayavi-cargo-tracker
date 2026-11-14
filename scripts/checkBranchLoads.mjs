@@ -367,7 +367,7 @@ assert.ok(stylesheet.includes('.remarksCell'));
 assert.ok(ui.includes('onClick={save} disabled={busy} aria-label="Save this load row"'));
 assert.ok(!ui.includes('<button type="submit" disabled={busy}>{busy?'));
 // Daily Summary: all entries, including Delivered, grouped by booking date + branch.
-import {aggregateDailyBranchLoads} from '../lib/branchDailySummary.js';
+import {aggregateDailyBranchLoads,aggregateBranchDayTotals} from '../lib/branchDailySummary.js';
 const dailySample=aggregateDailyBranchLoads([
   {branch:'KARNAL',date:'2026-10-26',weight:'19',paidToBranch:'450',status:'AT_KARNAL_OFFICE'},
   {branch:'KARNAL',date:'2026-10-26',weight:'8',paidToBranch:'225.50',status:'DELIVERED'},
@@ -380,6 +380,26 @@ assert.deepEqual(dailySample,[
  {branch:'KARNAL',date:'2026-10-26',loads:3,weight:40,branchAmount:1050},
  {branch:'KARNAL',date:'2026-10-25',loads:1,weight:7.5,branchAmount:100.25}
 ]);
+assert.deepEqual(aggregateBranchDayTotals(dailySample),[
+ {date:'2026-10-26',loads:4,weight:45,branchAmount:1170},
+ {date:'2026-10-25',loads:1,weight:7.5,branchAmount:100.25}
+]);
+assert.deepEqual(aggregateBranchDayTotals(dailySample.filter(x=>x.branch==='JIND')),[
+ {date:'2026-10-26',loads:1,weight:5,branchAmount:120}
+]);
+// Include branch-only Extra Cost in the accurate saved payout even if an older
+// paidToBranch field wasn't updated. Keep Delivered in its original booking day.
+const extraCashSamples=aggregateDailyBranchLoads([
+ {branch:'JIND',date:'2026-11-11',amount:12000,paidToJepo:11685,paidToBranch:315,extraCost:1000,commodity:'Medicine',status:'DELIVERED',weight:15},
+ {branch:'KARNAL',date:'2026-11-11',amount:12000,paidToJepo:11685,paidToBranch:315,extraCost:700,commodity:'Household and Ghee',bottleCount:2,status:'IN_TRANSIT',weight:20}
+]);
+assert.deepEqual(aggregateBranchDayTotals(extraCashSamples),[
+ {date:'2026-11-11',loads:2,weight:35,branchAmount:2080}
+]);
+assert.ok(ui.includes('dailyDateTotals.map(r=><tr key={r.date}>'));
+assert.ok(ui.includes('Total Shipments'));
+assert.ok(ui.includes('Branch-wise Daily Breakdown'));
+assert.ok(ui.includes("workbook.addWorksheet('Branch-wise Breakdown')"));
 assert.equal(aggregateDailyBranchLoads(dailySample.filter(x=>x.branch==='JIND')).length,1);
 assert.ok(ui.includes("onClick={()=>switchSheet('SUMMARY')}"));
 assert.ok(ui.includes("sheet==='SUMMARY'||"));
