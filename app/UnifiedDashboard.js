@@ -32,7 +32,7 @@ const FALLBACK_USERS=[
   {username:'karnal',displayName:'Karnal',role:'employee',branchScope:'KARNAL',passwordSet:false},
   {username:'haryanaadmin',displayName:'Haryana Admin',role:'haryana_admin',branchScope:'HARYANA',passwordSet:false},
   {username:'accounts',displayName:'Accounts',role:'employee',branchScope:'ACCOUNTS',passwordSet:false},
-  {username:'library',displayName:'Haryana Library',role:'employee',branchScope:'LIBRARY',passwordSet:false},
+  {username:'haryana',displayName:'Haryana',role:'employee',branchScope:'LIBRARY',passwordSet:false},
   {username:'joya',displayName:'Joya',role:'employee',branchScope:'STUDY_NOTES',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
@@ -211,7 +211,7 @@ export default function UnifiedDashboard(){
   const haryanaLogin=Boolean(session?.role==='haryana_admin'&&session.branchScope==='HARYANA');
   const accountsLogin=Boolean(session?.role==='employee'&&session.branchScope==='ACCOUNTS'&&session.username==='accounts');
   const notesLogin=Boolean(session?.role==='employee'&&session.branchScope==='STUDY_NOTES'&&session.username==='joya');
-  const libraryLogin=Boolean(session?.role==='employee'&&session.branchScope==='LIBRARY'&&session.username==='library');
+  const libraryLogin=Boolean(session?.role==='employee'&&session.branchScope==='LIBRARY'&&session.username==='haryana');
   // Keep the view switch separate from the account-bar JSX. Each branch
   // employee gets only its own dedicated page; Admin can switch back freely.
   const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));

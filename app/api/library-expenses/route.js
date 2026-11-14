@@ -63,7 +63,7 @@ export async function POST(request){
    return reply({ok:true,message:'Expense updated.'});
   }
   const id=randomUUID();
-  await sql.query('INSERT INTO mayavi_library_expenses(id,expense_date,expense_head,amount,remarks,created_by) VALUES ($1::uuid,$2::date,$3,$4,$5,$6)',[id,date,head,amount,remarks,operator.username||'library']);
+  await sql.query('INSERT INTO mayavi_library_expenses(id,expense_date,expense_head,amount,remarks,created_by) VALUES ($1::uuid,$2::date,$3,$4,$5,$6)',[id,date,head,amount,remarks,operator.username||'haryana']);
   return reply({ok:true,id,message:'Library expense saved.'});
  }catch(error){
   console.error('library_expenses_post',String(error?.message||error).slice(0,240));

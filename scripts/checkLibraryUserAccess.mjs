@@ -8,16 +8,16 @@ process.env.MAYAVI_SESSION_SECRET='local-library-access-regression-secret';
 const makeRequest=(user,path,method='GET')=>new Request('https://tracker.mayavicargo.com'+path,{
  method,headers:{cookie:'mayavi_session='+createSessionToken(user)}
 });
-const library={username:'library',displayName:'Haryana Library',role:'employee',branchScope:'LIBRARY',sessionVersion:1};
+const library={username:'haryana',displayName:'Haryana',role:'employee',branchScope:'LIBRARY',sessionVersion:1};
 const admin={username:'admin',displayName:'Admin',role:'admin',branchScope:'',sessionVersion:1};
 const readOnlyHaryana={username:'haryanaadmin',displayName:'Haryana Admin',role:'employee',branchScope:'HARYANA',sessionVersion:1};
 const other={username:'accounts',displayName:'Accounts',role:'employee',branchScope:'ACCOUNTS',sessionVersion:1};
 for(const path of ['/api/auth','/api/library-management','/api/library-expenses']){
  const r=makeRequest(library,path);
- assert.equal(readSession(r)?.username,'library',path+' should accept the Library user');
- if(path!=='/api/auth')assert.equal(libraryAccessSession(r)?.username,'library');
+ assert.equal(readSession(r)?.username,'haryana',path+' should accept the Library user');
+ if(path!=='/api/auth')assert.equal(libraryAccessSession(r)?.username,'haryana');
  const post=makeRequest(library,path,'POST');
- assert.equal(readSession(post)?.username,'library',path+' POST should accept Library user');
+ assert.equal(readSession(post)?.username,'haryana',path+' POST should accept Library user');
 }
 for(const path of ['/api/shipments','/api/salary','/api/employee-attendance','/api/accounts','/api/branch-loads',
  '/api/study-notes','/api/admin-notes','/api/jepo-tracking','/api/track','/api/cron/active-airlines','/api/auth/test']){
@@ -45,5 +45,5 @@ assert.ok(ui.includes("branchScope==='LIBRARY'?'LIBRARY_SEATS'"));
 assert.ok(sidebar.includes("title:'HARYANA · LIBRARY'"));
 assert.ok(libraryApi.includes('libraryAccessSession(request)'));
 assert.ok(expenseApi.includes('libraryAccessSession(request)'));
-assert.ok(expenseApi.includes("operator.username||'library'"));
-console.log('Haryana Library user, signed session, CRUD permissions, and cargo isolation verified.');
+assert.ok(expenseApi.includes("operator.username||'haryana'"));
+console.log('Haryana user, signed session, CRUD permissions, and cargo isolation verified.');
