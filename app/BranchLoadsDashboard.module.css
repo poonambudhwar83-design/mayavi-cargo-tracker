@@ -449,3 +449,44 @@
 .tatMatrixService small{font-size:10px;font-weight:800;color:#437564}
 .tatMatrixCard .tatSummaryTable{min-width:405px}
 @media(max-width:940px){.tatMatrixGrid{grid-template-columns:1fr}}
+
+
+/* Branch picker lives above metrics and ALL tables; no hidden header dropdowns. */
+.branchPicker{
+ display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;
+ gap:11px;margin:13px 0;padding:12px 15px;border-radius:12px;
+ border:1px solid #bad4ef;background:linear-gradient(90deg,#e5f1ff,#f8fbff);
+}
+.branchPicker>strong{color:#204d80;font-size:12px;letter-spacing:.5px;white-space:nowrap}
+.branchPicker>small{color:#526d8c;font-size:11px}
+.branchPickerButtons{display:flex;flex-wrap:wrap;gap:7px}
+.branchPickerButtons button,.branchPickerLocked{
+ padding:9px 15px;border-radius:9px;font-size:12px;font-weight:900;
+ cursor:pointer;border:1px solid #a7c5e7;white-space:nowrap;
+}
+.branchPickerButton{background:#fff;color:#225383}
+.branchPickerActive{background:#195eaa;color:#fff;border-color:#195eaa!important;
+ box-shadow:0 3px 8px rgba(25,94,170,.16)}
+.branchPickerLocked{cursor:default;background:#d9e7fb;color:#1b4e89}
+@media(max-width:700px){
+ .branchPicker{padding:10px;gap:8px}
+ .branchPickerButtons{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+ .branchPickerButtons button{padding:9px 7px;white-space:normal}
+}
+/* Keep summary table compact instead of distributing four or five columns
+   across the full width of a laptop screen. Horizontal scrolling when needed. */
+.summaryTable{width:max-content!important;min-width:0!important;max-width:none!important;
+ table-layout:auto!important;border-collapse:separate;border-spacing:0}
+.summaryTable thead th,.summaryTable tbody td,.summaryTable tfoot td{
+ padding:8px 12px!important;min-width:0!important;max-width:none!important;
+ white-space:nowrap;font-size:12px
+}
+.summaryTable th:first-child,.summaryTable td:first-child{min-width:171px!important}
+.summaryTable th:not(:first-child),.summaryTable td:not(:first-child){min-width:118px!important}
+.summaryTable .number,.summaryTable .summaryEarnings{text-align:right!important}
+/* The entry and saved ledger share colgroup widths; reduce the intentional
+   oversized separator between Branch payout and Destination. */
+.entryLedger th:nth-child(10),.entryLedger td:nth-child(10),
+.savedLedger th:nth-child(10),.savedLedger td:nth-child(10){padding-right:7px!important}
+.entryLedger th:nth-child(11),.entryLedger td:nth-child(11),
+.savedLedger th:nth-child(11),.savedLedger td:nth-child(11){padding-left:6px!important}
