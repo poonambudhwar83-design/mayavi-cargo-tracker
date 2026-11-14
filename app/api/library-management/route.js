@@ -1,12 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
-import {readSession} from '../../../lib/mayaviAuth.js';
+import {libraryAccessSession} from '../../../lib/mayaviAuth.js';
 import {LIBRARY_DURATION_VALUES,libraryDate,libraryRenewalDue,libraryPaidThrough,libraryPayment,libraryTodayIST} from '../../../lib/libraryManagement.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store, private'}});
-const adminOnly=request=>readSession(request)?.role==='admin';
+const libraryOnly=request=>libraryAccessSession(request);
 const validId=value=>/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(String(value||''));
 const clean=s=>String(s??'').trim().replace(/\s+/g,' ');
 function sqlClient(){
@@ -66,7 +66,7 @@ function parsePayment(body){
 }
 function paymentParams(payment){return [payment.amount,payment.paymentKind,payment.pay1,payment.pay2,payment.payMode1,payment.payMode2]}
 export async function GET(request){
- if(!adminOnly(request))return reply({ok:false,error:'Admin only.'},403);
+ if(!libraryOnly(request))return reply({ok:false,error:'Admin or Library user only.'},403);
  try{
   const sql=sqlClient();await ensureTables(sql);
   const [capacity,students,cycles]=await Promise.all([
@@ -81,7 +81,7 @@ export async function GET(request){
  }
 }
 export async function POST(request){
- if(!adminOnly(request))return reply({ok:false,error:'Admin only.'},403);
+ if(!libraryOnly(request))return reply({ok:false,error:'Admin or Library user only.'},403);
  const body=await request.json().catch(()=>({}));
  const action=String(body.action||'');
  if(!['add_student','update_student','renew','archive_student','restore_student','set_capacity'].includes(action))

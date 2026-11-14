@@ -11,8 +11,16 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
   const branch=['JIND','KARNAL'].includes(session?.branchScope);
   const haryana=session?.role==='haryana_admin';
   const accounts=session?.branchScope==='ACCOUNTS';
+  const library=session?.role==='employee'&&session?.branchScope==='LIBRARY';
   const sections=[];
-  if(accounts){
+  if(library){
+    sections.push({title:'HARYANA · LIBRARY',items:[
+      page('library-seats','Seat Bookings','LIBRARY_SEATS'),
+      page('library-no-seat','Without Seat','LIBRARY_NO_SEAT'),
+      page('library-renewals','Renewal List','LIBRARY_RENEWALS'),
+      page('library-expenses','Daily Expenses','LIBRARY_EXPENSES')
+    ]});
+  }else if(accounts){
     sections.push({title:'ACCOUNTS',items:[page('account','Accounts & Summary','ACCOUNT')]});
   }else if(haryana){
     sections.push({title:'HARYANA',items:[page('haryana','Haryana Admin','HARYANA')]});

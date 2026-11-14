@@ -178,7 +178,7 @@ export default function LibraryDashboard({initialTab='seats'}){
  };
  return <main className={styles.shell}><div className={styles.inner}>
   <header className={styles.top}>
-   <div><div className={styles.eyebrow}>MAYAVI · ADMIN · LIBRARY</div><h1 className={styles.title}>Library Management</h1>
+   <div><div className={styles.eyebrow}>MAYAVI · HARYANA · LIBRARY</div><h1 className={styles.title}>Library Management</h1>
     <p className={styles.subtitle}>Seat register · Without-seat students · Daily renewal reminders · Library-only expenses</p></div>
    <div className={styles.controls}><button className={styles.button+' '+styles.secondary} disabled={loading} onClick={()=>void loadStudents()}>{loading?'Loading…':'Refresh Students'}</button></div>
   </header>

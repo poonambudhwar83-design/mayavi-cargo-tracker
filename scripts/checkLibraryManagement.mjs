@@ -44,7 +44,7 @@ const expenseApi=readFileSync('app/api/library-expenses/route.js','utf8');
 const ui=readFileSync('app/LibraryDashboard.js','utf8');
 const nav=readFileSync('app/UnifiedDashboard.js','utf8');
 const sidebar=readFileSync('app/MayaviSidebar.js','utf8');
-assert.ok(api.includes("readSession(request)?.role==='admin'"));
+assert.ok(api.includes('libraryAccessSession(request)'));
 assert.ok(api.includes('mayavi_library_students'));
 assert.ok(api.includes('mayavi_library_cycles'));
 assert.ok(api.includes('mayavi_library_one_active_student_per_seat'));

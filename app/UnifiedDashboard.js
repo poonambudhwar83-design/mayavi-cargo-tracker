@@ -32,6 +32,7 @@ const FALLBACK_USERS=[
   {username:'karnal',displayName:'Karnal',role:'employee',branchScope:'KARNAL',passwordSet:false},
   {username:'haryanaadmin',displayName:'Haryana Admin',role:'haryana_admin',branchScope:'HARYANA',passwordSet:false},
   {username:'accounts',displayName:'Accounts',role:'employee',branchScope:'ACCOUNTS',passwordSet:false},
+  {username:'library',displayName:'Haryana Library',role:'employee',branchScope:'LIBRARY',passwordSet:false},
   {username:'joya',displayName:'Joya',role:'employee',branchScope:'STUDY_NOTES',passwordSet:false}
 ];
 const LOCAL_SHIPMENT_KEY='mayavi_v3_shipments';
@@ -98,6 +99,7 @@ export default function UnifiedDashboard(){
           if(data.session.role==='haryana_admin')setSelectedDashboard('HARYANA');
           else if(data.session.branchScope==='STUDY_NOTES')setSelectedDashboard('NOTES');
           else if(data.session.branchScope==='ACCOUNTS')setSelectedDashboard('ACCOUNT');
+          else if(data.session.branchScope==='LIBRARY')setSelectedDashboard('LIBRARY_SEATS');
           else if(data.session.branchScope)setSelectedDashboard('BRANCH_LOADS');
         }
         if(!data.ok&&data.error)setNote(data.error);
@@ -137,7 +139,7 @@ export default function UnifiedDashboard(){
       const res=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
       const data=await res.json();
       if(!data.ok)throw new Error(data.error||'Login failed.');
-      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(data.session.role==='haryana_admin'?'HARYANA':data.session.branchScope==='STUDY_NOTES'?'NOTES':data.session.branchScope==='ACCOUNTS'?'ACCOUNT':data.session.branchScope?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
+      clearStaleShipmentBackup();setSession(data.session);setSelectedDashboard(data.session.role==='haryana_admin'?'HARYANA':data.session.branchScope==='STUDY_NOTES'?'NOTES':data.session.branchScope==='ACCOUNTS'?'ACCOUNT':data.session.branchScope==='LIBRARY'?'LIBRARY_SEATS':data.session.branchScope?'BRANCH_LOADS':'AIR_CARGO');setPassword('');setShowPassword(false);
       await loadUsers().catch(()=>{});
     }catch(e){setNote(e.message||'Login failed.')}finally{setBusy(false)}
   }
@@ -209,10 +211,13 @@ export default function UnifiedDashboard(){
   const haryanaLogin=Boolean(session?.role==='haryana_admin'&&session.branchScope==='HARYANA');
   const accountsLogin=Boolean(session?.role==='employee'&&session.branchScope==='ACCOUNTS'&&session.username==='accounts');
   const notesLogin=Boolean(session?.role==='employee'&&session.branchScope==='STUDY_NOTES'&&session.username==='joya');
+  const libraryLogin=Boolean(session?.role==='employee'&&session.branchScope==='LIBRARY'&&session.username==='library');
   // Keep the view switch separate from the account-bar JSX. Each branch
   // employee gets only its own dedicated page; Admin can switch back freely.
   const branchSelected=Boolean(branchLogin||(session?.role==='admin'&&selectedDashboard==='BRANCH_LOADS'));
-  const dashboardView=notesLogin
+  const dashboardView=libraryLogin
+    ?<LibraryDashboard initialTab="seats"/>
+    :notesLogin
     ?<StudyNotesDashboard readOnly/>
     :accountsLogin
     ?<AccountDashboard/>
@@ -256,8 +261,8 @@ export default function UnifiedDashboard(){
 
   if(session)return <>
     <div style={topAccountBar}>
-      {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&<SaudiaAssist/>}
-      {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
+      {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&!libraryLogin&&<SaudiaAssist/>}
+      {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&!libraryLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY RECORDS</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
@@ -273,7 +278,7 @@ export default function UnifiedDashboard(){
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('JEPO_TRACKING')} style={{...topAccountButton,background:selectedDashboard==='JEPO_TRACKING'?'#dbeafe':'#fff',color:'#17419b'}}>JEPO TRACKING</button>}
       {session.role==='admin'&&<button onClick={()=>{setManageOpen(true);setManageNote('')}} style={topAccountButton}>MANAGE USER PASSWORDS</button>}
       <button onClick={()=>{setChangeOpen(true);setChangeNote('')}} style={topAccountButton}>CHANGE MY PASSWORD</button>
-      {(branchLogin||haryanaLogin||accountsLogin||notesLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
+      {(branchLogin||haryanaLogin||accountsLogin||notesLogin||libraryLogin||selectedDashboard!=='AIR_CARGO')&&<button style={topAccountButton} onClick={logout}>LOGOUT</button>}
     </div>
     {dashboardView}
 

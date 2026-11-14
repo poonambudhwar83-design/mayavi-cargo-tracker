@@ -1,13 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
-import {readSession} from '../../../lib/mayaviAuth.js';
+import {libraryAccessSession} from '../../../lib/mayaviAuth.js';
 import {libraryDate,libraryMoney,libraryTodayIST} from '../../../lib/libraryManagement.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const LIBRARY_EXPENSE_HEADS=['Salary','Stationery','Daily Utilities','Rent','Electricity Bill','Misc','Misc for Home'];
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store, private'}});
-const adminOnly=request=>readSession(request)?.role==='admin';
+const libraryOnly=request=>libraryAccessSession(request);
 const validId=value=>/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(String(value||''));
 function sqlClient(){
  const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED;
@@ -28,7 +28,7 @@ function validPayload(body){
  return {date,head,amount,remarks:String(body.remarks??'').trim().slice(0,600)};
 }
 export async function GET(request){
- if(!adminOnly(request))return reply({ok:false,error:'Admin only.'},403);
+ if(!libraryOnly(request))return reply({ok:false,error:'Admin or Library user only.'},403);
  const month=new URL(request.url).searchParams.get('month');
  if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(String(month||'')))return reply({ok:false,error:'Select a valid month.'},400);
  try{
@@ -41,7 +41,7 @@ export async function GET(request){
  }
 }
 export async function POST(request){
- const admin=readSession(request);if(admin?.role!=='admin')return reply({ok:false,error:'Admin only.'},403);
+ const operator=libraryOnly(request);if(!operator)return reply({ok:false,error:'Admin or Library user only.'},403);
  const body=await request.json().catch(()=>({}));
  const action=String(body.action||'');
  if(!['save','delete'].includes(action))return reply({ok:false,error:'Unknown expense action.'},400);
@@ -63,7 +63,7 @@ export async function POST(request){
    return reply({ok:true,message:'Expense updated.'});
   }
   const id=randomUUID();
-  await sql.query('INSERT INTO mayavi_library_expenses(id,expense_date,expense_head,amount,remarks,created_by) VALUES ($1::uuid,$2::date,$3,$4,$5,$6)',[id,date,head,amount,remarks,admin.username||'admin']);
+  await sql.query('INSERT INTO mayavi_library_expenses(id,expense_date,expense_head,amount,remarks,created_by) VALUES ($1::uuid,$2::date,$3,$4,$5,$6)',[id,date,head,amount,remarks,operator.username||'library']);
   return reply({ok:true,id,message:'Library expense saved.'});
  }catch(error){
   console.error('library_expenses_post',String(error?.message||error).slice(0,240));
