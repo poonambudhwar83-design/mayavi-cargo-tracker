@@ -64,24 +64,59 @@ export default function EmployeeAttendanceDashboard(){
   finally{setBusy(false);}
  }
  const editDay=row=>{setShowAdvanced(true);setDraft({employeeId:row.employeeId,date:row.date,status:row.status,checkIn:row.checkIn||'',manualLateMinutes:row.lateMinutes===null?'':String(row.lateMinutes),remarks:row.remarks||''});setTimeout(()=>document.getElementById('attendance-day-form')?.scrollIntoView({behavior:'smooth',block:'center'}),40);};
- async function quickMark(emp,date,status,current){
-  if(current?.status===status||savingKey||!emp.isActive)return;
-  const cellKey=emp.id+'|'+date;
-  setSavingKey(cellKey);setStatusNote('');
+ async function persistGridEntry(action,payload,employeeName=''){
+  if(savingKey)return false;
+  const key=String(payload.employeeId)+'|'+String(payload.date);
+  setSavingKey(key);setStatusNote('');
   try{
-   const payload={action:'save_day',employeeId:emp.id,date,status,checkIn:'',manualLateMinutes:null,remarks:current?.remarks||''};
-   const response=await fetch(API,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+   const response=await fetch(API,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},
+    body:JSON.stringify({action,...payload})});
    const result=await response.json();
-   if(!response.ok||!result.ok)throw Error(result.error||'Attendance could not be saved.');
-   setEntries(prev=>[...prev.filter(e=>!(e.employeeId===emp.id&&e.date===date)),
-    {employeeId:emp.id,date,status,checkIn:'',expectedStart:status==='PRESENT'||status==='HALF_DAY'?emp.reportingTime||'':'',
-     lateMinutes:null,remarks:current?.remarks||'',updatedAt:new Date().toISOString()}]);
-   setStatusNote('✓ '+emp.employeeName+' • '+formatDate(date)+' • '+attendanceLabel(status)+' saved.');
-  }catch(e){setStatusNote(e?.message||'Could not mark attendance.');}
+   if(!response.ok||!result.ok)throw Error(result.error||'Could not save attendance.');
+   if(action==='delete_day'){
+    setEntries(prev=>prev.filter(row=>!(row.employeeId===payload.employeeId&&row.date===payload.date)));
+   }else{
+    const emp=employees.find(e=>e.id===payload.employeeId);
+    const onDuty=['PRESENT','HALF_DAY'].includes(payload.status);
+    const reportingTime=onDuty?emp?.reportingTime||'':'';
+    const checkIn=onDuty?payload.checkIn||'':'';
+    const lateMinutes=deriveLateMinutes({
+     status:payload.status,checkIn,expectedStart:reportingTime,manualLateMinutes:payload.manualLateMinutes
+    });
+    setEntries(prev=>[...prev.filter(row=>!(row.employeeId===payload.employeeId&&row.date===payload.date)),
+     {employeeId:payload.employeeId,date:payload.date,status:payload.status,checkIn,expectedStart:reportingTime,
+      lateMinutes,remarks:payload.remarks||'',updatedAt:new Date().toISOString()}]);
+   }
+   setStatusNote('✓ '+(employeeName||'Employee')+' • '+formatDate(payload.date)+' • '+(action==='delete_day'?'Cleared':attendanceLabel(payload.status))+' saved.');
+   return true;
+  }catch(error){setStatusNote(error?.message||'Attendance update could not be saved.');return false;}
   finally{setSavingKey('');}
  }
- function openCellEditor(emp,date,row){
-  editDay(row||{employeeId:emp.id,date,status:'PRESENT',checkIn:'',lateMinutes:null,remarks:''});
+ async function quickMark(emp,date,status,current){
+  if(savingKey||!emp.isActive||current?.status===status)return false;
+  const onDuty=['PRESENT','HALF_DAY'].includes(status);
+  const currentOnDuty=['PRESENT','HALF_DAY'].includes(current?.status);
+  const payload={employeeId:emp.id,date,status,
+   checkIn:onDuty&&currentOnDuty?current?.checkIn||'':'',
+   manualLateMinutes:onDuty&&currentOnDuty?current?.lateMinutes??null:null,
+   remarks:current?.remarks||''};
+  return persistGridEntry('save_day',payload,emp.employeeName);
+ }
+ async function saveGridDetails(editor){
+  const employee=employees.find(e=>e.id===editor.employeeId);
+  if(!employee?.isActive)return false;
+  const onDuty=['PRESENT','HALF_DAY'].includes(editor.status);
+  return persistGridEntry('save_day',{
+   employeeId:editor.employeeId,date:editor.date,status:editor.status,
+   checkIn:onDuty?editor.checkIn||'':'',
+   manualLateMinutes:onDuty&&editor.manualLateMinutes!==''?editor.manualLateMinutes:null,
+   remarks:editor.remarks||''
+  },employee.employeeName);
+ }
+ async function clearGridDay(editor){
+  if(!entries.some(row=>row.employeeId===editor.employeeId&&row.date===editor.date))return true;
+  const employee=employees.find(e=>e.id===editor.employeeId);
+  return persistGridEntry('delete_day',{employeeId:editor.employeeId,date:editor.date},employee?.employeeName||'Employee');
  }
  function downloadMonthlySheet(dates){
   const code={PRESENT:'P',HALF_DAY:'HD',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
@@ -143,8 +178,8 @@ export default function EmployeeAttendanceDashboard(){
     <Field label="FIND EMPLOYEE" wide><input aria-label="Search attendance grid employee" type="search" placeholder="Search employee…" value={search} onChange={e=>setSearch(e.target.value)} style={input}/></Field>
     <label style={{fontSize:12,fontWeight:800,color:muted,display:'flex',gap:7,alignItems:'center',paddingBottom:10}}><input type="checkbox" checked={includeArchived} onChange={e=>setIncludeArchived(e.target.checked)}/>Archived</label>
    </div>
-   <AttendanceMonthGrid month={month} employees={list} entries={entries} savingKey={savingKey}
-    onQuickMark={quickMark} onEdit={openCellEditor} onExport={downloadMonthlySheet}/>
+   <AttendanceMonthGrid key={month} month={month} employees={list} entries={entries} savingKey={savingKey}
+    onQuickMark={quickMark} onSaveDetails={saveGridDetails} onClearDay={clearGridDay} onExport={downloadMonthlySheet}/>
    <section aria-label="Employee attendance monthly overview" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10,marginBottom:17}}>
     <StatCard label="Employees" value={rolled.employees} note="Selected staff"/>
     <StatCard label="Present Days" value={fmt(rolled.present)}/>
