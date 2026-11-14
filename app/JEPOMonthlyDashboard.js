@@ -2,6 +2,7 @@
 import {useMemo,useState} from 'react';
 import {aggregateJepoMonthly,availableJepoMonths,jepoMonthlyPartner} from '../lib/jepoMonthlySummary.js';
 import {jepoTrackingStatusLabel} from '../lib/jepoTrackingState.js';
+import {jepoBookingWeekday} from '../lib/jepoBookingDay.js';
 
 const box={border:'1px solid #d9e3ef',borderRadius:11,padding:13,background:'#fff',marginTop:10};
 const input={padding:'9px 10px',borderRadius:8,border:'1px solid #c0cfe0',background:'#fff',fontSize:12,color:'#20476f'};
@@ -19,8 +20,8 @@ const csvDownload=(rows,filename)=>{
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download=filename+'.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 };
-const details=rows=>[['Booking Date','JEPO AWB','JEPO Progress','Progress Date/Time','Tracking Status','Forwarded AWB','Service','Vendor','Partner','Destination','Weight (kg)','Consignee','Delivered Date','Last Checked'],
- ...rows.map(r=>[r.bookingDate||'',r.awb||'',r.liveRemarks||'',r.liveEventWhen||'',jepoTrackingStatusLabel(r),r.carrierAwb||'',r.service||'',r.vendor||'',jepoMonthlyPartner(r),r.destination||'',r.weight??'',r.consignee||'',r.deliveredOn||'',r.checkedAt||''])];
+const details=rows=>[['Booking Date','Booking Day','JEPO AWB','JEPO Progress','Progress Date/Time','Tracking Status','Forwarded AWB','Service','Vendor','Partner','Destination','Weight (kg)','Consignee','JP Code','Customer Name','Delivered Date','Last Checked'],
+ ...rows.map(r=>[r.bookingDate||'',jepoBookingWeekday(r.bookingDate),r.awb||'',r.liveRemarks||'',r.liveEventWhen||'',jepoTrackingStatusLabel(r),r.carrierAwb||'',r.service||'',r.vendor||'',jepoMonthlyPartner(r),r.destination||'',r.weight??'',r.consignee||'',r.jpCode||'',r.customerName||'',r.deliveredOn||'',r.checkedAt||''])];
 function Matrix({title,rows=[],keyName='label'}){
  return <section style={{...box,flex:'1 1 460px',minWidth:0}}>
   <h3 style={{fontSize:16,margin:'0 0 10px',color:'#20517d'}}>{title}</h3>
