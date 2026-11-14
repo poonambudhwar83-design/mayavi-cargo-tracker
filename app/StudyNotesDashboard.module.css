@@ -412,3 +412,30 @@
   .summaryMainCard strong{font-size:25px}.summaryCard strong{font-size:22px}
   .progressPanel{padding:13px 11px}
 }
+
+
+/* Paper-style chapter register. Each source occupies two adjacent lines:
+   MCQs first, Theory directly below. Pending is always the final column. */
+.registerScroll{width:100%;overflow-x:auto;background:#fff;overscroll-behavior-x:contain}
+.registerTable{width:100%;min-width:1210px;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.registerTable th{background:var(--chapter-tint,#f2f6fb);color:var(--chapter-ink,#28496d);text-align:left;font-size:11px;font-weight:900;white-space:nowrap;line-height:1.4;padding:13px 11px;border-bottom:2px solid var(--chapter-border,#d7e3ee)}
+.registerTable td{padding:10px 11px;border-bottom:1px solid var(--chapter-border,#e0e8f2);vertical-align:middle;color:#2a4058}
+.registerTable tbody tr:last-child td{border-bottom:0}
+.registerTable tbody tr.registerTheoryRow{background:#f8fbff}
+.registerTable .registerTopicCell{min-width:155px;max-width:250px;background:var(--chapter-pale,#f4f8fd);border-right:1px solid var(--chapter-border,#dae4f0);font-weight:800}
+.registerTopicCell strong{display:block;margin-top:4px;font-size:12px}
+.registerTopicNumber{display:inline-block;padding:3px 7px;border-radius:5px;background:var(--chapter-accent,#285bb2);color:#fff;font-size:10px;font-weight:900}
+.registerSourceCell{min-width:100px;font-weight:800;color:var(--chapter-ink,#27476a)!important}
+.registerTypeMcq,.registerTypeTheory{display:inline-block;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:900;white-space:nowrap}
+.registerTypeMcq{background:#e9f3fe;color:#18588f}
+.registerTypeTheory{background:#f0eafd;color:#6744a5}
+.registerPercentage{font-weight:900;color:#225f89!important}
+.registerTable td.pendingCount{font-weight:900;color:#b91c1c!important;background:#fff4f4}
+.registerPendingHeader{color:#b91c1c!important;background:#ffeded!important}
+.registerTable .questionNumbers{min-width:110px;max-width:220px;white-space:pre-wrap}
+.registerTable .rowActions{flex-wrap:wrap}
+@media(max-width:650px){
+  .registerTable{min-width:1100px;font-size:11px}
+  .registerTable td,.registerTable th{padding:9px 8px}
+  .registerTable .registerTopicCell{min-width:130px}
+}
