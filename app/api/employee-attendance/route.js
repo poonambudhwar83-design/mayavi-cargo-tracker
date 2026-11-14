@@ -19,12 +19,16 @@ async function ensureTables(sql){
  // Uses the existing Salary employee register; does not create a second staff list.
  await sql.query("CREATE TABLE IF NOT EXISTS mayavi_salary_employees(id UUID PRIMARY KEY,employee_name TEXT NOT NULL,company_name TEXT NOT NULL DEFAULT '',designation TEXT NOT NULL DEFAULT '',normalized_name TEXT NOT NULL UNIQUE,default_salary NUMERIC(14,2) NOT NULL DEFAULT 0,is_active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
  await sql.query("ALTER TABLE mayavi_salary_employees ADD COLUMN IF NOT EXISTS reporting_time TEXT NOT NULL DEFAULT ''");
+ // Separate from Salary is_active: hide from Attendance without deleting payroll
+ // employees or historic salary and attendance records.
+ await sql.query("ALTER TABLE mayavi_salary_employees ADD COLUMN IF NOT EXISTS attendance_hidden BOOLEAN NOT NULL DEFAULT FALSE");
  await sql.query("CREATE TABLE IF NOT EXISTS mayavi_employee_attendance(employee_id UUID NOT NULL REFERENCES mayavi_salary_employees(id),attendance_date DATE NOT NULL,status TEXT NOT NULL CHECK(status IN ('PRESENT','HALF_DAY','PAID_LEAVE','SICK_LEAVE','UNPAID_LEAVE','ABSENT','HOLIDAY','WEEK_OFF')),check_in TEXT NOT NULL DEFAULT '',expected_start TEXT NOT NULL DEFAULT '',late_minutes INTEGER,remarks TEXT NOT NULL DEFAULT '',updated_by TEXT NOT NULL DEFAULT '',updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(employee_id,attendance_date))");
  await sql.query("CREATE INDEX IF NOT EXISTS mayavi_employee_attendance_date_idx ON mayavi_employee_attendance(attendance_date)");
 }
 function mapEmployee(row){
  return {id:String(row.id),employeeName:row.employee_name,companyName:row.company_name||'',
- designation:row.designation||'',isActive:row.is_active,reportingTime:row.reporting_time||''};
+ designation:row.designation||'',isActive:row.is_active,reportingTime:row.reporting_time||'',
+ attendanceHidden:Boolean(row.attendance_hidden)};
 }
 function mapEntry(row){
  return {employeeId:String(row.employee_id),date:row.attendance_date,status:row.status,
@@ -39,7 +43,7 @@ export async function GET(request){
  try{
   const sql=sqlClient();await ensureTables(sql);
   const [employees,entries]=await Promise.all([
-   sql.query("SELECT id,employee_name,company_name,designation,is_active,reporting_time FROM mayavi_salary_employees ORDER BY is_active DESC,lower(employee_name)"),
+   sql.query("SELECT id,employee_name,company_name,designation,is_active,reporting_time,attendance_hidden FROM mayavi_salary_employees ORDER BY is_active DESC,lower(employee_name)"),
    sql.query("SELECT employee_id,to_char(attendance_date,'YYYY-MM-DD') AS attendance_date,status,check_in,expected_start,late_minutes,remarks,updated_by,updated_at FROM mayavi_employee_attendance WHERE attendance_date >= $1::date AND attendance_date < ($1::date + INTERVAL '1 month') ORDER BY attendance_date DESC",[month+'-01'])
   ]);
   return reply({ok:true,month,employees:employees.map(mapEmployee),entries:entries.map(mapEntry),companies:SALARY_COMPANIES,designations:SALARY_DESIGNATIONS});
@@ -49,7 +53,7 @@ export async function POST(request){
  const admin=adminOnly(request);if(!admin)return reply({ok:false,error:'Admin only.'},403);
  const body=await request.json().catch(()=>({}));
  const action=String(body.action||'');
- if(!['add_employee','set_active','save_reporting_time','save_day','delete_day'].includes(action))
+ if(!['add_employee','set_active','save_reporting_time','save_day','delete_day','remove_from_attendance','restore_to_attendance'].includes(action))
   return reply({ok:false,error:'Unsupported employee action.'},400);
  try{
   const sql=sqlClient();await ensureTables(sql);
@@ -69,6 +73,16 @@ export async function POST(request){
   }
   if(!validId(body.employeeId))return reply({ok:false,error:'Select a valid employee.'},400);
   const id=String(body.employeeId);
+  if(action==='remove_from_attendance'||action==='restore_to_attendance'){
+   if(body.confirm!==true)return reply({ok:false,error:'Confirm employee removal or restore.'},400);
+   // "Delete" removes only the Attendance list entry; historic entries and
+   // payroll remain intact. Explicit restoration is possible at any time.
+   const hide=action==='remove_from_attendance';
+   const updated=await sql.query("UPDATE mayavi_salary_employees SET attendance_hidden=$2 WHERE id=$1::uuid RETURNING employee_name,attendance_hidden",[id,hide]);
+   if(!updated.length)return reply({ok:false,error:'Employee not found.'},404);
+   return reply({ok:true,attendanceHidden:Boolean(updated[0].attendance_hidden),
+    message:updated[0].employee_name+(hide?' removed from the Attendance list. Salary and past records are preserved.':' restored to Attendance list.')});
+  }
   if(action==='set_active'){
    if(typeof body.isActive!=='boolean')return reply({ok:false,error:'Choose Archive or Restore.'},400);
    const changed=await sql.query("UPDATE mayavi_salary_employees SET is_active=$2 WHERE id=$1::uuid RETURNING employee_name,is_active",[id,body.isActive]);
@@ -84,13 +98,14 @@ export async function POST(request){
   }
   const date=attendanceDate(body.date);
   if(!date)return reply({ok:false,error:'Enter a valid attendance date.'},400);
-  const match=await sql.query("SELECT id,employee_name,reporting_time,is_active FROM mayavi_salary_employees WHERE id=$1::uuid LIMIT 1",[id]);
+  const match=await sql.query("SELECT id,employee_name,reporting_time,is_active,attendance_hidden FROM mayavi_salary_employees WHERE id=$1::uuid LIMIT 1",[id]);
   if(!match.length)return reply({ok:false,error:'Employee not found.'},404);
   if(action==='delete_day'){
    await sql.query("DELETE FROM mayavi_employee_attendance WHERE employee_id=$1::uuid AND attendance_date=$2::date",[id,date]);
    return reply({ok:true,message:'Attendance entry cleared for '+match[0].employee_name+' on '+date+'.'});
   }
   if(!match[0].is_active)return reply({ok:false,error:'Employee is archived. Restore to record new attendance.'},400);
+  if(match[0].attendance_hidden)return reply({ok:false,error:'Employee was removed from Attendance. Restore employee to enter attendance.'},400);
   const status=attendanceStatus(body.status);
   if(!status)return reply({ok:false,error:'Select a valid attendance status.'},400);
   const onDuty=status==='PRESENT'||status==='HALF_DAY';
