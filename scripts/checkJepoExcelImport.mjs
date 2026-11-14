@@ -95,4 +95,15 @@ assert.deepEqual(parsed.missingFields,['Destination','Booking Date']);
 assert.deepEqual(parsed.records,[{awb:'123456',service:'ARAMEX',vendor:'ICL',
  consignee:'Sample Receiver',destination:'',weight:6.25,jpCode:'ACC002',bookingDate:null}]);
 
+
+const goodsWorkbook=new ExcelJS.Workbook();
+const goodsSheet=goodsWorkbook.addWorksheet('Goods import');
+['AWB No','Service','Vendor','Consignee Name','Destination','Chargeable Weight','JP Code','Booking Date','Description of Goods'].forEach((h,i)=>goodsSheet.getCell(1,i+1).value=h);
+['99887766','FedEx','ICL','Sample','UK',8,'JP-001','01/11/2026','Books and clothes'].forEach((v,i)=>goodsSheet.getCell(2,i+1).value=v);
+const withGoods=parseJepoExcel(goodsWorkbook);
+assert.equal(withGoods.columnMapping.goodsDescription,9);
+assert.equal(withGoods.records[0].goodsDescription,'Books and clothes');
+assert.equal(withGoods.records[0].bookingDate,'2026-11-01');
+assert.ok(!withGoods.missingFields.includes('Goods Description'));
+console.log('JEPO optional Goods Description mapping verified for new Excel/CSV imports.');
 console.log('JEPO Excel detection checks passed for 132 columns, mixed row layouts and booking dates.');
