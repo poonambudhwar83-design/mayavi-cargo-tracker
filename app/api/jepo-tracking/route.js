@@ -2,6 +2,7 @@ import {neon} from '@neondatabase/serverless';
 import ExcelJS from 'exceljs';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {parseJepoExcel} from '../../../lib/jepoExcelImport.js';
+import {parseJepoCustomerMap,normalizeJepoJpCode} from '../../../lib/jepoCustomerMapping.js';
 import {csvAsJepoWorkbook} from '../../../lib/jepoCsvImport.js';
 import {ensureJepoTrackingTable,syncJepoTrackingAwbs} from '../../../lib/jepoTrackingStore.js';
 import {cleanJepoTrackingNo} from '../../../lib/jepoBranchTracking.js';
@@ -34,6 +35,10 @@ function rowData(row){
   liveRemarks:row.live_remarks,liveEventWhen:row.live_event_when,deliveredOn:row.delivered_on,
   deliveryDateSource:row.delivery_date_source,checkedAt:row.checked_at,trackingError:row.tracking_error,
   importFile:row.import_file};
+}
+
+async function ensureJepoCustomerTable(sql){
+ await sql.query("CREATE TABLE IF NOT EXISTS mayavi_jepo_customer_codes (jp_code TEXT PRIMARY KEY, customer_name TEXT NOT NULL DEFAULT '', source_file TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
 }
 
 // Repeated shipments are acknowledged against already-saved imports as well
@@ -78,10 +83,13 @@ export async function GET(request){
   const sql=db();
   if(!await auth(request,sql,{readOnlyAllowed:true}))return json({ok:false,error:'Admin or Haryana Admin login required.'},403);
   await ensureJepoTrackingTable(sql);
+  await ensureJepoCustomerTable(sql);
+  const names=await sql.query("SELECT jp_code,customer_name FROM mayavi_jepo_customer_codes");
+  const customers=new Map(names.map(row=>[normalizeJepoJpCode(row.jp_code),row.customer_name]));
   const rows=await sql.query("SELECT "+columns+" FROM mayavi_jepo_tracking ORDER BY CASE WHEN status='DELIVERED' THEN 1 ELSE 0 END, booking_date DESC NULLS LAST, created_at DESC LIMIT 20000");
   await ensureDuplicateAuditTable(sql);
   const duplicateRows=await sql.query("SELECT d.awb,d.duplicate_occurrences,d.file_repeat_occurrences,d.existing_awb_occurrences,d.upload_events,d.last_excel_rows,d.last_import_file,d.last_acknowledged_by,d.last_acknowledged_at,d.first_seen_at,d.last_seen_at,(t.awb IS NOT NULL) AS in_tracking,COALESCE(t.status,'') AS tracking_status FROM mayavi_jepo_duplicate_audit d LEFT JOIN mayavi_jepo_tracking t ON t.awb=d.awb ORDER BY d.last_seen_at DESC LIMIT 20000");
-  return json({ok:true,rows:rows.map(rowData),duplicateRows:duplicateRows.map(x=>({awb:x.awb,count:Number(x.duplicate_occurrences),fileRepeats:Number(x.file_repeat_occurrences),alreadySavedRepeats:Number(x.existing_awb_occurrences),uploadEvents:Number(x.upload_events),excelRows:x.last_excel_rows,file:x.last_import_file,acknowledgedBy:x.last_acknowledged_by,acknowledgedAt:x.last_acknowledged_at,firstSeenAt:x.first_seen_at,lastSeenAt:x.last_seen_at,inTracking:x.in_tracking,trackingStatus:x.tracking_status}))});
+  return json({ok:true,rows:rows.map(row=>({...rowData(row),customerName:customers.get(normalizeJepoJpCode(row.jp_code))||''})),duplicateRows:duplicateRows.map(x=>({awb:x.awb,count:Number(x.duplicate_occurrences),fileRepeats:Number(x.file_repeat_occurrences),alreadySavedRepeats:Number(x.existing_awb_occurrences),uploadEvents:Number(x.upload_events),excelRows:x.last_excel_rows,file:x.last_import_file,acknowledgedBy:x.last_acknowledged_by,acknowledgedAt:x.last_acknowledged_at,firstSeenAt:x.first_seen_at,lastSeenAt:x.last_seen_at,inTracking:x.in_tracking,trackingStatus:x.tracking_status}))});
  }catch(e){console.error('jepo_tracking_get',String(e?.message||e).slice(0,180));return json({ok:false,error:'JEPO Tracking records could not be loaded.'},503);}
 }
 export async function POST(request){
@@ -90,7 +98,7 @@ export async function POST(request){
   if(!await auth(request,sql))return json({ok:false,error:'Admin login required.'},403);
   const form=await request.formData();
   const action=String(form.get('action')||'preview');
-  if(!['preview','save'].includes(action))return json({ok:false,error:'Unsupported action.'},400);
+  if(!['preview','save','preview_customers','save_customers'].includes(action))return json({ok:false,error:'Unsupported action.'},400);
   const file=form.get('file');
   if(!file||typeof file.arrayBuffer!=='function')return json({ok:false,error:'Select JEPO CSV or Excel workbook.'},400);
   if(!/\.(xlsx|csv)$/i.test(file.name||''))return json({ok:false,error:'Please upload a .csv or .xlsx file.'},400);
@@ -102,6 +110,30 @@ export async function POST(request){
    if(isCsv)workbook=csvAsJepoWorkbook(bytes,file.name);
    else{workbook=new ExcelJS.Workbook();await workbook.xlsx.load(bytes);}
   }catch(e){return json({ok:false,error:String(e?.message||'CSV/Excel file could not be opened.')},422);}
+  if(action==='preview_customers'||action==='save_customers'){
+   let customerSheet;
+   try{customerSheet=parseJepoCustomerMap(workbook,{headerRow:isCsv?1:Number(form.get('headerRow')||0)});}
+   catch(e){return json({ok:false,error:String(e?.message||'JP Code and Customer Name could not be matched.')},422);}
+   if(customerSheet.conflicts.length)return json({ok:false,error:'Same JP Code has different Customer Names in the uploaded sheet. Fix duplicates before importing.',conflicts:customerSheet.conflicts.slice(0,15)},422);
+   await ensureJepoTrackingTable(sql);
+   await ensureJepoCustomerTable(sql);
+   const codes=customerSheet.records.map(row=>row.jpCode);
+   const matches=await sql.query("SELECT COUNT(*)::int AS shipment_count,COUNT(DISTINCT UPPER(BTRIM(jp_code)))::int AS jp_count FROM mayavi_jepo_tracking WHERE UPPER(BTRIM(jp_code)) IN (SELECT value FROM jsonb_array_elements_text($1::jsonb) AS x(value))",[JSON.stringify(codes)]);
+   const preview={ok:true,action,matchedShipments:Number(matches[0]?.shipment_count||0),matchedCodes:Number(matches[0]?.jp_count||0),
+    totalCodes:customerSheet.records.length,sheetName:customerSheet.sheetName,headerRow:customerSheet.headerRow,
+    jpHeader:customerSheet.jpHeader,customerHeader:customerSheet.customerHeader,
+    duplicates:customerSheet.duplicates,invalid:customerSheet.invalid,
+    preview:customerSheet.records.slice(0,10)};
+   if(action==='preview_customers')return json(preview);
+   const session=readSession(request);
+   const name=String(file.name||'customer-map.xlsx').replace(/[/\\\\\u0000-\u001f]/g,'_').slice(0,150);
+   for(let i=0;i<customerSheet.records.length;i+=200){
+    const batch=customerSheet.records.slice(i,i+200);
+    await sql.query("INSERT INTO mayavi_jepo_customer_codes (jp_code,customer_name,source_file,updated_by) SELECT x.jp_code,x.customer_name,$2,$3 FROM jsonb_to_recordset($1::jsonb) AS x(jp_code text,customer_name text) ON CONFLICT (jp_code) DO UPDATE SET customer_name=EXCLUDED.customer_name,source_file=EXCLUDED.source_file,updated_by=EXCLUDED.updated_by,updated_at=NOW()",
+     [JSON.stringify(batch.map(x=>({jp_code:x.jpCode,customer_name:x.customerName}))),name,session.username]);
+   }
+   return json({...preview,savedCodes:customerSheet.records.length,message:'Customer names matched by JP Code. Active, Overdue and Delivered show names without changing shipment history.'});
+  }
   let parsed;
   try{parsed=parseJepoExcel(workbook,{sheetName:String(form.get('sheetName')||''),headerRow:isCsv?1:Number(form.get('headerRow')||0)});}
   catch(e){return json({ok:false,error:String(e?.message||'Excel column mapping failed.')},422);}
