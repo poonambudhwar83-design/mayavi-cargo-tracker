@@ -61,7 +61,7 @@ const branchMonthUI=readFileSync('app/BranchMonthlyDashboard.js','utf8');
 const jepoMonthUI=readFileSync('app/JEPOMonthlyDashboard.js','utf8');
 assert.ok(branchUI.includes("switchSheet('MONTHLY')"));
 assert.ok(branchUI.includes("sheet==='MONTHLY'&&<BranchMonthlyDashboard records={matchingRows}"),'Branch records scoped to signed-in branch and selected filter');
-assert.ok(branchUI.includes("sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div"),'Do not display old sheet twice over Monthly');
+assert.ok(branchUI.includes("sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&sheet!=='OVERDUE'&&<div"),'Do not display old Active sheet over Monthly or Overdue');
 assert.ok(jepoUI.includes("['MONTHLY','Monthly Data']"));
 assert.ok(jepoUI.includes("tab==='MONTHLY'?<JEPOMonthlyDashboard records={rows}/>"));
 assert.ok(haryana.includes('<BranchLoadsDashboard currentUser={currentUser}/>'));
