@@ -95,9 +95,9 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
   setPdfBusy(true);
   try{
    const {PDFDocument,StandardFonts,rgb}=await import('pdf-lib');
-   const document=await PDFDocument.create();
-   const regular=await document.embedFont(StandardFonts.Helvetica);
-   const bold=await document.embedFont(StandardFonts.HelveticaBold);
+   const pdfDoc=await PDFDocument.create();
+   const regular=await pdfDoc.embedFont(StandardFonts.Helvetica);
+   const bold=await pdfDoc.embedFont(StandardFonts.HelveticaBold);
    const navy=rgb(0.10,0.29,0.49),text=rgb(0.17,0.24,0.33);
    const pale=rgb(0.91,0.95,1),stripe=rgb(0.97,0.98,1),white=rgb(1,1,1);
    const W=842,H=595,M=29,TABLE_W=784;
@@ -116,7 +116,7 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
     return s+'...';
    };
    const newPage=()=>{
-    page=document.addPage([W,H]);
+    page=pdfDoc.addPage([W,H]);
     page.drawRectangle({x:0,y:H-12,width:W,height:12,color:navy});
     draw('MAYAVI  /  BRANCH MONTHLY REPORT',M,H-37,15,true,navy);
     draw('Booking month: '+monthLabel(month)+'     Branch: '+(branchFilter==='ALL'?'Jind + Karnal':branchFilter),M,H-55,9);
@@ -191,12 +191,12 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
     ['Month','Branch','Loads','Weight kg','Amount','Received','Balance','JEPO Base','Paid to Branch'],
     [82,65,53,63,104,104,104,104,105],
     history.map(r=>[monthLabel(r.month),r.branch,fmt(r.loads),fmt(r.weight),amount(r.amount),amount(r.received),amount(r.balance),amount(r.paidToJepo),amount(r.paidToBranch)]),7.3);
-   document.getPages().forEach((p,index)=>{
+   pdfDoc.getPages().forEach((p,index)=>{
     p.drawLine({start:{x:M,y:33},end:{x:W-M,y:33},thickness:0.5,color:pale});
     p.drawText('Mayavi | Booking-date monthly report | '+monthLabel(month),{x:M,y:19,font:regular,size:8,color:navy});
-    p.drawText('Page '+(index+1)+' / '+document.getPageCount(),{x:W-95,y:19,font:regular,size:8,color:navy});
+    p.drawText('Page '+(index+1)+' / '+pdfDoc.getPageCount(),{x:W-95,y:19,font:regular,size:8,color:navy});
    });
-   const bytes=await document.save();
+   const bytes=await pdfDoc.save();
    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
    const a=document.createElement('a');a.href=url;a.download=basename+'.pdf';
    document.body.appendChild(a);a.click();a.remove();
