@@ -9,6 +9,8 @@ import {isJindJepoTimeout} from '../lib/jepoTimeoutHighlights.js';
 import styles from './BranchLoadsDashboard.module.css';
 import BranchProfitDashboard from './BranchProfitDashboard.js';
 import BranchMonthlyDashboard from './BranchMonthlyDashboard.js';
+import BranchOverdueDashboard from './BranchOverdueDashboard.js';
+import {jepoOverdueDays,jepoTodayIst} from '../lib/jepoOverdue.js';
 
 const API='/api/branch-loads';
 // The same request ID is reused if a save must be retried, preventing duplicate entries.
@@ -217,6 +219,10 @@ export default function BranchLoadsDashboard({currentUser}){
   // Active Loads includes every undelivered load, regardless of entry date.
   const activeCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status!=='DELIVERED').length,[rows,filter]);
   const deliveredCount=useMemo(()=>rows.filter(r=>(filter==='ALL'||r.branch===filter)&&r.status==='DELIVERED').length,[rows,filter]);
+  const overdueCount=useMemo(()=>{
+    const today=jepoTodayIst();
+    return rows.filter(r=>(filter==='ALL'||r.branch===filter)&&jepoOverdueDays({...r,bookingDate:r.date},today)!==null).length;
+  },[rows,filter]);
   // The Admin sees all pending confirmations regardless of selected branch,
   // date filter, or whether a shipment has moved to Delivered Sheet.
   const confirmationModeFor=row=>row.confirmationMode==='PENDING'&&row.confirmationNo?'UTR':(row.confirmationMode||'PENDING');
@@ -728,6 +734,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <nav className={styles.sheetTabs} aria-label="Branch finance navigation">
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads</button>
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet</button>
+      <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('OVERDUE')}>Overdue Packets ({overdueCount})</button>
       <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
        <button type="button" className={styles.sheetTab} onClick={()=>switchSheet('MONTHLY')}>Monthly Data</button>
       <button type="button" className={styles.activeTab}>Branch Profit &amp; Loss</button>
@@ -751,7 +758,7 @@ export default function BranchLoadsDashboard({currentUser}){
             className={filter===value?styles.branchPickerActive:styles.branchPickerButton}
             onClick={()=>setFilter(value)}>{label}</button>)}
       </div>:<span className={styles.branchPickerLocked}>{userBranch} Branch</span>}
-      <small>Selected branch applies to Active, Delivered, Daily Summary and Monthly Data.</small>
+      <small>Selected branch applies to Active, Overdue, Delivered, Daily Summary and Monthly Data.</small>
     </section>
     <div className={styles.metrics} aria-label={sheet==='MONTHLY'?'Selected booking month totals':'Active and Delivered combined summary'}>
       <div><span>{'Total Load • '+overviewPeriod}</span><strong>{weightFormat(overviewTotals.weight)} kg</strong></div>
@@ -777,6 +784,7 @@ export default function BranchLoadsDashboard({currentUser}){
     <nav className={styles.sheetTabs} aria-label="Load sheet">
       <button type="button" className={sheet==='ACTIVE'?styles.activeTab:styles.sheetTab} onClick={()=>switchSheet('ACTIVE')}>Active Loads ({activeCount})</button>
       <button type="button" className={sheet==='DELIVERED'?styles.deliveredTab:styles.sheetTab} onClick={()=>switchSheet('DELIVERED')}>Delivered Sheet ({deliveredCount})</button>
+      <button type="button" className={sheet==='OVERDUE'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('OVERDUE')}>Overdue Packets ({overdueCount})</button>
       {sheet==='DELIVERED'&&<small style={{fontSize:11,color:'#25603a',fontWeight:700}}>Latest verified delivery date first • Undated past deliveries below</small>}
       <button type="button" className={sheet==='SUMMARY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('SUMMARY')}>Daily Summary</button>
        <button type="button" className={sheet==='MONTHLY'?styles.summaryTab:styles.sheetTab} onClick={()=>switchSheet('MONTHLY')}>Monthly Data</button>
@@ -785,6 +793,7 @@ export default function BranchLoadsDashboard({currentUser}){
 
     {isAdmin&&<p className={styles.hint}>Amount = Weight × Rate • JEPO base = Weight × JEPO Rate • Extra Cost split: Ghee first bottle free; (No. of Bottles − 1) × ₹250 to JEPO. Household and Medicine ₹700 to JEPO; Medicine only: entire Extra Cost to Branch. Nutrition ₹150 to JEPO; remainder to Branch. Electronics / Hookah and all other Extra Cost goes to Branch.</p>}
       {sheet==='MONTHLY'&&<BranchMonthlyDashboard records={matchingRows} isAdmin={isAdmin} branchFilter={filter} onBranchChange={setFilter} selectedMonth={monthlyMonth} onMonthChange={setSelectedMonthlyMonth} showProfit={currentUser?.role==='admin'}/>}
+      {sheet==='OVERDUE'&&<BranchOverdueDashboard rows={matchingRows} branchFilter={filter} busy={busy} onRefresh={()=>void load()} onStatusChange={changeStatus} onEdit={row=>{setSheet('ACTIVE');edit(row);}}/>}
        {sheet==='SUMMARY'&&<section className={styles.summarySection} aria-label="Daily branch summary">
         <div className={styles.summaryHeader}>
           <div>
@@ -904,7 +913,7 @@ export default function BranchLoadsDashboard({currentUser}){
         </div>
         <p className={styles.tatSummaryNote}>*Only deliveries with valid booking and verified delivery dates. Average TAT = total inclusive TAT days ÷ verified deliveries. All destinations outside USA, UK, Australia and Canada are grouped under Other Countries within each service. Branch and search filters apply to every table. Missing dates show —, never an estimated TAT.</p>
       </section>}
-      {sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
+      {sheet!=='SUMMARY'&&sheet!=='MONTHLY'&&sheet!=='OVERDUE'&&<div className={styles.scroller} ref={savedScrollRef} onScroll={()=>syncLedgerScroll('saved')}><table className={styles.table+' '+styles.savedLedger} style={{width:ledgerWidth(hasExtraCostColumn,sheet==='DELIVERED')+'px',minWidth:'100%'}}>
         {ledgerColumns(hasExtraCostColumn,sheet==='DELIVERED')}
         <thead><tr>
           <th>Branch</th>
@@ -931,8 +940,8 @@ export default function BranchLoadsDashboard({currentUser}){
           {liveBusy?'Checking JEPO…':'Refresh JEPO Live'}
         </button>}
         {sheet==='DELIVERED'&&<button type="button" onClick={downloadTatSummaryCsv} disabled={!tatSummary.verifiedCount}>Download TAT Summary CSV</button>}
-        {sheet!=='MONTHLY'&&<button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>}
-         {sheet!=='MONTHLY'&&<button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>}
+        {sheet!=='MONTHLY'&&sheet!=='OVERDUE'&&<button type="button" onClick={downloadCsv} disabled={sheet==='SUMMARY'?!dailySummary.length:!shown.length}>Download CSV</button>}
+         {sheet!=='MONTHLY'&&sheet!=='OVERDUE'&&<button type="button" onClick={()=>void downloadExcel()} disabled={excelBusy||(sheet==='SUMMARY'?!dailySummary.length:!shown.length)}>{excelBusy?'Preparing Excel…':'Download Excel (.xlsx)'}</button>}
       </span>
     </footer>
   </main>;
