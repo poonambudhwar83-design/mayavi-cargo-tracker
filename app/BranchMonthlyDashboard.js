@@ -43,6 +43,7 @@ function SummaryTable({title,items,headName='Branch'}){
 export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchFilter='ALL',onBranchChange=()=>{},selectedMonth='',onMonthChange=()=>{},showProfit=false}){
  const [profitSnapshot,setProfitSnapshot]=useState(null);
  const [busy,setBusy]=useState(false);
+ const [pdfBusy,setPdfBusy]=useState(false);
  const months=useMemo(()=>branchMonths(records),[records]);
  const month=selectedMonth&&months.includes(selectedMonth)?selectedMonth:months[0]||'';
  const report=useMemo(()=>aggregateBranchMonthly(records,{month}),[records,month]);
@@ -88,6 +89,122 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
    const a=document.createElement('a');a.href=url;a.download=basename+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(error){alert('Monthly Excel export unavailable: '+(error?.message||error));}finally{setBusy(false);}
  }
+
+ async function pdf(){
+  if(pdfBusy||busy||!report.selectedRows.length)return;
+  setPdfBusy(true);
+  try{
+   const {PDFDocument,StandardFonts,rgb}=await import('pdf-lib');
+   const document=await PDFDocument.create();
+   const regular=await document.embedFont(StandardFonts.Helvetica);
+   const bold=await document.embedFont(StandardFonts.HelveticaBold);
+   const navy=rgb(0.10,0.29,0.49),text=rgb(0.17,0.24,0.33);
+   const pale=rgb(0.91,0.95,1),stripe=rgb(0.97,0.98,1),white=rgb(1,1,1);
+   const W=842,H=595,M=29,TABLE_W=784;
+   const plain=v=>String(v??'').replace(/₹/g,'Rs. ').replace(/[–—−]/g,'-').replace(/[^\x20-\x7E]/g,' ');
+   const amount=v=>'Rs. '+fmt(v);
+   let page,y;
+   const draw=(value,x,atY,size=8,strong=false,color=text)=>{
+    page.drawText(plain(value),{x,y:atY,size,font:strong?bold:regular,color});
+   };
+   const fit=(value,width,size,strong=false)=>{
+    const font=strong?bold:regular;
+    const input=plain(value);
+    if(font.widthOfTextAtSize(input,size)<=width-7)return input;
+    let s=input;
+    while(s.length&&font.widthOfTextAtSize(s+'...',size)>width-7)s=s.slice(0,-1);
+    return s+'...';
+   };
+   const newPage=()=>{
+    page=document.addPage([W,H]);
+    page.drawRectangle({x:0,y:H-12,width:W,height:12,color:navy});
+    draw('MAYAVI  /  BRANCH MONTHLY REPORT',M,H-37,15,true,navy);
+    draw('Booking month: '+monthLabel(month)+'     Branch: '+(branchFilter==='ALL'?'Jind + Karnal':branchFilter),M,H-55,9);
+    page.drawLine({start:{x:M,y:H-65},end:{x:W-M,y:H-65},thickness:0.7,color:pale});
+    y=H-86;
+   };
+   const section=title=>{
+    if(y<95)newPage();
+    draw(title,M,y,11,true,navy);
+    y-=20;
+   };
+   const table=(title,columns,widths,rows,size=7)=>{
+    section(title);
+    let needHead=true;
+    const heading=()=>{
+     page.drawRectangle({x:M,y:y-21,width:TABLE_W,height:21,color:navy});
+     let x=M;
+     columns.forEach((h,i)=>{draw(fit(h,widths[i],size-0.1,true),x+4,y-14,size-0.1,true,white);x+=widths[i];});
+     y-=21;
+    };
+    const entries=rows.length?rows:[['No matching records',...columns.slice(1).map(()=>'' )]];
+    for(let index=0;index<entries.length;index++){
+     if(y<49){newPage();section(title+' (continued)');needHead=true;}
+     if(needHead){heading();needHead=false;}
+     if(index%2===0)page.drawRectangle({x:M,y:y-18,width:TABLE_W,height:18,color:stripe});
+     let x=M;
+     entries[index].forEach((v,i)=>{
+      if(i<widths.length)draw(fit(v,widths[i],size,index===entries.length-1&&String(entries[index][0]).startsWith('MONTH TOTAL')),x+4,y-12,size,false,text);
+      x+=widths[i]||0;
+     });
+     y-=18;
+    }
+    y-=13;
+   };
+   newPage();
+   const g=report.grand;
+   const metric=[
+    ['Saved shipments',fmt(g.loads),'Weight (kg)',fmt(g.weight)],
+    ['Total amount',amount(g.amount),'Received',amount(g.received)],
+    ['Balance',amount(g.balance),'Paid to JEPO (base)',amount(g.paidToJepo)],
+    ['Paid to Branch',amount(g.paidToBranch),'JEPO including extras',amount(g.totalJepo)],
+    ['Delivered',fmt(g.delivered),'Active',fmt(g.active)]
+   ];
+   if(showProfit&&profitSnapshot?.month===month&&!profitSnapshot.error){
+    metric.push(['Net Profit',amount(monthlyProfit),'','']);
+   }
+   table('Selected Month Overview',['Metric','Value','Metric','Value'],[185,207,185,207],metric,8);
+   const loadRows=report.selectedRows.map(r=>[
+    date(r.date),r.branch,r.trackingNo||'',r.service||'',r.destination||'',
+    amount(r.amount),amount(r.received),amount(r.balance),
+    r.liveStatus||statusLabel(r.status),fmt(r.weight),
+    amount(branchPayoutForRecord(r)),
+    amount(totalJepoForLoad(r.paidToJepo,r.commodity,r.extraCost,r.bottleCount,{legacy:true}))
+   ]);
+   loadRows.push([
+    'MONTH TOTAL','','', '', '',amount(g.amount),amount(g.received),amount(g.balance),
+    fmt(g.loads)+' loads',fmt(g.weight),amount(g.paidToBranch),amount(g.totalJepo)
+   ]);
+   table('All Saved Loads - '+monthLabel(month),
+    ['Booked','Branch','Tracking No','Service','Destination','Amount','Received','Balance','Status','Wt (kg)','To Branch','To JEPO total'],
+    [56,42,91,58,68,63,61,61,70,45,78,91],loadRows,6.65);
+   const groups=rows=>rows.map(r=>[
+    r.label,fmt(r.loads),fmt(r.weight),amount(r.amount),amount(r.received),
+    amount(r.balance),amount(r.paidToJepo),amount(r.paidToBranch)
+   ]);
+   const groupWidths=[142,60,77,102,102,102,99,100];
+   const groupHeads=['Name','Loads','Weight kg','Amount','Received','Balance','JEPO Base','Paid to Branch'];
+   table('Branch Comparison',groupHeads,groupWidths,groups(report.branches),7.3);
+   table('Service-wise Summary',groupHeads,groupWidths,groups(report.byService),7.3);
+   table('Destination-wise Summary',groupHeads,groupWidths,groups(report.byCountry),7.3);
+   table('Month-by-month History',
+    ['Month','Branch','Loads','Weight kg','Amount','Received','Balance','JEPO Base','Paid to Branch'],
+    [82,65,53,63,104,104,104,104,105],
+    history.map(r=>[monthLabel(r.month),r.branch,fmt(r.loads),fmt(r.weight),amount(r.amount),amount(r.received),amount(r.balance),amount(r.paidToJepo),amount(r.paidToBranch)]),7.3);
+   document.getPages().forEach((p,index)=>{
+    p.drawLine({start:{x:M,y:33},end:{x:W-M,y:33},thickness:0.5,color:pale});
+    p.drawText('Mayavi | Booking-date monthly report | '+monthLabel(month),{x:M,y:19,font:regular,size:8,color:navy});
+    p.drawText('Page '+(index+1)+' / '+document.getPageCount(),{x:W-95,y:19,font:regular,size:8,color:navy});
+   });
+   const bytes=await document.save();
+   const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+   const a=document.createElement('a');a.href=url;a.download=basename+'.pdf';
+   document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){alert('Monthly PDF export unavailable: '+(error?.message||error));}
+  finally{setPdfBusy(false);}
+ }
+
  return <section aria-label="Jind and Karnal Monthly Data" style={{margin:'14px 0'}}>
   <div style={{...wrap,display:'flex',gap:12,flexWrap:'wrap',alignItems:'end',justifyContent:'space-between'}}>
    <div><h2 style={{fontSize:21,color:'#1e4c7c',margin:'0 0 6px'}}>Jind &amp; Karnal — Monthly Data</h2>
@@ -106,6 +223,7 @@ export default function BranchMonthlyDashboard({records=[],isAdmin=false,branchF
     </label>
     <button type="button" style={{padding:'9px 12px',background:'#e5efff',borderRadius:8,border:'1px solid #bdcde3',fontWeight:800,cursor:'pointer'}} disabled={!report.selectedRows.length} onClick={()=>downloadCsv(details,basename+'-details')}>Download CSV</button>
     <button type="button" style={{padding:'9px 12px',background:'#e5efff',borderRadius:8,border:'1px solid #bdcde3',fontWeight:800,cursor:'pointer'}} disabled={busy||!report.selectedRows.length} onClick={()=>void excel()}>{busy?'Preparing Excel…':'Download Excel'}</button>
+    <button type="button" style={{padding:'9px 12px',background:'#dbf0ff',borderRadius:8,border:'1px solid #8dbbdd',fontWeight:800,cursor:'pointer'}} disabled={busy||pdfBusy||!report.selectedRows.length} onClick={()=>void pdf()}>{pdfBusy?'Preparing PDF…':'Download PDF'}</button>
    </div>
   </div>
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(154px,1fr))',gap:9,marginTop:12}}>
