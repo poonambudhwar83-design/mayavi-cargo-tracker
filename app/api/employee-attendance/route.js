@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {SALARY_COMPANIES,SALARY_DESIGNATIONS,salaryCompany,salaryDesignation,salaryAmount} from '../../../lib/salaryMath.js';
-import {attendanceMonth,attendanceDate,attendanceTime,attendanceStatus,deriveLateMinutes} from '../../../lib/employeeAttendance.js';
+import {attendanceMonth,attendanceDate,attendanceTime,attendanceStatus,deriveLateMinutes,attendanceDefaultOff} from '../../../lib/employeeAttendance.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -106,8 +106,11 @@ export async function POST(request){
   }
   if(!match[0].is_active)return reply({ok:false,error:'Employee is archived. Restore to record new attendance.'},400);
   if(match[0].attendance_hidden)return reply({ok:false,error:'Employee was removed from Attendance. Restore employee to enter attendance.'},400);
-  const status=attendanceStatus(body.status);
-  if(!status)return reply({ok:false,error:'Select a valid attendance status.'},400);
+  const requestedStatus=attendanceStatus(body.status);
+  if(!requestedStatus)return reply({ok:false,error:'Select a valid attendance status.'},400);
+  // Company-wide Diwali closure: no new Present, Absent or Leave rows may
+  // override 08–09 Nov 2026, while previously recorded rows stay auditable.
+  const status=attendanceDefaultOff(date)==='HOLIDAY'?'HOLIDAY':requestedStatus;
   const onDuty=status==='PRESENT'||status==='HALF_DAY';
   const checkIn=onDuty&&body.checkIn?attendanceTime(body.checkIn):'';
   if(onDuty&&body.checkIn&&!checkIn)return reply({ok:false,error:'Check-in must be HH:MM.'},400);
