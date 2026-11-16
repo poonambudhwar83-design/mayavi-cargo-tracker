@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,deriveLateMinutes,attendanceDefaultOff,attendanceDefaultOffReason} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,deriveLateMinutes,attendanceDefaultOff,attendanceDefaultOffReason,attendanceEffectiveStatus} from '../lib/employeeAttendance.js';
 import styles from './AttendanceMonthGrid.module.css';
 
 const shortCodes={PRESENT:'P',HALF_DAY:'½',PAID_LEAVE:'L',SICK_LEAVE:'SL',UNPAID_LEAVE:'UL',ABSENT:'A',HOLIDAY:'H',WEEK_OFF:'WO'};
@@ -25,7 +25,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
  }):null;
  function openEditor(emp,date,row){
   setEditor({employeeId:emp.id,employeeName:emp.employeeName,date,
-   status:row?.status||attendanceDefaultOff(date)||'PRESENT',checkIn:row?.checkIn||'',
+   status:attendanceEffectiveStatus(date,row?.status)||'PRESENT',checkIn:row?.checkIn||'',
    manualLateMinutes:row?.lateMinutes===null||row?.lateMinutes===undefined?'':String(row.lateMinutes),
    remarks:row?.remarks||'',reportingTime:emp.reportingTime||'',existing:Boolean(row)});
  }
@@ -83,13 +83,13 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
        const row=byDay.get(String(employee.id)+'|'+date);
        const automaticOff=attendanceDefaultOff(date);
        const implicitPresent=!row&&!automaticOff&&countedDates.has(date);
-       const status=row?.status||automaticOff||(implicitPresent?'PRESENT':'');
+       const status=attendanceEffectiveStatus(date,row?.status)||(implicitPresent?'PRESENT':'');
        const cellKey=employee.id+'|'+date;
        const isSaving=savingKey===cellKey;
        return <td key={date} className={styles.dayCell} data-status={status||'EMPTY'} data-sunday={new Date(date+'T00:00:00Z').getUTCDay()===0?'yes':'no'} data-holiday={automaticOff==='HOLIDAY'?'yes':'no'}>
         <select className={styles.cellSelect} aria-label={'Edit attendance '+employee.employeeName+' on '+date}
-         value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}
-         title={(!row&&automaticOff?attendanceDefaultOffReason(date)+' (automatic)':implicitPresent?'Present (automatic: no attendance marked)':labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
+         value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)||automaticOff==='HOLIDAY'}
+         title={(automaticOff==='HOLIDAY'?attendanceDefaultOffReason(date)+' (company off)':!row&&automaticOff?attendanceDefaultOffReason(date)+' (automatic)':implicitPresent?'Present (automatic: no attendance marked)':labels[status]||'Not marked')+(row?.remarks?' • '+row.remarks:'')+(row?.lateMinutes>0?' • '+row.lateMinutes+' minutes late':'')}
          onChange={event=>{
           const next=event.target.value;
           if(next==='')void onClearDay({employeeId:employee.id,date});
@@ -102,7 +102,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
         <button type="button" className={styles.editButton}
          aria-label={'Edit check-in, lateness and remarks for '+employee.employeeName+' on '+date}
          title="Edit time / lateness / remarks" onClick={()=>openEditor(employee,date,row)}
-         disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}>✎</button>
+         disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)||automaticOff==='HOLIDAY'}>✎</button>
         {isSaving&&<span className={styles.savingMark} aria-label="Saving">…</span>}
        </td>;
       })}
@@ -115,7 +115,7 @@ export default function AttendanceMonthGrid({month,employees=[],entries=[],savin
     </tbody>
    </table>
   </div>
-  <p className={styles.footnote}>Unmarked working dates through today count as Present (P). Sundays are shaded and default to Weekly Off (WO). 8–9 November 2026 are Diwali Holiday (H), with 8 November counted only once. Saved manual marks can override scheduled offs; clearing a mark restores the automatic calendar status. Future days are not included in monthly totals. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted restores history.</p>
+  <p className={styles.footnote}>Unmarked working dates through today count as Present (P). Sundays are shaded and default to Weekly Off (WO). 8–9 November 2026 are Diwali Holiday (H), with 8 November counted only once. Manual marks may override Sunday offs; Diwali 8–9 Nov stays company-wide off. Clearing a mark restores the automatic calendar status. Future days are not included in monthly totals. Late arrivals show an orange dot. Delete hides an employee from Attendance only; Show Deleted restores history.</p>
   {editor&&<div className={styles.modalShade} onMouseDown={event=>{if(event.target===event.currentTarget&&!savingKey)setEditor(null)}}>
    <div className={styles.modal} role="dialog" aria-modal="true" aria-label={'Edit attendance '+editor.employeeName+' '+editor.date}>
     <form onSubmit={submitEditor}>
