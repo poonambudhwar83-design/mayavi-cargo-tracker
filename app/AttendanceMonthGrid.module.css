@@ -38,6 +38,8 @@
 .dayCell{text-align:center;min-width:42px;width:42px;position:relative;padding:2px!important}
 .dayCell[data-sunday=yes][data-status=EMPTY]{background:#fff7ed!important}
 .dayCell[data-holiday=yes]{background:#eff6ff!important}
+.dayCell[data-holiday=yes] .editButton{display:none}
+.dayCell[data-holiday=yes] .cellSelect:disabled{opacity:1;color:#075985;background:#dbeafe;border-color:#93c5fd;cursor:default}
 .markButton{width:100%;height:38px;position:relative;border:1px solid transparent;border-radius:6px;cursor:pointer;background:transparent;color:#a5b4c4;font-size:12px;font-weight:900}
 .markButton:disabled{opacity:.55;cursor:default}
 .dayCell[data-status=PRESENT] .markButton{color:#166534;background:#dcfce7;border-color:#a7efb9}
