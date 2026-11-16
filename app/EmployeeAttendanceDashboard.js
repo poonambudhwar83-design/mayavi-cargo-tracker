@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,attendanceRollup,deriveLateMinutes,attendanceLabel} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,attendanceRollup,deriveLateMinutes,attendanceLabel,attendanceDefaultOff,attendanceDefaultOffReason} from '../lib/employeeAttendance.js';
 import AttendanceMonthGrid from './AttendanceMonthGrid.js';
 
 const API='/api/employee-attendance';
@@ -18,7 +18,7 @@ const csvEscape=v=>'"'+(/^[=+@\-\t\r]/.test(String(v??''))?"'":'')+String(v??'')
 const weekday=date=>date?new Date(date+'T00:00:00Z').toLocaleDateString('en-IN',{weekday:'short',timeZone:'UTC'}):'';
 function Field({label,children,wide=false}){return <label style={{display:'grid',gap:5,fontSize:12,fontWeight:800,color:ink,flex:wide?'2 1 220px':'1 1 155px',minWidth:0}}>{label}{children}</label>;}
 function StatCard({label,value,note}){return <div style={{background:'#fff',border:'1px solid '+border,borderRadius:12,padding:14}}><div style={{fontSize:11,color:muted,fontWeight:800,textTransform:'uppercase',letterSpacing:.35}}>{label}</div><div style={{fontSize:24,color:ink,fontWeight:900,marginTop:5}}>{value}</div>{note&&<small style={{color:muted}}>{note}</small>}</div>;}
-const freshDay=()=>({employeeId:'',date:todayIST(),status:'PRESENT',checkIn:'',manualLateMinutes:'',remarks:''});
+const freshDay=()=>({employeeId:'',date:todayIST(),status:attendanceDefaultOff(todayIST())||'PRESENT',checkIn:'',manualLateMinutes:'',remarks:''});
 export default function EmployeeAttendanceDashboard(){
  const [month,setMonth]=useState(()=>todayIST().slice(0,7));
  const [employees,setEmployees]=useState([]),[entries,setEntries]=useState([]);
@@ -143,12 +143,13 @@ export default function EmployeeAttendanceDashboard(){
    const total=summaryById.get(emp.id)||{};
    lines.push([emp.employeeName,emp.companyName||'',...dates.map(date=>{
     const row=lookup.get(emp.id+'|'+date);
-    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):(dayLimit&&date<=dayLimit?'P (Auto)':'');
+    const autoOff=attendanceDefaultOff(date);
+    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):(autoOff?(code[autoOff]||'')+' (Auto)':dayLimit&&date<=dayLimit?'P (Auto)':'');
    }),total.present||0,total.fullLeave||0,total.halfLeave||0,total.leaveDays||0,total.absent||0,total.lateDays||0,total.lateMinutes||0]);
   }
   downloadCsv(lines,'monthly-attendance-sheet-'+month);
  }
- const pickEmployee=e=>setDraft(d=>({...d,employeeId:e.id,date:d.date.slice(0,7)===month?d.date:month+'-01',status:'PRESENT',checkIn:'',manualLateMinutes:'',remarks:''}));
+ const pickEmployee=e=>setDraft(d=>{const date=d.date.slice(0,7)===month?d.date:month+'-01';return {...d,employeeId:e.id,date,status:attendanceDefaultOff(date)||'PRESENT',checkIn:'',manualLateMinutes:'',remarks:''};});
  async function saveDay(ev){ev.preventDefault();if(!draft.employeeId||!draft.date)return;
   if(await save('save_day',{...draft,manualLateMinutes:draft.manualLateMinutes===''?null:draft.manualLateMinutes})){
    setDraft(d=>({...d,checkIn:'',manualLateMinutes:'',remarks:''}));
@@ -179,8 +180,18 @@ export default function EmployeeAttendanceDashboard(){
  }
  function downloadDetails(){
   const names=new Map(employees.map(e=>[e.id,e.employeeName]));
+  const explicit=new Set(entries.map(e=>e.employeeId+'|'+e.date));
+  const automaticOffRows=[];
+  for(const employee of list)for(const date of reportDays){
+   const status=attendanceDefaultOff(date);
+   if(status&&!explicit.has(employee.id+'|'+date))automaticOffRows.push({
+    employeeId:employee.id,date,status,checkIn:'',expectedStart:'',lateMinutes:null,
+    remarks:attendanceDefaultOffReason(date)+' (automatic)'
+   });
+  }
+  const rows=[...recent,...automaticOffRows].sort((a,b)=>b.date.localeCompare(a.date)||String(a.employeeId).localeCompare(String(b.employeeId)));
   downloadCsv([['Date','Day','Employee','Status','Check-in','Reporting Time','Late Minutes','Remarks'],
-   ...recent.map(e=>[e.date,weekday(e.date),names.get(e.employeeId)||'—',attendanceLabel(e.status),e.checkIn,e.expectedStart,e.lateMinutes??'',e.remarks])],'employee-attendance-register-'+month);
+   ...rows.map(e=>[e.date,weekday(e.date),names.get(e.employeeId)||'—',attendanceLabel(e.status),e.checkIn,e.expectedStart,e.lateMinutes??'',e.remarks])],'employee-attendance-register-'+month);
  }
  function downloadCsv(lines,fileName){
   const body='\uFEFF'+lines.map(line=>line.map(csvEscape).join(',')).join('\r\n');
@@ -195,7 +206,7 @@ export default function EmployeeAttendanceDashboard(){
      <p style={{color:muted,fontSize:13,margin:0}}>Daily register · Monthly leave totals · Late arrivals · Existing Salary employee list</p>
     </div>
     <div style={{display:'flex',gap:9,alignItems:'end',flexWrap:'wrap'}}>
-     <Field label="REPORT MONTH"><input type="month" min="2020-01" max="2100-12" value={month} onChange={e=>{setMonth(e.target.value);setDraft(d=>({...d,date:e.target.value+'-01'}))}} style={{...input,minWidth:160}}/></Field>
+     <Field label="REPORT MONTH"><input type="month" min="2020-01" max="2100-12" value={month} onChange={e=>{setMonth(e.target.value);setDraft(d=>({...d,date:e.target.value+'-01',status:attendanceDefaultOff(e.target.value+'-01')||'PRESENT'}))}} style={{...input,minWidth:160}}/></Field>
      <button style={btn} disabled={loading} type="button" onClick={()=>void load()}>{loading?'Loading…':'Refresh'}</button>
      <button style={{...btn,background:showAdvanced?'#dbeafe':'#fff'}} type="button" onClick={()=>setShowAdvanced(v=>!v)}>{showAdvanced?'Hide Employee Management':'Manage Employees / Late Details'}</button>
     </div>
@@ -213,7 +224,7 @@ export default function EmployeeAttendanceDashboard(){
     onRestoreEmployee={emp=>changeAttendanceEmployeeVisibility(emp,true)}/>
    <section aria-label="Employee attendance monthly overview" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10,marginBottom:17}}>
     <StatCard label="Employees" value={rolled.employees} note="Selected staff"/>
-    <StatCard label="Present Days" value={fmt(rolled.present)} note="Unmarked days auto-present"/>
+    <StatCard label="Present Days" value={fmt(rolled.present)} note="Unmarked working days auto-present"/>
     <StatCard label="Full Leave Days" value={fmt(rolled.fullLeave)}/>
     <StatCard label="Half Leave Days" value={fmt(rolled.halfLeave)}/>
     <StatCard label="Leave Days" value={fmt(rolled.leaveDays)} note="Full + half × 0.5"/>
@@ -224,7 +235,7 @@ export default function EmployeeAttendanceDashboard(){
    <section style={{...pane,marginBottom:16}} aria-label="Monthly employee leave summary">
     <div style={{display:'flex',gap:10,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
      <div><h2 style={{fontSize:17,margin:'0 0 4px'}}>Monthly Leave Summary · {monthTitle(month)}</h2>
-      <small style={{color:muted}}>Period: {reportDays.length?formatDate(reportDays[0])+' to '+formatDate(dayLimit):'Not started'} · Only employees with leave · Half day = 0.5 leave day · Unmarked = Present</small></div>
+      <small style={{color:muted}}>Period: {reportDays.length?formatDate(reportDays[0])+' to '+formatDate(dayLimit):'Not started'} · Only employees with leave · Half day = 0.5 leave day · Sundays &amp; 8–9 Nov off · Other unmarked days = Present</small></div>
      <button type="button" style={btn} disabled={!leaveTakers.length} onClick={downloadLeaveSummary}>Download Leave Summary CSV</button>
     </div>
     <div style={{overflowX:'auto',maxHeight:420}}>
@@ -292,7 +303,7 @@ export default function EmployeeAttendanceDashboard(){
       <Field label="EMPLOYEE" wide><select required style={input} value={draft.employeeId} onChange={e=>field('employeeId',e.target.value)}>
        <option value="">Select employee</option>{active.map(e=><option key={e.id} value={e.id}>{e.employeeName} · {e.companyName}</option>)}
       </select></Field>
-      <Field label="DATE"><input required type="date" min={month+'-01'} max={new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)} style={input} value={draft.date} onChange={e=>field('date',e.target.value)}/></Field>
+      <Field label="DATE"><input required type="date" min={month+'-01'} max={new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)} style={input} value={draft.date} onChange={e=>setDraft(d=>({...d,date:e.target.value,status:attendanceDefaultOff(e.target.value)||'PRESENT',checkIn:'',manualLateMinutes:''}))}/></Field>
       <Field label="ATTENDANCE / LEAVE"><select style={input} value={draft.status} onChange={e=>setDraft(d=>({...d,status:e.target.value,checkIn:'',manualLateMinutes:''}))}>{ATTENDANCE_STATUSES.map(v=><option key={v.value} value={v.value}>{v.label}</option>)}</select></Field>
       <Field label="CHECK-IN TIME"><input type="time" style={input} disabled={!['PRESENT','HALF_DAY'].includes(draft.status)} value={draft.checkIn} onChange={e=>field('checkIn',e.target.value)}/></Field>
       <Field label="OFFICIAL REPORTING TIME"><input type="time" style={input} disabled={!selected?.isActive} value={startTime} onChange={e=>setStartTime(e.target.value)}/></Field>
