@@ -120,7 +120,7 @@ assert.ok(grid.includes('onClearDay(editor)'));
 assert.ok(grid.includes("row?.lateMinutes>0"));
 assert.ok(grid.includes('<option value="">+</option>'),'Blank attendance remains unmarked and can be cleared');
 assert.ok(grid.includes('className={styles.cellSelect}'),'Every grid cell must be directly editable');
-assert.ok(grid.includes('value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)}'));
+assert.ok(grid.includes("value={status} disabled={Boolean(savingKey)||!employee.isActive||Boolean(employee.attendanceHidden)||automaticOff==='HOLIDAY'}"),'Diwali days are protected from accidental edits');
 assert.ok(grid.includes('aria-label="Edit day attendance status"'));
 assert.ok(grid.includes('aria-label="Employee actual arrival time"'));
 assert.ok(grid.includes('aria-label="Employee late minutes"'));
