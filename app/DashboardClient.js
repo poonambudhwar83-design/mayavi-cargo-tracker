@@ -794,13 +794,16 @@ function expandPartRows(list=[]){
     // only as a clearly labelled MAWB-level reference, NEVER as a part's
     // confirmed arrival or part-specific ETA. A later verified individual
     // part date/time always takes precedence; the physical parts remain distinct.
+    // Current official final-leg ETA takes precedence over the original
+    // scheduled arrival. The latter may remain stored for delay history
+    // (e.g. 09 Nov schedule versus 17 Nov updated ETA); never show it as
+    // the part's latest MAWB ETA or calculate a Mail deadline from it.
     const emiratesMasterEta=prefix==='176'&&row.arrivalIsActual!==true&&
       parts.length>=2&&parts.every(part=>part.arrivalIsActual!==true)&&
       /(?:ETA|EXPECTED)/i.test(String(row.arrivalEvidence||''))&&
-      /^20\d{2}-\d{2}-\d{2}$/.test(String(row.scheduledArrivalDate||row.arrivalDate||''))&&
-      /^([01]\d|2[0-3]):[0-5]\d$/.test(String(row.scheduledArrivalTime||row.arrivalTime||''))
-      ?{date:row.scheduledArrivalDate||row.arrivalDate,
-        time:row.scheduledArrivalTime||row.arrivalTime}:null;
+      /^20\d{2}-\d{2}-\d{2}$/.test(String(row.arrivalDate||''))&&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(String(row.arrivalTime||''))
+      ?{date:row.arrivalDate,time:row.arrivalTime}:null;
 
     const saudiaRcfByPart=prefix==='065'?matchSaudiaRcfParts(row,parts):[];
     return parts.map((p,idx)=>{const saudiaPlan=prefix==='065'?saudiaManifestPlan(row,p):null;const rcf=saudiaRcfByPart[idx];const saudiaEta=prefix==='065'?saudiaMatchingPartEta(row,p):'';return({...row,
