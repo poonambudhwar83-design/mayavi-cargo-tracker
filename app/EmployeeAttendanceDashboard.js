@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,attendanceRollup,deriveLateMinutes,attendanceLabel,attendanceDefaultOff,attendanceDefaultOffReason} from '../lib/employeeAttendance.js';
+import {ATTENDANCE_STATUSES,attendanceMonthlySummary,attendanceCountedDates,attendanceRollup,deriveLateMinutes,attendanceLabel,attendanceDefaultOff,attendanceDefaultOffReason,attendanceEffectiveStatus} from '../lib/employeeAttendance.js';
 import AttendanceMonthGrid from './AttendanceMonthGrid.js';
 
 const API='/api/employee-attendance';
@@ -55,7 +55,7 @@ export default function EmployeeAttendanceDashboard(){
   const map=new Map();
   for(const entry of entries){
    if(!entry.date.startsWith(month+'-')||!dayLimit||entry.date>dayLimit||
-    !['HALF_DAY','PAID_LEAVE','SICK_LEAVE','UNPAID_LEAVE'].includes(entry.status))continue;
+    !['HALF_DAY','PAID_LEAVE','SICK_LEAVE','UNPAID_LEAVE'].includes(attendanceEffectiveStatus(entry.date,entry.status)))continue;
    const previous=map.get(entry.employeeId)||[];
    previous.push(formatDate(entry.date)+' ('+(entry.status==='HALF_DAY'?'Half':attendanceLabel(entry.status))+')');
    map.set(entry.employeeId,previous);
@@ -63,6 +63,10 @@ export default function EmployeeAttendanceDashboard(){
   return map;
  },[entries,month,dayLimit]);
  const recent=useMemo(()=>entries.filter(e=>visibleIds.has(e.employeeId)&&e.date.startsWith(month+'-')&&dayLimit&&e.date<=dayLimit)
+  .map(e=>{
+   const effective=attendanceEffectiveStatus(e.date,e.status);
+   return effective===e.status?e:{...e,status:effective,checkIn:'',expectedStart:'',lateMinutes:null,remarks:attendanceDefaultOffReason(e.date)+' (company off; original record preserved)'};
+  })
   .sort((a,b)=>b.date.localeCompare(a.date)||a.employeeId.localeCompare(b.employeeId)),[entries,visibleIds,month,dayLimit]);
  const shiftStart=selected?.reportingTime||'';
  const late=deriveLateMinutes({status:draft.status,checkIn:draft.checkIn,expectedStart:shiftStart,manualLateMinutes:draft.manualLateMinutes});
@@ -144,7 +148,8 @@ export default function EmployeeAttendanceDashboard(){
    lines.push([emp.employeeName,emp.companyName||'',...dates.map(date=>{
     const row=lookup.get(emp.id+'|'+date);
     const autoOff=attendanceDefaultOff(date);
-    return row?(code[row.status]||'')+(Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):(autoOff?(code[autoOff]||'')+' (Auto)':dayLimit&&date<=dayLimit?'P (Auto)':'');
+    const effective=attendanceEffectiveStatus(date,row?.status);
+    return row?(code[effective]||'')+((effective==='PRESENT'||effective==='HALF_DAY')&&Number(row.lateMinutes)>0?' (Late '+row.lateMinutes+'m)':''):(autoOff?(code[autoOff]||'')+' (Auto)':dayLimit&&date<=dayLimit?'P (Auto)':'');
    }),total.present||0,total.fullLeave||0,total.halfLeave||0,total.leaveDays||0,total.absent||0,total.lateDays||0,total.lateMinutes||0]);
   }
   downloadCsv(lines,'monthly-attendance-sheet-'+month);
@@ -351,7 +356,7 @@ export default function EmployeeAttendanceDashboard(){
        <td style={cell}>{r.expectedStart||'—'}</td>
        <td style={{...cell,color:r.lateMinutes>0?'#b45309':muted,fontWeight:800}}>{r.lateMinutes===null?'—':r.lateMinutes+' min'}</td>
        <td style={{...cell,maxWidth:230,overflow:'hidden',textOverflow:'ellipsis'}} title={r.remarks}>{r.remarks||'—'}</td>
-       <td style={cell}><button type="button" style={{...btn,padding:'6px 9px'}} onClick={()=>editDay(r)}>Edit</button></td>
+       <td style={cell}><button type="button" disabled={attendanceDefaultOff(r.date)==='HOLIDAY'} title={attendanceDefaultOff(r.date)==='HOLIDAY'?'Company Diwali holiday • existing record preserved':'Edit attendance'} style={{...btn,padding:'6px 9px'}} onClick={()=>editDay(r)}>Edit</button></td>
       </tr>)}
       {!recent.length&&<tr><td colSpan={8} style={{...cell,textAlign:'center',padding:20}}>No attendance entered in {monthTitle(month)}. Select an employee and record a day above.</td></tr>}
       </tbody>
