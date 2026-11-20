@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import ExcelJS from 'exceljs';
+import officeCrypto from 'officecrypto-tool';
 import JSZip from 'jszip';
 import {decodeBankCsv,parseBankCsv} from '../../../lib/personalAccountsUpload.js';
 import {neon} from '@neondatabase/serverless';
@@ -62,6 +63,10 @@ export async function POST(request){
   if(!authorized(request))return reply({ok:false,error:'Admin login required.'},403);
   try{
     const form=await request.formData(),file=form.get('file');
+    // Password is transient: it is neither logged nor written to the Mayavi database.
+    const suppliedPassword=form.get('password');
+    const password=typeof suppliedPassword==='string'?suppliedPassword:'';
+    if(password.length>255)return reply({ok:false,error:'Excel passwords must be 255 characters or fewer.'},400);
     if(!file||typeof file.arrayBuffer!=='function')return reply({ok:false,error:'Choose an Excel, CSV or ZIP bank statement file.'},400);
     const originalName=String(file.name||'Statement').slice(0,180);
     if(file.size===0)return reply({ok:false,error:'The selected file is empty. Please choose the actual downloaded bank statement.'},400);
@@ -89,7 +94,20 @@ export async function POST(request){
       const rows=parseBankCsv(decodeBankCsv(bytes));
       if(rows.length)sheets=[{sheet:'Statement',rows,cellNotes:[]}];
     }else if(/\.(xlsx|xls)$/i.test(effectiveName)){
-      if(isOle(bytes))return reply({ok:false,error:'This Excel uses old .xls format or password encryption. Open it locally with the password (if needed) and use Save As → unprotected .xlsx, then upload. Do not share your password.'},400);
+      if(isOle(bytes)){
+        if(!password)return reply({ok:false,error:'This bank Excel is encrypted or in old .xls format. If it asks for a password when opening, enter that password in the Personal Accounts password field and upload again.'},400);
+        try{
+          if(!officeCrypto.isEncrypted(bytes)){
+            return reply({ok:false,error:'This is an old .xls workbook, not a password-encrypted .xlsx. Please open it in Excel and Save As .xlsx.'},400);
+          }
+          // In-memory decryption only: never persist, log, or return the supplied password.
+          const decrypted=Buffer.from(await officeCrypto.decrypt(bytes,{password}));
+          if(!isZip(decrypted))return reply({ok:false,error:'This appears to be an older XLS format. Please use Save As → Excel Workbook (.xlsx) to import.'},400);
+          bytes=decrypted;
+        }catch{
+          return reply({ok:false,error:'Could not unlock Excel: the password may be incorrect or the bank uses an unsupported encryption format. Check the password on your device and try again.'},400);
+        }
+      }
       if(!isZip(bytes))return reply({ok:false,error:'This is not a readable .xlsx file. Use Excel → Save As → Excel Workbook (.xlsx), rather than only renaming the file.'},400);
       const wb=new ExcelJS.Workbook();
       try{await wb.xlsx.load(bytes);}catch(err){
