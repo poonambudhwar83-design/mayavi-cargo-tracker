@@ -241,6 +241,7 @@ export default function ImportCustomerAllocation(){
       </label>
       <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>Each customer's complete monthly account from saved Mayavi records.</div></div>
       <button type="button" disabled={monthlyBusy} style={buttonStyle} onClick={()=>void loadMonthly(month).catch(err=>setStatus(err.message))}>{monthlyBusy?'Loading…':'Refresh Month'}</button>
+      <button type="button" disabled={monthlyBusy||!monthlyRows.length} style={buttonStyle} onClick={download}>Download Month CSV</button>
     </section>}
     {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:13,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:10}}>
       <label style={{fontWeight:800,fontSize:13}}>Saved Customer Records
