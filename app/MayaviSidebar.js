@@ -44,6 +44,7 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
       sections.push({title:'FINANCE',items:[
         page('import-profit','Import Profit Sheet','IMPORT_PROFIT'),
         page('import-customer-allocation','Import Customer P&L','IMPORT_CUSTOMER_ALLOCATION'),
+        page('import-customer-summary','Monthly Customer Summary','IMPORT_CUSTOMER_SUMMARY'),
         page('export-profit','Export Profit Sheet','EXPORT_PROFIT'),
         page('salary','Salary','SALARY'),
         page('monthly-expenses','Monthly Expenses','MONTHLY_EXPENSES'),
