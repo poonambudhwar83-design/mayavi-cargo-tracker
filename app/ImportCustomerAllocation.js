@@ -232,7 +232,7 @@ export default function ImportCustomerAllocation(){
       <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!rows.length} onClick={()=>void save()}>{busy?'Working…':'Save Customer Data'}</button>
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={download}>Download CSV</button>
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}>+ Add Customer</button>
-    </div>
+    </div>}
     {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older uploads are preserved and can still be opened from Upload / Edit Excel.</p>}
     {status&&<p role="status" style={{padding:'10px 12px',borderRadius:8,background:'#fff9e6',border:'1px solid #ead4a6',fontSize:13}}>{status}</p>}
     {mode==='EDIT'&&book&&sheet&&<section style={{border:'1px solid #cfe0f3',padding:15,borderRadius:12,marginTop:14,background:'#fff'}}>
