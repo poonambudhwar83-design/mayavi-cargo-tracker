@@ -27,4 +27,25 @@ assert.equal(numericAccountAmount('Balance carried'),null);
 assert.ok(isValidAccountSaveRow(rows[0]));
 assert.equal(isValidAccountSaveRow({date:'',details:'',chequeNo:'',debit:'',credit:'',balance:'',remarks:''}),false);
 assert.throws(()=>accountRowsFromSheet(sheet,1,{}));
-console.log('Personal Accounts mapping, cheque-zero preservation, seven-column schema, Remarks and numeric amounts verified.');
+const extendedSheet={sheet:'Bank Detailed',rows:[
+  ['Bank statement heading'],
+  ['Transaction Date','Transaction Particulars','Chq./Ref.No.','Withdrawal Amt (INR)','Deposit Amt (INR)','Balance (INR)','Transaction Remarks'],
+  ['2026-11-09','Online NEFT','001299','1499.00','','200500','Paid to family'],
+  ['2026-11-10','ATM','003221','500.00','','200000','']
+],cellNotes:['','','Approved on phone','Please verify beneficiary']};
+const extendedMapping=guessAccountSheetHeader(extendedSheet);
+assert.equal(extendedMapping.headerIndex,1);
+assert.deepEqual(extendedMapping.mapping,{date:'0',details:'1',chequeNo:'2',debit:'3',credit:'4',balance:'5',remarks:'6'});
+const extendedRows=accountRowsFromSheet(extendedSheet,extendedMapping.headerIndex,extendedMapping.mapping);
+assert.equal(extendedRows.length,2);
+assert.equal(extendedRows[0].chequeNo,'001299');
+assert.equal(extendedRows[0].remarks,'Paid to family | Approved on phone');
+assert.equal(extendedRows[1].remarks,'Please verify beneficiary');
+// Missing Remarks header still imports Excel notes as editable Remarks.
+const notesOnly={sheet:'No remarks column',rows:[
+ ['Txn Date','Narration','Debit','Credit','Balance'],
+ ['2026-11-11','Transfer','250','','12300']
+],cellNotes:['','Personal note in a cell']};
+const notesMapping=guessAccountSheetHeader(notesOnly);
+assert.equal(accountRowsFromSheet(notesOnly,0,notesMapping.mapping)[0].remarks,'Personal note in a cell');
+console.log('Personal Accounts mapping, prewritten Remarks, Excel notes, bank header variants and amounts verified.');
