@@ -34,29 +34,46 @@ function excelText(cell){
   }
   return String(value).trim();
 }
+function cellNoteText(cell){
+  const note=cell.note;
+  if(!note)return '';
+  if(typeof note==='string')return note.trim().slice(0,1300);
+  if(Array.isArray(note.texts))return note.texts.map(t=>String(t.text||'')).join('').trim().slice(0,1300);
+  return '';
+}
 function parseSheet(ws){
-  const rows=[];
+  const rows=[],cellNotes=[];
   const maxRows=Math.min(ws.rowCount||0,8000),maxColumns=Math.min(Math.max(ws.columnCount||0,1),48);
   for(let n=1;n<=maxRows;n++){
-    const row=ws.getRow(n),cells=[];
-    for(let i=1;i<=maxColumns;i++)cells.push(excelText(row.getCell(i)));
-    if(cells.some(Boolean))rows.push(cells);
+    const row=ws.getRow(n),cells=[],notes=[];
+    for(let i=1;i<=maxColumns;i++){
+      const cell=row.getCell(i);
+      cells.push(excelText(cell));
+      const note=cellNoteText(cell);
+      if(note)notes.push(note);
+    }
+    if(cells.some(Boolean)||notes.length){rows.push(cells);cellNotes.push(notes.join(' | '));}
   }
-  return rows.length?{sheet:ws.name,rows}:null;
+  return rows.length?{sheet:ws.name,rows,cellNotes}:null;
 }
 export async function POST(request){
   if(!authorized(request))return reply({ok:false,error:'Admin login required.'},403);
   try{
     const form=await request.formData(),file=form.get('file');
-    if(!file||typeof file.arrayBuffer!=='function')return reply({ok:false,error:'Choose an Excel .xlsx file.'},400);
-    if(!/\.xlsx$/i.test(String(file.name||'')))return reply({ok:false,error:'Upload an .xlsx workbook (please convert .xls files to .xlsx first).'},400);
+    if(!file||typeof file.arrayBuffer!=='function')return reply({ok:false,error:'Choose your bank Excel statement (.xlsx).'},400);
+    if(!/\.(xlsx|xls)$/i.test(String(file.name||'')))return reply({ok:false,error:'Choose the Excel statement (.xlsx). If your bank gave a .zip file, first extract and save the statement as an unprotected .xlsx workbook.'},400);
     if(file.size>10*1024*1024)return reply({ok:false,error:'Maximum Excel upload size is 10 MB.'},413);
+    const bytes=Buffer.from(await file.arrayBuffer());
+    const isZipWorkbook=bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b;
+    const isOle=bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1]));
+    if(isOle)return reply({ok:false,error:'This Excel is encrypted/password-protected or in old .xls format. Open it on your device with the password, then use Save As → Excel Workbook (.xlsx) and remove workbook encryption. Do not share your password.'},400);
+    if(!isZipWorkbook)return reply({ok:false,error:'This file is not an unprotected .xlsx workbook. Open it in Excel and use Save As → Excel Workbook (.xlsx); renaming the file is not enough.'},400);
     const wb=new ExcelJS.Workbook();
-    await wb.xlsx.load(Buffer.from(await file.arrayBuffer()));
+    await wb.xlsx.load(bytes);
     const sheets=wb.worksheets.slice(0,15).map(parseSheet).filter(Boolean);
     if(!sheets.length)return reply({ok:false,error:'No populated sheet found in Excel workbook.'},400);
     return reply({ok:true,fileName:String(file.name||'Personal Accounts.xlsx').slice(0,180),sheets});
-  }catch(e){return reply({ok:false,error:'Excel could not be parsed: '+String(e.message||e).slice(0,230)},400);}
+  }catch(e){return reply({ok:false,error:'Excel could not be opened: '+String(e.message||e).slice(0,200)+'. If it is password-protected, open it in Excel, remove encryption and Save As an .xlsx workbook before uploading. Do not share the password.'},400);}
 }
 async function excelDownload(batch){
   const book=new ExcelJS.Workbook();
