@@ -206,8 +206,22 @@ export default function ImportCustomerAllocation(){
   const stat=(label,value)=> <div style={{background:'#f6f9ff',border:'1px solid #dce6f5',borderRadius:10,padding:'12px 16px',minWidth:145}}><div style={{fontSize:11,color:'#53647a',fontWeight:800}}>{label}</div><b style={{display:'block',fontSize:19,marginTop:4,color:'#123966'}}>{value}</b></div>;
   return <main style={{padding:'18px clamp(12px,2.6vw,30px)',color:'#172b46',maxWidth:'100%',boxSizing:'border-box'}}>
     <h1 style={{fontSize:24,margin:'0 0 4px'}}>Import · Customer-wise Profit / Loss</h1>
-    <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>One master, multiple customers. Master Duty, EICI, UT and Freight are split by Customer Weight ÷ EIA Master Weight. Other import-profit records are not changed.</p>
-    <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:12}}>
+    <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>One master, multiple customers. Duty, EICI, UT and Freight are allocated by customer weight. Monthly Records are based on Flight Date, not the Excel upload date.</p>
+    <nav aria-label="Customer import views" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('')}}>Monthly Records</button>
+      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Upload / Edit Excel</button>
+    </nav>
+    {mode==='MONTHLY'&&<section style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eaf3ff',border:'1px solid #cbdff7',borderRadius:12}}>
+      <label style={{fontSize:13,fontWeight:850}}>Select Month
+        <select aria-label="Import customer reporting month" value={month} disabled={monthlyBusy} onChange={e=>{setFilter('');void loadMonthly(e.target.value).catch(err=>setStatus(err.message))}} style={{...styleInput,minWidth:210,display:'block',marginTop:6}}>
+          {!months.length&&<option value="">No saved months</option>}
+          {months.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
+        </select>
+      </label>
+      <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>All saved Excel uploads in this month, grouped by flight date.</div></div>
+      <button type="button" disabled={monthlyBusy} style={buttonStyle} onClick={()=>void loadMonthly(month).catch(err=>setStatus(err.message))}>{monthlyBusy?'Loading…':'Refresh Month'}</button>
+    </section>}
+    {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:12}}>
       <label style={{fontWeight:800,fontSize:13}}>Upload Excel (.xlsx) <input type="file" accept=".xlsx" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value=''}} style={{display:'block',marginTop:7,maxWidth:265}}/></label>
       <label style={{fontWeight:800,fontSize:13}}>Saved imports
         <select style={{...styleInput,display:'block',minWidth:200,marginTop:7}} value={batchId} onChange={e=>{setBusy(true);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false))}}>
@@ -219,8 +233,9 @@ export default function ImportCustomerAllocation(){
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={download}>Download CSV</button>
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}>+ Add Customer</button>
     </div>
+    {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older uploads are preserved and can still be opened from Upload / Edit Excel.</p>}
     {status&&<p role="status" style={{padding:'10px 12px',borderRadius:8,background:'#fff9e6',border:'1px solid #ead4a6',fontSize:13}}>{status}</p>}
-    {book&&sheet&&<section style={{border:'1px solid #cfe0f3',padding:15,borderRadius:12,marginTop:14,background:'#fff'}}>
+    {mode==='EDIT'&&book&&sheet&&<section style={{border:'1px solid #cfe0f3',padding:15,borderRadius:12,marginTop:14,background:'#fff'}}>
       <h2 style={{fontSize:17,margin:'0 0 10px'}}>Step 1 · Match Excel Columns</h2>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
         <label>Worksheet <select value={sheetIndex} style={styleInput} onChange={e=>selectSheet(book,Number(e.target.value))}>{book.sheets.map((s,i)=><option key={i} value={i}>{s.sheet}</option>)}</select></label>
@@ -237,33 +252,40 @@ export default function ImportCustomerAllocation(){
       <button type="button" style={{...buttonStyle,background:'#0b8376',color:'#fff'}} onClick={prepare}>Step 2 · Prepare Customer Rows</button>
       <p style={{fontSize:12,color:'#526478'}}>Master fields in merged/blank customer rows will inherit the same master’s details. Correct the mappings whenever required; nothing is saved until you click Save Customer Data.</p>
     </section>}
-    <div style={{display:'flex',flexWrap:'wrap',gap:10,margin:'15px 0'}}>
+    {mode==='EDIT'&&editorMonths.length>0&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:14,padding:12,background:'#f2f7ff',border:'1px solid #d4e0ed',borderRadius:10}}>
+      <label style={{fontSize:13,fontWeight:800}}>View/Edit Month <select value={selectedEditorMonth} onChange={e=>{setEditMonth(e.target.value);setFilter('')}} style={{...styleInput,minWidth:190,marginLeft:10}}>
+        {editorMonths.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
+      </select></label>
+      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Customer Data saves the entire Excel upload, including other months.</span>
+    </div>}
+    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Upload / Edit · '+monthLabel(selectedEditorMonth)}</h2>
+    <div style={{display:'flex',flexWrap:'wrap',gap:10,margin:'12px 0'}}>
       {stat('Masters',calc.masters.size)}
-      {stat('Customers',rows.length)}
+      {stat('Customers',visibleRows.length)}
       {stat('Total Revenue','₹ '+money(calc.revenue))}
       {stat('Allocated Expenses','₹ '+money(calc.expense))}
       {stat('Total Profit / Loss','₹ '+money(calc.profit))}
     </div>
     {calc.invalid>0&&<p style={{color:'#a13519',fontSize:13,fontWeight:750}}>Profit/Loss not calculated for {calc.invalid} row(s): verify EIA Weight, Customer Weight and Rate.</p>}
     {calc.warnings.length>0&&<details style={{background:'#fff8e9',border:'1px solid #eed8a9',borderRadius:9,padding:12,marginBottom:12}}><summary style={{fontWeight:800,fontSize:13}}>{calc.warnings.length} master weight / amount warnings</summary><ul style={{fontSize:12}}>{calc.warnings.slice(0,60).map((w,i)=><li key={i}>{w}</li>)}</ul></details>}
-    {rows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search master / customer <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
+    {visibleRows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search master / customer <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
     <div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #d4e0ed',borderRadius:10,background:'#fff'}}>
       <table style={{borderCollapse:'collapse',fontSize:12,width:'max-content',minWidth:'100%'}}>
-        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{['#',...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit / Loss',''].map((h,i)=><th key={i} style={{borderBottom:'2px solid #adc8e2',padding:'9px 7px',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{['#',...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit / Loss',mode==='MONTHLY'?'Source Excel':''].map((h,i)=><th key={i} style={{borderBottom:'2px solid #adc8e2',padding:'9px 7px',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
         <tbody>{displayed.map((r,i)=>{const a=calc.calculated.get(r.id);return <tr key={r.id} style={{background:i%2?'#f8fbff':'white'}}>
           <td style={{padding:7}}>{i+1}</td>
           {FIELDS.map(f=><td key={f.key} style={{padding:'5px 3px',borderBottom:'1px solid #e5ebf2'}}>
-            <input aria-label={f.label+' for '+(r.customerName||r.masterNo)} title={MASTER_FIELDS.includes(f.key)?'This changes all customers under the same master.':undefined}
-              style={{...styleInput,minWidth:['customerName','description'].includes(f.key)?175:f.key==='masterNo'?120:90}} value={r[f.key]??''} onChange={e=>edit(r.id,f.key,e.target.value)}/>
+            {mode==='EDIT'?<input aria-label={f.label+' for '+(r.customerName||r.masterNo)} title={MASTER_FIELDS.includes(f.key)?'This changes all customers under the same master.':undefined}
+              style={{...styleInput,minWidth:['customerName','description'].includes(f.key)?175:f.key==='masterNo'?120:90}} value={r[f.key]??''} onChange={e=>edit(r.id,f.key,e.target.value)}/>:<span style={{display:'inline-block',padding:'5px 8px',minWidth:85}}>{r[f.key]||'—'}</span>}
           </td>)}
           <td style={{padding:'8px 10px'}}>{money(a?.perKg)}</td>
           {['duty','eici','ut','freight'].map(k=><td key={k} style={{padding:'8px 10px',textAlign:'right'}}>{money(a?.shares[k])}</td>)}
           <td style={{padding:'8px 10px',textAlign:'right'}}>{money(a?.sales)}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:850,color:a?.pl<0?'#b42318':'#087a4c'}}>{money(a?.pl)}</td>
-          <td style={{padding:6}}><button type="button" style={{...buttonStyle,padding:'5px 8px',color:'#b42318'}} onClick={()=>setRows(old=>old.filter(x=>x.id!==r.id))}>Remove</button></td>
+          <td style={{padding:6}}>{mode==='EDIT'?<button type="button" style={{...buttonStyle,padding:'5px 8px',color:'#b42318'}} onClick={()=>setRows(old=>old.filter(x=>x.id!==r.id))}>Remove</button>:<span title={r._sheetName||''} style={{fontSize:11,color:'#52657b'}}>{r._fileName||'Saved import'}</span>}</td>
         </tr>})}</tbody>
       </table>
-      {!displayed.length&&<p style={{padding:18,color:'#53657c'}}>Upload an Excel workbook and prepare rows, or open a saved import.</p>}
+      {!displayed.length&&<p style={{padding:18,color:'#53657c'}}>{mode==='MONTHLY'?'No saved customer records for '+monthLabel(month)+'. Choose another month or use Upload / Edit Excel.':'No records for '+monthLabel(selectedEditorMonth)+'. Upload an Excel file or choose another month.'}</p>}
     </div>
     <p style={{fontSize:12,color:'#56687c',marginTop:12}}>Formula: Customer Cost = Master Total Cost ÷ EIA Weight × Customer Weight. Revenue = Customer Weight × Rate. Profit/Loss = Revenue − Customer Duty − Customer EICI − Customer UT − Customer Freight. Customer Bags are recorded for reference and can be used in later rules.</p>
   </main>;
