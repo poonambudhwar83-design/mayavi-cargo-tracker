@@ -16,6 +16,7 @@ export default function PersonalAccountsDashboard(){
   const [batches,setBatches]=useState([]),[batchId,setBatchId]=useState(''),[fileName,setFileName]=useState(''),[sheetName,setSheetName]=useState('');
   const [rows,setRows]=useState([]),[preview,setPreview]=useState(null),[sheetIndex,setSheetIndex]=useState(0),[headerIndex,setHeaderIndex]=useState(0),[mapping,setMapping]=useState({});
   const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[dirty,setDirty]=useState(false),[filter,setFilter]=useState('');
+  const [excelPassword,setExcelPassword]=useState('');
   const sheet=preview?.sheets?.[sheetIndex];
   const visible=useMemo(()=>{
     const term=filter.trim().toLowerCase();
@@ -49,6 +50,7 @@ export default function PersonalAccountsDashboard(){
     setBusy(true);setStatus('Uploading '+file.name+' ('+Math.round(file.size/1024)+' KB)…');
     try{
       const form=new FormData();form.append('file',file);
+      if(excelPassword)form.append('password',excelPassword);
       let response;
       try{response=await fetch(ENDPOINT,{method:'POST',credentials:'include',body:form});}
       catch(error){throw Error('Upload connection failed. Please check your internet connection and try again. '+String(error.message||error));}
@@ -76,7 +78,7 @@ export default function PersonalAccountsDashboard(){
       }else{
         setStatus('Excel opened, but column mapping needs review. Check the preview and press Import & Save. No data has been saved yet.');
       }
-    }catch(err){setStatus('File: '+file.name+' — '+err.message);}finally{setBusy(false);}
+    }catch(err){setStatus('File: '+file.name+' — '+err.message);}finally{setExcelPassword('');setBusy(false);}
   }
   async function persist(nextRows,id,name,sourceSheet){
     const body={id:id||undefined,fileName:name,sheetName:sourceSheet,rows:nextRows};
@@ -140,8 +142,9 @@ export default function PersonalAccountsDashboard(){
   const td={padding:'5px 5px',borderBottom:'1px solid #e4ebf3'};
   return <main style={{maxWidth:'100%',padding:'17px clamp(10px,2vw,28px)',boxSizing:'border-box',color:'#193048'}}>
     <h1 style={{fontSize:24,margin:'0 0 5px'}}>Personal Accounts</h1>
-    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private admin ledger. Choose a bank statement from your device. Excel, CSV and ZIP are supported; matching transactions are saved automatically with existing Remarks. Export to Excel or PDF.</p>
+    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private Admin ledger. Choose your bank statement. For an encrypted Excel file, enter its opening password here first. Matching transactions and Remarks are saved automatically. The password is used only for this upload, never saved.</p>
     <section style={{display:'flex',gap:12,alignItems:'end',flexWrap:'wrap',padding:14,border:'1px solid #d3e1ef',background:'#f4f8ff',borderRadius:10}}>
+      <label><span style={titleStyle}>Excel Opening Password (only if required)</span><input aria-label="Excel file opening password" type="password" value={excelPassword} onChange={e=>setExcelPassword(e.target.value)} autoComplete="off" disabled={busy} placeholder="Enter locally; not saved" maxLength={255} style={{...inputStyle,maxWidth:220}}/></label>
       <label><span style={titleStyle}>Choose Bank File (.xlsx / .xls / .csv / .zip)</span><input aria-label="Choose personal accounts bank statement file" type="file" disabled={busy} onChange={e=>{const picked=e.currentTarget.files?.[0];e.currentTarget.value='';void upload(picked);}} style={{fontSize:12,maxWidth:265}}/></label>
       <label><span style={titleStyle}>Saved Accounts</span><select aria-label="Saved personal account ledger" value={batchId} disabled={busy} onChange={e=>{if(dirty&&!window.confirm('Discard unsaved changes?'))return;setBusy(true);setStatus('');setPreview(null);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false));}} style={{...inputStyle,maxWidth:260,minWidth:180}}>
         {!batches.length&&<option value="">No saved ledgers yet</option>}
@@ -195,6 +198,6 @@ export default function PersonalAccountsDashboard(){
       </table>
       {!visible.length&&<p style={{padding:18,fontSize:13,color:'#556b81'}}>{rows.length?'No matching records.':'Upload an Excel file and import it to see your personal account entries here.'}</p>}
     </div>
-    <p style={{marginTop:10,fontSize:12,color:'#5b7086'}}>Balance stays as in your source bank file; it is not recalculated. Remarks remain editable and are included in both exports. Password-protected files must be unlocked locally before upload; never share your password. PDF / Print opens the browser's Save as PDF dialog.</p>
+    <p style={{marginTop:10,fontSize:12,color:'#5b7086'}}>Balance stays as in your source bank file; it is not recalculated. Remarks remain editable and are included in both exports. Password-protected Excel can be opened using the optional password field. Passwords are not saved. Password-protected ZIP archives still require local extraction. PDF / Print opens the browser's Save as PDF dialog.</p>
   </main>;
 }
