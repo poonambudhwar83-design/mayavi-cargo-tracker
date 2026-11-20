@@ -148,11 +148,11 @@ export default function PersonalAccountsDashboard(){
         </table>
       </div>}
       <div style={{display:'flex',gap:12,alignItems:'center',marginTop:13,flexWrap:'wrap'}}>
-        <strong style={{fontSize:13}}>{suggested.length} entries ready</strong>
+        <strong style={{fontSize:13}}>{suggested.length} entries ready · {suggested.filter(r=>String(r.remarks||'').trim()).length} with existing Remarks</strong>
         <button type="button" disabled={busy||!suggested.length} style={{...buttonStyle,color:'#fff',background:'#0d8278'}} onClick={()=>void importSave()}>Import & Save to Mayavi</button>
         <button type="button" style={buttonStyle} onClick={()=>setPreview(null)}>Cancel</button>
       </div>
-      <p style={{fontSize:12,color:'#64758a',margin:'10px 0 0'}}>This saves a new ledger without deleting any existing saved accounts. Review the column matching first.</p>
+      <p style={{fontSize:12,color:'#64758a',margin:'10px 0 0'}}>This saves a new ledger without deleting any existing saved accounts. Existing Excel Remarks and cell notes are included. If Remarks are blank, match your source Remarks column above before importing.</p>
     </section>}
     <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'center',gap:10,margin:'15px 0 8px'}}>
       <h2 style={{fontSize:17,margin:0}}>{fileName||'Saved Personal Accounts'} <span style={{fontSize:12,fontWeight:500,color:'#53657e'}}>({rows.length} entries)</span></h2>
