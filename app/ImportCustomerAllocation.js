@@ -224,13 +224,13 @@ export default function ImportCustomerAllocation(){
     const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
     const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='mayavi-import-customer-profit-'+(mode==='MONTHLY'?month:selectedEditorMonth||'upload')+'.csv';anchor.click();URL.revokeObjectURL(url);
   }
-  const stat=(label,value)=> <div style={{background:'#f6f9ff',border:'1px solid #dce6f5',borderRadius:10,padding:'12px 16px',minWidth:145}}><div style={{fontSize:11,color:'#53647a',fontWeight:800}}>{label}</div><b style={{display:'block',fontSize:19,marginTop:4,color:'#123966'}}>{value}</b></div>;
+  
   return <main style={{padding:'18px clamp(12px,2.6vw,30px)',color:'#172b46',maxWidth:'100%',boxSizing:'border-box'}}>
     <h1 style={{fontSize:24,margin:'0 0 4px'}}>Import · Customer-wise Profit / Loss</h1>
     <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>One master, multiple customers. Duty, EICI, UT and Freight are allocated by customer weight. Monthly Records are based on Flight Date, not the Excel upload date.</p>
     <nav aria-label="Customer import views" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('')}}>Monthly Records</button>
-      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Upload / Edit Excel</button>
+      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('');setExpanded({})}}>Monthly Records</button>
+      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Edit Saved Data</button>
     </nav>
     {mode==='MONTHLY'&&<section style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eaf3ff',border:'1px solid #cbdff7',borderRadius:12}}>
       <label style={{fontSize:13,fontWeight:850}}>Select Month
@@ -242,51 +242,28 @@ export default function ImportCustomerAllocation(){
       <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>All saved Excel uploads in this month, grouped by flight date.</div></div>
       <button type="button" disabled={monthlyBusy} style={buttonStyle} onClick={()=>void loadMonthly(month).catch(err=>setStatus(err.message))}>{monthlyBusy?'Loading…':'Refresh Month'}</button>
     </section>}
-    {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:12}}>
-      <label style={{fontWeight:800,fontSize:13}}>Upload Excel (.xlsx) <input type="file" accept=".xlsx" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value=''}} style={{display:'block',marginTop:7,maxWidth:265}}/></label>
-      <label style={{fontWeight:800,fontSize:13}}>Saved imports
-        <select style={{...styleInput,display:'block',minWidth:200,marginTop:7}} value={batchId} onChange={e=>{setBusy(true);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false))}}>
-          <option value="">New / Unsaved Upload</option>
-          {batches.map(b=><option key={b.id} value={b.id}>{b.file_name} ({b.row_count} customers)</option>)}
+    {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:13,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:10}}>
+      <label style={{fontWeight:800,fontSize:13}}>Saved Customer Records
+        <select style={{...styleInput,display:'block',minWidth:250,marginTop:6}} value={batchId} disabled={busy} onChange={e=>{if(unsavedChanges&&!window.confirm('Discard unsaved changes and open another saved record?'))return;setBusy(true);setStatus('');void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false))}}>
+          {!batches.length&&<option value="">No saved records</option>}
+          {batches.map(b=><option key={b.id} value={b.id}>{b.file_name} · {b.row_count} rows</option>)}
         </select>
       </label>
-      <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!rows.length} onClick={()=>void save()}>{busy?'Working…':'Save Customer Data'}</button>
+      <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!batchId||!rows.length} onClick={()=>void save()}>{busy?'Saving…':'Save Changes'}</button>
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={download}>Download CSV</button>
-      <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}>+ Add Customer</button>
+      <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>{setUnsavedChanges(true);setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}}>+ Add Customer</button>
+      <span style={{fontSize:12,fontWeight:750,color:unsavedChanges?'#b45309':'#18724b'}}>{unsavedChanges?'Unsaved changes — press Save Changes':'Records stored in Mayavi database'}</span>
     </div>}
     {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older uploads are preserved and can still be opened from Upload / Edit Excel.</p>}
     {status&&<p role="status" style={{padding:'10px 12px',borderRadius:8,background:'#fff9e6',border:'1px solid #ead4a6',fontSize:13}}>{status}</p>}
-    {mode==='EDIT'&&book&&sheet&&<section style={{border:'1px solid #cfe0f3',padding:15,borderRadius:12,marginTop:14,background:'#fff'}}>
-      <h2 style={{fontSize:17,margin:'0 0 10px'}}>Step 1 · Match Excel Columns</h2>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
-        <label>Worksheet <select value={sheetIndex} style={styleInput} onChange={e=>selectSheet(book,Number(e.target.value))}>{book.sheets.map((s,i)=><option key={i} value={i}>{s.sheet}</option>)}</select></label>
-        <label>Header row <select value={headerIndex} style={styleInput} onChange={e=>{setHeaderIndex(Number(e.target.value));setRows([])}}>{sheet.rows.slice(0,30).map((r,i)=><option value={i} key={i}>Row {i+1} · {r.filter(Boolean).slice(0,3).join(' | ').slice(0,75)}</option>)}</select></label>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10,margin:'12px 0'}}>
-        {FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:'#334c69'}}>{f.label}
-          <select style={{...styleInput,marginTop:4}} value={mapping[f.key]??''} onChange={e=>{setMapping(m=>({...m,[f.key]:e.target.value}));setRows([])}}>
-            <option value="">— Not in Excel —</option>
-            {(sheet.rows[headerIndex]||[]).map((h,i)=><option value={String(i)} key={i}>{String.fromCharCode(65+i)} · {h||'(blank)'}</option>)}
-          </select>
-        </label>)}
-      </div>
-      <button type="button" style={{...buttonStyle,background:'#0b8376',color:'#fff'}} onClick={prepare}>Step 2 · Prepare Customer Rows</button>
-      <p style={{fontSize:12,color:'#526478'}}>Master fields in merged/blank customer rows will inherit the same master’s details. Correct the mappings whenever required; nothing is saved until you click Save Customer Data.</p>
-    </section>}
     {mode==='EDIT'&&editorMonths.length>0&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:14,padding:12,background:'#f2f7ff',border:'1px solid #d4e0ed',borderRadius:10}}>
       <label style={{fontSize:13,fontWeight:800}}>View/Edit Month <select value={selectedEditorMonth} onChange={e=>{setEditMonth(e.target.value);setFilter('')}} style={{...styleInput,minWidth:190,marginLeft:10}}>
         {editorMonths.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
       </select></label>
-      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Customer Data saves the entire Excel upload, including other months.</span>
+      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Changes retains every month in your saved database record.</span>
     </div>}
-    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Upload / Edit · '+monthLabel(selectedEditorMonth)}</h2>
-    <div style={{display:'flex',flexWrap:'wrap',gap:10,margin:'12px 0'}}>
-      {stat('Masters',calc.masters.size)}
-      {stat('Customers',visibleRows.length)}
-      {stat('Total Revenue','₹ '+money(calc.revenue))}
-      {stat('Allocated Expenses','₹ '+money(calc.expense))}
-      {stat('Total Profit / Loss','₹ '+money(calc.profit))}
-    </div>
+    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Edit Saved Records · '+monthLabel(selectedEditorMonth)}</h2>
+    <p style={{margin:'7px 0 12px',fontSize:13,color:'#526780',fontWeight:700}}>{mode==='MONTHLY'?customerLedger.length:visibleRows.length} Customers · {calc.masters.size} Masters · {visibleRows.length} Entries</p>
     {calc.invalid>0&&<p style={{color:'#a13519',fontSize:13,fontWeight:750}}>Profit/Loss not calculated for {calc.invalid} row(s): verify EIA Weight, Customer Weight and Rate.</p>}
     {calc.warnings.length>0&&<details style={{background:'#fff8e9',border:'1px solid #eed8a9',borderRadius:9,padding:12,marginBottom:12}}><summary style={{fontWeight:800,fontSize:13}}>{calc.warnings.length} master weight / amount warnings</summary><ul style={{fontSize:12}}>{calc.warnings.slice(0,60).map((w,i)=><li key={i}>{w}</li>)}</ul></details>}
     {visibleRows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search master / customer <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
