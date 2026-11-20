@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import ExcelJS from 'exceljs';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
+import {groupedImportRowMonths,monthOptionsForRows} from '../../../lib/importCustomerMonth.js';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -59,6 +60,22 @@ export async function GET(request){
   if(!authorized(request))return reply({ok:false,error:'Admin login required.'},403);
   try{
     const sql=db();await ensureTable(sql);
+    const params=new URL(request.url).searchParams;
+    if(params.get('view')==='monthly'){
+      // Existing saved batches are kept intact. Re-index their rows by Flight Date
+      // so each month combines customers from every saved import (not upload date).
+      const batches=await sql.query("SELECT id::text,file_name,sheet_name,data_rows FROM mayavi_import_customer_batches ORDER BY updated_at DESC LIMIT 250");
+      const all=[];
+      for(const batch of batches){
+        const data=Array.isArray(batch.data_rows)?batch.data_rows:[];
+        data.forEach((r,index)=>all.push({...r,id:batch.id+':'+String(r.id??index),_batchId:batch.id,_fileName:batch.file_name,_sheetName:batch.sheet_name}));
+      }
+      const months=monthOptionsForRows(all);
+      const requested=params.get('month')||'';
+      const chosen=months.some(m=>m.key===requested)?requested:(months[0]?.key||'');
+      const rows=groupedImportRowMonths(all).filter(x=>x.month===chosen).map(x=>x.row);
+      return reply({ok:true,month:chosen,months,rows,limitedToMostRecentBatches:batches.length===250});
+    }
     const list=await sql.query("SELECT id::text,file_name,sheet_name,row_count,created_at,updated_at FROM mayavi_import_customer_batches ORDER BY updated_at DESC LIMIT 100");
     const id=new URL(request.url).searchParams.get('id')||list[0]?.id;
     const selected=id&&/^[0-9a-f-]{36}$/i.test(id)?await sql.query("SELECT id::text,file_name,sheet_name,data_rows FROM mayavi_import_customer_batches WHERE id=$1 LIMIT 1",[id]):[];
