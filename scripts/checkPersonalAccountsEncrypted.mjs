@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import officeCrypto from 'officecrypto-tool';
+import {guessAccountSheetHeader,accountRowsFromSheet} from '../lib/personalAccountsCore.js';
+const testPassword='sample-test-password-only';
+const book=new ExcelJS.Workbook();
+const ws=book.addWorksheet('Personal Statements');
+ws.addRow(['Date','Details','Cheque No.','Debit','Credit','Balance','Remarks']);
+ws.addRow(['2026-11-20','Cheque cleared','000019','1500','','98500','Paid with cheque']);
+ws.addRow(['2026-11-21','Salary credit','','','15000','113500','Monthly deposit']);
+const plain=Buffer.from(await book.xlsx.writeBuffer());
+const encrypted=Buffer.from(officeCrypto.encrypt(plain,{password:testPassword}));
+assert.equal(officeCrypto.isEncrypted(encrypted),true,'Generated sample must be encrypted');
+assert.equal(encrypted.subarray(0,8).toString('hex'),'d0cf11e0a1b11ae1');
+const unlocked=Buffer.from(await officeCrypto.decrypt(encrypted,{password:testPassword}));
+assert.equal(unlocked.subarray(0,2).toString('hex'),'504b','Decryption must return XLSX ZIP container');
+const loaded=new ExcelJS.Workbook();
+await loaded.xlsx.load(unlocked);
+const dataSheet=loaded.worksheets[0];
+const rows=[1,2,3].map(n=>[1,2,3,4,5,6,7].map(i=>String(dataSheet.getRow(n).getCell(i).value??'')));
+const source={sheet:'Personal Statements',rows};
+const headers=guessAccountSheetHeader(source);
+assert.equal(headers.headerIndex,0);
+const entries=accountRowsFromSheet(source,headers.headerIndex,headers.mapping);
+assert.equal(entries.length,2);
+assert.equal(entries[0].chequeNo,'000019');
+assert.equal(entries[0].remarks,'Paid with cheque');
+assert.equal(entries[1].credit,'15000');
+assert.equal(entries[1].remarks,'Monthly deposit');
+let rejected=false;
+try{await officeCrypto.decrypt(encrypted,{password:'wrong-test-password'});}
+catch{rejected=true;}
+assert.equal(rejected,true,'Incorrect password must not unlock the file');
+console.log('Encrypted XLSX opened with one-time password; original cheque, amounts and Remarks retained; incorrect password denied.');
