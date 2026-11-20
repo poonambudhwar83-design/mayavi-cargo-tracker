@@ -1,5 +1,5 @@
 'use client';
-import {Fragment,useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {groupedImportRowMonths,monthOptionsForRows,monthLabel} from '../lib/importCustomerMonth.js';
 import {importMonthlyCustomerLedger} from '../lib/importCustomerLedger.js';
 
@@ -115,20 +115,20 @@ function allocations(rows){
   return {masters,warnings,calculated,revenue,expense,profit,invalid};
 }
 const encodeCsv=v=>{const s=String(v??'');return '"'+(/^[=+@]/.test(s)?"'"+s:s).replace(/"/g,'""')+'"';};
-export default function ImportCustomerAllocation(){
+export default function ImportCustomerAllocation({view='DATA'}){
   const [batches,setBatches]=useState([]),[batchId,setBatchId]=useState(''),[rows,setRows]=useState([]);
   const [fileName,setFileName]=useState(''),[sheetName,setSheetName]=useState('');
   const [book,setBook]=useState(null),[sheetIndex,setSheetIndex]=useState(0),[headerIndex,setHeaderIndex]=useState(0),[mapping,setMapping]=useState({});
   const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[filter,setFilter]=useState('');
-  const [mode,setMode]=useState('MONTHLY'),[months,setMonths]=useState([]),[month,setMonth]=useState('');
+  const mode=view==='SUMMARY'?'MONTHLY':'EDIT';
+  const [months,setMonths]=useState([]),[month,setMonth]=useState('');
   const [monthlyRows,setMonthlyRows]=useState([]),[monthlyBusy,setMonthlyBusy]=useState(false),[limited,setLimited]=useState(false);
   const [editMonth,setEditMonth]=useState('');
-  const [expanded,setExpanded]=useState({});
   const [unsavedChanges,setUnsavedChanges]=useState(false);
   const sheet=book?.sheets?.[sheetIndex];
   const editorMonths=useMemo(()=>monthOptionsForRows(rows),[rows]);
-  const selectedEditorMonth=editorMonths.some(m=>m.key===editMonth)?editMonth:(editorMonths[0]?.key||'');
-  const editorRows=useMemo(()=>groupedImportRowMonths(rows).filter(x=>x.month===selectedEditorMonth).map(x=>x.row),[rows,selectedEditorMonth]);
+  const selectedEditorMonth=editMonth==='ALL'||editorMonths.some(m=>m.key===editMonth)?editMonth:'ALL';
+  const editorRows=useMemo(()=>selectedEditorMonth==='ALL'?rows:groupedImportRowMonths(rows).filter(x=>x.month===selectedEditorMonth).map(x=>x.row),[rows,selectedEditorMonth]);
   const visibleRows=mode==='MONTHLY'?monthlyRows:editorRows;
   const calc=useMemo(()=>allocations(visibleRows),[visibleRows]);
   const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo,r.origin].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
@@ -215,23 +215,27 @@ export default function ImportCustomerAllocation(){
     }catch(e){setStatus('Save not confirmed: '+String(e.message||e))}finally{setBusy(false)}
   }
   function download(){
-    const labels=[...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit/Loss'];
-    const lines=[labels.map(encodeCsv).join(',')];
-    for(const r of displayed){
-      const a=calc.calculated.get(r.id);
-      lines.push([...KEYS.map(k=>r[k]),a?.perKg,a?.shares.duty,a?.shares.eici,a?.shares.ut,a?.shares.freight,a?.sales,a?.pl].map(encodeCsv).join(','));
+    const lines=[];
+    if(mode==='MONTHLY'){
+      lines.push(['Customer Name','Origin','Description','Total Weight (kg)','Total Profit / Loss'].map(encodeCsv).join(','));
+      for(const g of customerLedger)lines.push([g.customerName,g.originText,g.descriptionText,g.totalWeight,g.pendingProfitRows?'Pending / partial: '+g.totalProfit:g.totalProfit].map(encodeCsv).join(','));
+    }else{
+      lines.push([...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit/Loss'].map(encodeCsv).join(','));
+      for(const r of displayed){
+        const a=calc.calculated.get(r.id);
+        lines.push([...KEYS.map(k=>r[k]),a?.perKg,a?.shares.duty,a?.shares.eici,a?.shares.ut,a?.shares.freight,a?.sales,a?.pl].map(encodeCsv).join(','));
+      }
     }
     const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
-    const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='mayavi-import-customer-profit-'+(mode==='MONTHLY'?month:selectedEditorMonth||'upload')+'.csv';anchor.click();URL.revokeObjectURL(url);
+    const url=URL.createObjectURL(blob),anchor=document.createElement('a');
+    anchor.href=url;
+    anchor.download='mayavi-'+(mode==='MONTHLY'?'customer-summary-'+month:'import-customer-main-'+selectedEditorMonth)+'.csv';
+    anchor.click();URL.revokeObjectURL(url);
   }
   
   return <main style={{padding:'18px clamp(12px,2.6vw,30px)',color:'#172b46',maxWidth:'100%',boxSizing:'border-box'}}>
-    <h1 style={{fontSize:24,margin:'0 0 4px'}}>Import · Customer-wise Profit / Loss</h1>
-    <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>One master, multiple customers. Duty, EICI, UT and Freight are allocated by customer weight. Monthly Records are based on Flight Date, not the Excel upload date.</p>
-    <nav aria-label="Customer import views" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('');setExpanded({})}}>Monthly Records</button>
-      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Edit Saved Data</button>
-    </nav>
+    <h1 style={{fontSize:24,margin:'0 0 4px'}}>{mode==='MONTHLY'?'Import · Monthly Customer Summary':'Import · Customer-wise Profit / Loss (Main Data)'}</h1>
+    <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>{mode==='MONTHLY'?'A separate, read-only customer summary calculated from the saved Import Customer P&L main data.':'Original Excel-loaded detailed customer records, saved in Mayavi. All original columns remain editable; choose All Months or a flight month.'}</p>
     {mode==='MONTHLY'&&<section style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eaf3ff',border:'1px solid #cbdff7',borderRadius:12}}>
       <label style={{fontSize:13,fontWeight:850}}>Select Month
         <select aria-label="Import customer reporting month" value={month} disabled={monthlyBusy} onChange={e=>{setFilter('');void loadMonthly(e.target.value).catch(err=>setStatus(err.message))}} style={{...styleInput,minWidth:210,display:'block',marginTop:6}}>
@@ -239,7 +243,7 @@ export default function ImportCustomerAllocation(){
           {months.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
         </select>
       </label>
-      <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>Each customer's complete monthly account from saved Mayavi records.</div></div>
+      <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>Summary only — the complete Excel-loaded records remain in Import Customer P&L.</div></div>
       <button type="button" disabled={monthlyBusy} style={buttonStyle} onClick={()=>void loadMonthly(month).catch(err=>setStatus(err.message))}>{monthlyBusy?'Loading…':'Refresh Month'}</button>
       <button type="button" disabled={monthlyBusy||!monthlyRows.length} style={buttonStyle} onClick={download}>Download Month CSV</button>
     </section>}
@@ -257,63 +261,32 @@ export default function ImportCustomerAllocation(){
     </div>}
     {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older records are retained in the database.</p>}
     {status&&<p role="status" style={{padding:'10px 12px',borderRadius:8,background:'#fff9e6',border:'1px solid #ead4a6',fontSize:13}}>{status}</p>}
-    {mode==='EDIT'&&editorMonths.length>0&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:14,padding:12,background:'#f2f7ff',border:'1px solid #d4e0ed',borderRadius:10}}>
-      <label style={{fontSize:13,fontWeight:800}}>View/Edit Month <select value={selectedEditorMonth} onChange={e=>{setEditMonth(e.target.value);setFilter('')}} style={{...styleInput,minWidth:190,marginLeft:10}}>
-        {editorMonths.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
+    {mode==='EDIT'&&rows.length>0&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:14,padding:12,background:'#f2f7ff',border:'1px solid #d4e0ed',borderRadius:10}}>
+      <label style={{fontSize:13,fontWeight:800}}>Flight Month <select value={selectedEditorMonth} onChange={e=>{setEditMonth(e.target.value);setFilter('')}} style={{...styleInput,minWidth:190,marginLeft:10}}>
+        <option value="ALL">All Months · {rows.length} customer rows</option>
+        {editorMonths.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} rows</option>)}
       </select></label>
-      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Changes retains every month in your saved database record.</span>
+      <span style={{fontSize:12,color:'#52657b'}}>Original saved Excel data. Changes are retained in the same dataset after Save Changes.</span>
     </div>}
-    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Edit Saved Records · '+monthLabel(selectedEditorMonth)}</h2>
-    <p style={{margin:'7px 0 12px',fontSize:13,color:'#526780',fontWeight:700}}>{mode==='MONTHLY'?customerLedger.length:visibleRows.length} Customers · {calc.masters.size} Masters · {visibleRows.length} Entries</p>
+    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Customer Summary · '+monthLabel(month):'Original Customer Data · '+(selectedEditorMonth==='ALL'?'All Months':monthLabel(selectedEditorMonth))}</h2>
+    <p style={{margin:'7px 0 12px',fontSize:13,color:'#526780',fontWeight:700}}>{mode==='MONTHLY'?customerLedger.length+' Customers · '+visibleRows.length+' Entries':visibleRows.length+' Original Customer Rows · '+calc.masters.size+' Masters'}</p>
     {calc.invalid>0&&<p style={{color:'#a13519',fontSize:13,fontWeight:750}}>Profit/Loss not calculated for {calc.invalid} row(s): verify EIA Weight, Customer Weight and Rate.</p>}
     {calc.warnings.length>0&&<details style={{background:'#fff8e9',border:'1px solid #eed8a9',borderRadius:9,padding:12,marginBottom:12}}><summary style={{fontWeight:800,fontSize:13}}>{calc.warnings.length} master weight / amount warnings</summary><ul style={{fontSize:12}}>{calc.warnings.slice(0,60).map((w,i)=><li key={i}>{w}</li>)}</ul></details>}
     {visibleRows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search Customer / Master / Origin / Description <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
-    {mode==='MONTHLY'&&<div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #cbdcee',borderRadius:10,background:'#fff'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'9px 12px',borderBottom:'1px solid #e2eaf4',background:'#f4f8ff',flexWrap:'wrap'}}>
-        <strong style={{fontSize:13,color:'#264b70'}}>One customer ledger · {monthLabel(month)}</strong>
-        <button type="button" style={{...buttonStyle,padding:'6px 11px',fontSize:12}} onClick={()=>{const allOpened=customerLedger.every(g=>expanded[g.id]);setExpanded(Object.fromEntries(customerLedger.map(g=>[g.id,!allOpened])))}}>{customerLedger.every(g=>expanded[g.id])?'Collapse All Details':'Show All Master Details'}</button>
-      </div>
-      <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,width:'max-content',minWidth:'100%'}}>
-        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{['Customer Name','Master No.','Flight Date','Origin','Description','Bags','Total Weight (kg)','Duty','EICI','UT','Freight','Revenue','Total Profit/Loss'].map((h,i)=><th key={h} style={{padding:'10px 8px',textAlign:i>4?'right':'left',whiteSpace:'nowrap',borderBottom:'2px solid #adc8e2',...frozen(i,true)}}>{h}</th>)}</tr></thead>
-        <tbody>{customerLedger.map((g,j)=><Fragment key={g.id}>
-          <tr style={{background:'#eaf3ff',fontWeight:800}}>
-            <td style={{...frozen(0,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>
-              <button type="button" aria-expanded={Boolean(expanded[g.id])} onClick={()=>setExpanded(e=>({...e,[g.id]:!e[g.id]}))} style={{border:'1px solid #a6bdd8',borderRadius:5,padding:'3px 6px',marginRight:7,background:'white',cursor:'pointer',color:'#143d75'}}>{expanded[g.id]?'−':'+'}</button>{g.customerName}
-            </td>
-            <td style={{...frozen(1,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>{g.masterCount} master{g.masterCount===1?'':'s'}</td>
-            <td style={{...frozen(2,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>Month Total</td>
-            <td style={{padding:'9px',maxWidth:220,whiteSpace:'normal',borderBottom:'1px solid #d4e3f1'}}>{g.originText}</td>
-            <td style={{padding:'9px',maxWidth:340,whiteSpace:'normal',borderBottom:'1px solid #d4e3f1'}}>{g.descriptionText}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalBags)}</td>
-            <td style={{padding:'9px',textAlign:'right',whiteSpace:'nowrap'}}>{money(g.totalWeight)}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalDuty)}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalEici)}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalUt)}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalFreight)}</td>
-            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalRevenue)}</td>
-            <td style={{padding:'9px',textAlign:'right',whiteSpace:'nowrap',color:g.totalProfit<0?'#ac2b25':'#087a4c'}}>
-              {g.validProfitRows?money(g.totalProfit):'Pending'}
-              {g.pendingProfitRows>0&&<span style={{display:'block',fontSize:10,color:'#a15c18'}}>{g.pendingProfitRows} pending</span>}
-            </td>
-          </tr>
-          {expanded[g.id]&&g.entries.map((r,i)=><tr key={r.id} style={{background:i%2?'#f8fbff':'white'}}>
-            <td style={{...frozen(0,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4',color:'#566a80'}}>↳ {r.customerName}</td>
-            <td style={{...frozen(1,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4'}}>{r.masterNo||'—'}</td>
-            <td style={{...frozen(2,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4'}}>{r.flightDate||'—'}</td>
-            <td style={{padding:'7px 9px',whiteSpace:'normal'}}>{r.origin||'—'}</td>
-            <td style={{padding:'7px 9px',whiteSpace:'normal',maxWidth:340}}>{r.description||'—'}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{r.customerBags||'—'}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(number(r.customerWeight))}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedDuty)}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedEici)}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedUt)}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedFreight)}</td>
-            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.revenue)}</td>
-            <td style={{padding:'7px 9px',textAlign:'right',fontWeight:800,color:r.profit<0?'#b42318':'#087a4c'}}>{money(r.profit)}</td>
-          </tr>)}
-        </Fragment>)}</tbody>
+    {mode==='MONTHLY'&&<div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #d4e0ed',borderRadius:10,background:'#fff'}}>
+      <table style={{borderCollapse:'collapse',width:'100%',fontSize:13}}>
+        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>
+          {['Customer Name','Origin','Description','Total Weight (kg)','Total Profit / Loss'].map((h,i)=><th key={h} style={{borderBottom:'2px solid #adc8e2',padding:'11px 10px',textAlign:i>=3?'right':'left',minWidth:i===0?160:i===2?210:115}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{customerLedger.map((g,i)=><tr key={g.id} style={{background:i%2?'#f8fbff':'#fff'}}>
+          <td style={{padding:'9px 10px',borderBottom:'1px solid #e2eaf4',fontWeight:750}}>{g.customerName}</td>
+          <td style={{padding:'9px 10px',borderBottom:'1px solid #e2eaf4',maxWidth:210}}>{g.originText}</td>
+          <td style={{padding:'9px 10px',borderBottom:'1px solid #e2eaf4',maxWidth:320}}>{g.descriptionText}</td>
+          <td style={{padding:'9px 10px',borderBottom:'1px solid #e2eaf4',textAlign:'right',whiteSpace:'nowrap'}}>{money(g.totalWeight)}</td>
+          <td style={{padding:'9px 10px',borderBottom:'1px solid #e2eaf4',textAlign:'right',whiteSpace:'nowrap',fontWeight:800,color:g.totalProfit<0?'#b42318':'#087a4c'}}>{g.validProfitRows?money(g.totalProfit):'Pending'}{g.pendingProfitRows>0&&<span style={{display:'block',fontSize:11,color:'#a15c18'}}>{g.pendingProfitRows} rows pending</span>}</td>
+        </tr>)}</tbody>
       </table>
-      {!customerLedger.length&&<p style={{padding:16,color:'#526780'}}>No saved customer records for {monthLabel(month)}.</p>}
+      {!customerLedger.length&&<p style={{padding:16,color:'#526780'}}>No saved customer data for {monthLabel(month)}.</p>}
     </div>}
     {mode==='EDIT'&&<div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #d4e0ed',borderRadius:10,background:'#fff'}}>
       <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,width:'max-content',minWidth:'100%'}}>
