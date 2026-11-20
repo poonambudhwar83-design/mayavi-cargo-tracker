@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {groupedImportRowMonths,monthOptionsForRows,monthLabel} from '../lib/importCustomerMonth.js';
+import {importMonthlyCustomerLedger} from '../lib/importCustomerLedger.js';
 
 const FIELDS=[
   {key:'customerName',label:'Customer Name',aliases:['customer name','client name','consignee','customer','client']},
@@ -122,13 +123,23 @@ export default function ImportCustomerAllocation(){
   const [mode,setMode]=useState('MONTHLY'),[months,setMonths]=useState([]),[month,setMonth]=useState('');
   const [monthlyRows,setMonthlyRows]=useState([]),[monthlyBusy,setMonthlyBusy]=useState(false),[limited,setLimited]=useState(false);
   const [editMonth,setEditMonth]=useState('');
+  const [expanded,setExpanded]=useState({});
+  const [unsavedChanges,setUnsavedChanges]=useState(false);
   const sheet=book?.sheets?.[sheetIndex];
   const editorMonths=useMemo(()=>monthOptionsForRows(rows),[rows]);
   const selectedEditorMonth=editorMonths.some(m=>m.key===editMonth)?editMonth:(editorMonths[0]?.key||'');
   const editorRows=useMemo(()=>groupedImportRowMonths(rows).filter(x=>x.month===selectedEditorMonth).map(x=>x.row),[rows,selectedEditorMonth]);
   const visibleRows=mode==='MONTHLY'?monthlyRows:editorRows;
   const calc=useMemo(()=>allocations(visibleRows),[visibleRows]);
-  const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
+  const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo,r.origin].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
+  const customerLedger=useMemo(()=>{
+    const all=importMonthlyCustomerLedger(visibleRows,calc.calculated);
+    const term=filter.trim().toLowerCase();
+    return term?all.filter(g=>[g.customerName,g.originText,g.descriptionText,...g.entries.flatMap(r=>[r.masterNo,r.flightDate])].some(x=>String(x||'').toLowerCase().includes(term))):all;
+  },[mode,visibleRows,calc,filter]);
+  const fixedCols=[{width:205,left:0},{width:145,left:205},{width:130,left:350}];
+  const frozen=(index,header=false,odd=false)=>index<3?{position:'sticky',left:fixedCols[index].left,width:fixedCols[index].width,minWidth:fixedCols[index].width,maxWidth:fixedCols[index].width,background:header?'#daeafa':odd?'#f8fbff':'#fff',zIndex:header?5:2,boxSizing:'border-box',boxShadow:index===2?'3px 0 5px rgba(37,74,115,.12)':undefined}:{};
+
 
   async function load(id=''){
     const res=await fetch('/api/import-customer-allocation'+(id?'?id='+encodeURIComponent(id):''),{credentials:'include',cache:'no-store'});
@@ -136,7 +147,8 @@ export default function ImportCustomerAllocation(){
     setBatches(data.batches||[]);
     setBatchId(data.batch?.id||'');setRows(data.batch?.data_rows||[]);
     setFileName(data.batch?.file_name||'');setSheetName(data.batch?.sheet_name||'');
-    setBook(null);
+    setBook(null);setUnsavedChanges(false);
+    return data.batch||null;
   }
   async function loadMonthly(requested=''){
     setMonthlyBusy(true);
@@ -176,6 +188,7 @@ export default function ImportCustomerAllocation(){
     setStatus(extracted.length+' customer rows prepared from '+(sheet.name||sheet.sheet)+'. Check EIA weight, master costs and rates before saving.');
   }
   function edit(id,key,value){
+    setUnsavedChanges(true);
     setRows(current=>{
       const changed=current.find(r=>r.id===id);
       if(!changed)return current;
@@ -184,14 +197,22 @@ export default function ImportCustomerAllocation(){
     });
   }
   async function save(){
-    if(!rows.length){setStatus('No customer rows to save.');return;}
-    if(rows.some(r=>!String(r.masterNo||'').trim()||!String(r.customerName||'').trim())){setStatus('Each row needs a Master No and Customer Name.');return;}
+    if(!rows.length){setStatus('No customer records to save.');return;}
+    if(!batchId){setStatus('No saved record selected. Your existing data must be loaded before editing.');return;}
+    if(rows.some(r=>!String(r.masterNo||'').trim()||!String(r.customerName||'').trim())){setStatus('Master No and Customer Name are required for each row.');return;}
     setBusy(true);setStatus('');
     try{
-      const res=await fetch('/api/import-customer-allocation',{method:'PUT',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:batchId||undefined,fileName,sheetName,rows})});
-      const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Save failed.');
-      await load(data.id);await loadMonthly(month).catch(()=>{});setStatus(data.rowCount+' customer rows saved securely to Mayavi.');
-    }catch(e){setStatus(e.message)}finally{setBusy(false)}
+      const res=await fetch('/api/import-customer-allocation',{method:'PUT',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:batchId,fileName,sheetName,rows})});
+      const data=await res.json().catch(()=>({ok:false,error:'Invalid save response from Mayavi.'}));
+      if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
+      const stored=await load(data.id);
+      if(!stored||stored.id!==data.id||!Array.isArray(stored.data_rows)||stored.data_rows.length!==rows.length){
+        throw Error('Database verification failed. Please check saved records; do not overwrite the page.');
+      }
+      setUnsavedChanges(false);
+      setStatus('Saved & verified in Mayavi database: '+data.rowCount+' customer records. Your changes are retained after refresh.');
+      await loadMonthly(month).catch(()=>{});
+    }catch(e){setStatus('Save not confirmed: '+String(e.message||e))}finally{setBusy(false)}
   }
   function download(){
     const labels=[...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit/Loss'];
