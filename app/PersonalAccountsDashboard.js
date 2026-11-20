@@ -49,8 +49,29 @@ export default function PersonalAccountsDashboard(){
     try{
       const form=new FormData();form.append('file',file);
       const data=await asJson(await fetch(ENDPOINT,{method:'POST',credentials:'include',body:form}));
-      setPreview(data);chooseSheet(data,0);
-      setStatus('Excel ready to import. Verify the columns below, then click Import & Save. Your earlier records will not be replaced.');
+      // Auto-save a new ledger only when the worksheet and bank columns can be
+      // identified unambiguously. Other layouts keep the manual preview flow.
+      const ranked=(data.sheets||[]).map((sheet,i)=>({sheet,index:i,match:guessAccountSheetHeader(sheet)}))
+        .sort((a,b)=>b.match.score-a.match.score);
+      const best=ranked[0];
+      const m=best?.match?.mapping||{};
+      const confident=Boolean(best&&m.date!==undefined&&m.details!==undefined&&
+        (m.debit!==undefined||m.credit!==undefined)&&m.balance!==undefined&&
+        best.match.score>=8&&(ranked.length===1||best.match.score>ranked[1].match.score));
+      const prepared=confident?accountRowsFromSheet(best.sheet,best.match.headerIndex,m):[];
+      const hasTransaction=prepared.some(r=>String(r.date||'').trim()&&
+        (String(r.debit||'').trim()||String(r.credit||'').trim()));
+      setPreview(data);
+      if(best)chooseSheet(data,best.index);
+      if(confident&&hasTransaction){
+        const saved=await persist(prepared,'',data.fileName,best.sheet.sheet);
+        setPreview(null);setFilter('');
+        const remarks=prepared.filter(row=>String(row.remarks||'').trim()).length;
+        setStatus('Excel imported automatically and saved in Mayavi: '+saved.rowCount+
+          ' entries verified, including '+remarks+' existing Remarks. No extra Import & Save click needed.');
+      }else{
+        setStatus('Excel opened, but column mapping needs review. Check the preview and press Import & Save. No data has been saved yet.');
+      }
     }catch(err){setStatus(err.message);}finally{setBusy(false);}
   }
   async function persist(nextRows,id,name,sourceSheet){
@@ -115,7 +136,7 @@ export default function PersonalAccountsDashboard(){
   const td={padding:'5px 5px',borderBottom:'1px solid #e4ebf3'};
   return <main style={{maxWidth:'100%',padding:'17px clamp(10px,2vw,28px)',boxSizing:'border-box',color:'#193048'}}>
     <h1 style={{fontSize:24,margin:'0 0 5px'}}>Personal Accounts</h1>
-    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private admin ledger. Import from Excel once, keep every transaction and Remarks in Mayavi, and export saved records to Excel or PDF.</p>
+    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private admin ledger. Upload Excel to import and save automatically when columns match. Existing Remarks are included. Export saved records to Excel or PDF.</p>
     <section style={{display:'flex',gap:12,alignItems:'end',flexWrap:'wrap',padding:14,border:'1px solid #d3e1ef',background:'#f4f8ff',borderRadius:10}}>
       <label><span style={titleStyle}>Upload Excel (.xlsx)</span><input aria-label="Upload personal accounts Excel" type="file" accept=".xlsx" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value='';}} style={{fontSize:12,maxWidth:220}}/></label>
       <label><span style={titleStyle}>Saved Accounts</span><select aria-label="Saved personal account ledger" value={batchId} disabled={busy} onChange={e=>{if(dirty&&!window.confirm('Discard unsaved changes?'))return;setBusy(true);setStatus('');setPreview(null);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false));}} style={{...inputStyle,maxWidth:260,minWidth:180}}>
