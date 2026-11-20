@@ -141,6 +141,12 @@ export default function PersonalAccountsDashboard(){
           {(sheet.rows[headerIndex]||[]).map((name,i)=><option key={i} value={String(i)}>{i+1} · {name||'(blank)'}</option>)}
         </select></label>)}
       </div>
+      {suggested.length>0&&<div style={{overflowX:'auto',marginTop:12,border:'1px solid #e2eaf4',borderRadius:7}}>
+        <table style={{width:'100%',minWidth:760,borderCollapse:'collapse',fontSize:11}}>
+          <thead><tr>{PERSONAL_ACCOUNT_FIELDS.map(f=><th key={f.key} style={{padding:'7px',background:'#eef5fc',borderBottom:'1px solid #d6e3ee',textAlign:'left'}}>{f.label}</th>)}</tr></thead>
+          <tbody>{suggested.slice(0,5).map(r=><tr key={r.id}>{PERSONAL_ACCOUNT_FIELDS.map(f=><td key={f.key} style={{padding:'7px',borderBottom:'1px solid #edf2f8',maxWidth:220,overflowWrap:'anywhere'}}>{r[f.key]||'—'}</td>)}</tr>)}</tbody>
+        </table>
+      </div>}
       <div style={{display:'flex',gap:12,alignItems:'center',marginTop:13,flexWrap:'wrap'}}>
         <strong style={{fontSize:13}}>{suggested.length} entries ready</strong>
         <button type="button" disabled={busy||!suggested.length} style={{...buttonStyle,color:'#fff',background:'#0d8278'}} onClick={()=>void importSave()}>Import & Save to Mayavi</button>
