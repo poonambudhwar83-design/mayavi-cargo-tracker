@@ -43,15 +43,40 @@ export default function PersonalAccountsDashboard(){
     setSheetIndex(index);setHeaderIndex(suggestion.headerIndex);setMapping(suggestion.mapping);
   }
   async function upload(file){
-    if(!file)return;
-    if(dirty){setStatus('Save your current changes before uploading another Excel ledger.');return;}
-    setBusy(true);setStatus('');
+    if(!file){setStatus('No file was selected. Please choose the actual bank statement from Files or Downloads.');return;}
+    if(dirty){setStatus('Save your current changes before uploading another bank statement.');return;}
+    if(file.size>4*1024*1024){setStatus('File is over 4 MB. Download a smaller statement range and upload again.');return;}
+    setBusy(true);setStatus('Uploading '+file.name+' ('+Math.round(file.size/1024)+' KB)…');
     try{
       const form=new FormData();form.append('file',file);
-      const data=await asJson(await fetch(ENDPOINT,{method:'POST',credentials:'include',body:form}));
-      setPreview(data);chooseSheet(data,0);
-      setStatus('Excel ready to import. Verify the columns below, then click Import & Save. Your earlier records will not be replaced.');
-    }catch(err){setStatus(err.message);}finally{setBusy(false);}
+      let response;
+      try{response=await fetch(ENDPOINT,{method:'POST',credentials:'include',body:form});}
+      catch(error){throw Error('Upload connection failed. Please check your internet connection and try again. '+String(error.message||error));}
+      const data=await asJson(response);
+      // Auto-save a new ledger only when the worksheet and bank columns can be
+      // identified unambiguously. Other layouts keep the manual preview flow.
+      const ranked=(data.sheets||[]).map((sheet,i)=>({sheet,index:i,match:guessAccountSheetHeader(sheet)}))
+        .sort((a,b)=>b.match.score-a.match.score);
+      const best=ranked[0];
+      const m=best?.match?.mapping||{};
+      const confident=Boolean(best&&m.date!==undefined&&m.details!==undefined&&
+        (m.debit!==undefined||m.credit!==undefined)&&m.balance!==undefined&&
+        best.match.score>=8&&(ranked.length===1||best.match.score>ranked[1].match.score));
+      const prepared=confident?accountRowsFromSheet(best.sheet,best.match.headerIndex,m):[];
+      const hasTransaction=prepared.some(r=>String(r.date||'').trim()&&
+        (String(r.debit||'').trim()||String(r.credit||'').trim()));
+      setPreview(data);
+      if(best)chooseSheet(data,best.index);
+      if(confident&&hasTransaction){
+        const saved=await persist(prepared,'',data.fileName,best.sheet.sheet);
+        setPreview(null);setFilter('');
+        const remarks=prepared.filter(row=>String(row.remarks||'').trim()).length;
+        setStatus('Excel imported automatically and saved in Mayavi: '+saved.rowCount+
+          ' entries verified, including '+remarks+' existing Remarks. No extra Import & Save click needed.');
+      }else{
+        setStatus('Excel opened, but column mapping needs review. Check the preview and press Import & Save. No data has been saved yet.');
+      }
+    }catch(err){setStatus('File: '+file.name+' — '+err.message);}finally{setBusy(false);}
   }
   async function persist(nextRows,id,name,sourceSheet){
     const body={id:id||undefined,fileName:name,sheetName:sourceSheet,rows:nextRows};
@@ -115,9 +140,9 @@ export default function PersonalAccountsDashboard(){
   const td={padding:'5px 5px',borderBottom:'1px solid #e4ebf3'};
   return <main style={{maxWidth:'100%',padding:'17px clamp(10px,2vw,28px)',boxSizing:'border-box',color:'#193048'}}>
     <h1 style={{fontSize:24,margin:'0 0 5px'}}>Personal Accounts</h1>
-    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private admin ledger. Import from Excel once, keep every transaction and Remarks in Mayavi, and export saved records to Excel or PDF.</p>
+    <p style={{fontSize:13,color:'#566a80',margin:'0 0 15px'}}>Private admin ledger. Choose a bank statement from your device. Excel, CSV and ZIP are supported; matching transactions are saved automatically with existing Remarks. Export to Excel or PDF.</p>
     <section style={{display:'flex',gap:12,alignItems:'end',flexWrap:'wrap',padding:14,border:'1px solid #d3e1ef',background:'#f4f8ff',borderRadius:10}}>
-      <label><span style={titleStyle}>Upload Excel (.xlsx)</span><input aria-label="Upload personal accounts Excel" type="file" accept=".xlsx" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value='';}} style={{fontSize:12,maxWidth:220}}/></label>
+      <label><span style={titleStyle}>Choose Bank File (.xlsx / .xls / .csv / .zip)</span><input aria-label="Choose personal accounts bank statement file" type="file" disabled={busy} onChange={e=>{const picked=e.currentTarget.files?.[0];e.currentTarget.value='';void upload(picked);}} style={{fontSize:12,maxWidth:265}}/></label>
       <label><span style={titleStyle}>Saved Accounts</span><select aria-label="Saved personal account ledger" value={batchId} disabled={busy} onChange={e=>{if(dirty&&!window.confirm('Discard unsaved changes?'))return;setBusy(true);setStatus('');setPreview(null);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false));}} style={{...inputStyle,maxWidth:260,minWidth:180}}>
         {!batches.length&&<option value="">No saved ledgers yet</option>}
         {batches.map(b=><option key={b.id} value={b.id}>{b.file_name} ({b.row_count} entries)</option>)}
@@ -126,11 +151,11 @@ export default function PersonalAccountsDashboard(){
       <button type="button" style={buttonStyle} disabled={busy||!batchId||dirty} onClick={excelExport}>Download Excel</button>
       <button type="button" style={buttonStyle} disabled={busy||!batchId||dirty} onClick={printPdf}>PDF / Print</button>
       <button type="button" style={buttonStyle} disabled={busy||!batchId} onClick={addRow}>+ Add Entry</button>
-      <span style={{fontSize:12,color:dirty?'#a15b07':'#177c4b',fontWeight:750}}>{dirty?'Unsaved edits — press Save Changes':batchId?'Saved in Mayavi':'Upload a workbook to begin'}</span>
+      <span style={{fontSize:12,color:dirty?'#a15b07':'#177c4b',fontWeight:750}}>{dirty?'Unsaved edits — press Save Changes':batchId?'Saved in Mayavi':'Choose a bank statement to begin'}</span>
     </section>
-    {status&&<p role="status" style={{fontSize:13,padding:'9px 12px',border:'1px solid #e8d8af',borderRadius:8,background:'#fffaf0',margin:'12px 0'}}>{status}</p>}
+    {status&&<p role="status" aria-live="polite" style={{fontSize:13,padding:'9px 12px',border:'1px solid #e8d8af',borderRadius:8,background:'#fffaf0',margin:'12px 0'}}>{status}</p>}
     {preview&&sheet&&<section style={{marginTop:13,padding:14,border:'1px solid #bdd7ee',borderRadius:10,background:'#fff'}}>
-      <h2 style={{fontSize:17,margin:'0 0 12px'}}>Match Excel Columns · {preview.fileName}</h2>
+      <h2 style={{fontSize:17,margin:'0 0 12px'}}>Review Bank File Columns · {preview.fileName}</h2>
       <div style={{display:'flex',gap:14,flexWrap:'wrap',marginBottom:13}}>
         <label><span style={titleStyle}>Worksheet</span><select value={sheetIndex} onChange={e=>chooseSheet(preview,Number(e.target.value))} style={inputStyle}>{preview.sheets.map((w,i)=><option key={i} value={i}>{w.sheet}</option>)}</select></label>
         <label><span style={titleStyle}>Header Row</span><select value={headerIndex} onChange={e=>{setHeaderIndex(Number(e.target.value));setMapping(guessAccountSheetHeader({rows:[sheet.rows[Number(e.target.value)]],sheet:sheet.sheet}).mapping)}} style={{...inputStyle,maxWidth:300}}>{sheet.rows.slice(0,40).map((r,i)=><option value={i} key={i}>Row {i+1} · {r.filter(Boolean).slice(0,4).join(' | ').slice(0,90)}</option>)}</select></label>
@@ -170,6 +195,6 @@ export default function PersonalAccountsDashboard(){
       </table>
       {!visible.length&&<p style={{padding:18,fontSize:13,color:'#556b81'}}>{rows.length?'No matching records.':'Upload an Excel file and import it to see your personal account entries here.'}</p>}
     </div>
-    <p style={{marginTop:10,fontSize:12,color:'#5b7086'}}>Balance stays as in your source Excel; it is not recalculated. Remarks remain editable and are included in both exports. PDF / Print opens your browser's Save as PDF dialog.</p>
+    <p style={{marginTop:10,fontSize:12,color:'#5b7086'}}>Balance stays as in your source bank file; it is not recalculated. Remarks remain editable and are included in both exports. Password-protected files must be unlocked locally before upload; never share your password. PDF / Print opens the browser's Save as PDF dialog.</p>
   </main>;
 }

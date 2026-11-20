@@ -1,5 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
+import {decodeBankCsv,parseBankCsv} from '../../../lib/personalAccountsUpload.js';
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {PERSONAL_ACCOUNT_FIELDS,PERSONAL_ACCOUNT_KEYS,numericAccountAmount,isValidAccountSaveRow} from '../../../lib/personalAccountsCore.js';
@@ -60,20 +62,48 @@ export async function POST(request){
   if(!authorized(request))return reply({ok:false,error:'Admin login required.'},403);
   try{
     const form=await request.formData(),file=form.get('file');
-    if(!file||typeof file.arrayBuffer!=='function')return reply({ok:false,error:'Choose your bank Excel statement (.xlsx).'},400);
-    if(!/\.(xlsx|xls)$/i.test(String(file.name||'')))return reply({ok:false,error:'Choose the Excel statement (.xlsx). If your bank gave a .zip file, first extract and save the statement as an unprotected .xlsx workbook.'},400);
-    if(file.size>10*1024*1024)return reply({ok:false,error:'Maximum Excel upload size is 10 MB.'},413);
-    const bytes=Buffer.from(await file.arrayBuffer());
-    const isZipWorkbook=bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b;
-    const isOle=bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1]));
-    if(isOle)return reply({ok:false,error:'This Excel is encrypted/password-protected or in old .xls format. Open it on your device with the password, then use Save As → Excel Workbook (.xlsx) and remove workbook encryption. Do not share your password.'},400);
-    if(!isZipWorkbook)return reply({ok:false,error:'This file is not an unprotected .xlsx workbook. Open it in Excel and use Save As → Excel Workbook (.xlsx); renaming the file is not enough.'},400);
-    const wb=new ExcelJS.Workbook();
-    await wb.xlsx.load(bytes);
-    const sheets=wb.worksheets.slice(0,15).map(parseSheet).filter(Boolean);
-    if(!sheets.length)return reply({ok:false,error:'No populated sheet found in Excel workbook.'},400);
-    return reply({ok:true,fileName:String(file.name||'Personal Accounts.xlsx').slice(0,180),sheets});
-  }catch(e){return reply({ok:false,error:'Excel could not be opened: '+String(e.message||e).slice(0,200)+'. If it is password-protected, open it in Excel, remove encryption and Save As an .xlsx workbook before uploading. Do not share the password.'},400);}
+    if(!file||typeof file.arrayBuffer!=='function')return reply({ok:false,error:'Choose an Excel, CSV or ZIP bank statement file.'},400);
+    const originalName=String(file.name||'Statement').slice(0,180);
+    if(file.size===0)return reply({ok:false,error:'The selected file is empty. Please choose the actual downloaded bank statement.'},400);
+    // Vercel request bodies cannot exceed approximately 4.5 MB.
+    if(file.size>4*1024*1024)return reply({ok:false,error:'This file exceeds the online upload limit (4 MB). Save a smaller date range from your bank or split the Excel statement.'},413);
+    let bytes=Buffer.from(await file.arrayBuffer());
+    const isZip=buffer=>buffer.length>=4&&buffer[0]===0x50&&buffer[1]===0x4b;
+    const isOle=buffer=>buffer.length>=8&&buffer.subarray(0,8).equals(Buffer.from([0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1]));
+    let effectiveName=originalName;
+    if(/\.zip$/i.test(originalName)){
+      if(!isZip(bytes))return reply({ok:false,error:'This is not a readable ZIP archive. Download the statement again or unzip it on your device.'},400);
+      const archive=await JSZip.loadAsync(bytes);
+      const matches=Object.values(archive.files).filter(item=>!item.dir&&/\.(xlsx|xls|csv)$/i.test(item.name)&&!item.name.startsWith('__MACOSX/')&&!item.name.split('/').pop().startsWith('~$'));
+      if(!matches.length)return reply({ok:false,error:'No Excel or CSV bank statement was found inside this ZIP. Unzip it locally and choose the statement file.'},400);
+      const workbookFile=matches.find(item=>/\.xlsx$/i.test(item.name))||matches.find(item=>/\.csv$/i.test(item.name))||matches[0];
+      if(workbookFile._data?.uncompressedSize>12*1024*1024)return reply({ok:false,error:'The Excel inside ZIP is too large for Mayavi. Split the statement before importing.'},413);
+      try{bytes=Buffer.from(await workbookFile.async('nodebuffer'));}catch{
+        return reply({ok:false,error:'ZIP is password-protected or damaged. Unzip it on your device first and upload the Excel without sharing the password.'},400);
+      }
+      if(bytes.length>12*1024*1024)return reply({ok:false,error:'The unzipped bank statement is too large. Upload a smaller date range.'},413);
+      effectiveName=workbookFile.name.split('/').pop();
+    }
+    let sheets=[];
+    if(/\.csv$/i.test(effectiveName)){
+      const rows=parseBankCsv(decodeBankCsv(bytes));
+      if(rows.length)sheets=[{sheet:'Statement',rows,cellNotes:[]}];
+    }else if(/\.(xlsx|xls)$/i.test(effectiveName)){
+      if(isOle(bytes))return reply({ok:false,error:'This Excel uses old .xls format or password encryption. Open it locally with the password (if needed) and use Save As → unprotected .xlsx, then upload. Do not share your password.'},400);
+      if(!isZip(bytes))return reply({ok:false,error:'This is not a readable .xlsx file. Use Excel → Save As → Excel Workbook (.xlsx), rather than only renaming the file.'},400);
+      const wb=new ExcelJS.Workbook();
+      try{await wb.xlsx.load(bytes);}catch(err){
+        return reply({ok:false,error:'The Excel workbook could not be read. If it is encrypted, open it with the password on your device and save a new unprotected .xlsx copy. Detail: '+String(err.message||err).slice(0,135)},400);
+      }
+      sheets=wb.worksheets.slice(0,15).map(parseSheet).filter(Boolean);
+    }else{
+      return reply({ok:false,error:'This file format is not supported yet. Choose .xlsx, .xls, .csv or a .zip containing a bank statement.'},400);
+    }
+    if(!sheets.length)return reply({ok:false,error:'No populated entries found. Please check whether the selected workbook contains the bank statement.'},400);
+    return reply({ok:true,fileName:effectiveName,sheets});
+  }catch(e){
+    return reply({ok:false,error:'Bank statement upload failed: '+String(e.message||e).slice(0,250)+'. If this is a protected ZIP, extract it locally first; never share your password.'},400);
+  }
 }
 async function excelDownload(batch){
   const book=new ExcelJS.Workbook();
