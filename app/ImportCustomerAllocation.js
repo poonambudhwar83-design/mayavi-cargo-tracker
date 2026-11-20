@@ -1,6 +1,7 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
+import {Fragment,useEffect,useMemo,useState} from 'react';
 import {groupedImportRowMonths,monthOptionsForRows,monthLabel} from '../lib/importCustomerMonth.js';
+import {importMonthlyCustomerLedger} from '../lib/importCustomerLedger.js';
 
 const FIELDS=[
   {key:'customerName',label:'Customer Name',aliases:['customer name','client name','consignee','customer','client']},
@@ -122,13 +123,23 @@ export default function ImportCustomerAllocation(){
   const [mode,setMode]=useState('MONTHLY'),[months,setMonths]=useState([]),[month,setMonth]=useState('');
   const [monthlyRows,setMonthlyRows]=useState([]),[monthlyBusy,setMonthlyBusy]=useState(false),[limited,setLimited]=useState(false);
   const [editMonth,setEditMonth]=useState('');
+  const [expanded,setExpanded]=useState({});
+  const [unsavedChanges,setUnsavedChanges]=useState(false);
   const sheet=book?.sheets?.[sheetIndex];
   const editorMonths=useMemo(()=>monthOptionsForRows(rows),[rows]);
   const selectedEditorMonth=editorMonths.some(m=>m.key===editMonth)?editMonth:(editorMonths[0]?.key||'');
   const editorRows=useMemo(()=>groupedImportRowMonths(rows).filter(x=>x.month===selectedEditorMonth).map(x=>x.row),[rows,selectedEditorMonth]);
   const visibleRows=mode==='MONTHLY'?monthlyRows:editorRows;
   const calc=useMemo(()=>allocations(visibleRows),[visibleRows]);
-  const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
+  const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo,r.origin].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
+  const customerLedger=useMemo(()=>{
+    const all=importMonthlyCustomerLedger(visibleRows,calc.calculated);
+    const term=filter.trim().toLowerCase();
+    return term?all.filter(g=>[g.customerName,g.originText,g.descriptionText,...g.entries.flatMap(r=>[r.masterNo,r.flightDate])].some(x=>String(x||'').toLowerCase().includes(term))):all;
+  },[mode,visibleRows,calc,filter]);
+  const fixedCols=[{width:205,left:0},{width:145,left:205},{width:130,left:350}];
+  const frozen=(index,header=false,odd=false)=>index<3?{position:'sticky',left:fixedCols[index].left,width:fixedCols[index].width,minWidth:fixedCols[index].width,maxWidth:fixedCols[index].width,background:header?'#daeafa':odd?'#f8fbff':'#fff',zIndex:header?5:2,boxSizing:'border-box',boxShadow:index===2?'3px 0 5px rgba(37,74,115,.12)':undefined}:{};
+
 
   async function load(id=''){
     const res=await fetch('/api/import-customer-allocation'+(id?'?id='+encodeURIComponent(id):''),{credentials:'include',cache:'no-store'});
@@ -136,7 +147,8 @@ export default function ImportCustomerAllocation(){
     setBatches(data.batches||[]);
     setBatchId(data.batch?.id||'');setRows(data.batch?.data_rows||[]);
     setFileName(data.batch?.file_name||'');setSheetName(data.batch?.sheet_name||'');
-    setBook(null);
+    setBook(null);setUnsavedChanges(false);
+    return data.batch||null;
   }
   async function loadMonthly(requested=''){
     setMonthlyBusy(true);
@@ -176,6 +188,7 @@ export default function ImportCustomerAllocation(){
     setStatus(extracted.length+' customer rows prepared from '+(sheet.name||sheet.sheet)+'. Check EIA weight, master costs and rates before saving.');
   }
   function edit(id,key,value){
+    setUnsavedChanges(true);
     setRows(current=>{
       const changed=current.find(r=>r.id===id);
       if(!changed)return current;
@@ -184,14 +197,22 @@ export default function ImportCustomerAllocation(){
     });
   }
   async function save(){
-    if(!rows.length){setStatus('No customer rows to save.');return;}
-    if(rows.some(r=>!String(r.masterNo||'').trim()||!String(r.customerName||'').trim())){setStatus('Each row needs a Master No and Customer Name.');return;}
+    if(!rows.length){setStatus('No customer records to save.');return;}
+    if(!batchId){setStatus('No saved record selected. Your existing data must be loaded before editing.');return;}
+    if(rows.some(r=>!String(r.masterNo||'').trim()||!String(r.customerName||'').trim())){setStatus('Master No and Customer Name are required for each row.');return;}
     setBusy(true);setStatus('');
     try{
-      const res=await fetch('/api/import-customer-allocation',{method:'PUT',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:batchId||undefined,fileName,sheetName,rows})});
-      const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Save failed.');
-      await load(data.id);await loadMonthly(month).catch(()=>{});setStatus(data.rowCount+' customer rows saved securely to Mayavi.');
-    }catch(e){setStatus(e.message)}finally{setBusy(false)}
+      const res=await fetch('/api/import-customer-allocation',{method:'PUT',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:batchId,fileName,sheetName,rows})});
+      const data=await res.json().catch(()=>({ok:false,error:'Invalid save response from Mayavi.'}));
+      if(!res.ok||!data.ok)throw new Error(data.error||'Save failed.');
+      const stored=await load(data.id);
+      if(!stored||stored.id!==data.id||!Array.isArray(stored.data_rows)||stored.data_rows.length!==rows.length){
+        throw Error('Database verification failed. Please check saved records; do not overwrite the page.');
+      }
+      setUnsavedChanges(false);
+      setStatus('Saved & verified in Mayavi database: '+data.rowCount+' customer records. Your changes are retained after refresh.');
+      await loadMonthly(month).catch(()=>{});
+    }catch(e){setStatus('Save not confirmed: '+String(e.message||e))}finally{setBusy(false)}
   }
   function download(){
     const labels=[...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit/Loss'];
@@ -203,13 +224,13 @@ export default function ImportCustomerAllocation(){
     const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
     const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='mayavi-import-customer-profit-'+(mode==='MONTHLY'?month:selectedEditorMonth||'upload')+'.csv';anchor.click();URL.revokeObjectURL(url);
   }
-  const stat=(label,value)=> <div style={{background:'#f6f9ff',border:'1px solid #dce6f5',borderRadius:10,padding:'12px 16px',minWidth:145}}><div style={{fontSize:11,color:'#53647a',fontWeight:800}}>{label}</div><b style={{display:'block',fontSize:19,marginTop:4,color:'#123966'}}>{value}</b></div>;
+  
   return <main style={{padding:'18px clamp(12px,2.6vw,30px)',color:'#172b46',maxWidth:'100%',boxSizing:'border-box'}}>
     <h1 style={{fontSize:24,margin:'0 0 4px'}}>Import · Customer-wise Profit / Loss</h1>
     <p style={{fontSize:13,color:'#526378',margin:'0 0 16px'}}>One master, multiple customers. Duty, EICI, UT and Freight are allocated by customer weight. Monthly Records are based on Flight Date, not the Excel upload date.</p>
     <nav aria-label="Customer import views" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('')}}>Monthly Records</button>
-      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Upload / Edit Excel</button>
+      <button type="button" aria-current={mode==='MONTHLY'?'page':undefined} style={{...buttonStyle,background:mode==='MONTHLY'?'#2055a2':'#fff',color:mode==='MONTHLY'?'#fff':'#214f87'}} onClick={()=>{setMode('MONTHLY');setFilter('');setExpanded({})}}>Monthly Records</button>
+      <button type="button" aria-current={mode==='EDIT'?'page':undefined} style={{...buttonStyle,background:mode==='EDIT'?'#2055a2':'#fff',color:mode==='EDIT'?'#fff':'#214f87'}} onClick={()=>{setMode('EDIT');setFilter('')}}>Edit Saved Data</button>
     </nav>
     {mode==='MONTHLY'&&<section style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eaf3ff',border:'1px solid #cbdff7',borderRadius:12}}>
       <label style={{fontSize:13,fontWeight:850}}>Select Month
@@ -218,75 +239,99 @@ export default function ImportCustomerAllocation(){
           {months.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
         </select>
       </label>
-      <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>All saved Excel uploads in this month, grouped by flight date.</div></div>
+      <div style={{fontSize:13,color:'#2d4d75',flex:1,minWidth:220}}><strong>{monthLabel(month)}</strong><div>Each customer's complete monthly account from saved Mayavi records.</div></div>
       <button type="button" disabled={monthlyBusy} style={buttonStyle} onClick={()=>void loadMonthly(month).catch(err=>setStatus(err.message))}>{monthlyBusy?'Loading…':'Refresh Month'}</button>
+      <button type="button" disabled={monthlyBusy||!monthlyRows.length} style={buttonStyle} onClick={download}>Download Month CSV</button>
     </section>}
-    {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:15,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:12}}>
-      <label style={{fontWeight:800,fontSize:13}}>Upload Excel (.xlsx) <input type="file" accept=".xlsx" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value=''}} style={{display:'block',marginTop:7,maxWidth:265}}/></label>
-      <label style={{fontWeight:800,fontSize:13}}>Saved imports
-        <select style={{...styleInput,display:'block',minWidth:200,marginTop:7}} value={batchId} onChange={e=>{setBusy(true);void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false))}}>
-          <option value="">New / Unsaved Upload</option>
-          {batches.map(b=><option key={b.id} value={b.id}>{b.file_name} ({b.row_count} customers)</option>)}
+    {mode==='EDIT'&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',padding:13,background:'#eff6ff',border:'1px solid #cddff9',borderRadius:10}}>
+      <label style={{fontWeight:800,fontSize:13}}>Saved Customer Records
+        <select style={{...styleInput,display:'block',minWidth:250,marginTop:6}} value={batchId} disabled={busy} onChange={e=>{if(unsavedChanges&&!window.confirm('Discard unsaved changes and open another saved record?'))return;setBusy(true);setStatus('');void load(e.target.value).catch(err=>setStatus(err.message)).finally(()=>setBusy(false))}}>
+          {!batches.length&&<option value="">No saved records</option>}
+          {batches.map(b=><option key={b.id} value={b.id}>{b.file_name} · {b.row_count} rows</option>)}
         </select>
       </label>
-      <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!rows.length} onClick={()=>void save()}>{busy?'Working…':'Save Customer Data'}</button>
+      <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!batchId||!rows.length} onClick={()=>void save()}>{busy?'Saving…':'Save Changes'}</button>
       <button type="button" style={buttonStyle} disabled={!rows.length} onClick={download}>Download CSV</button>
-      <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}>+ Add Customer</button>
+      <button type="button" style={buttonStyle} disabled={!rows.length} onClick={()=>{setUnsavedChanges(true);setRows(old=>[...old,{id:'manual-'+Date.now(),...Object.fromEntries(KEYS.map(k=>[k,MASTER_FIELDS.includes(k)?String(old[old.length-1]?.[k]||''):''])),masterNo:String(old[old.length-1]?.masterNo||'')}])}}>+ Add Customer</button>
+      <span style={{fontSize:12,fontWeight:750,color:unsavedChanges?'#b45309':'#18724b'}}>{unsavedChanges?'Unsaved changes — press Save Changes':'Records stored in Mayavi database'}</span>
     </div>}
-    {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older uploads are preserved and can still be opened from Upload / Edit Excel.</p>}
+    {mode==='MONTHLY'&&limited&&<p style={{fontSize:12,color:'#975111'}}>Monthly history includes the 250 most recently updated Excel uploads. Older records are retained in the database.</p>}
     {status&&<p role="status" style={{padding:'10px 12px',borderRadius:8,background:'#fff9e6',border:'1px solid #ead4a6',fontSize:13}}>{status}</p>}
-    {mode==='EDIT'&&book&&sheet&&<section style={{border:'1px solid #cfe0f3',padding:15,borderRadius:12,marginTop:14,background:'#fff'}}>
-      <h2 style={{fontSize:17,margin:'0 0 10px'}}>Step 1 · Match Excel Columns</h2>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
-        <label>Worksheet <select value={sheetIndex} style={styleInput} onChange={e=>selectSheet(book,Number(e.target.value))}>{book.sheets.map((s,i)=><option key={i} value={i}>{s.sheet}</option>)}</select></label>
-        <label>Header row <select value={headerIndex} style={styleInput} onChange={e=>{setHeaderIndex(Number(e.target.value));setRows([])}}>{sheet.rows.slice(0,30).map((r,i)=><option value={i} key={i}>Row {i+1} · {r.filter(Boolean).slice(0,3).join(' | ').slice(0,75)}</option>)}</select></label>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10,margin:'12px 0'}}>
-        {FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:'#334c69'}}>{f.label}
-          <select style={{...styleInput,marginTop:4}} value={mapping[f.key]??''} onChange={e=>{setMapping(m=>({...m,[f.key]:e.target.value}));setRows([])}}>
-            <option value="">— Not in Excel —</option>
-            {(sheet.rows[headerIndex]||[]).map((h,i)=><option value={String(i)} key={i}>{String.fromCharCode(65+i)} · {h||'(blank)'}</option>)}
-          </select>
-        </label>)}
-      </div>
-      <button type="button" style={{...buttonStyle,background:'#0b8376',color:'#fff'}} onClick={prepare}>Step 2 · Prepare Customer Rows</button>
-      <p style={{fontSize:12,color:'#526478'}}>Master fields in merged/blank customer rows will inherit the same master’s details. Correct the mappings whenever required; nothing is saved until you click Save Customer Data.</p>
-    </section>}
     {mode==='EDIT'&&editorMonths.length>0&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:14,padding:12,background:'#f2f7ff',border:'1px solid #d4e0ed',borderRadius:10}}>
       <label style={{fontSize:13,fontWeight:800}}>View/Edit Month <select value={selectedEditorMonth} onChange={e=>{setEditMonth(e.target.value);setFilter('')}} style={{...styleInput,minWidth:190,marginLeft:10}}>
         {editorMonths.map(m=><option key={m.key} value={m.key}>{m.label} · {m.customers} customers</option>)}
       </select></label>
-      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Customer Data saves the entire Excel upload, including other months.</span>
+      <span style={{fontSize:12,color:'#52657b'}}>Only {monthLabel(selectedEditorMonth)} is shown. Save Changes retains every month in your saved database record.</span>
     </div>}
-    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Upload / Edit · '+monthLabel(selectedEditorMonth)}</h2>
-    <div style={{display:'flex',flexWrap:'wrap',gap:10,margin:'12px 0'}}>
-      {stat('Masters',calc.masters.size)}
-      {stat('Customers',visibleRows.length)}
-      {stat('Total Revenue','₹ '+money(calc.revenue))}
-      {stat('Allocated Expenses','₹ '+money(calc.expense))}
-      {stat('Total Profit / Loss','₹ '+money(calc.profit))}
-    </div>
+    <h2 style={{margin:'17px 0 5px',fontSize:17}}>{mode==='MONTHLY'?'Monthly Profit / Loss · '+monthLabel(month):'Edit Saved Records · '+monthLabel(selectedEditorMonth)}</h2>
+    <p style={{margin:'7px 0 12px',fontSize:13,color:'#526780',fontWeight:700}}>{mode==='MONTHLY'?customerLedger.length:visibleRows.length} Customers · {calc.masters.size} Masters · {visibleRows.length} Entries</p>
     {calc.invalid>0&&<p style={{color:'#a13519',fontSize:13,fontWeight:750}}>Profit/Loss not calculated for {calc.invalid} row(s): verify EIA Weight, Customer Weight and Rate.</p>}
     {calc.warnings.length>0&&<details style={{background:'#fff8e9',border:'1px solid #eed8a9',borderRadius:9,padding:12,marginBottom:12}}><summary style={{fontWeight:800,fontSize:13}}>{calc.warnings.length} master weight / amount warnings</summary><ul style={{fontSize:12}}>{calc.warnings.slice(0,60).map((w,i)=><li key={i}>{w}</li>)}</ul></details>}
-    {visibleRows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search master / customer <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
-    <div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #d4e0ed',borderRadius:10,background:'#fff'}}>
-      <table style={{borderCollapse:'collapse',fontSize:12,width:'max-content',minWidth:'100%'}}>
-        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{['#',...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit / Loss',mode==='MONTHLY'?'Source Excel':''].map((h,i)=><th key={i} style={{borderBottom:'2px solid #adc8e2',padding:'9px 7px',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+    {visibleRows.length>0&&<label style={{display:'block',marginBottom:10,fontSize:13,fontWeight:750}}>Search Customer / Master / Origin / Description <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Master, customer, flight..." style={{...styleInput,width:280,marginLeft:10}}/></label>}
+    {mode==='MONTHLY'&&<div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #cbdcee',borderRadius:10,background:'#fff'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'9px 12px',borderBottom:'1px solid #e2eaf4',background:'#f4f8ff',flexWrap:'wrap'}}>
+        <strong style={{fontSize:13,color:'#264b70'}}>One customer ledger · {monthLabel(month)}</strong>
+        <button type="button" style={{...buttonStyle,padding:'6px 11px',fontSize:12}} onClick={()=>{const allOpened=customerLedger.every(g=>expanded[g.id]);setExpanded(Object.fromEntries(customerLedger.map(g=>[g.id,!allOpened])))}}>{customerLedger.every(g=>expanded[g.id])?'Collapse All Details':'Show All Master Details'}</button>
+      </div>
+      <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,width:'max-content',minWidth:'100%'}}>
+        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{['Customer Name','Master No.','Flight Date','Origin','Description','Bags','Total Weight (kg)','Duty','EICI','UT','Freight','Revenue','Total Profit/Loss'].map((h,i)=><th key={h} style={{padding:'10px 8px',textAlign:i>4?'right':'left',whiteSpace:'nowrap',borderBottom:'2px solid #adc8e2',...frozen(i,true)}}>{h}</th>)}</tr></thead>
+        <tbody>{customerLedger.map((g,j)=><Fragment key={g.id}>
+          <tr style={{background:'#eaf3ff',fontWeight:800}}>
+            <td style={{...frozen(0,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>
+              <button type="button" aria-expanded={Boolean(expanded[g.id])} onClick={()=>setExpanded(e=>({...e,[g.id]:!e[g.id]}))} style={{border:'1px solid #a6bdd8',borderRadius:5,padding:'3px 6px',marginRight:7,background:'white',cursor:'pointer',color:'#143d75'}}>{expanded[g.id]?'−':'+'}</button>{g.customerName}
+            </td>
+            <td style={{...frozen(1,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>{g.masterCount} master{g.masterCount===1?'':'s'}</td>
+            <td style={{...frozen(2,false,false),background:'#eaf3ff',padding:'9px 7px',borderBottom:'1px solid #d4e3f1'}}>Month Total</td>
+            <td style={{padding:'9px',maxWidth:220,whiteSpace:'normal',borderBottom:'1px solid #d4e3f1'}}>{g.originText}</td>
+            <td style={{padding:'9px',maxWidth:340,whiteSpace:'normal',borderBottom:'1px solid #d4e3f1'}}>{g.descriptionText}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalBags)}</td>
+            <td style={{padding:'9px',textAlign:'right',whiteSpace:'nowrap'}}>{money(g.totalWeight)}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalDuty)}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalEici)}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalUt)}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalFreight)}</td>
+            <td style={{padding:'9px',textAlign:'right'}}>{money(g.totalRevenue)}</td>
+            <td style={{padding:'9px',textAlign:'right',whiteSpace:'nowrap',color:g.totalProfit<0?'#ac2b25':'#087a4c'}}>
+              {g.validProfitRows?money(g.totalProfit):'Pending'}
+              {g.pendingProfitRows>0&&<span style={{display:'block',fontSize:10,color:'#a15c18'}}>{g.pendingProfitRows} pending</span>}
+            </td>
+          </tr>
+          {expanded[g.id]&&g.entries.map((r,i)=><tr key={r.id} style={{background:i%2?'#f8fbff':'white'}}>
+            <td style={{...frozen(0,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4',color:'#566a80'}}>↳ {r.customerName}</td>
+            <td style={{...frozen(1,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4'}}>{r.masterNo||'—'}</td>
+            <td style={{...frozen(2,false,i%2===1),padding:'7px 10px',borderBottom:'1px solid #e3ebf4'}}>{r.flightDate||'—'}</td>
+            <td style={{padding:'7px 9px',whiteSpace:'normal'}}>{r.origin||'—'}</td>
+            <td style={{padding:'7px 9px',whiteSpace:'normal',maxWidth:340}}>{r.description||'—'}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{r.customerBags||'—'}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(number(r.customerWeight))}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedDuty)}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedEici)}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedUt)}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.allocatedFreight)}</td>
+            <td style={{padding:'7px 9px',textAlign:'right'}}>{money(r.revenue)}</td>
+            <td style={{padding:'7px 9px',textAlign:'right',fontWeight:800,color:r.profit<0?'#b42318':'#087a4c'}}>{money(r.profit)}</td>
+          </tr>)}
+        </Fragment>)}</tbody>
+      </table>
+      {!customerLedger.length&&<p style={{padding:16,color:'#526780'}}>No saved customer records for {monthLabel(month)}.</p>}
+    </div>}
+    {mode==='EDIT'&&<div style={{overflowX:'auto',maxWidth:'100%',border:'1px solid #d4e0ed',borderRadius:10,background:'#fff'}}>
+      <table style={{borderCollapse:'separate',borderSpacing:0,fontSize:12,width:'max-content',minWidth:'100%'}}>
+        <thead><tr style={{background:'#daeafa',color:'#173c64'}}>{[...FIELDS.map(f=>f.label),'Duty/kg','Customer Duty','Customer EICI','Customer UT','Customer Freight','Revenue','Profit / Loss',''].map((h,i)=><th key={i} style={{borderBottom:'2px solid #adc8e2',padding:'9px 7px',textAlign:'left',whiteSpace:'nowrap',...frozen(i,true)}}>{h}</th>)}</tr></thead>
         <tbody>{displayed.map((r,i)=>{const a=calc.calculated.get(r.id);return <tr key={r.id} style={{background:i%2?'#f8fbff':'white'}}>
-          <td style={{padding:7}}>{i+1}</td>
-          {FIELDS.map(f=><td key={f.key} style={{padding:'5px 3px',borderBottom:'1px solid #e5ebf2'}}>
-            {mode==='EDIT'?<input aria-label={f.label+' for '+(r.customerName||r.masterNo)} title={MASTER_FIELDS.includes(f.key)?'This changes all customers under the same master.':undefined}
-              style={{...styleInput,minWidth:['customerName','description'].includes(f.key)?175:f.key==='masterNo'?120:90}} value={r[f.key]??''} onChange={e=>edit(r.id,f.key,e.target.value)}/>:<span style={{display:'inline-block',padding:'5px 8px',minWidth:85}}>{r[f.key]||'—'}</span>}
+          {FIELDS.map((f,fieldIndex)=><td key={f.key} style={{padding:'5px 3px',borderBottom:'1px solid #e5ebf2',...frozen(fieldIndex,false,i%2===1)}}>
+            <input aria-label={f.label+' for '+(r.customerName||r.masterNo)} title={MASTER_FIELDS.includes(f.key)?'This changes all customers under the same master.':undefined}
+              style={{...styleInput,minWidth:['customerName','description'].includes(f.key)?175:f.key==='masterNo'?120:90}} value={r[f.key]??''} onChange={e=>edit(r.id,f.key,e.target.value)}/>
           </td>)}
           <td style={{padding:'8px 10px'}}>{money(a?.perKg)}</td>
           {['duty','eici','ut','freight'].map(k=><td key={k} style={{padding:'8px 10px',textAlign:'right'}}>{money(a?.shares[k])}</td>)}
           <td style={{padding:'8px 10px',textAlign:'right'}}>{money(a?.sales)}</td>
           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:850,color:a?.pl<0?'#b42318':'#087a4c'}}>{money(a?.pl)}</td>
-          <td style={{padding:6}}>{mode==='EDIT'?<button type="button" style={{...buttonStyle,padding:'5px 8px',color:'#b42318'}} onClick={()=>setRows(old=>old.filter(x=>x.id!==r.id))}>Remove</button>:<span title={r._sheetName||''} style={{fontSize:11,color:'#52657b'}}>{r._fileName||'Saved import'}</span>}</td>
+          <td style={{padding:6}}><button type="button" style={{...buttonStyle,padding:'5px 8px',color:'#b42318'}} onClick={()=>{setUnsavedChanges(true);setRows(old=>old.filter(x=>x.id!==r.id))}}>Remove</button></td>
         </tr>})}</tbody>
       </table>
-      {!displayed.length&&<p style={{padding:18,color:'#53657c'}}>{mode==='MONTHLY'?'No saved customer records for '+monthLabel(month)+'. Choose another month or use Upload / Edit Excel.':'No records for '+monthLabel(selectedEditorMonth)+'. Upload an Excel file or choose another month.'}</p>}
-    </div>
+      {!displayed.length&&<p style={{padding:18,color:'#53657c'}}>No saved records for {monthLabel(selectedEditorMonth)}. Choose another month.</p>}
+    </div>}
     <p style={{fontSize:12,color:'#56687c',marginTop:12}}>Formula: Customer Cost = Master Total Cost ÷ EIA Weight × Customer Weight. Revenue = Customer Weight × Rate. Profit/Loss = Revenue − Customer Duty − Customer EICI − Customer UT − Customer Freight. Customer Bags are recorded for reference and can be used in later rules.</p>
   </main>;
 }
