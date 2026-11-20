@@ -44,7 +44,7 @@ export default function PersonalAccountsDashboard(){
   }
   async function upload(file){
     if(!file)return;
-    if(dirty&&!window.confirm('You have unsaved edits. Continue only if you want to keep editing them after importing a separate file.'))return;
+    if(dirty){setStatus('Save your current changes before uploading another Excel ledger.');return;}
     setBusy(true);setStatus('');
     try{
       const form=new FormData();form.append('file',file);
@@ -67,7 +67,7 @@ export default function PersonalAccountsDashboard(){
     if(!['date','details','debit','credit','balance'].some(k=>mapping[k]!==undefined&&mapping[k]!=='')){
       setStatus('Please match the Excel columns before importing.');return;
     }
-    if(dirty&&!window.confirm('You have unsaved changes in the current ledger. Save those first?'))return;
+    if(dirty){setStatus('Save the current ledger first to avoid losing unsaved remarks or edits.');return;}
     setBusy(true);setStatus('');
     try{
       const data=await persist(suggested,'',preview.fileName,sheet.sheet);
@@ -125,7 +125,7 @@ export default function PersonalAccountsDashboard(){
       <button type="button" style={{...buttonStyle,background:'#175cd3',color:'#fff'}} disabled={busy||!batchId||!rows.length} onClick={()=>void saveChanges()}>{busy?'Working…':'Save Changes'}</button>
       <button type="button" style={buttonStyle} disabled={busy||!batchId||dirty} onClick={excelExport}>Download Excel</button>
       <button type="button" style={buttonStyle} disabled={busy||!batchId||dirty} onClick={printPdf}>PDF / Print</button>
-      <button type="button" style={buttonStyle} disabled={busy} onClick={addRow}>+ Add Entry</button>
+      <button type="button" style={buttonStyle} disabled={busy||!batchId} onClick={addRow}>+ Add Entry</button>
       <span style={{fontSize:12,color:dirty?'#a15b07':'#177c4b',fontWeight:750}}>{dirty?'Unsaved edits — press Save Changes':batchId?'Saved in Mayavi':'Upload a workbook to begin'}</span>
     </section>
     {status&&<p role="status" style={{fontSize:13,padding:'9px 12px',border:'1px solid #e8d8af',borderRadius:8,background:'#fffaf0',margin:'12px 0'}}>{status}</p>}
