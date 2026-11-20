@@ -7,6 +7,7 @@ import AdminNotesDashboard from './AdminNotesDashboard.js';
 import StudyNotesDashboard from './StudyNotesDashboard.js';
 import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
+import ImportCustomerAllocation from './ImportCustomerAllocation.js';
 import SalaryDashboard from './SalaryDashboard.js';
 import EmployeeAttendanceDashboard from './EmployeeAttendanceDashboard.js';
 import LibraryDashboard from './LibraryDashboard.js';
@@ -231,6 +232,8 @@ export default function UnifiedDashboard(){
        ?<MonthlyDashboard/>
     :session?.role==='admin'&&selectedDashboard==='IMPORT_PROFIT'
       ?<ImportFinanceSection/>
+    :session?.role==='admin'&&selectedDashboard==='IMPORT_CUSTOMER_ALLOCATION'
+      ?<ImportCustomerAllocation/>
     :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
       ?<ExportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='SALARY'
@@ -265,6 +268,7 @@ export default function UnifiedDashboard(){
       {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&!libraryLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('MONTHLY')} style={{...topAccountButton,background:selectedDashboard==='MONTHLY'?'#dbeafe':'#fff',color:'#17419b'}}>MONTHLY RECORDS</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT PROFIT SHEET</button>}
+      {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('IMPORT_CUSTOMER_ALLOCATION')} style={{...topAccountButton,background:selectedDashboard==='IMPORT_CUSTOMER_ALLOCATION'?'#dbeafe':'#fff',color:'#17419b'}}>IMPORT CUSTOMER P&L</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EXPORT_PROFIT')} style={{...topAccountButton,background:selectedDashboard==='EXPORT_PROFIT'?'#dbeafe':'#fff',color:'#17419b'}}>EXPORT PROFIT SHEET</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('SALARY')} style={{...topAccountButton,background:selectedDashboard==='SALARY'?'#dbeafe':'#fff',color:'#17419b'}}>SALARY</button>}
       {session.role==='admin'&&<button onClick={()=>setSelectedDashboard('EMPLOYEE_ATTENDANCE')} style={{...topAccountButton,background:selectedDashboard==='EMPLOYEE_ATTENDANCE'?'#dbeafe':'#fff',color:'#17419b'}}>ATTENDANCE</button>}
