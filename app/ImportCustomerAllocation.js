@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
+import {groupedImportRowMonths,monthOptionsForRows,monthLabel} from '../lib/importCustomerMonth.js';
 
 const FIELDS=[
   {key:'customerName',label:'Customer Name',aliases:['customer name','client name','consignee','customer','client']},
@@ -81,8 +82,9 @@ function allocations(rows){
   rows.forEach(r=>{
     const no=String(r.masterNo||'').trim();
     if(!no)return;
-    if(!masters.has(no))masters.set(no,{no,rows:[],values:{}});
-    const m=masters.get(no);m.rows.push(r);
+    const masterKey=String(r._batchId||'')+'|'+no;
+    if(!masters.has(masterKey))masters.set(masterKey,{no,rows:[],values:{}});
+    const m=masters.get(masterKey);m.rows.push(r);
     for(const k of MASTER_FIELDS){
       const v=String(r[k]??'').trim();if(v==='')continue;
       if(m.values[k]===undefined)m.values[k]=v;
@@ -117,9 +119,16 @@ export default function ImportCustomerAllocation(){
   const [fileName,setFileName]=useState(''),[sheetName,setSheetName]=useState('');
   const [book,setBook]=useState(null),[sheetIndex,setSheetIndex]=useState(0),[headerIndex,setHeaderIndex]=useState(0),[mapping,setMapping]=useState({});
   const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[filter,setFilter]=useState('');
+  const [mode,setMode]=useState('MONTHLY'),[months,setMonths]=useState([]),[month,setMonth]=useState('');
+  const [monthlyRows,setMonthlyRows]=useState([]),[monthlyBusy,setMonthlyBusy]=useState(false),[limited,setLimited]=useState(false);
+  const [editMonth,setEditMonth]=useState('');
   const sheet=book?.sheets?.[sheetIndex];
-  const calc=useMemo(()=>allocations(rows),[rows]);
-  const displayed=useMemo(()=>rows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[rows,filter]);
+  const editorMonths=useMemo(()=>monthOptionsForRows(rows),[rows]);
+  const selectedEditorMonth=editorMonths.some(m=>m.key===editMonth)?editMonth:(editorMonths[0]?.key||'');
+  const editorRows=useMemo(()=>groupedImportRowMonths(rows).filter(x=>x.month===selectedEditorMonth).map(x=>x.row),[rows,selectedEditorMonth]);
+  const visibleRows=mode==='MONTHLY'?monthlyRows:editorRows;
+  const calc=useMemo(()=>allocations(visibleRows),[visibleRows]);
+  const displayed=useMemo(()=>visibleRows.filter(r=>!filter||[r.masterNo,r.customerName,r.description,r.flightNo].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase()))),[visibleRows,filter]);
 
   async function load(id=''){
     const res=await fetch('/api/import-customer-allocation'+(id?'?id='+encodeURIComponent(id):''),{credentials:'include',cache:'no-store'});
@@ -129,7 +138,24 @@ export default function ImportCustomerAllocation(){
     setFileName(data.batch?.file_name||'');setSheetName(data.batch?.sheet_name||'');
     setBook(null);
   }
-  useEffect(()=>{let active=true;(async()=>{try{await load()}catch(e){if(active)setStatus(e.message)}})();return()=>{active=false}},[]);
+  async function loadMonthly(requested=''){
+    setMonthlyBusy(true);
+    try{
+      const url='/api/import-customer-allocation?view=monthly'+(requested?'&month='+encodeURIComponent(requested):'');
+      const response=await fetch(url,{credentials:'include',cache:'no-store'});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw Error(data.error||'Monthly records could not be loaded.');
+      setMonths(data.months||[]);
+      setMonth(data.month||'');
+      setMonthlyRows(data.rows||[]);
+      setLimited(Boolean(data.limitedToMostRecentBatches));
+    }finally{setMonthlyBusy(false);}
+  }
+  useEffect(()=>{let active=true;(async()=>{
+    const results=await Promise.allSettled([load(),loadMonthly()]);
+    const failed=results.find(x=>x.status==='rejected');
+    if(active&&failed)setStatus(failed.reason?.message||'Import data could not be loaded.');
+  })();return()=>{active=false}},[]);
   function selectSheet(bookData,index){const found=guess(bookData.sheets[index]);setSheetIndex(index);setHeaderIndex(found.headerIndex);setMapping(found.mapping);setRows([]);}
   async function upload(file){
     if(!file)return;
@@ -164,7 +190,7 @@ export default function ImportCustomerAllocation(){
     try{
       const res=await fetch('/api/import-customer-allocation',{method:'PUT',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({id:batchId||undefined,fileName,sheetName,rows})});
       const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Save failed.');
-      await load(data.id);setStatus(data.rowCount+' customer rows saved securely to Mayavi.');
+      await load(data.id);await loadMonthly(month).catch(()=>{});setStatus(data.rowCount+' customer rows saved securely to Mayavi.');
     }catch(e){setStatus(e.message)}finally{setBusy(false)}
   }
   function download(){
@@ -175,7 +201,7 @@ export default function ImportCustomerAllocation(){
       lines.push([...KEYS.map(k=>r[k]),a?.perKg,a?.shares.duty,a?.shares.eici,a?.shares.ut,a?.shares.freight,a?.sales,a?.pl].map(encodeCsv).join(','));
     }
     const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
-    const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='mayavi-import-customer-profit.csv';anchor.click();URL.revokeObjectURL(url);
+    const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='mayavi-import-customer-profit-'+(mode==='MONTHLY'?month:selectedEditorMonth||'upload')+'.csv';anchor.click();URL.revokeObjectURL(url);
   }
   const stat=(label,value)=> <div style={{background:'#f6f9ff',border:'1px solid #dce6f5',borderRadius:10,padding:'12px 16px',minWidth:145}}><div style={{fontSize:11,color:'#53647a',fontWeight:800}}>{label}</div><b style={{display:'block',fontSize:19,marginTop:4,color:'#123966'}}>{value}</b></div>;
   return <main style={{padding:'18px clamp(12px,2.6vw,30px)',color:'#172b46',maxWidth:'100%',boxSizing:'border-box'}}>
