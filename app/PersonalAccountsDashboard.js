@@ -153,7 +153,7 @@ export default function PersonalAccountsDashboard(){
       <button type="button" style={buttonStyle} disabled={busy||!batchId} onClick={addRow}>+ Add Entry</button>
       <span style={{fontSize:12,color:dirty?'#a15b07':'#177c4b',fontWeight:750}}>{dirty?'Unsaved edits — press Save Changes':batchId?'Saved in Mayavi':'Choose a bank statement to begin'}</span>
     </section>
-    {status&&<p role="status" aria-live="polite" style={{fontSize:13,padding:'9px 12px',border:'1px solid #e8d8af',borderRadius:8,background:'#fffaf0',margin:'12px 0'}}>{status}</p>
+    {status&&<p role="status" aria-live="polite" style={{fontSize:13,padding:'9px 12px',border:'1px solid #e8d8af',borderRadius:8,background:'#fffaf0',margin:'12px 0'}}>{status}</p>}
     {preview&&sheet&&<section style={{marginTop:13,padding:14,border:'1px solid #bdd7ee',borderRadius:10,background:'#fff'}}>
       <h2 style={{fontSize:17,margin:'0 0 12px'}}>Review Bank File Columns · {preview.fileName}</h2>
       <div style={{display:'flex',gap:14,flexWrap:'wrap',marginBottom:13}}>
