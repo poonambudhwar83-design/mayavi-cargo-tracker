@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import { subscribeProfitSourceChanges } from '../lib/profitSync.js';
-import {figures} from '../lib/importProfitFigures.js';
+import {figures,dataNumber,DRIVER_EXPENSE_PER_MAWB} from '../lib/importProfitFigures.js';
 
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const quantity=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
