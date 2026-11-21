@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import ImportProfitSheet from './ImportProfitSheet.js';
 import ImportClientLedger from './ImportClientLedger.js';
+import MonthlyComparisonDashboard from './MonthlyComparisonDashboard.js';
 
 const tabStyle={padding:'11px 17px',borderRadius:9,border:'1px solid #c9d6e8',cursor:'pointer',fontSize:13,fontWeight:900};
 export default function ImportFinanceSection(){
@@ -33,7 +34,15 @@ export default function ImportFinanceSection(){
         style={{...tabStyle,background:tab==='LEDGER'?'#087b73':'#fff',color:tab==='LEDGER'?'#fff':'#1f5e63'}}>
         Client Ledger • Receivables{newLedgerAlerts>0?' • '+newLedgerAlerts+' New':''}
       </button>
+      <button type="button" aria-current={tab==='CUSTOMER_COMPARISON'?'page':undefined} onClick={()=>setTab('CUSTOMER_COMPARISON')}
+        style={{...tabStyle,background:tab==='CUSTOMER_COMPARISON'?'#2055a2':'#fff',color:tab==='CUSTOMER_COMPARISON'?'#fff':'#214f87'}}>
+        Monthly Customer Comparison
+      </button>
+      <button type="button" aria-current={tab==='GOODS_COMPARISON'?'page':undefined} onClick={()=>setTab('GOODS_COMPARISON')}
+        style={{...tabStyle,background:tab==='GOODS_COMPARISON'?'#2055a2':'#fff',color:tab==='GOODS_COMPARISON'?'#fff':'#214f87'}}>
+        Monthly Goods Comparison
+      </button>
     </nav>
-    {tab==='PROFIT'?<ImportProfitSheet/>:<ImportClientLedger onOpenProfit={()=>setTab('PROFIT')}/>}
+    {tab==='PROFIT'?<ImportProfitSheet/>:tab==='CUSTOMER_COMPARISON'?<MonthlyComparisonDashboard kind="import" section="customer"/>:tab==='GOODS_COMPARISON'?<MonthlyComparisonDashboard kind="import" section="goods"/>:<ImportClientLedger onOpenProfit={()=>setTab('PROFIT')}/>}
   </>;
 }
