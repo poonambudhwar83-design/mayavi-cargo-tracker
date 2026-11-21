@@ -94,8 +94,9 @@ async function maybeRows(sql,query){
     throw error;
   }
 }
-// Live masters are authoritative. Saved monthly snapshots are used only when
-// the original master is no longer in the tracker, never to count it twice.
+// Live masters are authoritative outside September. September's month-specific
+// archive can supplement or replace a later-edited live master; verified rows
+// are selected per MAWB and month without duplicating physical shipments.
 function allMasters(live=[],archived=[],type='IMPORT'){
   const present=new Set(),records=[];
   for(const row of live){
