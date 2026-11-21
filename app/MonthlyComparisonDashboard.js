@@ -166,7 +166,7 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
       <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',alignItems:'center'}}>
         <div><div style={{fontSize:11,color:'#4273b5',letterSpacing:1.2,fontWeight:900}}>MAYAVI CARGO • ADMIN ONLY</div>
           <h1 style={{fontSize:25,margin:'4px 0'}}>{groupLabel}</h1>
-          <p style={{fontSize:12,color:'#64748b',margin:'3px 0'}}>From October 2026 onwards • {isImport?'Recorded Import arrivals / customs clearance; net profit uses the exact Import Profit Sheet formula':'Export weight grouped by confirmed Handover YES month'} • Updates from saved records automatically.</p>
+          <p style={{fontSize:12,color:'#64748b',margin:'3px 0'}}>From September 2026 onwards • {isImport?'Recorded Import arrivals / customs clearance; net profit uses the exact Import Profit Sheet formula':'Export weight grouped by confirmed Handover YES month'} • Updates from saved records automatically.</p>
         </div>
         <div className="mayavi-comparison-actions" style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
           <button type="button" onClick={()=>downloadExcel(pivot,shownMonths,view,kind)} disabled={!pivot.length} style={{...actionStyle,background:'#165e4b',color:'#fff',borderColor:'#165e4b',opacity:pivot.length?1:.5}}>Excel / CSV</button>
