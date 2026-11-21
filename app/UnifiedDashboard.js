@@ -268,6 +268,10 @@ export default function UnifiedDashboard(){
   if(loading)return <main className="loginShell"><section className="loginCard"><div className="eyebrow">MAYAVI CARGO</div><h1>Opening secure dashboard…</h1></section></main>;
 
   if(session)return <>
+    {session.role==='admin'&&<div style={{padding:'10px clamp(12px,2vw,24px)',background:'#e7f1ff',borderBottom:'2px solid #9cbced',display:'flex',alignItems:'center',gap:12,justifyContent:'space-between',flexWrap:'wrap'}}>
+      <a href="/reports" aria-label="Open separate Monthly Reports page" style={{display:'inline-flex',alignItems:'center',gap:8,padding:'12px 19px',background:'#184f9b',color:'#fff',textDecoration:'none',fontSize:15,fontWeight:900,borderRadius:10,boxShadow:'0 2px 9px rgba(12,54,118,.13)'}}>📊 REPORTS • MONTHLY COMPARISON</a>
+      <span style={{color:'#2d5686',fontWeight:700,fontSize:12}}>Import Customer-wise • Import Goods-wise • Export Client-wise</span>
+    </div>}
     <div style={topAccountBar}>
       {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&!libraryLogin&&<SaudiaAssist/>}
       {!branchLogin&&!haryanaLogin&&!accountsLogin&&!notesLogin&&!libraryLogin&&selectedDashboard!=='AIR_CARGO'&&<button style={{...topAccountButton,background:'#dbeafe',color:'#17419b'}} onClick={()=>setSelectedDashboard('AIR_CARGO')}>← BACK TO AIR CARGO</button>}

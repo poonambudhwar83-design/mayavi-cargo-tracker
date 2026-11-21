@@ -3,7 +3,6 @@ import {useState} from 'react';
 import ExportProfitSheet from './ExportProfitSheet.js';
 import ExportClientLedger from './ExportClientLedger.js';
 import AuditDataAnalysisDashboard from './AuditDataAnalysisDashboard.js';
-import MonthlyComparisonDashboard from './MonthlyComparisonDashboard.js';
 
 const tabStyle={padding:'11px 17px',borderRadius:9,border:'1px solid #c9d6e8',cursor:'pointer',fontSize:13,fontWeight:900};
 export default function ExportFinanceSection(){
@@ -23,11 +22,7 @@ export default function ExportFinanceSection(){
         style={{...tabStyle,background:tab==='ANALYSIS'?'#2157a1':'#fff',color:tab==='ANALYSIS'?'#fff':'#1f5e8b'}}>
         Data Analysis
       </button>
-      <button type="button" aria-current={tab==='MONTHLY_COMPARISON'?'page':undefined} onClick={()=>setTab('MONTHLY_COMPARISON')}
-        style={{...tabStyle,background:tab==='MONTHLY_COMPARISON'?'#2055a2':'#fff',color:tab==='MONTHLY_COMPARISON'?'#fff':'#214f87'}}>
-        Monthly Client Comparison
-      </button>
     </nav>
-    {tab==='PROFIT'?<ExportProfitSheet/>:tab==='MONTHLY_COMPARISON'?<MonthlyComparisonDashboard kind="export"/>:tab==='ANALYSIS'?<AuditDataAnalysisDashboard/>:<ExportClientLedger/>}
+    {tab==='PROFIT'?<ExportProfitSheet/>:tab==='ANALYSIS'?<AuditDataAnalysisDashboard/>:<ExportClientLedger/>}
   </>;
 }
