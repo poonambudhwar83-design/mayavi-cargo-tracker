@@ -4,7 +4,7 @@ import {masterKg,partKg} from '../../../lib/arrivalWeights.js';
 import {physicalImportProfitRows} from '../../../lib/importProfitPhysicalRows.js';
 import {importArrivalMonth,istMonthKey} from '../../../lib/monthlyArchive.js';
 import {confirmedExportHandoverMonth} from '../../../lib/exportHandoverAccounting.js';
-import {currentProfitMonth,profitMonths,FIRST_PROFIT_MONTH} from '../../../lib/profitPeriod.js';
+import {currentProfitMonth} from '../../../lib/profitPeriod.js';
 import {figures} from '../../../lib/importProfitFigures.js';
 
 export const runtime='nodejs';
@@ -66,8 +66,27 @@ function goodsCategory(saved={},data={}){
 function numberText(value,empty=''){
   return value===undefined||value===null?empty:String(value);
 }
+// Comparisons include the September 2026 historical archive. The existing
+// Import/Export Profit Sheets intentionally still start in October 2026.
+const FIRST_COMPARISON_MONTH='2026-09';
 function validMonth(month,current){
-  return month>=FIRST_PROFIT_MONTH&&month<=current&&/^20\d{2}-(0[1-9]|1[0-2])$/.test(month);
+  return month>=FIRST_COMPARISON_MONTH&&month<=current&&/^20\d{2}-(0[1-9]|1[0-2])$/.test(month);
+}
+function comparisonMonths(current){
+  const result=[];
+  const endYear=Number(current.slice(0,4)),endMonth=Number(current.slice(5));
+  for(let year=2026,month=9;year<endYear||(year===endYear&&month<=endMonth);month++){
+    if(month>12){year++;month=1;}
+    result.push(year+'-'+String(month).padStart(2,'0'));
+  }
+  return result;
+}
+// For September, prefer a verified, month-specific historical snapshot over
+// a later-edited live master. Otherwise the live master remains authoritative.
+function preferSeptemberArchive(entries){
+  const archived=new Set(entries.filter(row=>row._archiveSeptember).map(row=>row.awb));
+  return entries.filter(row=>row._archiveSeptember||row.month!=='2026-09'||!archived.has(row.awb))
+    .map(({_archiveSeptember,...row})=>row);
 }
 async function maybeRows(sql,query){
   try{return await sql.query(query)}catch(error){
@@ -75,8 +94,9 @@ async function maybeRows(sql,query){
     throw error;
   }
 }
-// Live masters are authoritative. Saved monthly snapshots are used only when
-// the original master is no longer in the tracker, never to count it twice.
+// Live masters are authoritative outside September. September's month-specific
+// archive can supplement or replace a later-edited live master; verified rows
+// are selected per MAWB and month without duplicating physical shipments.
 function allMasters(live=[],archived=[],type='IMPORT'){
   const present=new Set(),records=[];
   for(const row of live){
@@ -90,7 +110,7 @@ function allMasters(live=[],archived=[],type='IMPORT'){
     if(row.shipment_type!==type)continue;
     const awb=digits(row.awb),month=String(row.archive_month||'');
     const key=awb+'|'+month;
-    if(awb.length!==11||present.has(awb)||archivedKeys.has(key))continue;
+    if(awb.length!==11||(present.has(awb)&&month!=='2026-09')||archivedKeys.has(key))continue;
     archivedKeys.add(key);
     records.push({awb,data:row.data||{},archiveMonth:month});
   }
@@ -100,7 +120,7 @@ function importEntries(masters,financials,partDuties,current){
   const finance=new Map(financials.map(r=>[digits(r.awb),r]));
   const partFinance=new Map(partDuties.map(r=>[digits(r.awb)+'|'+r.part_key,r]));
   const items=[],seen=new Set();
-  for(const {awb,data} of masters){
+  for(const {awb,data,archiveMonth} of masters){
     const saved=finance.get(awb)||{};
     const description=upper(data.goodsDescription||data.goods_description||'');
     const goods=goodsCategory(saved,data)||'OTHER';
@@ -112,8 +132,8 @@ function importEntries(masters,financials,partDuties,current){
       // Only dated and verified arrivals/clearances enter comparisons.
       // Active pending movement is not silently assigned to the current month.
       const month=arrivalMonth&&physical.confirmed?arrivalMonth:clearanceMonth;
-      if(!validMonth(month,current))continue;
-      const rowKey=physical.rowKey||awb,key=month+'|'+rowKey;
+      if(!validMonth(month,current)||(archiveMonth&&archiveMonth!==month))continue;
+      const rowKey=physical.rowKey||awb,key=month+'|'+rowKey+(archiveMonth==='2026-09'?'|archive':'');
       if(seen.has(key))continue;
       seen.add(key);
       const isPart=rowKey!==awb;
@@ -130,24 +150,26 @@ function importEntries(masters,financials,partDuties,current){
       items.push({
         month,awb,client,origin,goods,
         description:description||'UNSPECIFIED DESCRIPTION',
-        weight:calc.kg,bags:calc.bags,profit:calc.profit
+        weight:calc.kg,bags:calc.bags,profit:calc.profit,
+        _archiveSeptember:archiveMonth==='2026-09'
       });
     }
   }
-  return items;
+  return preferSeptemberArchive(items);
 }
 function exportEntries(masters,current){
   const items=[],seen=new Set();
-  for(const {awb,data} of masters){
+  for(const {awb,data,archiveMonth} of masters){
     const month=confirmedExportHandoverMonth(data);
-    if(!validMonth(month,current)||seen.has(awb+'|'+month))continue;
-    seen.add(awb+'|'+month);
+    const key=awb+'|'+month+(archiveMonth==='2026-09'?'|archive':'');
+    if(!validMonth(month,current)||(archiveMonth&&archiveMonth!==month)||seen.has(key))continue;
+    seen.add(key);
     items.push({
       month,awb,client:upper(data.clientName||data.client)||'UNASSIGNED CLIENT',
-      weight:totalWeight(data)
+      weight:totalWeight(data),_archiveSeptember:archiveMonth==='2026-09'
     });
   }
-  return items;
+  return preferSeptemberArchive(items);
 }
 export async function GET(request){
   if(readSession(request)?.role!=='admin')
@@ -175,7 +197,7 @@ export async function GET(request){
       ]);
       rows=importEntries(masters,financials,partDuties,current);
     }else rows=exportEntries(masters,current);
-    return Response.json({ok:true,type:kind,months:profitMonths(),rows},
+    return Response.json({ok:true,type:kind,months:comparisonMonths(current),rows},
       {headers:{'Cache-Control':'no-store,private'}});
   }catch(error){
     console.error('monthly_comparison',String(error?.message||error).slice(0,200));
