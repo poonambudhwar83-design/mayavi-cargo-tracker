@@ -171,6 +171,9 @@ assert.ok(reportApi.includes("...(month==='2026-09'?{}:{bags:calc.bags,duty:calc
 assert.ok(reportUi.includes("if(row.month!=='2026-09')"));
 assert.ok(reportUi.includes("kind==='import'&&month!=='2026-09'"));
 assert.ok(reportUi.includes("isImport&&month==='2026-09'"));
+assert.ok(reportUi.includes("kind==='import'?g.all.filter(row=>row.month!=='2026-09'):g.all"));
+assert.ok(reportUi.includes("isImport?filtered.filter(row=>row.month!=='2026-09'):filtered"));
+assert.ok(reportUi.includes("groupPivot(filtered,shownMonths,view,kind)"));
 assert.ok(reportUi.includes('summary.duty/summary.financialWeight'));
 assert.ok(reportUi.includes('summary.missingDuty===0&&summary.missingFinancialWeight===0'));
 assert.ok(reportUi.includes("month+' Duty per kg (INR/kg)'"));

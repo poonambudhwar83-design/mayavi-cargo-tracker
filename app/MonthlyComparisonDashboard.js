@@ -72,7 +72,7 @@ function aggregate(rows){
   }
   return {...result,mawbs:result.awbSet.size};
 }
-function groupPivot(rows,months,view){
+function groupPivot(rows,months,view,kind){
   const groups=new Map();
   for(const row of rows){
     const key=dimensionLabel(row,view);
@@ -83,7 +83,9 @@ function groupPivot(rows,months,view){
     g.all.push(row);
   }
   return [...groups.values()].map(g=>({
-    label:g.label,totals:aggregate(g.all),
+    // September 2026 is visible in its own column only. ALL MONTHS
+    // excludes September completely, including Weight and MAWB counts.
+    label:g.label,totals:aggregate(kind==='import'?g.all.filter(row=>row.month!=='2026-09'):g.all),
     months:new Map(months.map(m=>[m,aggregate(g.monthly.get(m)||[])]))
   }));
 }
@@ -102,7 +104,7 @@ function downloadExcel(rows,months,view,kind){
   }
   const lines=[fields];
   for(const g of rows){
-    const out=[g.label,g.totals.weight];
+    const out=[g.label,g.totals.records?g.totals.weight:''];
     if(kind==='import')out.push(g.totals.financialRecords?g.totals.bags:'',g.totals.financialRecords&&!g.totals.missingProfit?g.totals.profit:'',profitPerKgCsv(g.totals),g.totals.financialRecords?g.totals.missingProfit:'',g.totals.financialRecords&&!g.totals.missingDuty?g.totals.duty:'',dutyPerKgCsv(g.totals),g.totals.financialRecords?g.totals.missingDuty:'');
     else out.push(g.totals.mawbs);
     for(const month of months){
@@ -185,13 +187,13 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
     (!search||[r.client,r.goods,r.description,r.origin,r.awb].join(' ').toLowerCase().includes(search.toLowerCase().trim()))
   ),[rows,year,client,origin,goods,search,isImport]);
   const pivot=useMemo(()=>{
-    const grouped=groupPivot(filtered,shownMonths,view);
+    const grouped=groupPivot(filtered,shownMonths,view,kind);
     grouped.sort((a,b)=>sort==='alpha'?a.label.localeCompare(b.label):
       sort==='profit'?b.totals.profit-a.totals.profit||a.label.localeCompare(b.label):
       b.totals.weight-a.totals.weight||a.label.localeCompare(b.label));
     return grouped;
-  },[filtered,shownMonths,view,sort]);
-  const overall=useMemo(()=>aggregate(filtered),[filtered]);
+  },[filtered,shownMonths,view,sort,kind]);
+  const overall=useMemo(()=>aggregate(isImport?filtered.filter(row=>row.month!=='2026-09'):filtered),[filtered,isImport]);
   const overallMonths=useMemo(()=>new Map(shownMonths.map(m=>[m,aggregate(filtered.filter(r=>r.month===m))])),[filtered,shownMonths]);
   const groupLabel=kind==='export'?'Export Client Comparison':section==='goods'?'Import Goods Comparison':'Import Customer Comparison';
   return <main className="mayavi-monthly-report" style={{padding:'20px clamp(10px,3vw,30px)',background:'#f5f8fc',color:'#172f4a',minHeight:'70vh'}}>
@@ -220,7 +222,7 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
         <button type="button" style={actionStyle} onClick={()=>{setYear('ALL');setClient('');setGoods('');setOrigin('');setSearch('');}}>Clear filters</button>
       </div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:15}}>
-        {[['TOTAL LOAD',fmtNumber(overall.weight)+' kg'],['MAWBs',fmtNumber(overall.mawbs)],...(isImport?[['BAGS',overall.financialRecords?fmtNumber(overall.bags):'—'],['CALCULATED PROFIT',overall.financialRecords?money(overall.profit):'—'],['PROFIT PER KG',profitPerKg(overall)===null?'—':rupeesPerKg.format(profitPerKg(overall))+'/kg'],['TOTAL DUTY',overall.financialRecords&&!overall.missingDuty?money(overall.duty):'—'],['DUTY PER KG',dutyPerKg(overall)===null?'—':rupeesPerKg.format(dutyPerKg(overall))+'/kg']]:[])].map(([label,value])=>
+        {[['TOTAL LOAD',overall.records?fmtNumber(overall.weight)+' kg':'—'],['MAWBs',overall.records?fmtNumber(overall.mawbs):'—'],...(isImport?[['BAGS',overall.financialRecords?fmtNumber(overall.bags):'—'],['CALCULATED PROFIT',overall.financialRecords?money(overall.profit):'—'],['PROFIT PER KG',profitPerKg(overall)===null?'—':rupeesPerKg.format(profitPerKg(overall))+'/kg'],['TOTAL DUTY',overall.financialRecords&&!overall.missingDuty?money(overall.duty):'—'],['DUTY PER KG',dutyPerKg(overall)===null?'—':rupeesPerKg.format(dutyPerKg(overall))+'/kg']]:[])].map(([label,value])=>
           <div key={label} style={{flex:'1 1 160px',border:'1px solid #d8e4f2',borderRadius:12,padding:15,background:'#fff'}}>
             <div style={{fontSize:11,fontWeight:850,color:'#687a94'}}>{label}</div><div style={{fontSize:20,fontWeight:900,marginTop:6,color:label==='CALCULATED PROFIT'?'#14734d':'#15345b'}}>{value}</div>
           </div>)}
@@ -240,17 +242,17 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
             {pivot.map(g=><tr key={g.label}>
               <td style={{...gridCell,fontWeight:850,color:'#19518e',background:'#fff',position:'sticky',left:0,zIndex:1,overflowWrap:'anywhere',minWidth:165}}>{g.label}</td>
               {shownMonths.map(month=><td key={month} style={gridCell}>{cellDescription(g.months.get(month),kind,g.months.get(month).records>0,isImport&&month==='2026-09')}</td>)}
-              <td style={{...gridCell,background:'#eff7ff'}}>{cellDescription(g.totals,kind,true)}</td>
+              <td style={{...gridCell,background:'#eff7ff'}}>{cellDescription(g.totals,kind,g.totals.records>0)}</td>
             </tr>)}
             {filtered.length>0?<tr>
               <td style={{...gridCell,fontWeight:900,background:'#dbeafe',position:'sticky',left:0}}>GRAND TOTAL</td>
               {shownMonths.map(month=><td key={month} style={{...gridCell,background:'#edf5ff'}}>{cellDescription(overallMonths.get(month),kind,overallMonths.get(month).records>0,isImport&&month==='2026-09')}</td>)}
-              <td style={{...gridCell,background:'#dbeafe'}}>{cellDescription(overall,kind,true)}</td>
+              <td style={{...gridCell,background:'#dbeafe'}}>{cellDescription(overall,kind,overall.records>0)}</td>
             </tr>:null}
           </tbody>
         </table>
       </div>
-      {isImport?<p style={{fontSize:12,color:'#64748b',marginTop:11}}>September 2026 is Weight only and excluded from Duty, Profit, Bags and per-kg calculations. ALL MONTHS Weight includes September; Profit/kg and Duty/kg use October-onwards Weight only.</p>:null}
+      {isImport?<p style={{fontSize:12,color:'#64748b',marginTop:11}}>September 2026 appears as Weight only in its own monthly column. ALL MONTHS totals, including Weight and MAWBs, exclude September entirely and start from October 2026. Profit/kg and Duty/kg use October-onwards figures only.</p>:null}
       <p style={{fontSize:12,color:'#64748b',marginTop:11}}>Data refreshed {lastLoaded||'when opened'} • Unique MAWB counts are not doubled when an Import shipment has multiple physical parts. Report calculations never change source entries.</p>
     </div>
   </main>;
