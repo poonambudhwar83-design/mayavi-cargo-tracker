@@ -150,7 +150,10 @@ function importEntries(masters,financials,partDuties,current){
       items.push({
         month,awb,client,origin,goods,
         description:description||'UNSPECIFIED DESCRIPTION',
-        weight:calc.kg,bags:calc.bags,duty:calc.duty,profit:calc.profit,
+        // September 2026 is historical load-only. Keep its weight but do
+        // not send Bags, Duty, Profit, or per-kg financial inputs to Reports.
+        weight:calc.kg,
+        ...(month==='2026-09'?{}:{bags:calc.bags,duty:calc.duty,profit:calc.profit}),
         _archiveSeptember:archiveMonth==='2026-09'
       });
     }
