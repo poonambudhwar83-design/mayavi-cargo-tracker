@@ -150,7 +150,7 @@ function importEntries(masters,financials,partDuties,current){
       items.push({
         month,awb,client,origin,goods,
         description:description||'UNSPECIFIED DESCRIPTION',
-        weight:calc.kg,bags:calc.bags,profit:calc.profit,
+        weight:calc.kg,bags:calc.bags,duty:calc.duty,profit:calc.profit,
         _archiveSeptember:archiveMonth==='2026-09'
       });
     }

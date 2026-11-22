@@ -25,6 +25,14 @@ const profitPerKgCsv=summary=>{
   const value=profitPerKg(summary);
   return value===null?'':Number(value.toFixed(2));
 };
+// Duty/kg is a weighted rate: total recorded Duty divided by total weight.
+// Never average per-MAWB duty/kg values or treat missing Duty as zero.
+const dutyPerKg=summary=>summary&&summary.weight>0&&summary.missingDuty===0&&summary.missingWeight===0
+  ?summary.duty/summary.weight:null;
+const dutyPerKgCsv=summary=>{
+  const value=dutyPerKg(summary);
+  return value===null?'':Number(value.toFixed(2));
+};
 const monthLabel=key=>new Intl.DateTimeFormat('en-IN',{month:'short',year:'numeric'}).format(new Date(key+'-01T12:00:00Z'));
 
 function dimensionLabel(row,view){
@@ -38,11 +46,15 @@ function dimensionLabel(row,view){
   }
 }
 function aggregate(rows){
-  const result={weight:0,bags:0,profit:0,missingProfit:0,missingWeight:0,records:0,awbSet:new Set()};
+  const result={weight:0,bags:0,duty:0,missingDuty:0,profit:0,missingProfit:0,missingWeight:0,records:0,awbSet:new Set()};
   for(const row of rows){
     if(row.weight===null||row.weight===undefined||!Number.isFinite(Number(row.weight)))result.missingWeight++;
     else result.weight+=Number(row.weight);
     result.bags+=Number(row.bags)||0;
+    if(Object.prototype.hasOwnProperty.call(row,'duty')){
+      if(row.duty===null||row.duty===undefined||!Number.isFinite(Number(row.duty)))result.missingDuty++;
+      else result.duty+=Number(row.duty);
+    }
     if(Object.prototype.hasOwnProperty.call(row,'profit')){
       if(row.profit===null||!Number.isFinite(Number(row.profit)))result.missingProfit++;
       else result.profit+=Number(row.profit);
@@ -73,21 +85,21 @@ function escapedCsv(value){
   return '"'+safe.replace(/"/g,'""')+'"';
 }
 function downloadExcel(rows,months,view,kind){
-  const fields=[cols[view],'Total Weight (kg)',...(kind==='import'?['Total Bags','Total Calculated Profit (INR)','Total Profit per kg (INR/kg)','Profit Pending Rows']:['Total MAWBs'])];
+  const fields=[cols[view],'Total Weight (kg)',...(kind==='import'?['Total Bags','Total Calculated Profit (INR)','Total Profit per kg (INR/kg)','Profit Pending Rows','Total Duty (INR)','Total Duty per kg (INR/kg)','Duty Pending Rows']:['Total MAWBs'])];
   for(const month of months){
     fields.push(month+' Weight (kg)');
-    if(kind==='import')fields.push(month+' Bags',month+' Calculated Profit (INR)',month+' Profit per kg (INR/kg)',month+' Profit Pending Rows');
+    if(kind==='import')fields.push(month+' Bags',month+' Calculated Profit (INR)',month+' Profit per kg (INR/kg)',month+' Profit Pending Rows',month+' Duty (INR)',month+' Duty per kg (INR/kg)',month+' Duty Pending Rows');
     else fields.push(month+' MAWBs');
   }
   const lines=[fields];
   for(const g of rows){
     const out=[g.label,g.totals.weight];
-    if(kind==='import')out.push(g.totals.bags,g.totals.missingProfit?'':g.totals.profit,profitPerKgCsv(g.totals),g.totals.missingProfit);
+    if(kind==='import')out.push(g.totals.bags,g.totals.missingProfit?'':g.totals.profit,profitPerKgCsv(g.totals),g.totals.missingProfit,g.totals.missingDuty?'':g.totals.duty,dutyPerKgCsv(g.totals),g.totals.missingDuty);
     else out.push(g.totals.mawbs);
     for(const month of months){
       const m=g.months.get(month);
       out.push(m.weight);
-      if(kind==='import')out.push(m.bags,m.missingProfit?'':m.profit,profitPerKgCsv(m),m.missingProfit);
+      if(kind==='import')out.push(m.bags,m.missingProfit?'':m.profit,profitPerKgCsv(m),m.missingProfit,m.missingDuty?'':m.duty,dutyPerKgCsv(m),m.missingDuty);
       else out.push(m.mawbs);
     }
     lines.push(out);
@@ -106,6 +118,8 @@ function cellDescription(v,kind,hasData){
       <div style={{fontSize:11,color:'#64748b'}}>{fmtNumber(v.bags)} bags</div>
       <div style={{fontSize:12,fontWeight:800,color:v.profit<0?'#b42318':'#13734e'}}>{money(v.profit)}{v.missingProfit?' *':''}</div>
       <div style={{fontSize:11,fontWeight:800,color:'#174d88'}}>Profit/kg: {profitPerKg(v)===null?'—':rupeesPerKg.format(profitPerKg(v))} /kg</div>
+      <div style={{fontSize:11,color:'#6b4b1d'}}>Total Duty: {v.missingDuty?'—':money(v.duty)}</div>
+      <div style={{fontSize:11,fontWeight:800,color:'#6b4b1d'}}>Duty/kg: {dutyPerKg(v)===null?'—':rupeesPerKg.format(dutyPerKg(v))} /kg</div>
       {v.missingProfit>0?<div style={{fontSize:10,color:'#b45309'}}>{v.missingProfit} profit pending</div>:null}
     </>:<div style={{fontSize:11,color:'#64748b'}}>{v.mawbs} MAWBs</div>}
   </>;
@@ -197,12 +211,13 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
         <button type="button" style={actionStyle} onClick={()=>{setYear('ALL');setClient('');setGoods('');setOrigin('');setSearch('');}}>Clear filters</button>
       </div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:15}}>
-        {[['TOTAL LOAD',fmtNumber(overall.weight)+' kg'],['MAWBs',fmtNumber(overall.mawbs)],...(isImport?[['BAGS',fmtNumber(overall.bags)],['CALCULATED PROFIT',money(overall.profit)],['PROFIT PER KG',profitPerKg(overall)===null?'—':rupeesPerKg.format(profitPerKg(overall))+'/kg']]:[])].map(([label,value])=>
+        {[['TOTAL LOAD',fmtNumber(overall.weight)+' kg'],['MAWBs',fmtNumber(overall.mawbs)],...(isImport?[['BAGS',fmtNumber(overall.bags)],['CALCULATED PROFIT',money(overall.profit)],['PROFIT PER KG',profitPerKg(overall)===null?'—':rupeesPerKg.format(profitPerKg(overall))+'/kg'],['TOTAL DUTY',overall.missingDuty?'—':money(overall.duty)],['DUTY PER KG',dutyPerKg(overall)===null?'—':rupeesPerKg.format(dutyPerKg(overall))+'/kg']]:[])].map(([label,value])=>
           <div key={label} style={{flex:'1 1 160px',border:'1px solid #d8e4f2',borderRadius:12,padding:15,background:'#fff'}}>
             <div style={{fontSize:11,fontWeight:850,color:'#687a94'}}>{label}</div><div style={{fontSize:20,fontWeight:900,marginTop:6,color:label==='CALCULATED PROFIT'?'#14734d':'#15345b'}}>{value}</div>
           </div>)}
       </div>
       {isImport&&overall.missingProfit>0?<p style={{color:'#98580e',fontSize:12,marginBottom:12}}>* Profit is incomplete for {overall.missingProfit} physical row(s) because Duty, Rate, Weight or Bags are missing. These are excluded from the profit sum, but their available load is counted. Profit/kg is shown only when all profit and weight inputs are complete.</p>:null}
+      {isImport&&overall.missingDuty>0?<p style={{color:'#98580e',fontSize:12,marginBottom:12}}>Duty is missing for {overall.missingDuty} physical row(s). Duty/kg will appear once every included row has Duty and Weight recorded; missing Duty is not treated as zero.</p>:null}
       {message?<p role="alert" style={{color:'#b42318',fontWeight:800}}>{message}</p>:null}
       {loading?<p>Loading monthly comparison…</p>:null}
       {!loading&&!filtered.length?<p style={{padding:18,background:'#fff',borderRadius:10}}>No recorded shipments match the selected filters and accounting months.</p>:null}

@@ -165,6 +165,14 @@ const partB=importTotalCost({duty:4000,eici:750,driverExpense:1300,goodsCharge:3
 assert.equal(partA+partB,dxbTotal);
 const profitUi=readFileSync('app/ImportProfitSheet.js','utf8');
 const apiSource=readFileSync('app/api/import-profit/route.js','utf8');
+const reportApi=readFileSync('app/api/monthly-comparison/route.js','utf8');
+const reportUi=readFileSync('app/MonthlyComparisonDashboard.js','utf8');
+assert.ok(reportApi.includes('weight:calc.kg,bags:calc.bags,duty:calc.duty,profit:calc.profit,'));
+assert.ok(reportUi.includes('summary.duty/summary.weight'));
+assert.ok(reportUi.includes('summary.missingDuty===0&&summary.missingWeight===0'));
+assert.ok(reportUi.includes("month+' Duty per kg (INR/kg)'"));
+assert.ok(reportUi.includes("Total Duty per kg (INR/kg)"));
+assert.ok(reportUi.includes('Duty/kg: {dutyPerKg(v)'));
 assert.ok(profitUi.includes("import {proteinHandlingRate} from '../lib/importProteinDeduction.js';"));
 assert.ok(profitUi.includes("const proteinDeduction=category==='PROTEIN'&&kg!==null?proteinHandlingRate(origin)*kg:0;"));
 assert.ok(profitUi.includes("['S.No.','MAWB','Arrival Date','Client','Goods'"));
