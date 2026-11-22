@@ -4,6 +4,7 @@ import {subscribeProfitSourceChanges} from '../lib/profitSync.js';
 
 const number=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
 const rupees=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0});
+const rupeesPerKg=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2});
 const cols={client:'Customer',clientGoods:'Customer / Goods',clientOrigin:'Customer / Origin',
   goods:'Goods',description:'Goods Description',origin:'Origin',exportClient:'Client'};
 const customerViews=['client','clientGoods','clientOrigin'];
@@ -15,6 +16,15 @@ const actionStyle={padding:'9px 14px',border:'1px solid #b8cbe3',borderRadius:9,
 const normalized=v=>String(v||'').trim();
 const fmtNumber=n=>number.format(n||0);
 const money=n=>rupees.format(n||0);
+// A profit/kg figure is only reliable when all source profits and weights
+// are known. Use the combined total profit / combined total weight, never
+// the unweighted average of individual shipment profit/kg ratios.
+const profitPerKg=summary=>summary&&summary.weight>0&&summary.missingProfit===0&&summary.missingWeight===0
+  ? summary.profit/summary.weight:null;
+const profitPerKgCsv=summary=>{
+  const value=profitPerKg(summary);
+  return value===null?'':Number(value.toFixed(2));
+};
 const monthLabel=key=>new Intl.DateTimeFormat('en-IN',{month:'short',year:'numeric'}).format(new Date(key+'-01T12:00:00Z'));
 
 function dimensionLabel(row,view){
@@ -63,21 +73,21 @@ function escapedCsv(value){
   return '"'+safe.replace(/"/g,'""')+'"';
 }
 function downloadExcel(rows,months,view,kind){
-  const fields=[cols[view],'Total Weight (kg)',...(kind==='import'?['Total Bags','Total Calculated Profit (INR)','Profit Pending Rows']:['Total MAWBs'])];
+  const fields=[cols[view],'Total Weight (kg)',...(kind==='import'?['Total Bags','Total Calculated Profit (INR)','Total Profit per kg (INR/kg)','Profit Pending Rows']:['Total MAWBs'])];
   for(const month of months){
     fields.push(month+' Weight (kg)');
-    if(kind==='import')fields.push(month+' Bags',month+' Calculated Profit (INR)',month+' Profit Pending Rows');
+    if(kind==='import')fields.push(month+' Bags',month+' Calculated Profit (INR)',month+' Profit per kg (INR/kg)',month+' Profit Pending Rows');
     else fields.push(month+' MAWBs');
   }
   const lines=[fields];
   for(const g of rows){
     const out=[g.label,g.totals.weight];
-    if(kind==='import')out.push(g.totals.bags,g.totals.missingProfit?'':g.totals.profit,g.totals.missingProfit);
+    if(kind==='import')out.push(g.totals.bags,g.totals.missingProfit?'':g.totals.profit,profitPerKgCsv(g.totals),g.totals.missingProfit);
     else out.push(g.totals.mawbs);
     for(const month of months){
       const m=g.months.get(month);
       out.push(m.weight);
-      if(kind==='import')out.push(m.bags,m.missingProfit?'':m.profit,m.missingProfit);
+      if(kind==='import')out.push(m.bags,m.missingProfit?'':m.profit,profitPerKgCsv(m),m.missingProfit);
       else out.push(m.mawbs);
     }
     lines.push(out);
@@ -95,6 +105,7 @@ function cellDescription(v,kind,hasData){
     {kind==='import'?<>
       <div style={{fontSize:11,color:'#64748b'}}>{fmtNumber(v.bags)} bags</div>
       <div style={{fontSize:12,fontWeight:800,color:v.profit<0?'#b42318':'#13734e'}}>{money(v.profit)}{v.missingProfit?' *':''}</div>
+      <div style={{fontSize:11,fontWeight:800,color:'#174d88'}}>Profit/kg: {profitPerKg(v)===null?'—':rupeesPerKg.format(profitPerKg(v))} /kg</div>
       {v.missingProfit>0?<div style={{fontSize:10,color:'#b45309'}}>{v.missingProfit} profit pending</div>:null}
     </>:<div style={{fontSize:11,color:'#64748b'}}>{v.mawbs} MAWBs</div>}
   </>;
@@ -186,12 +197,12 @@ export default function MonthlyComparisonDashboard({kind='import',section='custo
         <button type="button" style={actionStyle} onClick={()=>{setYear('ALL');setClient('');setGoods('');setOrigin('');setSearch('');}}>Clear filters</button>
       </div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:15}}>
-        {[['TOTAL LOAD',fmtNumber(overall.weight)+' kg'],['MAWBs',fmtNumber(overall.mawbs)],...(isImport?[['BAGS',fmtNumber(overall.bags)],['CALCULATED PROFIT',money(overall.profit)]]:[])].map(([label,value])=>
+        {[['TOTAL LOAD',fmtNumber(overall.weight)+' kg'],['MAWBs',fmtNumber(overall.mawbs)],...(isImport?[['BAGS',fmtNumber(overall.bags)],['CALCULATED PROFIT',money(overall.profit)],['PROFIT PER KG',profitPerKg(overall)===null?'—':rupeesPerKg.format(profitPerKg(overall))+'/kg']]:[])].map(([label,value])=>
           <div key={label} style={{flex:'1 1 160px',border:'1px solid #d8e4f2',borderRadius:12,padding:15,background:'#fff'}}>
             <div style={{fontSize:11,fontWeight:850,color:'#687a94'}}>{label}</div><div style={{fontSize:20,fontWeight:900,marginTop:6,color:label==='CALCULATED PROFIT'?'#14734d':'#15345b'}}>{value}</div>
           </div>)}
       </div>
-      {isImport&&overall.missingProfit>0?<p style={{color:'#98580e',fontSize:12,marginBottom:12}}>* Profit is incomplete for {overall.missingProfit} physical row(s) because Duty, Rate, Weight or Bags are missing. These are excluded from the profit sum, but their available load is counted.</p>:null}
+      {isImport&&overall.missingProfit>0?<p style={{color:'#98580e',fontSize:12,marginBottom:12}}>* Profit is incomplete for {overall.missingProfit} physical row(s) because Duty, Rate, Weight or Bags are missing. These are excluded from the profit sum, but their available load is counted. Profit/kg is shown only when all profit and weight inputs are complete.</p>:null}
       {message?<p role="alert" style={{color:'#b42318',fontWeight:800}}>{message}</p>:null}
       {loading?<p>Loading monthly comparison…</p>:null}
       {!loading&&!filtered.length?<p style={{padding:18,background:'#fff',borderRadius:10}}>No recorded shipments match the selected filters and accounting months.</p>:null}
