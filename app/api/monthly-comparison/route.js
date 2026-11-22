@@ -2,7 +2,7 @@ import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {masterKg,partKg} from '../../../lib/arrivalWeights.js';
 import {physicalImportProfitRows} from '../../../lib/importProfitPhysicalRows.js';
-import {importArrivalMonth,istMonthKey} from '../../../lib/monthlyArchive.js';
+import {importArrivalMonth} from '../../../lib/monthlyArchive.js';
 import {confirmedExportHandoverMonth} from '../../../lib/exportHandoverAccounting.js';
 import {currentProfitMonth} from '../../../lib/profitPeriod.js';
 import {figures} from '../../../lib/importProfitFigures.js';
@@ -124,14 +124,14 @@ function importEntries(masters,financials,partDuties,current){
     const saved=finance.get(awb)||{};
     const description=upper(data.goodsDescription||data.goods_description||'');
     const goods=goodsCategory(saved,data)||'OTHER';
-    const client=upper(data.clientName||data.client)||'UNASSIGNED CLIENT';
+    const rawClient=upper(data.clientName||data.client)||'UNASSIGNED CLIENT';
+    const client=rawClient==='JFK SONU'?'SONU JFK':rawClient;
     const origin=upper(data.origin)||'UNKNOWN ORIGIN';
     for(const physical of physicalImportProfitRows(data,awb)){
-      const arrivalMonth=importArrivalMonth(physical.arrivalDate);
-      const clearanceMonth=!arrivalMonth&&physical.customsClearedAt?istMonthKey(physical.customsClearedAt):'';
-      // Only dated and verified arrivals/clearances enter comparisons.
-      // Active pending movement is not silently assigned to the current month.
-      const month=arrivalMonth&&physical.confirmed?arrivalMonth:clearanceMonth;
+      // Only rows in Import Customs Cleared qualify; clear status is per
+      // physical part for split loads. Month is strictly the Arrival Date.
+      if(physical.isActiveMaster)continue;
+      const month=importArrivalMonth(physical.arrivalDate);
       if(!validMonth(month,current)||(archiveMonth&&archiveMonth!==month))continue;
       const rowKey=physical.rowKey||awb,key=month+'|'+rowKey+(archiveMonth==='2026-09'?'|archive':'');
       if(seen.has(key))continue;
@@ -160,12 +160,15 @@ function importEntries(masters,financials,partDuties,current){
 function exportEntries(masters,current){
   const items=[],seen=new Set();
   for(const {awb,data,archiveMonth} of masters){
+    // Export Customs Cleared requires Handover YES AND Master Copy received.
+    // Attribute it to the confirmed Handover Date month.
+    if(data.handoverDone!==true||data.masterCopyReceived!==true)continue;
     const month=confirmedExportHandoverMonth(data);
     const key=awb+'|'+month+(archiveMonth==='2026-09'?'|archive':'');
     if(!validMonth(month,current)||(archiveMonth&&archiveMonth!==month)||seen.has(key))continue;
     seen.add(key);
     items.push({
-      month,awb,client:upper(data.clientName||data.client)||'UNASSIGNED CLIENT',
+      month,awb,client:(()=>{const name=upper(data.clientName||data.client)||'UNASSIGNED CLIENT';return name==='JFK SONU'?'SONU JFK':name;})(),
       weight:totalWeight(data),_archiveSeptember:archiveMonth==='2026-09'
     });
   }

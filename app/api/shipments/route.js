@@ -247,6 +247,13 @@ export async function POST(request){
         }
       }
       const {awb,data}=safeData(rowForSave,auth.session,markEntry,auth.internal);
+      // The two historic spellings refer to one customer. Standardize on
+      // the saved master, including explicit client edits and stale browsers.
+      const enteredClient=String(data.clientName||data.client||'').trim().toUpperCase().replace(/\s+/g,' ');
+      if(enteredClient==='JFK SONU'||enteredClient==='SONU JFK'){
+        data.clientName='SONU JFK';
+        data.client='SONU JFK';
+      }
       const checked=data.lastChecked?new Date(data.lastChecked):null;
       const [result]=await sql`
         INSERT INTO mayavi_shipments (awb,data,version,updated_at,tracking_checked_at)
