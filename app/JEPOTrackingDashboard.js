@@ -1,5 +1,6 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {inclusiveTatDays} from '../lib/branchTatSummary.js';
 import JEPOLoadSummary from './JEPOLoadSummary.js';
 import JEPOOverallLoadSummary from './JEPOOverallLoadSummary.js';
@@ -57,6 +58,9 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const [rows,setRows]=useState([]),[duplicateRows,setDuplicateRows]=useState([]),[busy,setBusy]=useState(false),[fetching,setFetching]=useState(false);
  const [message,setMessage]=useState(''),[file,setFile]=useState(null),[preview,setPreview]=useState(null),[duplicateNotice,setDuplicateNotice]=useState(null);
  const [deleteTarget,setDeleteTarget]=useState(null);
+ const [deleteError,setDeleteError]=useState('');
+ const [deleting,setDeleting]=useState(false);
+ const loadSequence=useRef(0);
  const [customerFile,setCustomerFile]=useState(null),[customerPreview,setCustomerPreview]=useState(null),[customerMessage,setCustomerMessage]=useState('');
  const [tab,setTab]=useState('ACTIVE'),[search,setSearch]=useState(''),[service,setService]=useState(''),[destination,setDestination]=useState(''),[trackingStage,setTrackingStage]=useState('ALL');
  const [lastLoad,setLastLoad]=useState(null);
@@ -64,13 +68,14 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const [followupDrafts,setFollowupDrafts]=useState({});
  const [savingFollowup,setSavingFollowup]=useState('');
  async function load(showError=true){
+  const requestId=++loadSequence.current;
   setFetching(true);
   try{
    const res=await fetch(API,{cache:'no-store',credentials:'include'});
    const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Unable to load.');
-   setRows(data.rows||[]);setDuplicateRows(data.duplicateRows||[]);setLastLoad(new Date());
-  }catch(e){if(showError)setMessage(e.message||'JEPO records unavailable.');}
-  finally{setFetching(false);}
+   if(requestId===loadSequence.current){setRows(data.rows||[]);setDuplicateRows(data.duplicateRows||[]);setLastLoad(new Date());}
+  }catch(e){if(showError&&requestId===loadSequence.current)setMessage(e.message||'JEPO records unavailable.');}
+  finally{if(requestId===loadSequence.current)setFetching(false);}
  }
  useEffect(()=>{void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load(false)},120000);return()=>clearInterval(timer)},[]);
  async function upload(action){
@@ -111,17 +116,21 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   finally{setBusy(false);}
  }
  async function deleteAwb(){
-  if(!deleteTarget?.awb)return;
+  if(!deleteTarget?.awb||deleting)return;
   const awb=deleteTarget.awb;
-  setBusy(true);setMessage('');
+  setDeleting(true);setDeleteError('');setMessage('');
   try{
    const res=await fetch(API,{method:'DELETE',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({awb,confirm:true})});
    const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'AWB delete failed.');
+   ++loadSequence.current;
+   setRows(current=>current.filter(r=>r.awb!==awb));
+   setDuplicateRows(current=>current.map(r=>r.awb===awb?{...r,inTracking:false,trackingStatus:''}:r));
+   setFollowupDrafts(current=>{const next={...current};delete next[awb];return next;});
    setDeleteTarget(null);
-   setMessage('Deleted JEPO AWB '+awb+' from Active / Delivered and summaries.');
+   setMessage('Deleted JEPO AWB '+awb+' from Active / Overdue / Lost / Delivered and summaries.');
    await load(false);
-  }catch(e){setMessage(e.message||'Could not delete AWB.');}
-  finally{setBusy(false);}
+  }catch(e){setDeleteError(e.message||'Could not delete AWB.');}
+  finally{setDeleting(false);}
  }
  async function saveFollowup(row){
   const text=followupDrafts[row.awb];
@@ -254,14 +263,18 @@ export default function JEPOTrackingDashboard({readOnly=false}){
      </div>
     </>}
    </section>}
-   {!readOnly&&deleteTarget&&<div role="alertdialog" aria-label="Confirm JEPO AWB deletion" style={{...panel,border:'2px solid #dc2626',background:'#fff7f7'}}>
-    <strong style={{color:'#9f1239'}}>Delete JEPO AWB {deleteTarget.awb}?</strong>
-    <p style={{fontSize:13,margin:'8px 0'}}>Consignee: {deleteTarget.consignee||'—'}. This removes the shipment from Active, Delivered, monthly reports and TAT summaries. This cannot be undone.</p>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-     <button style={button} disabled={busy} onClick={()=>setDeleteTarget(null)}>Cancel — keep AWB</button>
-     <button style={{...button,background:'#b91c1c',color:'#fff'}} disabled={busy} onClick={()=>void deleteAwb()}>{busy?'Deleting…':'Confirm Delete'}</button>
-    </div>
-   </div>}
+   {!readOnly&&deleteTarget&&typeof document!=='undefined'&&createPortal(
+    <div style={{position:'fixed',inset:0,zIndex:2147483000,background:'rgba(15,23,42,0.55)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+     <div role="alertdialog" aria-modal="true" aria-labelledby="jepo-delete-title" aria-describedby="jepo-delete-description" style={{...panel,margin:0,width:'100%',maxWidth:460,maxHeight:'90vh',overflowY:'auto',border:'2px solid #dc2626',background:'#fff',boxShadow:'0 16px 50px rgba(15,23,42,.3)'}}>
+      <strong id="jepo-delete-title" style={{color:'#9f1239',fontSize:18}}>Delete JEPO AWB {deleteTarget.awb}?</strong>
+      <p id="jepo-delete-description" style={{fontSize:13,margin:'12px 0',color:'#354c64'}}>Consignee: {deleteTarget.consignee||'—'}. This permanently removes the selected shipment from Active, Overdue, Lost Packets, Delivered and all reports. This cannot be undone.</p>
+      {deleteError&&<p role="alert" style={{padding:10,background:'#fff1f2',color:'#b91c1c',borderRadius:7,fontSize:13}}>{deleteError}</p>}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
+       <button type="button" autoFocus style={button} disabled={deleting} onClick={()=>{setDeleteTarget(null);setDeleteError('')}}>Cancel — keep AWB</button>
+       <button type="button" style={{...button,background:'#b91c1c',color:'#fff'}} disabled={deleting} onClick={()=>void deleteAwb()}>{deleting?'Deleting…':'Confirm Delete'}</button>
+      </div>
+     </div>
+    </div>,document.body)}
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:14}}>
     {metrics.map(([label,value])=><div key={label} style={{background:'#fff',border:'1px solid #dce7f3',padding:13,borderRadius:12}}>
      <div style={{color:'#5c718b',fontSize:12,fontWeight:700}}>{label}</div>
@@ -354,7 +367,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
         {!readOnly&&<td style={{padding:8,borderBottom:'1px solid #e9eef5'}}>
          <div style={{display:'flex',alignItems:'center',gap:6}}>
           <button style={{...button,padding:'5px 9px'}} disabled={busy} onClick={()=>void refresh([r.awb])}>Track</button>
-          <button aria-label={'Delete JEPO AWB '+r.awb} style={{...button,padding:'5px 9px',color:'#b91c1c',borderColor:'#f5baba',background:'#fff1f2'}} disabled={busy} onClick={()=>setDeleteTarget({awb:r.awb,consignee:r.consignee})}>Delete</button>
+          <button type="button" aria-label={'Delete JEPO AWB '+r.awb} style={{...button,padding:'5px 9px',color:'#b91c1c',borderColor:'#f5baba',background:'#fff1f2'}} disabled={busy||deleting} onClick={()=>{setDeleteError('');setDeleteTarget({awb:r.awb,consignee:r.consignee})}}>Delete</button>
          </div>
         </td>}
        </tr>)}
