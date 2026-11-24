@@ -32,13 +32,13 @@ function csvEscape(value){
  const guarded=/^[=+\-@\t\r]/.test(s)?"'"+s:s;
  return '"'+guarded.replace(/"/g,'""')+'"';
 }
-function downloadCsv(rows,name,overdueToday=''){
+function downloadCsv(rows,name,overdueToday='',includeFollowup=false){
  const overdueExport=Boolean(overdueToday);
  const exportColumns=columns.flatMap(([key,label])=>key==='bookingDate'?[[key,label],['bookingDay','Booking Day']]:[[key,label]]);
- const headers=[...exportColumns.map(c=>c[1]),...(overdueExport?['Days Since Booking','Overdue by (days)']:[])];
+ const headers=[...exportColumns.map(c=>c[1]),...(overdueExport?['Days Since Booking','Overdue by (days)']:[]),...(includeFollowup?['Follow-up Remarks']:[])];
  const lines=[headers,...rows.map(row=>[
   ...exportColumns.map(([k])=>k==='tat'?tatValue(row)??'':k==='bookingDay'?jepoBookingWeekday(row.bookingDate):row[k]??''),
-  ...(overdueExport?[jepoDaysSinceBooking(row.bookingDate,overdueToday)??'',jepoOverdueDays(row,overdueToday)??'']:[])
+  ...(overdueExport?[jepoDaysSinceBooking(row.bookingDate,overdueToday)??'',jepoOverdueDays(row,overdueToday)??'']:[]),...(includeFollowup?[row.followupRemarks??'']:[])
  ])];
  const body=lines.map(line=>line.map(csvEscape).join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+body],{type:'text/csv;charset=utf-8'}));
@@ -163,8 +163,9 @@ export default function JEPOTrackingDashboard({readOnly=false}){
   String(b.deliveredOn||'').localeCompare(String(a.deliveredOn||''))||String(b.bookingDate||'').localeCompare(String(a.bookingDate||''))),[rows]);
  const todayIst=jepoTodayIst(lastLoad||new Date());
  const overdue=useMemo(()=>jepoOverdueRows(active,todayIst),[active,todayIst]);
- const source=tab==='DELIVERED'?delivered:tab==='OVERDUE'?overdue:active;
- const viewColumns=tab==='OVERDUE'?[...columns,['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)'],['followupRemarks','Follow-up Remarks']]:columns;
+ const lost=useMemo(()=>overdue.filter(r=>/\blost\b/i.test(String(r.followupRemarks??''))),[overdue]);
+ const source=tab==='DELIVERED'?delivered:tab==='LOST'?lost:tab==='OVERDUE'?overdue:active;
+ const viewColumns=(tab==='OVERDUE'||tab==='LOST')?[...columns,['ageDays','Days Since Booking'],['overdueDays','Overdue by (days)'],['followupRemarks','Follow-up Remarks']]:columns;
  const services=useMemo(()=>[...new Set(rows.map(x=>x.service).filter(Boolean))].sort(),[rows]);
  const destinations=useMemo(()=>[...new Set(rows.map(x=>x.destination).filter(Boolean))].sort(),[rows]);
  const visible=useMemo(()=>source.filter(r=>{
@@ -179,7 +180,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
  const awaiting=rows.filter(r=>jepoTrackingState(r)==='AWAITING_FIRST_CHECK').length;
  const retryNeeded=rows.filter(r=>jepoTrackingState(r)==='RETRY_NEEDED').length;
  const metrics=[
-  ['All JEPO AWBs',rows.length],['Active',active.length],['Overdue – Not Delivered',overdue.length],['Delivered',delivered.length],['Duplicate AWBs',duplicateRows.length],
+  ['All JEPO AWBs',rows.length],['Active',active.length],['Overdue – Not Delivered',overdue.length],['Lost Packets',lost.length],['Delivered',delivered.length],['Duplicate AWBs',duplicateRows.length],
   ['Awaiting First Check',awaiting],['Retry Needed',retryNeeded],
   ['Verified TAT',valid.length],['Average Delivered TAT',avg===null?'—':avg+' days']
  ];
@@ -269,8 +270,8 @@ export default function JEPOTrackingDashboard({readOnly=false}){
    </div>
    <section style={panel}>
     <div style={{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center'}}>
-     {[['ACTIVE','Active ('+active.length+')'],['OVERDUE','Overdue – Not Delivered ('+overdue.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DUPLICATES','Duplicate AWBs ('+duplicateRows.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY_LOAD','Monthly Load'],['CUSTOMER_LOAD','JP Code Customer Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
-      <button key={id} onClick={()=>{setTab(id);if(id==='DUPLICATES')setSearch('')}} style={{...button,background:tab===id?'#205ca1':'#eef4fa',color:tab===id?'#fff':'#224466'}}>{label}</button>)}
+     {[['ACTIVE','Active ('+active.length+')'],['OVERDUE','Overdue – Not Delivered ('+overdue.length+')'],['LOST','Lost Packets ('+lost.length+')'],['DELIVERED','Delivered ('+delivered.length+')'],['DUPLICATES','Duplicate AWBs ('+duplicateRows.length+')'],['DAILY','Daily Load'],['WEEKLY','Weekly Load'],['MONTHLY_LOAD','Monthly Load'],['CUSTOMER_LOAD','JP Code Customer Load'],['MONTHLY','Monthly Data'],['TAT','TAT Summary']].map(([id,label])=>
+      <button key={id} onClick={()=>{setTab(id);if(id==='DUPLICATES'||id==='LOST')setSearch('');if(id==='LOST'){setService('');setDestination('')}}} style={{...button,background:tab===id?(id==='LOST'?'#b91c1c':'#205ca1'):(id==='LOST'?'#fff1f2':'#eef4fa'),color:tab===id?'#fff':(id==='LOST'?'#b91c1c':'#224466')}}>{label}</button>)}
      <small style={{marginLeft:'auto',color:'#718095'}}>{lastLoad?'Updated '+lastLoad.toLocaleTimeString('en-IN'):' '}</small>
     </div>
     {tab==='DUPLICATES'?<div style={{marginTop:14}}>
@@ -297,6 +298,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
       <div style={{marginTop:5}}>Booking Date ke 30 din poore hone ke baad, 31st day se packet automatic yahan dikhega. Delivered status/date milte hi yahan se hat jayega. Employee follow-up ka reason Follow-up Remarks mein likhkar Save Remarks karein; yeh live tracking se alag save hoga.</div>
       <small style={{display:'block',marginTop:5}}>As of {day(todayIst)} (IST) • Out for Delivery first, then Days Overdue (highest first) • Missing/invalid Booking Dates are excluded.</small>
      </div>}
+     {tab==='LOST'&&<div role="note" style={{marginTop:14,padding:'12px 14px',borderRadius:9,border:'1px solid #fecaca',background:'#fff1f2',color:'#991b1b',fontSize:13}}><strong>{lost.length} Lost Packets</strong><div style={{marginTop:5}}>Overdue undelivered AWBs with the word Lost in saved Follow-up Remarks. This list updates automatically when remarks are saved or tracking changes.</div></div>}
      <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0',alignItems:'center'}}>
       <input aria-label="Search JEPO AWB" placeholder="Search AWB, customer, consignee, vendor, JP code…" style={{...control,flex:'1 1 240px',minWidth:170}} value={search} onChange={e=>setSearch(e.target.value)}/>
       <select aria-label="Filter Service" value={service} onChange={e=>setService(e.target.value)} style={control}><option value="">All Services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
@@ -309,7 +311,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
        <button style={{...button,background:'#e8f3ff',color:'#174b85'}} disabled={!visible.length||Boolean(exporting)} onClick={()=>void exportOverdue('PDF')}>{exporting==='PDF'?'Preparing PDF…':'Download Editable PDF'}</button>
        <button style={{...button,background:'#e9f8f0',color:'#166341'}} disabled={!visible.length||Boolean(exporting)} onClick={()=>void exportOverdue('Excel')}>{exporting==='Excel'?'Preparing Excel…':'Download Excel'}</button>
       </>}
-      <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':tab==='OVERDUE'?'jepo_overdue_not_delivered':'jepo_active',tab==='OVERDUE'?todayIst:'')}>Export CSV</button>
+      <button style={button} disabled={!visible.length} onClick={()=>downloadCsv(visible,tab==='DELIVERED'?'jepo_delivered':tab==='LOST'?'jepo_lost_packets':tab==='OVERDUE'?'jepo_overdue_not_delivered':'jepo_active',(tab==='OVERDUE'||tab==='LOST')?todayIst:'',tab==='LOST')}>Export CSV</button>
       {tab==='ACTIVE'&&!readOnly&&<button style={{...button,background:'#dceaff',color:'#205ca1'}} disabled={busy||!visible.length} onClick={()=>void refresh(visible.slice(0,8).map(r=>r.awb))}>Track Next 8 AWBs</button>}
      </div>
      <p style={{fontSize:12,color:'#61738a'}}>{visible.length} records • JEPO live checks every 1 minute, up to 100 AWBs per batch • Awaiting First Check means not yet processed; Retry Needed means no verified status from the last website check. These are queue labels, not shipment statuses.</p>
@@ -356,7 +358,7 @@ export default function JEPOTrackingDashboard({readOnly=false}){
          </div>
         </td>}
        </tr>)}
-       {!visible.length&&<tr><td colSpan={viewColumns.length+(readOnly?1:2)} style={{padding:20,textAlign:'center',color:'#637891'}}>{tab==='OVERDUE'?'No undelivered AWBs older than 30 days.': 'No AWBs in this sheet yet. Upload Excel to begin.'}</td></tr>}
+       {!visible.length&&<tr><td colSpan={viewColumns.length+(readOnly?1:2)} style={{padding:20,textAlign:'center',color:'#637891'}}>{tab==='LOST'?'No overdue packets with Lost in saved Follow-up Remarks.':tab==='OVERDUE'?'No undelivered AWBs older than 30 days.': 'No AWBs in this sheet yet. Upload Excel to begin.'}</td></tr>}
        </tbody>
       </table>
      </div>
