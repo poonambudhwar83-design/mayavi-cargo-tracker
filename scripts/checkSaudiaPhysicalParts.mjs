@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { reconcileSaudiaPhysicalParts } from '../lib/saudiaPhysicalParts.js';
 import { reconcile } from '../lib/saudiaStrong.js';
 import { applySaudiaPartFlightEtas } from '../lib/saudiaPartEta.js';
 import { enforceSaudiaArrivalEvidence } from '../lib/saudiaTransitGuard.js';
@@ -102,3 +103,28 @@ assert.match(dashSource,/const serverAuthoritative=key\.startsWith\('071'\)[^\n]
 assert.match(dashSource,/out\.push\(key\.startsWith\('071'\)[^\n]*\|\|key\.startsWith\('065'\)/,
   'Saudia 065 must prefer shared DB to stale local storage during 1-minute polling');
 console.log('Saudia SAL physical 113/121 JED RCF + 8/121 SV1127 FOW; per-part ETA and no false DEL ARR passed.');
+
+ // Owner-approved regression: partial offload must not be erased by old hub RCF.
+for(const [total,gross,dp,dw,bp,bw] of [[93,2500,32,850,61,1650],[103,2625,61,1554.6,42,1070.4]]){
+ const master={mawb:'065-11493941',source:'SAL complete shipment chronology',destination:'DEL',
+ totalPieces:total,totalWeight:gross,arrivedPieces:0,arrivedWeight:0,
+ finalFlightNo:'SV758',finalFlightDate:'2026-11-25',finalFlightDestination:'DEL',finalFlightSourceStatus:'DEP',
+ partLoad:true,partLoadHistory:[{flightNo:'SV758',flightDate:'11/25/2026 12:00:00 AM',
+ departed:{pieces:dp,weight:dw},dis:{pieces:bp,weight:bw},cancelled:true}],
+ saudiaRcfMilestones:[{station:'JED',date:'2026-11-09',time:'22:11',flightNo:'SV1115',flightDate:'11/09/2026 12:00:00 AM',pieces:total,weight:gross}]};
+ const oldHub={flightNo:'SV1115',flightDate:'2026-11-09',flightDestination:'JED',sourceStatus:'RCF',pieces:total,weight:gross};
+ const confirmed={flightNo:'SV758',flightDate:'2026-11-25',flightOrigin:'JED',flightDestination:'DEL',
+ sourceStatus:'DEP',pieces:dp,weight:dw,arrivalEstimate:true,arrivalDate:'2026-11-25',arrivalTime:'18:25'};
+ for(const input of [[oldHub,confirmed],[oldHub]]){
+ const fixed=reconcileSaudiaPhysicalParts({...master,partShipments:input});
+ assert.equal(fixed.isPartLoad,true);
+ assert.deepEqual(fixed.partShipments.map(p=>[p.pieces,p.weight,p.status]),[[dp,dw,'DEPARTED'],[bp,bw,'IN TRANSIT']]);
+ assert.equal(fixed.partShipments.reduce((n,p)=>n+p.pieces,0),total);
+ assert.equal(fixed.partShipments[0].arrivalIsActual,false);
+ assert.equal(fixed.partShipments[1].arrivalTime,'');
+ assert.equal(fixed.partShipments[0].arrivalTime,input.length===2?'18:25':'');
+ assert.deepEqual(reconcileSaudiaPhysicalParts(fixed).partShipments.map(p=>p.pieces),[dp,bp]);
+ }
+ const stale=reconcileSaudiaPhysicalParts({...master,finalFlightDate:'2026-11-26',partShipments:[oldHub]});
+ assert.equal(stale.partShipments.length,1,'Never reuse prior-day partial DEP');
+}

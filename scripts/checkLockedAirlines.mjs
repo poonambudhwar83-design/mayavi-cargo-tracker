@@ -34,7 +34,7 @@ const locked = Object.freeze({
   'lib/saudiaStrong.js':'32ba65e2da6f98beb3ab025b215cd12b4fbaa13b',
   'lib/saudiaDirect.js':'4220f15ef4aaf8e346e98dfd82a7eaa97250a39f',
   'lib/saudiaTransitGuard.js':'146c9ebfdd5f3920718a5bde964c0b1c1f46d867',
-  'lib/saudiaPhysicalParts.js':'bdd9f796e52b352aeef0ddb662e858c85da0b681',
+  'lib/saudiaPhysicalParts.js':'c05e8f20d31899f279dea2b1b4fdff179dfddbef',
   'lib/saudiaArrivedMasterFlight.js':'5fd3ac0ebf36d0302a10b2ef68839413ea9cdbf8',
   'lib/saudiaRcfParts.js':'17d5c82b8933676063a0f445d0166cc2707e5d4c',
   'lib/saudiaSalPublic.js':'37413b5d36037483ed963d8599940a4837a97bcc',
