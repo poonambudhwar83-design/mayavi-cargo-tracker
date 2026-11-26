@@ -2,7 +2,7 @@ import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
 import {istDate} from '../../../lib/importClientReceivables.js';
-import {AUTO_FROM,absLedger,ensureAbsLedger,absMasters,insertAbsMasters,syncAbsLedger} from '../../../lib/absImportLedger.js';
+import {AUTO_FROM,absLedger,ensureAbsLedger,fillAbsSavedBags,absMasters,insertAbsMasters,syncAbsLedger} from '../../../lib/absImportLedger.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(d,status=200)=>Response.json(d,{status,headers:{'Cache-Control':'no-store, private'}});
@@ -12,11 +12,12 @@ export async function GET(request){
   try{
     const sql=db();await ensureAbsLedger(sql);
     const masters=await absMasters(sql);await syncAbsLedger(sql,masters);
-    const [invoices,receipts]=await Promise.all([
-      sql`SELECT awb,awb AS entry_key,'' AS part_label,to_char(invoice_date,'YYYY-MM-DD') AS date,weight,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_invoices
-        UNION ALL SELECT awb,entry_key,part_label,to_char(invoice_date,'YYYY-MM-DD'),weight,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_parts ORDER BY date,awb,entry_key`,
+    const [savedInvoices,receipts]=await Promise.all([
+      sql`SELECT awb,awb AS entry_key,'' AS part_label,to_char(invoice_date,'YYYY-MM-DD') AS date,weight,bags,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_invoices
+        UNION ALL SELECT awb,entry_key,part_label,to_char(invoice_date,'YYYY-MM-DD'),weight,bags,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_parts ORDER BY date,awb,entry_key`,
       sql`SELECT id,to_char(payment_date,'YYYY-MM-DD') AS date,mode,amount,remarks,created_at FROM mayavi_abs_ledger_v2_receipts ORDER BY payment_date,created_at`
     ]);
+    const invoices=await fillAbsSavedBags(sql,savedInvoices);
     const saved=new Set(invoices.map(i=>i.entry_key));
     const candidates=masters.filter(m=>m.cleared&&!saved.has(m.entryKey));
     return reply({ok:true,client:'ABS',today:istDate(),autoFrom:AUTO_FROM,invoices,receipts,candidates,...absLedger(invoices,receipts)});

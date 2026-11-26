@@ -120,3 +120,14 @@ assert.equal(absShipmentEntries(gf,{rate:58}).length,2);
 assert.equal(absShipmentEntries(gf,{rate:58}).reduce((sum,p)=>sum+p.amount,0),73080);
 assert.equal(absLedger([{awb:'06511494066',date:'2026-11-21',amount:100,weight:1,rate:100},{awb:'06511494066',date:'2026-11-24',amount:200,weight:2,rate:100}],[]).totals.mawbs,1);
 console.log('ABS cleared physical parts and blank-arrival Gulf regression passed.');
+
+const {absFullBags}=await import('../lib/absImportLedger.js');
+assert.deepEqual(clearedParts.map(p=>p.bags),[21,44]);
+assert.deepEqual(absShipmentEntries(gf,{rate:58}).map(p=>p.bags),[24,31]);
+assert.equal(absFullBags(fixture.data,fixture.awb),70);
+assert.equal(absFullBags({bags:'65/70'},fixture.awb),70);
+const bagSummary=absLedger(clearedParts.map(p=>({...p,date:p.clearanceDate,part_label:p.partLabel})),[]).totals;
+assert.equal(bagSummary.bags,65);
+assert.equal(bagSummary.missingBags,0);
+assert.equal(absLedger([{awb:'06512345678',date:'2026-11-22',amount:100,weight:1,rate:100}],[]).totals.missingBags,1);
+console.log('ABS full and part bag counts and ledger totals passed.');
