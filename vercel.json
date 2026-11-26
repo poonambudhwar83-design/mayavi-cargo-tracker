@@ -125,7 +125,7 @@
     },
     {
       "path": "/api/cron/abs-import-ledger",
-      "schedule": "22 */2 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

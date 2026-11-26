@@ -18,13 +18,11 @@ function Summary({t}){
 }
 export default function AbsImportLedger({view}){
   const [data,setData]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
-  const [selected,setSelected]=useState([]),[search,setSearch]=useState('');
   const [payment,setPayment]=useState({date:'',mode:'ACCOUNT',amount:'',remarks:''}),[receiptId,setReceiptId]=useState('');
   async function load(){
     const r=await fetch(API,{credentials:'include',cache:'no-store'}),j=await r.json();
     if(!r.ok||!j.ok)throw Error(j.error||'Unable to load ledger');
     setData(j);setPayment(p=>({...p,date:p.date||j.today}));
-    setSelected(old=>old.filter(k=>j.candidates.some(m=>m.entryKey===k)));
     return j;
   }
   useEffect(()=>{load().catch(e=>setError(e.message));},[]);
@@ -34,28 +32,22 @@ export default function AbsImportLedger({view}){
     if(!r.ok||!j.ok)throw Error(j.error||'Unable to save');
     return j;
   }
-  async function importSelected(){
-    setBusy(true);setError('');setMessage('');
-    try{const j=await post({action:'IMPORT',awbs:selected});setSelected([]);setMessage(j.added+' cleared entries imported.');await load();}catch(e){setError(e.message);}finally{setBusy(false);}
-  }
   async function savePayment(e){
     e.preventDefault();setBusy(true);setError('');setMessage('');
     const id=receiptId||crypto.randomUUID();setReceiptId(id);
     try{await post({action:'RECEIPT',id,...payment});setReceiptId('');setPayment(p=>({...p,amount:'',remarks:''}));setMessage('Payment saved and verified.');await load();}catch(e){setError(e.message);}finally{setBusy(false);}
   }
-  const candidates=(data?.candidates||[]).filter(m=>!search||m.awb.includes(search.replace(/\D/g,'')));
-  const selectable=candidates.filter(m=>m.amount!==null).map(m=>m.entryKey);
+  const candidates=data?.candidates||[];
   return <main style={{padding:'18px clamp(10px,3vw,32px)',background:'#f5f8fc',color:'#172b42',minHeight:300}}>
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:12}}><h2 style={{margin:0}}>ABS • {view==='LEDGER'?'Client Ledger':'Client Balance'}</h2><button style={button} disabled={busy} onClick={refresh}>Refresh</button></div>
-    <p style={{fontSize:13,color:'#47627d'}}>ABS only • Manual setup until 02 Dec 2026 • Auto-import of new customs-cleared MAWBs / parts from 03 Dec 2026. Historical receipts and selected MAWBs must be entered once; old ledger records are not copied into this new ledger.</p>
+    <p style={{fontSize:13,color:'#47627d'}}>ABS only • Automatic import enabled from 26 Nov 2026, 08:26:28 IST. Earlier unimported entries are excluded. Saved ledger and payments remain unchanged. New cleared MAWBs / parts sync every 5 minutes and on Refresh.</p>
     {error&&<p role="alert" style={{color:'#a21c22'}}>{error}</p>}{message&&<p role="status" style={{color:'#167344'}}>{message}</p>}
     {!data?<p>Loading ABS ledger…</p>:<>
       <Summary t={data.totals}/>
       {view==='LEDGER'?<>
-        <section style={card}><h3 style={{marginTop:0}}>Import MAWBs from Import Profit Sheet</h3><p style={{fontSize:13}}>Select customs-cleared ABS masters or individual cleared parts. Each physical entry is billed once, using its saved weight and rate. Missing rates must be entered in Import Profit Sheet.</p>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}><input style={input} placeholder="Search MAWB" value={search} onChange={e=>setSearch(e.target.value)}/><button style={button} disabled={busy||!selectable.length} onClick={()=>setSelected(old=>[...new Set([...old,...selectable])].slice(0,500))}>Select visible</button><button style={button} disabled={busy||!selected.length} onClick={()=>setSelected([])}>Clear selection</button><button style={button} disabled={busy||!selected.length} onClick={importSelected}>Import selected ({selected.length})</button></div>
-          <Table headers={['Select','MAWB','Part','Arrival','Cleared','Bags','Billed kg','Rate/kg','Amount']} rows={candidates.map(m=>[<input type="checkbox" aria-label={'Select '+awb(m.awb)} checked={selected.includes(m.entryKey)} disabled={m.amount===null||busy} onChange={e=>setSelected(old=>e.target.checked?[...new Set([...old,m.entryKey])].slice(0,500):old.filter(k=>k!==m.entryKey))}/>,awb(m.awb),m.partLabel||'Full',date(m.arrivalDate),date(m.clearanceDate),qty(m.bags),qty(m.weight),m.rate===null?'Rate missing':money(m.rate),m.amount===null?'Pending rate':money(m.amount)])} empty="No eligible unimported ABS MAWBs."/>
-        </section>
+        {candidates.length>0&&<section style={card}><h3 style={{marginTop:0}}>New cleared entries awaiting billing data</h3><p style={{fontSize:13}}>Only clearances after the automatic start time appear here. Missing rates or weights must be completed in Import Profit Sheet; the entries will then import automatically.</p>
+          <Table headers={['MAWB','Part','Cleared','Bags','Billed kg','Rate/kg','Status']} rows={candidates.map(m=>[awb(m.awb),m.partLabel||'Full',date(m.clearanceDate),qty(m.bags),qty(m.weight),m.rate===null?'Rate missing':money(m.rate),m.amount===null?'Awaiting rate / weight':'Awaiting automatic sync'])} empty="All eligible entries synced."/>
+        </section>}
         <section style={card}><h3 style={{marginTop:0}}>Add lump-sum payment received</h3><p style={{fontSize:13}}>Record each bank or cash receipt only once, including past receipts for the selected historical MAWBs. No MAWB allocation is required.</p>
           <form onSubmit={savePayment} style={{display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}>{[['Payment date','date','date'],['Amount (INR)','amount','number'],['Reference / remarks','remarks','text']].map(([label,key,type])=><label key={key} style={{display:'grid',gap:5,fontSize:12}}>{label}<input style={input} required={key!=='remarks'} type={type} min={key==='amount'?'0.01':undefined} step={key==='amount'?'0.01':undefined} max={key==='date'?data.today:undefined} value={payment[key]} onChange={e=>setPayment(p=>({...p,[key]:e.target.value}))}/></label>)}<label style={{display:'grid',gap:5,fontSize:12}}>Mode<select style={input} value={payment.mode} onChange={e=>setPayment(p=>({...p,mode:e.target.value}))}><option value="ACCOUNT">Bank / Account</option><option value="CASH">Cash</option></select></label><button style={button} disabled={busy} type="submit">Save payment</button></form>
         </section>

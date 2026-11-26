@@ -98,10 +98,13 @@ assert.equal(abs.totals.balance,5000);
 assert.equal(abs.totals.received,25000);
 assert.equal(abs.rows.length,3);
 assert.equal(absLedger([],[{date:'2026-11-22',mode:'CASH',amount:150}]).totals.advance,150);
-assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-03',amount:500},'2026-12-02'),false);
-assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-02',amount:500},'2026-12-03'),false);
-assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-03',amount:500},'2026-12-03'),true);
-assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-03',amount:null},'2026-12-03'),false);
+const cutoverNow='2026-11-26T03:00:00Z';
+assert.equal(absAutoEligible({cleared:true,clearanceAt:'2026-11-26T02:56:28.813Z',amount:500},cutoverNow),false);
+assert.equal(absAutoEligible({cleared:true,clearanceAt:'2026-11-26T02:56:28.814Z',amount:500},cutoverNow),true);
+assert.equal(absAutoEligible({cleared:true,clearanceAt:'2026-11-26T02:57:00Z',amount:500},cutoverNow),true);
+assert.equal(absAutoEligible({cleared:false,clearanceAt:'2026-11-26T02:57:00Z',amount:500},cutoverNow),false);
+assert.equal(absAutoEligible({cleared:true,clearanceAt:'2026-11-26T02:57:00Z',amount:null},cutoverNow),false);
+assert.equal(absAutoEligible({cleared:true,clearanceAt:'2026-11-26T03:01:00Z',amount:500},cutoverNow),false);
 console.log('ABS ledger: lump-sum receipts, net balance, manual cutoff and auto eligibility passed.');
 
 const {absShipmentEntries}=await import('../lib/absImportLedger.js');
@@ -131,3 +134,10 @@ assert.equal(bagSummary.bags,65);
 assert.equal(bagSummary.missingBags,0);
 assert.equal(absLedger([{awb:'06512345678',date:'2026-11-22',amount:100,weight:1,rate:100}],[]).totals.missingBags,1);
 console.log('ABS full and part bag counts and ledger totals passed.');
+
+assert.ok(clearedParts.every(p=>!absAutoEligible(p,cutoverNow)));
+const newPart=absShipmentEntries({...fixture,data:{...fixture.data,partShipments:[fixture.data.partShipments[0],{...fixture.data.partShipments[1],customsClearedAt:'2026-11-26T02:57:00Z'}]}},{rate:58});
+assert.equal(newPart.filter(p=>absAutoEligible(p,cutoverNow)).length,1);
+assert.equal(newPart.find(p=>absAutoEligible(p,cutoverNow)).bags,44);
+assert.ok(!readFileSync('app/AbsImportLedger.js','utf8').includes('Import selected'));
+console.log('ABS cutover: old pending entries excluded, new clearance and individual parts automatically billed.');

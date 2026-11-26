@@ -2,7 +2,7 @@ import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
 import {validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
 import {istDate} from '../../../lib/importClientReceivables.js';
-import {AUTO_FROM,absLedger,ensureAbsLedger,fillAbsSavedBags,absMasters,insertAbsMasters,syncAbsLedger} from '../../../lib/absImportLedger.js';
+import {AUTO_FROM,absNewClearance,absLedger,ensureAbsLedger,fillAbsSavedBags,absMasters,syncAbsLedger} from '../../../lib/absImportLedger.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(d,status=200)=>Response.json(d,{status,headers:{'Cache-Control':'no-store, private'}});
@@ -19,7 +19,7 @@ export async function GET(request){
     ]);
     const invoices=await fillAbsSavedBags(sql,savedInvoices);
     const saved=new Set(invoices.map(i=>i.entry_key));
-    const candidates=masters.filter(m=>m.cleared&&!saved.has(m.entryKey));
+    const candidates=masters.filter(m=>absNewClearance(m)&&!saved.has(m.entryKey));
     return reply({ok:true,client:'ABS',today:istDate(),autoFrom:AUTO_FROM,invoices,receipts,candidates,...absLedger(invoices,receipts)});
   }catch(e){return reply({ok:false,error:e?.message||'Unable to load ABS ledger'},503);}
 }
@@ -28,13 +28,7 @@ export async function POST(request){
   if(session?.role!=='admin')return reply({ok:false,error:'Admin only'},403);
   try{
     const body=await request.json(),sql=db();await ensureAbsLedger(sql);
-    if(body.action==='IMPORT'){
-      if(!Array.isArray(body.awbs)||!body.awbs.length||body.awbs.length>500)return reply({ok:false,error:'Select up to 500 MAWBs'},400);
-      const keys=new Set(body.awbs.map(String)),masters=(await absMasters(sql)).filter(m=>keys.has(m.entryKey)&&m.cleared&&m.amount!==null);
-      if(masters.length!==keys.size)return reply({ok:false,error:'Some entries are no longer available or are missing a saved rate. Refresh and try again.'},400);
-      const added=await insertAbsMasters(sql,masters,'MANUAL',session.username||'admin');
-      return reply({ok:true,added});
-    }
+    if(body.action==='IMPORT')return reply({ok:false,error:'Manual historical imports are closed. New customs-cleared entries are imported automatically.'},400);
     if(body.action==='RECEIPT'){
       const id=String(body.id||''),date=String(body.date||''),mode=String(body.mode||''),amount=validReceiptAmount(body.amount),remarks=String(body.remarks||'').trim().slice(0,500);
       if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)||!validLedgerDate(date)||date>istDate()||!['CASH','ACCOUNT'].includes(mode)||amount===null)return reply({ok:false,error:'Enter valid payment date, amount and mode.'},400);
