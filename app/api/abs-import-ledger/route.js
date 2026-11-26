@@ -1,6 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {readSession} from '../../../lib/mayaviAuth.js';
-import {ledgerAwb,validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
+import {validLedgerDate,validReceiptAmount} from '../../../lib/importClientLedger.js';
 import {istDate} from '../../../lib/importClientReceivables.js';
 import {AUTO_FROM,absLedger,ensureAbsLedger,absMasters,insertAbsMasters,syncAbsLedger} from '../../../lib/absImportLedger.js';
 export const runtime='nodejs';
@@ -13,11 +13,12 @@ export async function GET(request){
     const sql=db();await ensureAbsLedger(sql);
     const masters=await absMasters(sql);await syncAbsLedger(sql,masters);
     const [invoices,receipts]=await Promise.all([
-      sql`SELECT awb,to_char(invoice_date,'YYYY-MM-DD') AS date,weight,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_invoices ORDER BY invoice_date,awb`,
+      sql`SELECT awb,awb AS entry_key,'' AS part_label,to_char(invoice_date,'YYYY-MM-DD') AS date,weight,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_invoices
+        UNION ALL SELECT awb,entry_key,part_label,to_char(invoice_date,'YYYY-MM-DD'),weight,rate,amount,source,created_at FROM mayavi_abs_ledger_v2_parts ORDER BY date,awb,entry_key`,
       sql`SELECT id,to_char(payment_date,'YYYY-MM-DD') AS date,mode,amount,remarks,created_at FROM mayavi_abs_ledger_v2_receipts ORDER BY payment_date,created_at`
     ]);
-    const saved=new Set(invoices.map(i=>i.awb));
-    const candidates=masters.filter(m=>m.cleared&&!saved.has(m.awb));
+    const saved=new Set(invoices.map(i=>i.entry_key));
+    const candidates=masters.filter(m=>m.cleared&&!saved.has(m.entryKey));
     return reply({ok:true,client:'ABS',today:istDate(),autoFrom:AUTO_FROM,invoices,receipts,candidates,...absLedger(invoices,receipts)});
   }catch(e){return reply({ok:false,error:e?.message||'Unable to load ABS ledger'},503);}
 }
@@ -28,8 +29,8 @@ export async function POST(request){
     const body=await request.json(),sql=db();await ensureAbsLedger(sql);
     if(body.action==='IMPORT'){
       if(!Array.isArray(body.awbs)||!body.awbs.length||body.awbs.length>500)return reply({ok:false,error:'Select up to 500 MAWBs'},400);
-      const keys=new Set(body.awbs.map(ledgerAwb)),masters=(await absMasters(sql)).filter(m=>keys.has(m.awb)&&m.cleared&&m.amount!==null);
-      if(masters.length!==keys.size)return reply({ok:false,error:'Some MAWBs are not fully cleared ABS masters with a saved rate. Refresh and try again.'},400);
+      const keys=new Set(body.awbs.map(String)),masters=(await absMasters(sql)).filter(m=>keys.has(m.entryKey)&&m.cleared&&m.amount!==null);
+      if(masters.length!==keys.size)return reply({ok:false,error:'Some entries are no longer available or are missing a saved rate. Refresh and try again.'},400);
       const added=await insertAbsMasters(sql,masters,'MANUAL',session.username||'admin');
       return reply({ok:true,added});
     }

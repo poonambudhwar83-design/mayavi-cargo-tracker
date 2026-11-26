@@ -103,3 +103,20 @@ assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-02',amount:500
 assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-03',amount:500},'2026-12-03'),true);
 assert.equal(absAutoEligible({cleared:true,clearanceDate:'2026-12-03',amount:null},'2026-12-03'),false);
 console.log('ABS ledger: lump-sum receipts, net balance, manual cutoff and auto eligibility passed.');
+
+const {absShipmentEntries}=await import('../lib/absImportLedger.js');
+const fixture={awb:'06511494066',data:{clientName:'ABS',partLoad:true,isPartLoad:true,totalPieces:70,masterPieces:70,masterWeight:1793,weight:'1664.8/1793',status:'IN TRANSIT',partShipments:[
+  {partKey:'p1',pieces:21,weight:537,arrivalDate:'2026-11-16',arrivalIsActual:true,customsCleared:true,customsClearedAt:'2026-11-21T08:04:25Z'},
+  {partKey:'p2',pieces:44,weight:1127.8,arrivalDate:'2026-11-22',arrivalIsActual:true,customsCleared:true,customsClearedAt:'2026-11-24T01:24:48Z'}]}};
+const clearedParts=absShipmentEntries(fixture,{rate:58});
+assert.equal(clearedParts.length,2);
+assert.equal(clearedParts.reduce((sum,p)=>sum+p.weight,0),1664.8);
+assert.equal(Math.round(clearedParts.reduce((sum,p)=>sum+p.amount,0)*100),9655840);
+assert.equal(absShipmentEntries({...fixture,data:{...fixture.data,partShipments:[{...fixture.data.partShipments[0],customsCleared:false},fixture.data.partShipments[1]]}},{rate:58}).length,1);
+const gf={awb:'07295019411',data:{partLoad:true,isPartLoad:true,masterWeight:1260,totalPieces:55,partShipments:[
+ {partKey:'gf1',pieces:24,weight:550,customsCleared:true,customsClearedAt:'2026-11-10T04:39:08Z'},
+ {partKey:'gf2',pieces:31,weight:710,customsCleared:true,customsClearedAt:'2026-11-10T04:39:09Z'}]}};
+assert.equal(absShipmentEntries(gf,{rate:58}).length,2);
+assert.equal(absShipmentEntries(gf,{rate:58}).reduce((sum,p)=>sum+p.amount,0),73080);
+assert.equal(absLedger([{awb:'06511494066',date:'2026-11-21',amount:100,weight:1,rate:100},{awb:'06511494066',date:'2026-11-24',amount:200,weight:2,rate:100}],[]).totals.mawbs,1);
+console.log('ABS cleared physical parts and blank-arrival Gulf regression passed.');
