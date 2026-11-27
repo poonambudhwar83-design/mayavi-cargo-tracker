@@ -108,7 +108,8 @@ check('MACD histogram',tech.macdHist!==null&&tech.macdHist>0,tech.macdHist!==nul
 check('Supertrend',tech.supertrendDirection==='BULLISH',tech.supertrendDirection==='BEARISH')
 ];
 const allReady=readiness.every(x=>x.ok);
-const futures=await futuresContext(exchange,symbol,expiries,today,now,spot);
+const summaryOnly=q.get('scan')==='1';
+const futures=summaryOnly?{available:false,reason:'Full futures context is loaded on the detailed index tab.'}:await futuresContext(exchange,symbol,expiries,today,now,spot);
 const setups={ce:orbCe?'Opening range breakout':bullPullback?'EMA pullback continuation':triggerHigh!==null&&last?.[4]>triggerHigh?'Three-candle breakout':null,pe:orbPe?'Opening range breakdown':bearPullback?'EMA pullback continuation':triggerLow!==null&&last?.[4]<triggerLow?'Three-candle breakdown':null};
 const researchChecks=[
 check('15-minute trend alignment',higherTrend==='BULLISH',higherTrend==='BEARISH'),
@@ -128,6 +129,7 @@ if(fresh){const entry=leg.ask,stop=Math.round(entry*0.8*100)/100,target=Math.rou
 signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(stamp).toISOString(),reason:'Experimental paper setup: confirmed 5-minute breakout with EMA, RSI, MACD, Supertrend and ATM OI change alignment. Stop/target are illustrative 20%/40% premium levels.'};}
 else signal.reason='Candidate quote timestamp stale or unavailable.';
 }else signal.reason='Candidate strike lacks sufficient volume or has a wide bid/ask spread.';}
+if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
 return json({ok:true,symbol,spot,dataCheck,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
