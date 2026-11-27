@@ -121,17 +121,45 @@ async function optionTechnicalPlan(exchange,symbol,expiry,strike,side,leg,today,
 }
 
 // End-of-day paper close only; no entry scan or broker order.
+// Historical market-close paper mark: separate from observed strategy exits.
+async function recoverClosingMarks(sql,today){
+ const rows=await sql`SELECT *,expiry::text AS expiry_text FROM mayavi_stocks_paper_performance WHERE trade_day=${today}::date AND status='UNVERIFIED' AND exit_price IS NULL ORDER BY opened_at LIMIT 40`;
+ let marked=0;const pending=[];
+ const cache=new Map();
+ for(const p of rows){
+  if(!Object.hasOwn(instruments,p.symbol)||!['CE','PE'].includes(p.side)||!(Number(p.strike)>0)||!p.expiry_text)continue;
+  const exchange=instruments[p.symbol],d=new Date(p.expiry_text+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
+  const symbol=exchange+'-'+p.symbol+'-'+label+'-'+Number(p.strike)+'-'+p.side;
+  try{
+   let candle=cache.get(symbol);
+   if(!cache.has(symbol)){
+    const data=await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:symbol,start_time:today+' 15:25:00',end_time:today+' 15:30:00',candle_interval:'5minute'});
+    candle=cleanCandles(data?.candles).find(c=>Date.parse(c[0])===Date.parse(today+'T15:25:00+05:30')&&Number(c[5])>0)||null;
+    cache.set(symbol,candle);
+   }
+   if(!candle){pending.push(p.contract_key);continue;}
+   const closeAt=today+'T15:30:00+05:30',price=candle[4];
+   if(Date.parse(p.opened_at)>=Date.parse(closeAt)||!(price>0)){pending.push(p.contract_key);continue;}
+   const mark={source:'Groww historical FNO 5-minute final candle close',groww_symbol:symbol,candle_start:candle[0],market_close:closeAt,price,recorded_at:new Date().toISOString(),note:'Retrospective close-price paper sale; intraday stop/target sequence not observed; not a verified executable bid.'};
+   const updated=await sql`UPDATE mayavi_stocks_paper_performance SET status='EOD_MARK',exit_price=${price},closed_at=${closeAt}::timestamptz,coverage_gap=true,plan_meta=COALESCE(plan_meta,'{}'::jsonb)||${JSON.stringify({eod_mark:mark})}::jsonb WHERE id=${p.id} AND trade_day=${today}::date AND status='UNVERIFIED' AND exit_price IS NULL RETURNING id`;
+   marked+=updated.length;
+  }catch{pending.push(p.contract_key);}
+ }
+ console.log('paper_eod_mark',JSON.stringify({day:today,marked,pending:pending.length}));
+ return {marked,pending:pending.length};
+}
+
 async function closePaperCron(request){
  const secret=process.env.CRON_SECRET;
  if(!secret||request.headers.get('authorization')!=='Bearer '+secret)return json({ok:false,error:'Unauthorized'},401);
  const now=Date.now(),ist=new Date(now+19800000),minute=ist.getUTCHours()*60+ist.getUTCMinutes(),today=day();
- if(ist.getUTCDay()===0||ist.getUTCDay()===6||minute<920||minute>945)return json({ok:true,skipped:true});
+ if(ist.getUTCDay()===0||ist.getUTCDay()===6||minute<920||minute>1020)return json({ok:true,skipped:true});
  const db=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED;
  if(!db)return json({ok:false,error:'Paper DB unavailable'},503);
  const sql=neon(db);await initPaper(sql);
  if(minute>=930){
   const rows=await sql`UPDATE mayavi_stocks_paper_performance SET status='UNVERIFIED',closed_at=now(),coverage_gap=true WHERE status='OPEN' AND trade_day<=${today}::date RETURNING id`;
-  return json({ok:true,unverified:rows.length});
+  const recovery=await recoverClosingMarks(sql,today);return json({ok:true,unverified:rows.length,...recovery});
  }
  const rows=await sql`SELECT *,expiry::text AS expiry_text FROM mayavi_stocks_paper_performance WHERE trade_day=${today}::date AND status='OPEN' ORDER BY opened_at LIMIT 100`;
  if(!rows.length)return json({ok:true,attempted:0,remaining:0});
