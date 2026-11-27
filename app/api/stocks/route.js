@@ -4,8 +4,9 @@ import { readSession } from '../../../lib/mayaviAuth.js';
 import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} from '../../../lib/stocksPaperPerformance.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
-const equityOptions=new Set(['RELIANCE','HDFCBANK']);
+const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',BEL:'NSE',HCLTECH:'NSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
+const retired=new Set(['RELIANCE','HDFCBANK']);
+const equityOptions=new Set(['BEL','HCLTECH','RELIANCE','HDFCBANK']);
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
 const num=v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const day=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -76,11 +77,12 @@ if(!u?.is_active||u.role!=='admin'||Number(u.session_version)!==Number(session.s
 const q=new URL(request.url).searchParams, symbol=q.get('symbol')||'NIFTY',exchange=instruments[symbol];if(!Object.hasOwn(instruments,symbol))return json({ok:false,error:'Unsupported index.'},400);
 const today=day(),now=Date.now(),year=Number(today.slice(0,4));
 const paperUser=String(session.username).toLowerCase();let paperActive=null,paperAvailable=false,paperError=null;try{await initPaper(sql);await expirePaper(sql,paperUser,today);paperAvailable=true;if(q.get('paperReport')==='1')return json({ok:true,rows:await paperReport(sql,paperUser,today)});paperActive=await openPaper(sql,paperUser,symbol);}catch{paperAvailable=false;paperError='Paper history storage temporarily unavailable';if(q.get('paperReport')==='1')return json({ok:false,error:paperError},503);}
+if(retired.has(symbol)){if(!paperAvailable)return json({ok:false,error:'Paper history storage temporarily unavailable'},503);if(!paperActive)return json({ok:true,symbol,monitorOnly:true});await accessToken();const leg={key:paperActive.contract_key};await enrich(exchange,leg);await observePaper(sql,paperUser,paperActive,leg,paperActive.expiry_text,0);return json({ok:true,symbol,monitorOnly:true});}
 await accessToken();
 const [dates,candleData,historical]=await Promise.all([provider('/v1/historical/expiries',{exchange,underlying_symbol:symbol,year}),provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),previousCandles(exchange,symbol,today).catch(()=>[])]);
 const expiries=[...new Set((dates?.expiries||[]).filter(e=>typeof e==='string'&&e>=today))].sort();
 const expiry=q.get('expiry')||(paperActive&&expiries.includes(paperActive.expiry_text)?paperActive.expiry_text:expiries[0]);if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
-const [raw,liveIndex]=await Promise.all([provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry}),provider('/v1/live-data/ltp',{segment:'CASH',exchange_symbols:Object.entries(instruments).map(([k,v])=>v+'_'+k).join(',')}).catch(()=>null)]);
+const [raw,liveIndex]=await Promise.all([provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry}),provider('/v1/live-data/ltp',{segment:'CASH',exchange_symbols:Object.entries(instruments).filter(([k])=>!retired.has(k)).map(([k,v])=>v+'_'+k).join(',')}).catch(()=>null)]);
 const indexReceivedAt=new Date().toISOString();
 const indexLtp=num(liveIndex?.[exchange+'_'+symbol]);
 const chain=Object.entries(raw?.strikes||{}).filter(([k])=>num(k)!==null).map(([k,v])=>({strike:num(k),ce:parseLeg(v?.CE),pe:parseLeg(v?.PE)})).sort((a,b)=>a.strike-b.strike);
