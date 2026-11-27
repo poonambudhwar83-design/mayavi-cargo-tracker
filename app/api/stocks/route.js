@@ -189,9 +189,9 @@ async function commodityMaster(){
   const split=l=>(l.match(/("(?:[^"]|"")*"|[^,]*)(,|$)/g)||[]).filter((x,i,a)=>x!==''||i<a.length-1).map(x=>x.replace(/,$/,'').replace(/^"|"$/g,'').replace(/""/g,'"').trim());
   const lines=(await r.text()).split(/\r?\n/),h=split(lines.shift()||'').map(x=>x.replace(/^\uFEFF/,''));
   const ix=k=>h.indexOf(k);
-  for(const k of ['exchange','trading_symbol','groww_symbol','underlying_symbol','expiry_date','instrument_type','strike_price','lot_size'])if(ix(k)<0)throw Error('Groww instrument columns unavailable');
+  for(const k of ['exchange','segment','trading_symbol','groww_symbol','underlying_symbol','expiry_date','instrument_type','strike_price','lot_size'])if(ix(k)<0)throw Error('Groww instrument columns unavailable');
   const rows=[];
-  for(const l of lines){if(!l.startsWith('MCX,')&&!l.includes('MCX'))continue;const a=split(l),symbol=a[ix('underlying_symbol')],type=a[ix('instrument_type')],expiry=a[ix('expiry_date')],key=a[ix('trading_symbol')],groww=a[ix('groww_symbol')];if(a[ix('exchange')]!=='MCX'||!mcxNames.includes(symbol)||!['FUT','CE','PE'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||!key||!groww)continue;rows.push({symbol,type,expiry,key,groww,strike:num(a[ix('strike_price')]),masterLot:num(a[ix('lot_size')])});}
+  for(const l of lines){if(!l.startsWith('MCX,')&&!l.includes('MCX'))continue;const a=split(l),symbol=a[ix('underlying_symbol')],type=a[ix('instrument_type')],expiry=a[ix('expiry_date')],key=a[ix('trading_symbol')],groww=a[ix('groww_symbol')];if(a[ix('exchange')]!=='MCX'||!mcxNames.includes(symbol)||!['FUT','CE','PE'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||!key||!groww)continue;rows.push({symbol,type,expiry,key,groww,segment:a[ix('segment')]||'COMMODITY',strike:num(a[ix('strike_price')]),masterLot:num(a[ix('lot_size')])});}
   if(!rows.length)throw Error('No MCX contracts found in Groww instrument master');
   mcxMaster=rows;mcxMasterAt=Date.now();return rows;
  })().finally(()=>{mcxMasterJob=null});
@@ -199,9 +199,19 @@ async function commodityMaster(){
 }
 async function commoditySnapshot(symbol){
  if(!mcxNames.includes(symbol))return json({ok:false,error:'Unsupported commodity'},400);
- const today=day(),rows=(await commodityMaster()).filter(x=>x.symbol===symbol&&x.expiry>=today).sort((a,b)=>a.expiry.localeCompare(b.expiry));
+ const today=day();let master;try{master=await commodityMaster();}catch(e){return json({ok:false,error:'Groww MCX instrument discovery failed: '+(e.message||'Unknown error')},503);}const rows=master.filter(x=>x.symbol===symbol&&x.expiry>=today).sort((a,b)=>a.expiry.localeCompare(b.expiry));
  const future=rows.find(x=>x.type==='FUT');if(!future)return json({ok:false,error:'No upcoming MCX futures contract in Groww master'},422);
- const quote=async c=>{try{const q=await provider('/v1/live-data/quote',{exchange:'MCX',segment:'COMMODITY',trading_symbol:c.key});const book=bookQuote(q),t=normalizeQuoteTime(q.last_trade_time),ltp=num(q.last_price);return {...c,ltp:ltp>0?ltp:null,bid:book.bid,ask:book.ask,quoteTime:t,fresh:Number.isFinite(t)&&Date.now()-t>=-10000&&Date.now()-t<120000,volume:num(q.volume),oi:num(q.open_interest)};}catch(e){return {...c,error:/^Market provider/.test(e?.message||'')?e.message:'Groww MCX quote unavailable'};}};
+ const quote=async c=>{
+  const segments=[...new Set([c.segment,'COMMODITY','FNO'])].filter(x=>['COMMODITY','FNO'].includes(x)),attempts=[];
+  for(const segment of segments){
+   try{const q=await provider('/v1/live-data/quote',{exchange:'MCX',segment,trading_symbol:c.key});const book=bookQuote(q),t=normalizeQuoteTime(q.last_trade_time),ltp=num(q.last_price);
+   if(!(ltp>0))throw Error('No positive last traded price');
+   return {...c,segment,ltp,bid:book.bid,ask:book.ask,quoteTime:t,fresh:Number.isFinite(t)&&Date.now()-t>=-10000&&Date.now()-t<120000,volume:num(q.volume),oi:num(q.open_interest),source:'Groww quote',attempts};
+   }catch(e){attempts.push(segment+' quote: '+(e.message||'Unavailable'));if(/429|401|authentication|approval pending/i.test(e.message||''))break;}
+   try{const p=await provider('/v1/live-data/ltp',{segment,exchange_symbols:'MCX_'+c.key});const ltp=num(p?.['MCX_'+c.key]);if(!(ltp>0))throw Error('No positive last traded price');return {...c,segment,ltp,bid:null,ask:null,quoteTime:null,fresh:false,source:'Groww LTP — timestamp unavailable',attempts};}catch(e){attempts.push(segment+' LTP: '+(e.message||'Unavailable'));if(/429|401|authentication|approval pending/i.test(e.message||''))break;}
+  }
+  return {...c,error:attempts.join(' | ')||'Groww MCX quote unavailable',attempts};
+ };
  const f=await quote(future);
  const options=rows.filter(x=>x.type!=='FUT'&&x.expiry>today&&x.strike>0);
  const expiry=options[0]?.expiry||null;
@@ -211,7 +221,7 @@ async function commoditySnapshot(symbol){
  const pair=strike==null?[]:opt.filter(x=>x.strike===strike);
  const quotes=await Promise.all(['CE','PE'].map(type=>{const c=pair.find(x=>x.type===type);return c?quote(c):null;}));
  let candles=0,chainAvailable=false,historyError=null,chainError=null;
- try{const p=await provider('/v1/historical/candles',{exchange:'MCX',segment:'COMMODITY',groww_symbol:future.groww,start_time:today+' 09:00:00',end_time:today+' 23:55:00',candle_interval:'5minute'});candles=Array.isArray(p?.candles)?p.candles.length:0;}catch(e){historyError=/^Market provider/.test(e?.message||'')?e.message:'MCX candles unavailable';}
+ try{const p=await provider('/v1/historical/candles',{exchange:'MCX',segment:f.segment||future.segment,groww_symbol:future.groww,start_time:today+' 09:00:00',end_time:today+' 23:55:00',candle_interval:'5minute'});candles=Array.isArray(p?.candles)?p.candles.length:0;}catch(e){historyError=/^Market provider/.test(e?.message||'')?e.message:'MCX candles unavailable';}
  if(expiry){try{const p=await provider('/v1/option-chain/exchange/MCX/underlying/'+symbol,{expiry_date:expiry});chainAvailable=Boolean(p?.strikes&&Object.keys(p.strikes).length);}catch(e){chainError=/^Market provider/.test(e?.message||'')?e.message:'MCX option chain unavailable';}}
  return json({ok:true,symbol,future:f,expiry,strike,call:quotes[0],put:quotes[1],candles,chainAvailable,historyError,chainError,entryEnabled:false,asOf:new Date().toISOString()});
 }
