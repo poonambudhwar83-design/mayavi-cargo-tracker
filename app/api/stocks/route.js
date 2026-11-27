@@ -79,7 +79,7 @@ const paperUser=String(session.username).toLowerCase();let paperActive=null,pape
 await accessToken();
 const [dates,candleData,historical]=await Promise.all([provider('/v1/historical/expiries',{exchange,underlying_symbol:symbol,year}),provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),previousCandles(exchange,symbol,today).catch(()=>[])]);
 const expiries=[...new Set((dates?.expiries||[]).filter(e=>typeof e==='string'&&e>=today))].sort();
-const expiry=q.get('expiry')||expiries[0];if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
+const expiry=q.get('expiry')||(paperActive&&expiries.includes(paperActive.expiry_text)?paperActive.expiry_text:expiries[0]);if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
 const [raw,liveIndex]=await Promise.all([provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry}),provider('/v1/live-data/ltp',{segment:'CASH',exchange_symbols:Object.entries(instruments).map(([k,v])=>v+'_'+k).join(',')}).catch(()=>null)]);
 const indexReceivedAt=new Date().toISOString();
 const indexLtp=num(liveIndex?.[exchange+'_'+symbol]);
@@ -104,7 +104,7 @@ const support=maxOI('pe',chain.filter(x=>x.strike<=spot)),resistance=maxOI('ce',
 const maxPain=chain.every(x=>x.ce.oi!==null&&x.pe.oi!==null)?chain.map(x=>({strike:x.strike,pain:chain.reduce((v,y)=>v+Math.max(x.strike-y.strike,0)*y.ce.oi+Math.max(y.strike-x.strike,0)*y.pe.oi,0)})).sort((a,b)=>a.pain-b.pain)[0]?.strike:null;
 const atm=chain.reduce((a,b)=>Math.abs(a.strike-spot)<=Math.abs(b.strike-spot)?a:b);
 const watchKey=q.get('watch');const watch=watchKey?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===watchKey):null;
-const paperLeg=paperActive&&String(paperActive.expiry).slice(0,10)===expiry?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===paperActive.contract_key):null;
+const paperLeg=paperActive&&paperActive.expiry_text===expiry?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===paperActive.contract_key):null;
 await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[]),...(paperLeg?[paperLeg]:[])])].map(x=>enrich(exchange,x)));
 cchg=atm.ce.oiChange;pchg=atm.pe.oiChange;
 const t=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const part=k=>t.find(x=>x.type===k)?.value;const mins=Number(part('hour'))*60+Number(part('minute'));const inHours=!['Sat','Sun'].includes(part('weekday'))&&mins>=555&&mins<930;
