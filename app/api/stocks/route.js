@@ -184,8 +184,31 @@ if(best&&score>=75&&gates.every(x=>x.ok)){const direction=best.toUpperCase();sig
 const counts={ce:checks.filter(x=>x.ce).length,pe:checks.filter(x=>x.pe).length};
 const watchSide=inHours&&mins<910&&candleFresh&&indexAligned&&todayClosed.length>=3?['ce','pe'].find(k=>counts[k]>=4&&counts[k]>counts[k==='ce'?'pe':'ce']&&checks[0][k]&&(checks[5][k]||checks[6][k])):null;
 const directionalWatch={side:watchSide?.toUpperCase()||'NEUTRAL',counts,filterTotal:checks.length,matched:watchSide?checks.filter(x=>x[watchSide]).map(x=>x.label):[],pending:watchSide?checks.filter(x=>!x[watchSide]).map(x=>x.label):[],blocked:readiness.filter(x=>!x.ok).map(x=>x.label),pattern:watchSide?setups[watchSide]:null,asOf:last?.[0]??null};
+// Separate, deliberately high-risk expiry-day paper research; never changes the regular strategy.
+const expiryDay=expiries.includes(today)&&!equityOptions.has(symbol);
+const expiryPaper={active:expiryDay,expiry:today,selectedExpiry:expiry,signal:null,reason:expiryDay?'Waiting for a fresh, liquid ₹3–10 premium candidate.':'No index expiry today.',counts:{ce:0,pe:0},gates:[]};
+if(expiryDay&&expiry!==today)expiryPaper.reason='Select today’s expiry to scan its ₹3–10 premium contracts.';
+if(expiryDay&&expiry===today){
+const cheap={};for(const side of ['ce','pe'])cheap[side]=chain.filter(x=>{const l=x[side];return l.key&&l.ltp>=3&&l.ltp<=10&&l.volume>0&&l.oi>0&&(side==='ce'?x.strike>spot:x.strike<spot);}).sort((a,b)=>b[side].volume-a[side].volume||Math.abs(a.strike-spot)-Math.abs(b.strike-spot));
+expiryPaper.counts={ce:cheap.ce.length,pe:cheap.pe.length};
+const expiryGates=[
+{label:'Index expiry today, 9:30 AM–2:30 PM IST',ok:inHours&&mins>=570&&mins<870},
+{label:'Fresh completed candle / spot cross-check',ok:candleFresh&&indexAligned},
+{label:'Directional score ≥85 with price action',ok:Boolean(best&&score>=85&&setups[best]&&todayClosed.length>=3)},
+{label:'Trend alignment and ATR available',ok:Boolean(best&&checks[0][best]&&checks[6][best]&&atr>0)},
+{label:'Liquid OTM candidate with chain LTP ₹3–10',ok:Boolean(best&&cheap[best].length)}
+];
+expiryPaper.gates=expiryGates;
+if(expiryGates.every(x=>x.ok)){
+const shortlist=cheap[best].slice(0,2);let timer;try{await Promise.race([Promise.all(shortlist.map(x=>enrich(exchange,x[best]))),new Promise(resolve=>{timer=setTimeout(resolve,4000);})]);}finally{clearTimeout(timer);}
+const selected=shortlist.find(x=>{const l=x[best],age=Date.now()-l.quoteTime;return Number.isFinite(l.quoteTime)&&age>=-10000&&age<30000&&l.ask>=3&&l.ask<=10&&l.bid>0&&l.ask>=l.bid&&l.ask-l.bid<=Math.min(0.30,l.ask*0.05)+1e-8&&l.volume>0&&providerCooldownUntil<=Date.now();});
+expiryPaper.gates.push({label:'Actual ask ₹3–10, recent trade <30s and narrow two-sided spread',ok:Boolean(selected)});
+if(selected){const l=selected[best],en=l.ask,sl=Math.floor(en*0.7*20)/20,rr=en-sl;if(sl>0&&rr>0){expiryPaper.signal={mode:'expiry',side:best.toUpperCase(),strike:selected.strike,key:l.key,entry:en,stop:sl,target1:Math.ceil((en+rr)*20)/20,target:Math.ceil((en+2*rr)*20)/20,score,tier,pattern:setups[best],spotStop:best==='ce'?last[4]-atr:last[4]+atr,quoteTime:new Date(l.quoteTime).toISOString(),reason:'High-risk expiry paper setup; entire premium may be lost. Illustrative 1R/2R targets, not a forecast.'};expiryPaper.reason='Paper setup only; full premium at risk.';}}
+}
+if(!expiryPaper.signal)expiryPaper.reason='WAIT — '+(expiryPaper.gates.filter(x=>!x.ok).map(x=>x.label).join('; ')||'No valid executable price.')+'.';
+}
 const atmQuote={strike:atm.strike,ce:atm.ce,pe:atm.pe};
-if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,weighted,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
-return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,weighted,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
+if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
+return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
