@@ -21,8 +21,9 @@ let atr=null,up=null,down=null,st=null;const tr=[];for(let i=0;i<c.length;i++){c
 return {ema50:ema(a,50),macd,macdSignal:signal,macdHist:macd===null||signal===null?null:macd-signal,bbMid:mid,bbUpper:mid===null?null:mid+2*sd,bbLower:mid===null?null:mid-2*sd,supertrend:st,supertrendDirection:st===null?null:a.at(-1)>st?'BULLISH':'BEARISH'};
 }
 function group15(rows){const groups=new Map();for(const c of rows){const t=Date.parse(c[0]),k=Math.floor(t/900000)*900000;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c);}return [...groups.entries()].filter(([k,a])=>a.length===3&&a.every((c,i)=>Date.parse(c[0])===k+i*300000)).map(([k,a])=>[new Date(k).toISOString(),a[0][1],Math.max(...a.map(c=>c[2])),Math.min(...a.map(c=>c[3])),a[2][4]]);}
-const futuresCache=new Map();
-async function futuresContext(exchange,symbol,expiries,today,now,spot){try{const cacheKey=exchange+'|'+symbol+'|'+today;let contract=futuresCache.get(cacheKey);if(!contract){for(const expiry of expiries.filter(x=>x>today).slice(0,8)){const p=await provider('/v1/historical/contracts',{exchange,underlying_symbol:symbol,expiry_date:expiry});const key=p?.contracts?.find(x=>typeof x==='string'&&x.endsWith('-FUT'));if(key){contract={key,expiry};futuresCache.set(cacheKey,contract);break;}}}if(!contract)return {available:false,reason:'No non-expiry-day futures contract found.'};const p=await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:contract.key,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'});const rows=cleanCandles(p?.candles).filter(c=>istDate(c[0])===today&&Date.parse(c[0])+300000<=now);const last=rows.at(-1),first=rows[0];if(!last||!first)return {available:false,reason:'Futures candles unavailable.'};const fresh=now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000;const validVol=rows.every(c=>c[5]!==null&&c[5]>=0);const volume=validVol?rows.reduce((a,c)=>a+c[5],0):0;const vwap=volume>0?rows.reduce((a,c)=>a+(c[2]+c[3]+c[4])/3*c[5],0)/volume:null;return {available:true,...contract,fresh,lastClose:last[4],asOf:last[0],vwap,volume:validVol?volume:null,oi:last[6]??null,oiChange:last[6]!=null&&first[6]!=null?last[6]-first[6]:null,sessionChange:last[4]-first[1],direction:vwap===null?null:last[4]>vwap?'BULLISH':last[4]<vwap?'BEARISH':'NEUTRAL'};}catch{return {available:false,reason:'Futures provider data unavailable.'};}}
+const futuresCache=new Map(),futuresSnapshots=new Map();
+async function fetchFuturesContext(exchange,symbol,expiries,today,now,spot){try{const cacheKey=exchange+'|'+symbol+'|'+today;let contract=futuresCache.get(cacheKey);if(!contract){const monthly=[...new Map(expiries.filter(x=>x>today).map(x=>[x.slice(0,7),x])).values()].slice(0,2);const candidates=[...new Set([expiries.find(x=>x>today),...monthly].filter(Boolean))].sort();const results=await Promise.all(candidates.map(async expiry=>{try{const p=await provider('/v1/historical/contracts',{exchange,underlying_symbol:symbol,expiry_date:expiry});const key=p?.contracts?.find(x=>typeof x==='string'&&x.endsWith('-FUT'));return key?{key,expiry}:null;}catch{return null;}}));contract=results.find(Boolean);if(contract)futuresCache.set(cacheKey,contract);}if(!contract)return {available:false,reason:'No non-expiry-day futures contract found.'};const p=await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:contract.key,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'});const rows=cleanCandles(p?.candles).filter(c=>istDate(c[0])===today&&Date.parse(c[0])+300000<=now);const last=rows.at(-1),first=rows[0];if(!last||!first)return {available:false,reason:'Futures candles unavailable.'};const fresh=now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000;const validVol=rows.every(c=>c[5]!==null&&c[5]>=0);const volume=validVol?rows.reduce((a,c)=>a+c[5],0):0;const vwap=volume>0?rows.reduce((a,c)=>a+(c[2]+c[3]+c[4])/3*c[5],0)/volume:null;return {available:true,...contract,fresh,lastClose:last[4],asOf:last[0],vwap,volume:validVol?volume:null,oi:last[6]??null,oiChange:last[6]!=null&&first[6]!=null?last[6]-first[6]:null,sessionChange:last[4]-first[1],volumeRatio:rows.length>=6&&rows.slice(-6,-1).every(c=>c[5]!==null&&c[5]>0)&&last[5]!==null?last[5]/(rows.slice(-6,-1).reduce((a,c)=>a+c[5],0)/5):null,direction:vwap===null?null:last[4]>vwap?'BULLISH':last[4]<vwap?'BEARISH':'NEUTRAL'};}catch{return {available:false,reason:'Futures provider data unavailable.'};}}
+async function futuresContext(exchange,symbol,expiries,today,now,spot){const k=exchange+'|'+symbol+'|'+today;let hit=futuresSnapshots.get(k);if(!hit||Date.now()-hit.at>30000){const promise=fetchFuturesContext(exchange,symbol,expiries,today,now,spot);hit={at:Date.now(),promise};futuresSnapshots.set(k,hit);if(futuresSnapshots.size>12)for(const [key,v] of futuresSnapshots)if(Date.now()-v.at>60000)futuresSnapshots.delete(key);}let timer;try{const f=await Promise.race([hit.promise,new Promise(resolve=>{timer=setTimeout(()=>resolve({available:false,reason:'Futures lookup timeout; no points awarded.'}),6500);})]);return f.available?{...f,fresh:Date.now()-Date.parse(f.asOf)-300000>=0&&Date.now()-Date.parse(f.asOf)-300000<420000}:f;}finally{clearTimeout(timer);}}
 function parseLeg(x){const g=x?.greeks||{};return {key:x?.trading_symbol||null,ltp:num(x?.ltp),oi:num(x?.open_interest),oiChange:null,volume:num(x?.volume),bid:null,ask:null,iv:num(g.iv),delta:num(g.delta),theta:num(g.theta),gamma:num(g.gamma),quoteTime:null};}
 let cachedToken=null,tokenUntil=0,tokenRequest=null;
 async function accessToken(){
@@ -109,7 +110,7 @@ check('Supertrend',tech.supertrendDirection==='BULLISH',tech.supertrendDirection
 ];
 const allReady=readiness.every(x=>x.ok);
 const summaryOnly=q.get('scan')==='1';
-const futures=summaryOnly?{available:false,reason:'Full futures context is loaded on the detailed index tab.'}:await futuresContext(exchange,symbol,expiries,today,now,spot);
+const futures=await futuresContext(exchange,symbol,expiries,today,now,spot);
 const setups={ce:orbCe?'Opening range breakout':bullPullback?'EMA pullback continuation':triggerHigh!==null&&last?.[4]>triggerHigh?'Three-candle breakout':null,pe:orbPe?'Opening range breakdown':bearPullback?'EMA pullback continuation':triggerLow!==null&&last?.[4]<triggerLow?'Three-candle breakdown':null};
 const researchChecks=[
 check('15-minute trend alignment',higherTrend==='BULLISH',higherTrend==='BEARISH'),
@@ -121,19 +122,44 @@ check('ATM option delta magnitude 0.45–0.70',atm.ce.delta!==null&&atm.ce.delta
 const researchDirection=allReady?['ce','pe'].find(k=>researchChecks.every(x=>x[k])&&checks.filter(x=>x.label!=='Completed candle breakout').every(x=>x[k])):null;
 const research={higherTrend,h9,h21,setups,checks:researchChecks,futures,side:researchDirection?.toUpperCase()||'WAIT',strategy:researchDirection?setups[researchDirection]:null};
 
-const direction=allReady?(checks.every(x=>x.ce)?'CE':checks.every(x=>x.pe)?'PE':null):null;
-let signal={side:'WAIT',reason:allReady?'No confirmed setup. See the CE/PE checklist below.':'Entry blocked: '+readiness.filter(x=>!x.ok).map(x=>x.label).join('; ')+'.'};
-if(direction){const leg=atm[direction.toLowerCase()];if(leg.key&&leg.bid>0&&leg.ask>=leg.bid&&leg.ask>0&&(leg.ask-leg.bid)/leg.ask<=0.02&&leg.volume>0){
-const stamp=leg.quoteTime;const fresh=Number.isFinite(stamp)&&Date.now()-stamp<120000&&Date.now()-stamp>=-10000;
-if(fresh){const entry=leg.ask,stop=Math.round(entry*0.8*100)/100,target=Math.round(entry*1.4*100)/100;
-signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(stamp).toISOString(),reason:'Experimental paper setup: confirmed 5-minute breakout with EMA, RSI, MACD, Supertrend and ATM OI change alignment. Stop/target are illustrative 20%/40% premium levels.'};}
-else signal.reason='Candidate quote timestamp stale or unavailable.';
-}else signal.reason='Candidate strike lacks sufficient volume or has a wide bid/ask spread.';}
+const available=(...v)=>v.every(x=>x!==null&&x!==undefined);
+const scoreItem=(label,max,ce,pe,known=true)=>({label,max,available:Boolean(known),ce:known?ce:0,pe:known?pe:0});
+const trend5=checks[0], trend15=higherTrend, futureKnown=futures.available&&futures.fresh&&futures.vwap!==null&&futures.direction!==null;
+const breakdown=[
+scoreItem('Price action / breakout',20,setups.ce?20:0,setups.pe?20:0,todayClosed.length>=3&&triggerHigh!==null),
+scoreItem('5m and 15m trend',15,(trend5.ce?7:0)+(trend15==='BULLISH'?8:0),(trend5.pe?7:0)+(trend15==='BEARISH'?8:0),available(e9,e21)&&trend15!=='UNAVAILABLE'),
+scoreItem('Futures VWAP',15,futures.direction==='BULLISH'?15:0,futures.direction==='BEARISH'?15:0,futureKnown),
+scoreItem('EMA 9 / 21 / 50',10,(trend5.ce?5:0)+(e21>tech.ema50?5:0),(trend5.pe?5:0)+(e21<tech.ema50?5:0),available(e9,e21,tech.ema50)),
+scoreItem('ATM OI change',10,checks[3].ce?10:0,checks[3].pe?10:0,available(cchg,pchg)),
+scoreItem('Supertrend',10,checks[6].ce?10:0,checks[6].pe?10:0,available(tech.supertrendDirection)),
+scoreItem('RSI',5,checks[1].ce?5:0,checks[1].pe?5:0,available(r)),
+scoreItem('MACD',5,checks[5].ce?5:0,checks[5].pe?5:0,available(tech.macdHist)),
+scoreItem('PCR',5,checks[4].ce?5:0,checks[4].pe?5:0,available(pcr)),
+scoreItem('Futures volume confirmation',5,futures.direction==='BULLISH'&&futures.volumeRatio>=1.2?5:0,futures.direction==='BEARISH'&&futures.volumeRatio>=1.2?5:0,futureKnown&&available(futures.volumeRatio))
+];
+const scores={ce:breakdown.reduce((a,x)=>a+x.ce,0),pe:breakdown.reduce((a,x)=>a+x.pe,0)};
+const best=scores.ce>scores.pe?'ce':scores.pe>scores.ce?'pe':null;
+const score=Math.max(scores.ce,scores.pe),tier=score>=85?'STRONG':score>=75?'FAVORABLE':score>=60?'WATCH':'NO TRADE';
+const leg=best?atm[best]:null,qt=leg?.quoteTime,quoteFresh=Number.isFinite(qt)&&Date.now()-qt<120000&&Date.now()-qt>=-10000;
+const entry=leg?.ask??null,stop=entry>0?Math.floor(entry*0.8*20)/20:null,risk=entry>0&&stop>0?entry-stop:null,target=risk>0?Math.ceil((entry+2*risk)*20)/20:null,target1=risk>0?Math.ceil((entry+risk)*20)/20:null;
+const gates=[
+{label:'Market open / before 3:10 PM',ok:inHours&&mins<910},
+{label:'Fresh completed candle and index cross-check',ok:candleFresh&&indexAligned},
+{label:'At least three completed candles today',ok:todayClosed.length>=3},
+{label:'Non-expiry day',ok:expiry>today},
+{label:'Price action confirmation',ok:Boolean(best&&setups[best])},
+{label:'Fresh option last-trade timestamp',ok:quoteFresh},
+{label:'Liquidity / bid-ask spread at most 2%',ok:Boolean(leg?.key&&leg.bid>0&&entry>=leg.bid&&entry>0&&(entry-leg.bid)/entry<=0.02&&leg.volume>0)},
+{label:'Valid ATR and planned reward at least 2R',ok:Boolean(atr>0&&risk>0&&target-entry>=2*risk-1e-8)}
+];
+const weighted={scores,score,side:best?.toUpperCase()||'NEUTRAL',tier,breakdown,gates,availablePoints:breakdown.filter(x=>x.available).reduce((a,x)=>a+x.max,0)};
+let signal={side:'WAIT',reason:score<75?'Weighted score below 75/100.':!best?'Directional scores tied.':'Entry blocked: '+gates.filter(x=>!x.ok).map(x=>x.label).join('; ')+'.'};
+if(best&&score>=75&&gates.every(x=>x.ok)){const direction=best.toUpperCase();signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,target1,score,tier,pattern:setups[best],spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(qt).toISOString(),reason:'Experimental weighted paper setup '+score+'/100; '+setups[best]+'. Targets 1R and 2R; gross planned reward, excluding costs.'};}
 const counts={ce:checks.filter(x=>x.ce).length,pe:checks.filter(x=>x.pe).length};
 const watchSide=inHours&&mins<910&&candleFresh&&indexAligned&&todayClosed.length>=3?['ce','pe'].find(k=>counts[k]>=4&&counts[k]>counts[k==='ce'?'pe':'ce']&&checks[0][k]&&(checks[5][k]||checks[6][k])):null;
 const directionalWatch={side:watchSide?.toUpperCase()||'NEUTRAL',counts,filterTotal:checks.length,matched:watchSide?checks.filter(x=>x[watchSide]).map(x=>x.label):[],pending:watchSide?checks.filter(x=>!x[watchSide]).map(x=>x.label):[],blocked:readiness.filter(x=>!x.ok).map(x=>x.label),pattern:watchSide?setups[watchSide]:null,asOf:last?.[0]??null};
 const atmQuote={strike:atm.strike,ce:atm.ce,pe:atm.pe};
-if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
-return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
+if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,weighted,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
+return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,directionalWatch,weighted,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
