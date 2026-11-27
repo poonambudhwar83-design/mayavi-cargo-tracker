@@ -70,22 +70,35 @@ await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[])])].map(x=>enr
 cchg=atm.ce.oiChange;pchg=atm.pe.oiChange;
 const t=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const part=k=>t.find(x=>x.type===k)?.value;const mins=Number(part('hour'))*60+Number(part('minute'));const inHours=!['Sat','Sun'].includes(part('weekday'))&&mins>=555&&mins<930;
 const candleFresh=Boolean(last&&now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000&&new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(last[0]))===today);
-let signal={side:'WAIT',reason:'Waiting for fresh data and sufficient completed candles (historical + current session).'};
-let direction=null;
-if(inHours&&candleFresh&&e21!==null&&r!==null&&atr>0&&pcr!==null&&cchg!==null&&pchg!==null&&mins<910&&expiry>today&&todayClosed.length>=3&&tech.macdHist!==null&&tech.supertrendDirection!==null){
-const prev=closed.slice(-4,-1);if(last[4]>e9&&e9>e21&&r>=55&&r<=72&&last[4]>Math.max(...prev.map(c=>c[2]))&&pchg>cchg&&pcr>=0.9&&tech.macdHist>0&&tech.supertrendDirection==='BULLISH')direction='CE';
-if(last[4]<e9&&e9<e21&&r<=45&&r>=28&&last[4]<Math.min(...prev.map(c=>c[3]))&&cchg>pchg&&pcr<=1.1&&tech.macdHist<0&&tech.supertrendDirection==='BEARISH')direction='PE';
-signal.reason='No confirmed breakout with aligned EMA, RSI, MACD, Supertrend and OI filters.';
-}
-if(!inHours||!candleFresh)signal.reason='Market closed or completed candle is stale. No new entry.';
-if(expiry===today)signal.reason='Expiry-day entry disabled for this experimental strategy.';
-if(mins>=910&&inHours)signal.reason='No new entry after 3:10 PM IST.';
+const prev=closed.slice(-4,-1);
+const triggerHigh=prev.length===3?Math.max(...prev.map(c=>c[2])):null,triggerLow=prev.length===3?Math.min(...prev.map(c=>c[3])):null;
+const readiness=[
+{label:'Trading session / entry cutoff',ok:inHours&&mins<910},
+{label:'Fresh completed 5-minute candle',ok:candleFresh},
+{label:'At least 3 completed candles today',ok:todayClosed.length>=3},
+{label:'EMA, RSI, ATR, MACD and Supertrend available',ok:e9!==null&&e21!==null&&r!==null&&atr>0&&tech.macdHist!==null&&tech.supertrendDirection!==null},
+{label:'PCR and ATM OI changes available',ok:pcr!==null&&cchg!==null&&pchg!==null},
+{label:'Non-expiry day',ok:expiry>today}
+];
+const check=(label,ce,pe)=>({label,ce:Boolean(ce),pe:Boolean(pe)});
+const checks=[
+check('EMA trend',e9!==null&&e21!==null&&last?.[4]>e9&&e9>e21,e9!==null&&e21!==null&&last?.[4]<e9&&e9<e21),
+check('RSI range',r!==null&&r>=55&&r<=72,r!==null&&r<=45&&r>=28),
+check('Completed candle breakout',triggerHigh!==null&&last?.[4]>triggerHigh,triggerLow!==null&&last?.[4]<triggerLow),
+check('ATM OI change alignment',cchg!==null&&pchg!==null&&pchg>cchg,cchg!==null&&pchg!==null&&cchg>pchg),
+check('PCR filter',pcr!==null&&pcr>=0.9,pcr!==null&&pcr<=1.1),
+check('MACD histogram',tech.macdHist!==null&&tech.macdHist>0,tech.macdHist!==null&&tech.macdHist<0),
+check('Supertrend',tech.supertrendDirection==='BULLISH',tech.supertrendDirection==='BEARISH')
+];
+const allReady=readiness.every(x=>x.ok);
+const direction=allReady?(checks.every(x=>x.ce)?'CE':checks.every(x=>x.pe)?'PE':null):null;
+let signal={side:'WAIT',reason:allReady?'No confirmed setup. See the CE/PE checklist below.':'Entry blocked: '+readiness.filter(x=>!x.ok).map(x=>x.label).join('; ')+'.'};
 if(direction){const leg=atm[direction.toLowerCase()];if(leg.key&&leg.bid>0&&leg.ask>=leg.bid&&leg.ask>0&&(leg.ask-leg.bid)/leg.ask<=0.02&&leg.volume>0){
 const stamp=leg.quoteTime;const fresh=Number.isFinite(stamp)&&Date.now()-stamp<120000&&Date.now()-stamp>=-10000;
 if(fresh){const entry=leg.ask,stop=Math.round(entry*0.8*100)/100,target=Math.round(entry*1.4*100)/100;
 signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(stamp).toISOString(),reason:'Experimental paper setup: confirmed 5-minute breakout with EMA, RSI, MACD, Supertrend and ATM OI change alignment. Stop/target are illustrative 20%/40% premium levels.'};}
 else signal.reason='Candidate quote timestamp stale or unavailable.';
 }else signal.reason='Candidate strike lacks sufficient volume or has a wide bid/ask spread.';}
-return json({ok:true,symbol,spot,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,asOf:new Date().toISOString(),candleFresh,inHours});
+return json({ok:true,symbol,spot,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
