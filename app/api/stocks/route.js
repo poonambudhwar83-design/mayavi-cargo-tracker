@@ -51,9 +51,15 @@ await accessToken();
 const [dates,candleData,historical]=await Promise.all([provider('/v1/historical/expiries',{exchange,underlying_symbol:symbol,year}),provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),previousCandles(exchange,symbol,today).catch(()=>[])]);
 const expiries=[...new Set((dates?.expiries||[]).filter(e=>typeof e==='string'&&e>=today))].sort();
 const expiry=q.get('expiry')||expiries[0];if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
-const raw=await provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry});
+const [raw,liveIndex]=await Promise.all([provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry}),provider('/v1/live-data/ltp',{segment:'CASH',exchange_symbols:exchange+'_'+symbol}).catch(()=>null)]);
+const indexReceivedAt=new Date().toISOString();
+const indexLtp=num(liveIndex?.[exchange+'_'+symbol]);
 const chain=Object.entries(raw?.strikes||{}).filter(([k])=>num(k)!==null).map(([k,v])=>({strike:num(k),ce:parseLeg(v?.CE),pe:parseLeg(v?.PE)})).sort((a,b)=>a.strike-b.strike);
 const spot=num(raw?.underlying_ltp);if(!spot||!chain.length)return json({ok:false,error:'Option chain unavailable.'},503);
+const indexGap=indexLtp!==null&&indexLtp>0?Math.abs(indexLtp-spot):null;
+const indexTolerance=spot*0.001;
+const indexAligned=indexGap!==null&&indexGap<=indexTolerance;
+const dataCheck={exchange,provider:'Groww',indexLtp,chainSpot:spot,indexGap,indexTolerance,indexAligned,indexReceivedAt:indexLtp!==null?indexReceivedAt:null,exchangeTimestamp:null};
 const candles=cleanCandles(candleData?.candles).filter(c=>istDate(c[0])===today);
 const closed=cleanCandles([...historical,...candles]).filter(c=>Date.parse(c[0])+300000<=now),last=closed.at(-1),closes=closed.map(c=>c[4]),e9=ema(closes,9),e21=ema(closes,21),r=rsi(closes);
 const tech=technical(closed),historySessions=[...new Set(historical.map(c=>istDate(c[0])))].sort(),prevSession=historySessions.at(-1),prevRows=historical.filter(c=>istDate(c[0])===prevSession),previousHigh=prevRows.length?Math.max(...prevRows.map(c=>c[2])):null,previousLow=prevRows.length?Math.min(...prevRows.map(c=>c[3])):null,previousClose=prevRows.at(-1)?.[4]??null;
@@ -84,6 +90,7 @@ const prev=closed.slice(-4,-1);
 const triggerHigh=prev.length===3?Math.max(...prev.map(c=>c[2])):null,triggerLow=prev.length===3?Math.min(...prev.map(c=>c[3])):null;
 const readiness=[
 {label:'Trading session / entry cutoff',ok:inHours&&mins<910},
+{label:'Live index LTP agrees with chain spot (within 0.1%)',ok:indexAligned},
 {label:'Fresh completed 5-minute candle',ok:candleFresh},
 {label:'At least 3 completed candles today',ok:todayClosed.length>=3},
 {label:'EMA, RSI, ATR, MACD and Supertrend available',ok:e9!==null&&e21!==null&&r!==null&&atr>0&&tech.macdHist!==null&&tech.supertrendDirection!==null},
@@ -121,6 +128,6 @@ if(fresh){const entry=leg.ask,stop=Math.round(entry*0.8*100)/100,target=Math.rou
 signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(stamp).toISOString(),reason:'Experimental paper setup: confirmed 5-minute breakout with EMA, RSI, MACD, Supertrend and ATM OI change alignment. Stop/target are illustrative 20%/40% premium levels.'};}
 else signal.reason='Candidate quote timestamp stale or unavailable.';
 }else signal.reason='Candidate strike lacks sufficient volume or has a wide bid/ask spread.';}
-return json({ok:true,symbol,spot,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
+return json({ok:true,symbol,spot,dataCheck,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
