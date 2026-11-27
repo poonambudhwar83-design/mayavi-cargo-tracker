@@ -20,6 +20,9 @@ const b=a.slice(-20),mid=b.length===20?b.reduce((s,v)=>s+v,0)/20:null,sd=mid===n
 let atr=null,up=null,down=null,st=null;const tr=[];for(let i=0;i<c.length;i++){const x=c[i],prev=c[i-1]?.[4];tr.push(prev===undefined?x[2]-x[3]:Math.max(x[2]-x[3],Math.abs(x[2]-prev),Math.abs(x[3]-prev)));if(i<9)continue;atr=i===9?tr.slice(0,10).reduce((s,v)=>s+v,0)/10:(atr*9+tr[i])/10;const h=(x[2]+x[3])/2,u=h+3*atr,d=h-3*atr;const oldUp=up,oldDown=down,oldSt=st;up=oldUp===null||u<oldUp||prev>oldUp?u:oldUp;down=oldDown===null||d>oldDown||prev<oldDown?d:oldDown;st=oldSt===null?up:oldSt===oldUp?(x[4]>up?down:up):(x[4]<down?up:down);}
 return {ema50:ema(a,50),macd,macdSignal:signal,macdHist:macd===null||signal===null?null:macd-signal,bbMid:mid,bbUpper:mid===null?null:mid+2*sd,bbLower:mid===null?null:mid-2*sd,supertrend:st,supertrendDirection:st===null?null:a.at(-1)>st?'BULLISH':'BEARISH'};
 }
+function group15(rows){const groups=new Map();for(const c of rows){const t=Date.parse(c[0]),k=Math.floor(t/900000)*900000;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c);}return [...groups.entries()].filter(([k,a])=>a.length===3&&a.every((c,i)=>Date.parse(c[0])===k+i*300000)).map(([k,a])=>[new Date(k).toISOString(),a[0][1],Math.max(...a.map(c=>c[2])),Math.min(...a.map(c=>c[3])),a[2][4]]);}
+const futuresCache=new Map();
+async function futuresContext(exchange,symbol,expiries,today,now,spot){try{const cacheKey=exchange+'|'+symbol+'|'+today;let contract=futuresCache.get(cacheKey);if(!contract){for(const expiry of expiries.filter(x=>x>today).slice(0,8)){const p=await provider('/v1/historical/contracts',{exchange,underlying_symbol:symbol,expiry_date:expiry});const key=p?.contracts?.find(x=>typeof x==='string'&&x.endsWith('-FUT'));if(key){contract={key,expiry};futuresCache.set(cacheKey,contract);break;}}}if(!contract)return {available:false,reason:'No non-expiry-day futures contract found.'};const p=await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:contract.key,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'});const rows=cleanCandles(p?.candles).filter(c=>istDate(c[0])===today&&Date.parse(c[0])+300000<=now);const last=rows.at(-1),first=rows[0];if(!last||!first)return {available:false,reason:'Futures candles unavailable.'};const fresh=now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000;const validVol=rows.every(c=>c[5]!==null&&c[5]>=0);const volume=validVol?rows.reduce((a,c)=>a+c[5],0):0;const vwap=volume>0?rows.reduce((a,c)=>a+(c[2]+c[3]+c[4])/3*c[5],0)/volume:null;return {available:true,...contract,fresh,lastClose:last[4],asOf:last[0],vwap,volume:validVol?volume:null,oi:last[6]??null,oiChange:last[6]!=null&&first[6]!=null?last[6]-first[6]:null,sessionChange:last[4]-first[1],direction:vwap===null?null:last[4]>vwap?'BULLISH':last[4]<vwap?'BEARISH':'NEUTRAL'};}catch{return {available:false,reason:'Futures provider data unavailable.'};}}
 function parseLeg(x){const g=x?.greeks||{};return {key:x?.trading_symbol||null,ltp:num(x?.ltp),oi:num(x?.open_interest),oiChange:null,volume:num(x?.volume),bid:null,ask:null,iv:num(g.iv),delta:num(g.delta),theta:num(g.theta),gamma:num(g.gamma),quoteTime:null};}
 let cachedToken=null,tokenUntil=0,tokenRequest=null;
 async function accessToken(){
@@ -70,6 +73,13 @@ await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[])])].map(x=>enr
 cchg=atm.ce.oiChange;pchg=atm.pe.oiChange;
 const t=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const part=k=>t.find(x=>x.type===k)?.value;const mins=Number(part('hour'))*60+Number(part('minute'));const inHours=!['Sat','Sun'].includes(part('weekday'))&&mins>=555&&mins<930;
 const candleFresh=Boolean(last&&now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000&&new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(last[0]))===today);
+const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
+const higherTrend=h9===null||h21===null?'UNAVAILABLE':higherCloses.at(-1)>h9&&h9>h21?'BULLISH':higherCloses.at(-1)<h9&&h9<h21?'BEARISH':'NEUTRAL';
+const previous=closed.at(-2),prevEma=ema(closes.slice(0,-1),9);
+const bullPullback=Boolean(previous&&last&&prevEma!==null&&previous[3]<=prevEma&&previous[4]>=prevEma&&last[4]>previous[2]&&last[4]>last[1]);
+const bearPullback=Boolean(previous&&last&&prevEma!==null&&previous[2]>=prevEma&&previous[4]<=prevEma&&last[4]<previous[3]&&last[4]<last[1]);
+const orbCe=Boolean(openingHigh!==null&&todayClosed.length>=4&&previous&&last&&previous[4]<=openingHigh&&last[4]>openingHigh);
+const orbPe=Boolean(openingLow!==null&&todayClosed.length>=4&&previous&&last&&previous[4]>=openingLow&&last[4]<openingLow);
 const prev=closed.slice(-4,-1);
 const triggerHigh=prev.length===3?Math.max(...prev.map(c=>c[2])):null,triggerLow=prev.length===3?Math.min(...prev.map(c=>c[3])):null;
 const readiness=[
@@ -91,6 +101,18 @@ check('MACD histogram',tech.macdHist!==null&&tech.macdHist>0,tech.macdHist!==nul
 check('Supertrend',tech.supertrendDirection==='BULLISH',tech.supertrendDirection==='BEARISH')
 ];
 const allReady=readiness.every(x=>x.ok);
+const futures=await futuresContext(exchange,symbol,expiries,today,now,spot);
+const setups={ce:orbCe?'Opening range breakout':bullPullback?'EMA pullback continuation':triggerHigh!==null&&last?.[4]>triggerHigh?'Three-candle breakout':null,pe:orbPe?'Opening range breakdown':bearPullback?'EMA pullback continuation':triggerLow!==null&&last?.[4]<triggerLow?'Three-candle breakdown':null};
+const researchChecks=[
+check('15-minute trend alignment',higherTrend==='BULLISH',higherTrend==='BEARISH'),
+check('Price action setup',Boolean(setups.ce),Boolean(setups.pe)),
+check('Avoid chasing (within 1.5 ATR of EMA9)',atr>0&&e9!==null&&Math.abs(last?.[4]-e9)<=1.5*atr,atr>0&&e9!==null&&Math.abs(last?.[4]-e9)<=1.5*atr),
+check('Fresh futures candle and VWAP confirmation',futures.available&&futures.fresh&&futures.direction==='BULLISH',futures.available&&futures.fresh&&futures.direction==='BEARISH'),
+check('ATM option delta magnitude 0.45–0.70',atm.ce.delta!==null&&atm.ce.delta>=0.45&&atm.ce.delta<=0.7,atm.pe.delta!==null&&atm.pe.delta<=-0.45&&atm.pe.delta>=-0.7)
+];
+const researchDirection=allReady?['ce','pe'].find(k=>researchChecks.every(x=>x[k])&&checks.filter(x=>x.label!=='Completed candle breakout').every(x=>x[k])):null;
+const research={higherTrend,h9,h21,setups,checks:researchChecks,futures,side:researchDirection?.toUpperCase()||'WAIT',strategy:researchDirection?setups[researchDirection]:null};
+
 const direction=allReady?(checks.every(x=>x.ce)?'CE':checks.every(x=>x.pe)?'PE':null):null;
 let signal={side:'WAIT',reason:allReady?'No confirmed setup. See the CE/PE checklist below.':'Entry blocked: '+readiness.filter(x=>!x.ok).map(x=>x.label).join('; ')+'.'};
 if(direction){const leg=atm[direction.toLowerCase()];if(leg.key&&leg.bid>0&&leg.ask>=leg.bid&&leg.ask>0&&(leg.ask-leg.bid)/leg.ask<=0.02&&leg.volume>0){
@@ -99,6 +121,6 @@ if(fresh){const entry=leg.ask,stop=Math.round(entry*0.8*100)/100,target=Math.rou
 signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(stamp).toISOString(),reason:'Experimental paper setup: confirmed 5-minute breakout with EMA, RSI, MACD, Supertrend and ATM OI change alignment. Stop/target are illustrative 20%/40% premium levels.'};}
 else signal.reason='Candidate quote timestamp stale or unavailable.';
 }else signal.reason='Candidate strike lacks sufficient volume or has a wide bid/ask spread.';}
-return json({ok:true,symbol,spot,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},asOf:new Date().toISOString(),candleFresh,inHours});
+return json({ok:true,symbol,spot,expiry,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
