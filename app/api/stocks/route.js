@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
+import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} from '../../../lib/stocksPaperPerformance.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
@@ -74,6 +75,7 @@ const sql=neon(url);const [u]=await sql`SELECT role,session_version,is_active FR
 if(!u?.is_active||u.role!=='admin'||Number(u.session_version)!==Number(session.sessionVersion||0))return json({ok:false,error:'Admin access required.'},403);
 const q=new URL(request.url).searchParams, symbol=q.get('symbol')||'NIFTY',exchange=instruments[symbol];if(!Object.hasOwn(instruments,symbol))return json({ok:false,error:'Unsupported index.'},400);
 const today=day(),now=Date.now(),year=Number(today.slice(0,4));
+const paperUser=String(session.username).toLowerCase();let paperActive=null,paperAvailable=false,paperError=null;try{await initPaper(sql);await expirePaper(sql,paperUser,today);paperAvailable=true;if(q.get('paperReport')==='1')return json({ok:true,rows:await paperReport(sql,paperUser,today)});paperActive=await openPaper(sql,paperUser,symbol);}catch{paperAvailable=false;paperError='Paper history storage temporarily unavailable';if(q.get('paperReport')==='1')return json({ok:false,error:paperError},503);}
 await accessToken();
 const [dates,candleData,historical]=await Promise.all([provider('/v1/historical/expiries',{exchange,underlying_symbol:symbol,year}),provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),previousCandles(exchange,symbol,today).catch(()=>[])]);
 const expiries=[...new Set((dates?.expiries||[]).filter(e=>typeof e==='string'&&e>=today))].sort();
@@ -102,7 +104,8 @@ const support=maxOI('pe',chain.filter(x=>x.strike<=spot)),resistance=maxOI('ce',
 const maxPain=chain.every(x=>x.ce.oi!==null&&x.pe.oi!==null)?chain.map(x=>({strike:x.strike,pain:chain.reduce((v,y)=>v+Math.max(x.strike-y.strike,0)*y.ce.oi+Math.max(y.strike-x.strike,0)*y.pe.oi,0)})).sort((a,b)=>a.pain-b.pain)[0]?.strike:null;
 const atm=chain.reduce((a,b)=>Math.abs(a.strike-spot)<=Math.abs(b.strike-spot)?a:b);
 const watchKey=q.get('watch');const watch=watchKey?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===watchKey):null;
-await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[])])].map(x=>enrich(exchange,x)));
+const paperLeg=paperActive&&String(paperActive.expiry).slice(0,10)===expiry?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===paperActive.contract_key):null;
+await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[]),...(paperLeg?[paperLeg]:[])])].map(x=>enrich(exchange,x)));
 cchg=atm.ce.oiChange;pchg=atm.pe.oiChange;
 const t=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const part=k=>t.find(x=>x.type===k)?.value;const mins=Number(part('hour'))*60+Number(part('minute'));const inHours=!['Sat','Sun'].includes(part('weekday'))&&mins>=555&&mins<930;
 const candleFresh=Boolean(last&&now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000&&new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(last[0]))===today);
@@ -213,8 +216,9 @@ if(selected){const l=selected[best],en=l.ask,sl=Math.floor(en*0.7*20)/20,rr=en-s
 }
 if(!expiryPaper.signal)expiryPaper.reason='WAIT — '+(expiryPaper.gates.filter(x=>!x.ok).map(x=>x.label).join('; ')||'No valid executable price.')+'.';
 }
+if(paperAvailable){try{if(paperActive){await observePaper(sql,paperUser,paperActive,paperLeg,expiry,mins);}else if(inHours&&mins<910&&candleFresh&&indexAligned&&providerCooldownUntil<=Date.now()){await registerPaper(sql,paperUser,today,symbol,expiry,signal,conditionalPlan,best?atm[best].key:null);}}catch{paperError='Paper tracking update unavailable';}}
 const atmQuote={strike:atm.strike,ce:atm.ce,pe:atm.pe};
-if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
-return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
+if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,paperError,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
+return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,paperError,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
 }catch(e){return json({ok:false,error:/^Market provider/.test(e?.message||'')?e.message:'Market data or authentication temporarily unavailable.'},503);}
 }
