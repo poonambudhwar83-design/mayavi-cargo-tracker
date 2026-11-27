@@ -120,8 +120,38 @@ async function optionTechnicalPlan(exchange,symbol,expiry,strike,side,leg,today,
  }catch{return {ok:false,reason:'Option historical candle feed unavailable.'};}
 }
 
+// End-of-day paper close only; no entry scan or broker order.
+async function closePaperCron(request){
+ const secret=process.env.CRON_SECRET;
+ if(!secret||request.headers.get('authorization')!=='Bearer '+secret)return json({ok:false,error:'Unauthorized'},401);
+ const now=Date.now(),ist=new Date(now+19800000),minute=ist.getUTCHours()*60+ist.getUTCMinutes(),today=day();
+ if(ist.getUTCDay()===0||ist.getUTCDay()===6||minute<920||minute>945)return json({ok:true,skipped:true});
+ const db=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED;
+ if(!db)return json({ok:false,error:'Paper DB unavailable'},503);
+ const sql=neon(db);await initPaper(sql);
+ if(minute>=930){
+  const rows=await sql`UPDATE mayavi_stocks_paper_performance SET status='UNVERIFIED',closed_at=now(),coverage_gap=true WHERE status='OPEN' AND trade_day<=${today}::date RETURNING id`;
+  return json({ok:true,unverified:rows.length});
+ }
+ const rows=await sql`SELECT *,expiry::text AS expiry_text FROM mayavi_stocks_paper_performance WHERE trade_day=${today}::date AND status='OPEN' ORDER BY opened_at LIMIT 100`;
+ if(!rows.length)return json({ok:true,attempted:0,remaining:0});
+ const quotes=new Map();let attempted=0;
+ for(const p of rows){
+  if(!Object.hasOwn(instruments,p.symbol)||!p.contract_key)continue;
+  const exchange=instruments[p.symbol],k=exchange+'|'+p.contract_key;
+  if(!quotes.has(k)){const l={key:p.contract_key};await enrich(exchange,l);quotes.set(k,l);}
+  const leg=quotes.get(k),qt=Number(leg.quoteTime),local=new Date(qt+19800000),qm=local.getUTCHours()*60+local.getUTCMinutes();
+  if(!Number.isFinite(qt)||istDate(qt)!==today||qm<920||qm>=930)continue;
+  await observePaper(sql,p.username,p,leg,p.expiry_text,minute);
+  attempted++;
+ }
+ const [left]=await sql`SELECT count(*)::int AS n FROM mayavi_stocks_paper_performance WHERE trade_day=${today}::date AND status='OPEN'`;
+ return json({ok:true,attempted,remaining:left?.n??null});
+}
+
 export async function GET(request){
 try{
+if(new URL(request.url).searchParams.get('paperClose')==='1')return await closePaperCron(request);
 const session=readSession(request);if(session?.role!=='admin')return json({ok:false,error:'Admin access required.'},403);
 const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_DATABASE_URL||process.env.DATABASE_URL_UNPOOLED;
 if(!url)return json({ok:false,error:'Authentication unavailable.'},503);
