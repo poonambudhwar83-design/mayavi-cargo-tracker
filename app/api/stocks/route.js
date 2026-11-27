@@ -67,6 +67,40 @@ if(valid(depthBid,depthAsk))return {bid:depthBid,ask:depthAsk,source:'market dep
 return {bid:null,ask:null,source:'unavailable'};
 }
 async function enrich(exchange,leg){if(!leg.key)return;try{const q=await provider('/v1/live-data/quote',{exchange,segment:'FNO',trading_symbol:leg.key});const book=bookQuote(q);leg.bid=book.bid;leg.ask=book.ask;leg.bookSource=book.source;leg.quoteStatus=book.source==='unavailable'?'No valid two-sided book returned':'Book available';leg.oiChange=num(q.oi_day_change);if(leg.oiChange===null&&num(q.open_interest)!==null&&num(q.previous_open_interest)!==null)leg.oiChange=num(q.open_interest)-num(q.previous_open_interest);leg.quoteTime=normalizeQuoteTime(q.last_trade_time);leg.quoteLtp=num(q.last_price);if(num(q.volume)!==null)leg.volume=num(q.volume);}catch(e){leg.quoteStatus=/429/.test(e?.message||'')?'Rate limited':'Quote request unavailable';/* Never fabricate. */}}
+
+// Regular technical paper strategy v2. Premium levels are observed historical levels, never fixed percentages.
+function premiumLevels(rows,entry,bid,underlyingStop){
+ const fail=reason=>({ok:false,reason});
+ if(rows.length<15||!(entry>=bid&&bid>0)||!Number.isFinite(underlyingStop))return fail('Insufficient premium candles or executable quote / spot structure.');
+ const last=rows.at(-1),closes=rows.map(c=>c[4]),e=ema(closes,9),r=rsi(closes);
+ const tr=rows.slice(-15).slice(1).map((c,i)=>{const prev=rows.slice(-15)[i][4];return Math.max(c[2]-c[3],Math.abs(c[2]-prev),Math.abs(c[3]-prev));});
+ const a=tr.reduce((x,y)=>x+y,0)/14;
+ if(!(a>0)||e===null||r===null||last[4]<e||r<50||r>80||Math.abs(entry-last[4])>1.5*a)return fail('Premium momentum / ATR or quote-to-candle alignment not confirmed.');
+ const recent=rows.slice(-8),swing=Math.min(...recent.slice(-5).map(c=>c[3]));
+ const floorTick=x=>Math.floor((x+1e-8)*20)/20;
+ const stop=floorTick(swing-0.25*a),risk=entry-stop;
+ if(!(stop>0&&risk>=Math.max(3*(entry-bid),0.5*a,0.10)&&risk<=0.25*entry&&risk<=3*a))return fail('Premium swing stop creates excessive or insufficient risk.');
+ const pivots=rows.slice(1,-1).filter((c,i)=>c[2]>=rows[i][2]&&c[2]>=rows[i+2][2]).map(c=>floorTick(c[2]));
+ const highs=[...new Set([...pivots,floorTick(Math.max(...rows.map(c=>c[2])))])].filter(x=>x>entry).sort((a,b)=>a-b);
+ const target1=highs[0],target2=highs.find(x=>x>target1&&x-entry>=2*risk-1e-8);
+ if(!(target1-entry>=risk-1e-8&&target2>target1&&target2-entry<=6*a))return fail('No two observed overhead premium levels with at least 1R / 2R within volatility range.');
+ return {ok:true,version:'TECH_V2',entry,stop,target1,target:target2,risk,atr:a,rsi:r,ema9:e,swingLow:swing,spotStop:underlyingStop,rr:(target2-entry)/risk,reason:'Premium swing low minus 0.25 ATR; observed premium resistance levels; 1R/2R minimum.'};
+}
+async function optionTechnicalPlan(exchange,symbol,expiry,strike,side,leg,today,underlyingStop){
+ if(!leg?.key||!(leg.ask>0&&leg.bid>0))return {ok:false,reason:'Fresh two-sided premium quote required.'};
+ try{
+ const d=new Date(expiry+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
+ const growwSymbol=exchange+'-'+symbol+'-'+label+'-'+strike+'-'+side.toUpperCase();
+ const start=new Date(Date.parse(today+'T00:00:00+05:30')-5*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+ let timer;try{
+ const p=await Promise.race([provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:growwSymbol,start_time:start+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),4500);})]);
+ const now=Date.now(),rows=cleanCandles(p?.candles).filter(c=>Date.parse(c[0])+300000<=now),latest=rows.at(-1);
+ if(!latest||istDate(latest[0])!==today||now-Date.parse(latest[0])-300000>=420000)return {ok:false,reason:'Fresh completed option candles unavailable.'};
+ return premiumLevels(rows,leg.ask,leg.bid,underlyingStop);
+ }finally{clearTimeout(timer);}
+ }catch{return {ok:false,reason:'Option historical candle feed unavailable.'};}
+}
+
 export async function GET(request){
 try{
 const session=readSession(request);if(session?.role!=='admin')return json({ok:false,error:'Admin access required.'},403);
@@ -172,7 +206,10 @@ const scores={ce:breakdown.reduce((a,x)=>a+x.ce,0),pe:breakdown.reduce((a,x)=>a+
 const best=scores.ce>scores.pe?'ce':scores.pe>scores.ce?'pe':null;
 const score=Math.max(scores.ce,scores.pe),tier=score>=85?'STRONG':score>=75?'FAVORABLE':score>=60?'WATCH':'NO TRADE';
 const leg=best?atm[best]:null,qt=leg?.quoteTime,quoteFresh=Number.isFinite(qt)&&Date.now()-qt<120000&&Date.now()-qt>=-10000;
-const entry=leg?.ask??null,stop=entry>0?Math.floor(entry*0.8*20)/20:null,risk=entry>0&&stop>0?entry-stop:null,target=risk>0?Math.ceil((entry+2*risk)*20)/20:null,target1=risk>0?Math.ceil((entry+risk)*20)/20:null;
+const entry=leg?.ask??null;
+const spotStop=best&&atr>0&&todayClosed.length>=3?(best==='ce'?Math.min(...todayClosed.slice(-3).map(c=>c[3]))-0.25*atr:Math.max(...todayClosed.slice(-3).map(c=>c[2]))+0.25*atr):null;
+const technicalPlan=best&&score>=75&&inHours&&mins<910&&candleFresh&&quoteFresh&&expiry>today&&leg?.bid>0&&entry>=leg.bid&&(entry-leg.bid)/entry<=0.02&&providerCooldownUntil<=Date.now()?await optionTechnicalPlan(exchange,symbol,expiry,atm.strike,best,leg,today,spotStop):{ok:false,reason:'Waiting for a favorable score, fresh liquid quote and regular session.'};
+const {stop=null,risk=null,target=null,target1=null}=technicalPlan;
 const gates=[
 {label:'Market open / before 3:10 PM',ok:inHours&&mins<910},
 {label:'Fresh completed candle and index cross-check',ok:candleFresh&&indexAligned},
@@ -181,17 +218,20 @@ const gates=[
 {label:'Price action confirmation',ok:Boolean(best&&setups[best])},
 {label:'Fresh option last-trade timestamp',ok:quoteFresh},
 {label:'Liquidity / bid-ask spread at most 2%',ok:Boolean(leg?.key&&leg.bid>0&&entry>=leg.bid&&entry>0&&(entry-leg.bid)/entry<=0.02&&leg.volume>0)},
-{label:'Valid ATR and planned reward at least 2R',ok:Boolean(atr>0&&risk>0&&target-entry>=2*risk-1e-8)}
+{label:'Technical premium levels: '+technicalPlan.reason,ok:Boolean(technicalPlan.ok&&risk>0&&target-entry>=2*risk-1e-8)},
+{label:'5m / 15m trend and no chasing',ok:Boolean(best&&checks[0][best]&&researchChecks[0][best]&&researchChecks[2][best])},
+{label:'Fresh aligned futures VWAP and ATM delta',ok:Boolean(best&&researchChecks[3][best]&&researchChecks[4][best])},
+{label:'Provider cooldown and quote recheck',ok:providerCooldownUntil<=Date.now()&&Number.isFinite(qt)&&Date.now()-qt<120000}
 ];
 const weighted={scores,score,side:best?.toUpperCase()||'NEUTRAL',tier,breakdown,gates,availablePoints:breakdown.filter(x=>x.available).reduce((a,x)=>a+x.max,0)};
 let signal={side:'WAIT',reason:score<75?'Weighted score below 75/100.':!best?'Directional scores tied.':'Entry blocked: '+gates.filter(x=>!x.ok).map(x=>x.label).join('; ')+'.'};
-if(best&&score>=75&&gates.every(x=>x.ok)){const direction=best.toUpperCase();signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,target1,score,tier,pattern:setups[best],spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(qt).toISOString(),reason:'Experimental weighted paper setup '+score+'/100; '+setups[best]+'. Targets 1R and 2R; gross planned reward, excluding costs.'};}
+if(best&&score>=75&&gates.every(x=>x.ok)){const direction=best.toUpperCase();signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,target1,score,tier,pattern:setups[best],spotStop,technicalPlan,quoteTime:new Date(qt).toISOString(),reason:'TECH V2 '+score+'/100; '+setups[best]+'. '+technicalPlan.reason+' T2 reward/risk '+technicalPlan.rr.toFixed(2)+'; trail after T1; gross excluding costs.'};}
 // Show a non-executable planning scenario only for a favorable directional score.
 // Never substitute last traded price for executable ask; mandatory entry gates are unchanged.
 const liquidAsk=quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8;
-const referencePrice=liquidAsk?entry:quoteFresh&&leg?.quoteLtp>0?leg.quoteLtp:null;
-const refStop=referencePrice>0?Math.floor(referencePrice*0.8*20)/20:null,refRisk=refStop>0?referencePrice-refStop:null;
-const conditionalPlan=best&&score>=75&&signal.side==='WAIT'&&inHours&&mins<910&&candleFresh&&gates[3].ok&&providerCooldownUntil<=Date.now()?{side:best.toUpperCase(),strike:atm.strike,expiry,score,tier,referencePrice:refRisk>0?referencePrice:null,referenceSource:liquidAsk?'ASK':'LTP',stop:refRisk>0?refStop:null,target1:refRisk>0?Math.ceil((referencePrice+refRisk)*20)/20:null,target2:refRisk>0?Math.ceil((referencePrice+2*refRisk)*20)/20:null,quoteTime:quoteFresh?new Date(qt).toISOString():null,pending:gates.filter(x=>!x.ok).map(x=>x.label),exitTime:'15:20 IST',status:'CONDITIONAL — NOT AN ENTRY'}:null;
+const referencePrice=liquidAsk?entry:null;
+const refStop=liquidAsk?stop:null,refRisk=liquidAsk?risk:null;
+const conditionalPlan=best&&score>=75&&signal.side==='WAIT'&&inHours&&mins<910&&candleFresh&&gates[3].ok&&providerCooldownUntil<=Date.now()?{side:best.toUpperCase(),strike:atm.strike,expiry,score,tier,referencePrice:refRisk>0?referencePrice:null,referenceSource:liquidAsk?'ASK':'LTP',stop:refRisk>0?refStop:null,target1:refRisk>0?target1:null,target2:refRisk>0?target:null,technicalPlan,spotStop,quoteTime:quoteFresh?new Date(qt).toISOString():null,pending:gates.filter(x=>!x.ok).map(x=>x.label),exitTime:'15:20 IST',status:'CONDITIONAL — NOT AN ENTRY'}:null;
 const counts={ce:checks.filter(x=>x.ce).length,pe:checks.filter(x=>x.pe).length};
 const watchSide=inHours&&mins<910&&candleFresh&&indexAligned&&todayClosed.length>=3?['ce','pe'].find(k=>counts[k]>=4&&counts[k]>counts[k==='ce'?'pe':'ce']&&checks[0][k]&&(checks[5][k]||checks[6][k])):null;
 const directionalWatch={side:watchSide?.toUpperCase()||'NEUTRAL',counts,filterTotal:checks.length,matched:watchSide?checks.filter(x=>x[watchSide]).map(x=>x.label):[],pending:watchSide?checks.filter(x=>!x[watchSide]).map(x=>x.label):[],blocked:readiness.filter(x=>!x.ok).map(x=>x.label),pattern:watchSide?setups[watchSide]:null,asOf:last?.[0]??null};
@@ -218,7 +258,7 @@ if(selected){const l=selected[best],en=l.ask,sl=Math.floor(en*0.7*20)/20,rr=en-s
 }
 if(!expiryPaper.signal)expiryPaper.reason='WAIT — '+(expiryPaper.gates.filter(x=>!x.ok).map(x=>x.label).join('; ')||'No valid executable price.')+'.';
 }
-if(paperAvailable){try{if(paperActive){await observePaper(sql,paperUser,paperActive,paperLeg,expiry,mins);}else if(inHours&&mins<910&&candleFresh&&indexAligned&&providerCooldownUntil<=Date.now()){await registerPaper(sql,paperUser,today,symbol,expiry,signal,conditionalPlan,best?atm[best].key:null);}}catch{paperError='Paper tracking update unavailable';}}
+if(paperAvailable){try{if(paperActive){await observePaper(sql,paperUser,paperActive,paperLeg,expiry,mins,candleFresh&&indexAligned&&last?{close:last[4],completedAt:Date.parse(last[0])+300000}:null);}else if(inHours&&mins<910&&candleFresh&&indexAligned&&providerCooldownUntil<=Date.now()){await registerPaper(sql,paperUser,today,symbol,expiry,signal,conditionalPlan,best?atm[best].key:null);}}catch{paperError='Paper tracking update unavailable';}}
 const atmQuote={strike:atm.strike,ce:atm.ce,pe:atm.pe};
 if(summaryOnly)return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,paperError,signal,candleFresh,inHours,asOf:new Date().toISOString(),metrics:{rsi:r,pcr,supertrendDirection:tech.supertrendDirection},watch:watch?{key:watch.key,bid:watch.bid,quoteTime:watch.quoteTime}:null});
 return json({ok:true,symbol,spot,dataCheck,expiry,atmQuote,expiryPaper,directionalWatch,weighted,conditionalPlan,paperError,expiries,chain,candles,history:{sessions:historySessions.length,candles:historical.length,from:historySessions[0]??null,to:prevSession??null,completedToday:todayClosed.length},metrics:{...tech,previousHigh,previousLow,previousClose,pivot,pivotR1:pivot===null?null:2*pivot-previousLow,pivotS1:pivot===null?null:2*pivot-previousHigh,openingHigh,openingLow,rsi:r,ema9:e9,ema21:e21,atr,pcr,callOI:coi,putOI:poi,callChange:cchg,putChange:pchg,support,resistance,maxPain,atm:atm.strike},signal,diagnostics:{readiness,checks,triggerHigh,triggerLow,lastCompletedAt:last?.[0]??null},research,asOf:new Date().toISOString(),candleFresh,inHours});
