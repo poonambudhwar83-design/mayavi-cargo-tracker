@@ -47,7 +47,7 @@ const key=url.toString(),ttl=path.endsWith('/expiries')||path.endsWith('/contrac
 const hit=providerCache.get(key);if(hit&&Date.now()-hit.at<ttl)return hit.payload;
 if(providerCooldownUntil>Date.now())throw new Error('Market provider HTTP 429 — cooling down; no fresh entry.');
 if(pendingRequests.has(key))return pendingRequests.get(key);
-const job=(async()=>{const at=Math.max(Date.now(),nextProviderAt);nextProviderAt=at+350;await delay(Math.max(0,at-Date.now()));if(providerCooldownUntil>Date.now())throw new Error('Market provider HTTP 429 — cooling down; no fresh entry.');
+const job=(async()=>{const at=Math.max(Date.now(),nextProviderAt);nextProviderAt=at+750;await delay(Math.max(0,at-Date.now()));if(providerCooldownUntil>Date.now())throw new Error('Market provider HTTP 429 — cooling down; no fresh entry.');
 const res=await fetch(url,{headers:{Authorization:'Bearer '+await accessToken(),Accept:'application/json','X-API-VERSION':'1.0'},cache:'no-store',signal:AbortSignal.timeout(12000)});
 if(res.status===401){cachedToken=null;tokenUntil=0;}
 if(res.status===429){const raw=res.headers.get('retry-after'),seconds=raw?Number(raw):NaN,date=raw?Date.parse(raw):NaN,wait=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?date-Date.now():60000;providerCooldownUntil=Date.now()+Math.max(60000,wait);throw new Error('Market provider HTTP 429 — rate limit; automatic cooldown active.');}
@@ -60,11 +60,11 @@ const levels=side=>Array.isArray(side)?side.map(x=>({price:positive(x?.price),qt
 const buys=levels(q?.depth?.buy).sort((a,b)=>b.price-a.price),sells=levels(q?.depth?.sell).sort((a,b)=>a.price-b.price);
 const topBid=positive(q?.bid_price),topAsk=positive(q?.offer_price),depthBid=buys[0]?.price??null,depthAsk=sells[0]?.price??null;
 const valid=(b,a)=>b!==null&&a!==null&&a>=b;
-if(valid(topBid,topAsk)&&q?.bid_quantity!==0&&q?.offer_quantity!==0)return {bid:topBid,ask:topAsk,source:'top quote'};
+if(valid(topBid,topAsk)&&num(q?.bid_quantity)!==0&&num(q?.offer_quantity)!==0)return {bid:topBid,ask:topAsk,source:'top quote'};
 if(valid(depthBid,depthAsk))return {bid:depthBid,ask:depthAsk,source:'market depth'};
 return {bid:null,ask:null,source:'unavailable'};
 }
-async function enrich(exchange,leg){if(!leg.key)return;try{const q=await provider('/v1/live-data/quote',{exchange,segment:'FNO',trading_symbol:leg.key});const book=bookQuote(q);leg.bid=book.bid;leg.ask=book.ask;leg.bookSource=book.source;leg.quoteStatus=book.source==='unavailable'?'No valid two-sided book returned':'Book available';leg.oiChange=num(q.oi_day_change);if(leg.oiChange===null&&num(q.open_interest)!==null&&num(q.previous_open_interest)!==null)leg.oiChange=num(q.open_interest)-num(q.previous_open_interest);leg.quoteTime=normalizeQuoteTime(q.last_trade_time);leg.quoteLtp=num(q.last_price);}catch(e){leg.quoteStatus=/429/.test(e?.message||'')?'Rate limited':'Quote request unavailable';/* Never fabricate. */}}
+async function enrich(exchange,leg){if(!leg.key)return;try{const q=await provider('/v1/live-data/quote',{exchange,segment:'FNO',trading_symbol:leg.key});const book=bookQuote(q);leg.bid=book.bid;leg.ask=book.ask;leg.bookSource=book.source;leg.quoteStatus=book.source==='unavailable'?'No valid two-sided book returned':'Book available';leg.oiChange=num(q.oi_day_change);if(leg.oiChange===null&&num(q.open_interest)!==null&&num(q.previous_open_interest)!==null)leg.oiChange=num(q.open_interest)-num(q.previous_open_interest);leg.quoteTime=normalizeQuoteTime(q.last_trade_time);leg.quoteLtp=num(q.last_price);if(num(q.volume)!==null)leg.volume=num(q.volume);}catch(e){leg.quoteStatus=/429/.test(e?.message||'')?'Rate limited':'Quote request unavailable';/* Never fabricate. */}}
 export async function GET(request){
 try{
 const session=readSession(request);if(session?.role!=='admin')return json({ok:false,error:'Admin access required.'},403);
@@ -183,7 +183,10 @@ let signal={side:'WAIT',reason:score<75?'Weighted score below 75/100.':!best?'Di
 if(best&&score>=75&&gates.every(x=>x.ok)){const direction=best.toUpperCase();signal={side:direction,strike:atm.strike,key:leg.key,entry,stop,target,target1,score,tier,pattern:setups[best],spotStop:direction==='CE'?last[4]-atr:last[4]+atr,quoteTime:new Date(qt).toISOString(),reason:'Experimental weighted paper setup '+score+'/100; '+setups[best]+'. Targets 1R and 2R; gross planned reward, excluding costs.'};}
 // Show a non-executable planning scenario only for a favorable directional score.
 // Never substitute last traded price for executable ask; mandatory entry gates are unchanged.
-const conditionalPlan=best&&score>=75&&signal.side==='WAIT'&&inHours&&mins<910&&candleFresh&&indexAligned&&gates[3].ok&&providerCooldownUntil<=Date.now()?{side:best.toUpperCase(),strike:atm.strike,expiry,score,tier,referenceAsk:quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8?entry:null,stop:quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8?stop:null,target1:quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8?target1:null,target2:quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8?target:null,quoteTime:quoteFresh?new Date(qt).toISOString():null,pending:gates.filter(x=>!x.ok).map(x=>x.label),exitTime:'15:20 IST',status:'CONDITIONAL — NOT AN ENTRY'}:null;
+const liquidAsk=quoteFresh&&gates[6].ok&&risk>0&&target-entry>=2*risk-1e-8;
+const referencePrice=liquidAsk?entry:quoteFresh&&leg?.quoteLtp>0?leg.quoteLtp:null;
+const refStop=referencePrice>0?Math.floor(referencePrice*0.8*20)/20:null,refRisk=refStop>0?referencePrice-refStop:null;
+const conditionalPlan=best&&score>=75&&signal.side==='WAIT'&&inHours&&mins<910&&candleFresh&&gates[3].ok&&providerCooldownUntil<=Date.now()?{side:best.toUpperCase(),strike:atm.strike,expiry,score,tier,referencePrice:refRisk>0?referencePrice:null,referenceSource:liquidAsk?'ASK':'LTP',stop:refRisk>0?refStop:null,target1:refRisk>0?Math.ceil((referencePrice+refRisk)*20)/20:null,target2:refRisk>0?Math.ceil((referencePrice+2*refRisk)*20)/20:null,quoteTime:quoteFresh?new Date(qt).toISOString():null,pending:gates.filter(x=>!x.ok).map(x=>x.label),exitTime:'15:20 IST',status:'CONDITIONAL — NOT AN ENTRY'}:null;
 const counts={ce:checks.filter(x=>x.ce).length,pe:checks.filter(x=>x.pe).length};
 const watchSide=inHours&&mins<910&&candleFresh&&indexAligned&&todayClosed.length>=3?['ce','pe'].find(k=>counts[k]>=4&&counts[k]>counts[k==='ce'?'pe':'ce']&&checks[0][k]&&(checks[5][k]||checks[6][k])):null;
 const directionalWatch={side:watchSide?.toUpperCase()||'NEUTRAL',counts,filterTotal:checks.length,matched:watchSide?checks.filter(x=>x[watchSide]).map(x=>x.label):[],pending:watchSide?checks.filter(x=>!x[watchSide]).map(x=>x.label):[],blocked:readiness.filter(x=>!x.ok).map(x=>x.label),pattern:watchSide?setups[watchSide]:null,asOf:last?.[0]??null};
