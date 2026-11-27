@@ -54,7 +54,17 @@ if(res.status===429){const raw=res.headers.get('retry-after'),seconds=raw?Number
 if(!res.ok)throw new Error('Market provider HTTP '+res.status+' (check Groww approval or subscription).');const body=await res.json();if(body.status!=='SUCCESS')throw new Error('Market provider did not return successful data.');
 providerCache.set(key,{at:Date.now(),payload:body.payload});if(providerCache.size>200){for(const [k,v] of providerCache)if(Date.now()-v.at>60000)providerCache.delete(k);while(providerCache.size>200)providerCache.delete(providerCache.keys().next().value);}return body.payload;})().finally(()=>pendingRequests.delete(key));pendingRequests.set(key,job);return job;}
 function normalizeQuoteTime(v){const n=num(v);let t=n===null?(typeof v==='string'?Date.parse(stamp(v)):NaN):n>=1e15?n/1000:n>=1e12?n:n>=1e9?n*1000:NaN;return Number.isFinite(t)&&t>=Date.UTC(2020,0,1)&&t<=Date.now()+10000?Math.floor(t):null;}
-async function enrich(exchange,leg){if(!leg.key)return;try{const q=await provider('/v1/live-data/quote',{exchange,segment:'FNO',trading_symbol:leg.key});leg.bid=num(q.bid_price);leg.ask=num(q.offer_price);leg.oiChange=num(q.oi_day_change);if(leg.oiChange===null&&num(q.open_interest)!==null&&num(q.previous_open_interest)!==null)leg.oiChange=num(q.open_interest)-num(q.previous_open_interest);leg.quoteTime=normalizeQuoteTime(q.last_trade_time);leg.quoteLtp=num(q.last_price);}catch{/* Missing quote stays null, never fabricate. */}}
+function bookQuote(q){
+const positive=v=>{const n=num(v);return n!==null&&n>0?n:null;};
+const levels=side=>Array.isArray(side)?side.map(x=>({price:positive(x?.price),qty:positive(x?.quantity)})).filter(x=>x.price!==null&&x.qty!==null):[];
+const buys=levels(q?.depth?.buy).sort((a,b)=>b.price-a.price),sells=levels(q?.depth?.sell).sort((a,b)=>a.price-b.price);
+const topBid=positive(q?.bid_price),topAsk=positive(q?.offer_price),depthBid=buys[0]?.price??null,depthAsk=sells[0]?.price??null;
+const valid=(b,a)=>b!==null&&a!==null&&a>=b;
+if(valid(topBid,topAsk)&&q?.bid_quantity!==0&&q?.offer_quantity!==0)return {bid:topBid,ask:topAsk,source:'top quote'};
+if(valid(depthBid,depthAsk))return {bid:depthBid,ask:depthAsk,source:'market depth'};
+return {bid:null,ask:null,source:'unavailable'};
+}
+async function enrich(exchange,leg){if(!leg.key)return;try{const q=await provider('/v1/live-data/quote',{exchange,segment:'FNO',trading_symbol:leg.key});const book=bookQuote(q);leg.bid=book.bid;leg.ask=book.ask;leg.bookSource=book.source;leg.quoteStatus=book.source==='unavailable'?'No valid two-sided book returned':'Book available';leg.oiChange=num(q.oi_day_change);if(leg.oiChange===null&&num(q.open_interest)!==null&&num(q.previous_open_interest)!==null)leg.oiChange=num(q.open_interest)-num(q.previous_open_interest);leg.quoteTime=normalizeQuoteTime(q.last_trade_time);leg.quoteLtp=num(q.last_price);}catch(e){leg.quoteStatus=/429/.test(e?.message||'')?'Rate limited':'Quote request unavailable';/* Never fabricate. */}}
 export async function GET(request){
 try{
 const session=readSession(request);if(session?.role!=='admin')return json({ok:false,error:'Admin access required.'},403);
