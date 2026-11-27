@@ -3,7 +3,8 @@ import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE'};
+const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
+const equityOptions=new Set(['RELIANCE','HDFCBANK']);
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
 const num=v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const day=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -146,7 +147,7 @@ const gates=[
 {label:'Market open / before 3:10 PM',ok:inHours&&mins<910},
 {label:'Fresh completed candle and index cross-check',ok:candleFresh&&indexAligned},
 {label:'At least three completed candles today',ok:todayClosed.length>=3},
-{label:'Non-expiry day',ok:expiry>today},
+{label:'Non-expiry day; stock options require >3 calendar days to expiry',ok:expiry>today&&(!equityOptions.has(symbol)||Date.parse(expiry)-Date.parse(today)>3*86400000)},
 {label:'Price action confirmation',ok:Boolean(best&&setups[best])},
 {label:'Fresh option last-trade timestamp',ok:quoteFresh},
 {label:'Liquidity / bid-ask spread at most 2%',ok:Boolean(leg?.key&&leg.bid>0&&entry>=leg.bid&&entry>0&&(entry-leg.bid)/entry<=0.02&&leg.volume>0)},
