@@ -5,7 +5,7 @@ import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',BEL:'NSE',HCLTECH:'NSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
-const retired=new Set(['RELIANCE','HDFCBANK']);
+const retired=new Set(['RELIANCE','HDFCBANK','BEL','HCLTECH']);
 const equityOptions=new Set(['BEL','HCLTECH','RELIANCE','HDFCBANK']);
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
 const num=v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null;
