@@ -41,6 +41,7 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
       ]:[])
     ]});
     if(admin){
+      sections.push({title:'TRADING',items:[page('stocks','Indices / Stocks','STOCKS'),page('commodities','Commodities','COMMODITIES')]});
       sections.push({title:'FINANCE',items:[
         page('import-profit','Import Profit Sheet','IMPORT_PROFIT'),
         page('import-customer-allocation','Import Customer P&L','IMPORT_CUSTOMER_ALLOCATION'),
