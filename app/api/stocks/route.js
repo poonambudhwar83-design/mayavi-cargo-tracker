@@ -177,6 +177,45 @@ async function closePaperCron(request){
  return json({ok:true,attempted,remaining:left?.n??null});
 }
 
+
+// Read-only MCX discovery and quotes. Keep commodity entries disabled until complete feed verification.
+const mcxNames=['GOLD','SILVER','CRUDEOIL','NATURALGAS'];
+let mcxMaster=null,mcxMasterAt=0,mcxMasterJob=null;
+async function commodityMaster(){
+ if(mcxMaster&&Date.now()-mcxMasterAt<3600000)return mcxMaster;
+ if(!mcxMasterJob)mcxMasterJob=(async()=>{
+  const r=await fetch('https://growwapi-assets.groww.in/instruments/instrument.csv',{signal:AbortSignal.timeout(10000),cache:'no-store'});
+  if(!r.ok)throw Error('Groww instrument master unavailable');
+  const split=l=>(l.match(/("(?:[^"]|"")*"|[^,]*)(,|$)/g)||[]).filter((x,i,a)=>x!==''||i<a.length-1).map(x=>x.replace(/,$/,'').replace(/^"|"$/g,'').replace(/""/g,'"').trim());
+  const lines=(await r.text()).split(/\r?\n/),h=split(lines.shift()||'').map(x=>x.replace(/^\uFEFF/,''));
+  const ix=k=>h.indexOf(k);
+  for(const k of ['exchange','trading_symbol','groww_symbol','underlying_symbol','expiry_date','instrument_type','strike_price','lot_size'])if(ix(k)<0)throw Error('Groww instrument columns unavailable');
+  const rows=[];
+  for(const l of lines){if(!l.startsWith('MCX,')&&!l.includes('MCX'))continue;const a=split(l),symbol=a[ix('underlying_symbol')],type=a[ix('instrument_type')],expiry=a[ix('expiry_date')],key=a[ix('trading_symbol')],groww=a[ix('groww_symbol')];if(a[ix('exchange')]!=='MCX'||!mcxNames.includes(symbol)||!['FUT','CE','PE'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||!key||!groww)continue;rows.push({symbol,type,expiry,key,groww,strike:num(a[ix('strike_price')]),masterLot:num(a[ix('lot_size')])});}
+  if(!rows.length)throw Error('No MCX contracts found in Groww instrument master');
+  mcxMaster=rows;mcxMasterAt=Date.now();return rows;
+ })().finally(()=>{mcxMasterJob=null});
+ return mcxMasterJob;
+}
+async function commoditySnapshot(symbol){
+ if(!mcxNames.includes(symbol))return json({ok:false,error:'Unsupported commodity'},400);
+ const today=day(),rows=(await commodityMaster()).filter(x=>x.symbol===symbol&&x.expiry>=today).sort((a,b)=>a.expiry.localeCompare(b.expiry));
+ const future=rows.find(x=>x.type==='FUT');if(!future)return json({ok:false,error:'No upcoming MCX futures contract in Groww master'},422);
+ const quote=async c=>{try{const q=await provider('/v1/live-data/quote',{exchange:'MCX',segment:'COMMODITY',trading_symbol:c.key});const book=bookQuote(q),t=normalizeQuoteTime(q.last_trade_time),ltp=num(q.last_price);return {...c,ltp:ltp>0?ltp:null,bid:book.bid,ask:book.ask,quoteTime:t,fresh:Number.isFinite(t)&&Date.now()-t>=-10000&&Date.now()-t<120000,volume:num(q.volume),oi:num(q.open_interest)};}catch(e){return {...c,error:/^Market provider/.test(e?.message||'')?e.message:'Groww MCX quote unavailable'};}};
+ const f=await quote(future);
+ const options=rows.filter(x=>x.type!=='FUT'&&x.expiry>today&&x.strike>0);
+ const expiry=options[0]?.expiry||null;
+ const opt=options.filter(x=>x.expiry===expiry);
+ const strikes=[...new Set(opt.filter(x=>x.type==='CE'&&opt.some(y=>y.type==='PE'&&y.strike===x.strike)).map(x=>x.strike))];
+ const strike=f.ltp>0&&strikes.length?strikes.reduce((a,b)=>Math.abs(a-f.ltp)<=Math.abs(b-f.ltp)?a:b):null;
+ const pair=strike==null?[]:opt.filter(x=>x.strike===strike);
+ const quotes=await Promise.all(['CE','PE'].map(type=>{const c=pair.find(x=>x.type===type);return c?quote(c):null;}));
+ let candles=0,chainAvailable=false,historyError=null,chainError=null;
+ try{const p=await provider('/v1/historical/candles',{exchange:'MCX',segment:'COMMODITY',groww_symbol:future.groww,start_time:today+' 09:00:00',end_time:today+' 23:55:00',candle_interval:'5minute'});candles=Array.isArray(p?.candles)?p.candles.length:0;}catch(e){historyError=/^Market provider/.test(e?.message||'')?e.message:'MCX candles unavailable';}
+ if(expiry){try{const p=await provider('/v1/option-chain/exchange/MCX/underlying/'+symbol,{expiry_date:expiry});chainAvailable=Boolean(p?.strikes&&Object.keys(p.strikes).length);}catch(e){chainError=/^Market provider/.test(e?.message||'')?e.message:'MCX option chain unavailable';}}
+ return json({ok:true,symbol,future:f,expiry,strike,call:quotes[0],put:quotes[1],candles,chainAvailable,historyError,chainError,entryEnabled:false,asOf:new Date().toISOString()});
+}
+
 export async function GET(request){
 try{
 if(new URL(request.url).searchParams.get('paperClose')==='1')return await closePaperCron(request);
@@ -185,7 +224,7 @@ const url=process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.NEON_D
 if(!url)return json({ok:false,error:'Authentication unavailable.'},503);
 const sql=neon(url);const [u]=await sql`SELECT role,session_version,is_active FROM mayavi_users WHERE lower(username)=${session.username} LIMIT 1`;
 if(!u?.is_active||u.role!=='admin'||Number(u.session_version)!==Number(session.sessionVersion||0))return json({ok:false,error:'Admin access required.'},403);
-const q=new URL(request.url).searchParams, symbol=q.get('symbol')||'NIFTY',exchange=instruments[symbol];if(!Object.hasOwn(instruments,symbol))return json({ok:false,error:'Unsupported index.'},400);
+const q=new URL(request.url).searchParams;if(q.has('commodityQuote'))return await commoditySnapshot(q.get('commodityQuote'));const symbol=q.get('symbol')||'NIFTY',exchange=instruments[symbol];if(!Object.hasOwn(instruments,symbol))return json({ok:false,error:'Unsupported index.'},400);
 const today=day(),now=Date.now(),year=Number(today.slice(0,4));
 const paperUser=String(session.username).toLowerCase();let paperActive=null,paperAvailable=false,paperError=null;try{await initPaper(sql);await expirePaper(sql,paperUser,today);paperAvailable=true;if(q.get('paperReport')==='1')return json({ok:true,rows:await paperReport(sql,paperUser,today)});paperActive=await openPaper(sql,paperUser,symbol);}catch{paperAvailable=false;paperError='Paper history storage temporarily unavailable';if(q.get('paperReport')==='1')return json({ok:false,error:paperError},503);}
 if(retired.has(symbol)){if(!paperAvailable)return json({ok:false,error:'Paper history storage temporarily unavailable'},503);if(!paperActive)return json({ok:true,symbol,monitorOnly:true});await accessToken();const leg={key:paperActive.contract_key};await enrich(exchange,leg);await observePaper(sql,paperUser,paperActive,leg,paperActive.expiry_text,0);return json({ok:true,symbol,monitorOnly:true});}
