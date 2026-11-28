@@ -304,8 +304,24 @@ if(q.get('sunil')==='1'){
   const quote=l=>({ask:l.ask,bid:l.bid,time:l.quoteTime});
   const sunil=scanSunil({date:today,now:Date.now(),indexRows:closed,ceRows,peRows,quotes:{CE:quote(atm.ce),PE:quote(atm.pe)},aligned:indexAligned,contractVerified:true});
   const morning=scanMorningPriceAction({date:today,now:Date.now(),indexRows:closed,indexMinuteRows});
+  // Rank current ATM and nearest ITM automatically only when the strict setup direction is confirmed.
+  let strikeResearch=null,selectedRows=[];
+  if(sunil.confirmedSide&&sunil.status!=='NO_TRADE'){
+   try{
+    const side=sunil.confirmedSide,strikes=chain.map(x=>x.strike),universe=strikeUniverse(spot,strikes,side),candidates=[];
+    for(const u of universe){
+     const leg=chain.find(x=>x.strike===u.strike)?.[side.toLowerCase()];if(!leg?.key)continue;
+     if(u.strike!==atm.strike||!leg.quoteTime)await enrich(exchange,leg);
+     const rows=u.strike===atm.strike?(side==='CE'?ceRows:peRows):await fetchSide(side,u.strike);
+     candidates.push({strike:u.strike,side,rows,quote:quote(leg)});
+    }
+    strikeResearch=compareStrikeSpeed({date:today,now:Date.now(),spot,side,strikes,candidates});
+    selectedRows=candidates.find(x=>x.strike===strikeResearch.preferred?.strike)?.rows||[];
+   }catch{strikeResearch={status:'WAIT',reason:'Strike speed data unavailable'};}
+  }
+  const automatic=selectSunilSetup({scan:sunil,morning,strikeResearch,selectedRows,date:today,now:Date.now(),spot});
   // Index pattern is informational; separate option confirmation and session lock remain in force.
-  return json({...base,sunil:{...sunil,selectedSetup:selectSunilSetup({scan:sunil,morning,now:Date.now()}),morning:{...morning,optionGate:sunil.directionLock?.status==='DIRECTION_LOCKED'&&sunil.directionLock.side==='PE'&&sunil.risk?.status==='RESEARCH'?'DIRECTION_ALIGNED':'WAIT_OR_BLOCKED'}},notes:['Opening-ATM pair and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
+  return json({...base,sunil:{...sunil,selectedSetup:selectSunilSetup({scan:sunil,morning,now:Date.now()}),morning:{...morning,optionGate:sunil.directionLock?.status==='DIRECTION_LOCKED'&&sunil.directionLock.side==='PE'&&sunil.risk?.status==='RESEARCH'?'DIRECTION_ALIGNED':'WAIT_OR_BLOCKED'}},notes:['Fixed opening-ATM direction pair, current ATM/nearest ITM speed ranking and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
  }catch{return wait('Sunil option candle data temporarily unavailable.');}
 }
 const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
