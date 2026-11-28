@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} from '../../../lib/stocksPaperPerformance.js';
+import {scanSunil,SUNIL_RULES} from '../../../lib/sunilPaperStrategy.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',BEL:'NSE',HCLTECH:'NSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
@@ -271,6 +272,23 @@ await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[]),...(paperLeg?
 cchg=atm.ce.oiChange;pchg=atm.pe.oiChange;
 const t=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const part=k=>t.find(x=>x.type===k)?.value;const mins=Number(part('hour'))*60+Number(part('minute'));const inHours=!['Sat','Sun'].includes(part('weekday'))&&mins>=555&&mins<930;
 const candleFresh=Boolean(last&&now-Date.parse(last[0])-300000>=0&&now-Date.parse(last[0])-300000<420000&&new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(last[0]))===today);
+// Explicit admin-only Sunil paper research request, isolated from regular paper entries.
+if(q.get('sunil')==='1'){
+ const base={ok:true,symbol,expiry,strike:atm.strike,rules:SUNIL_RULES,asOf:new Date().toISOString(),paperOnly:true};
+ const wait=reason=>json({...base,sunil:{status:'WAIT',reason}});
+ if(symbol!=='BANKNIFTY')return wait('Initial research limited to BANKNIFTY.');
+ if(!inHours||mins>=910||!candleFresh||!indexAligned)return wait('Market closed, late session or fresh aligned data unavailable.');
+ if(!atm.ce.key||!atm.pe.key||expiry<=today)return wait('Verified non-expiry-day CE and PE required.');
+ try{
+  const d=new Date(expiry+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
+  const from=new Date(Date.parse(today+'T00:00:00+05:30')-7*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+  const fetchSide=async side=>cleanCandles((await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:exchange+'-'+symbol+'-'+label+'-'+atm.strike+'-'+side,start_time:from+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}))?.candles);
+  const [ceRows,peRows]=await Promise.all([fetchSide('CE'),fetchSide('PE')]);
+  const quote=l=>({ask:l.ask,bid:l.bid,time:l.quoteTime});
+  const sunil=scanSunil({date:today,now:Date.now(),indexRows:closed,ceRows,peRows,quotes:{CE:quote(atm.ce),PE:quote(atm.pe)},aligned:indexAligned,contractVerified:true});
+  return json({...base,sunil,notes:['ATM is a testing assumption. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
+ }catch{return wait('Sunil option candle data temporarily unavailable.');}
+}
 const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
 const higherTrend=h9===null||h21===null?'UNAVAILABLE':higherCloses.at(-1)>h9&&h9>h21?'BULLISH':higherCloses.at(-1)<h9&&h9<h21?'BEARISH':'NEUTRAL';
 const previous=closed.at(-2),prevEma=ema(closes.slice(0,-1),9);
