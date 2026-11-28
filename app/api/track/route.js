@@ -33,6 +33,7 @@ import { trackVirgin } from '../../../lib/virgin.js';
 import { trackIndigo } from '../../../lib/indigo.js';
 import { trackAirAsia } from '../../../lib/airAsia.js';
 import { trackKlm } from '../../../lib/klm.js';
+import { guardAirFranceArrival } from '../../../lib/airFranceArrival.js';
 import { trackEthiopian } from '../../../lib/ethiopian.js';
 import { markEthiopianReschedulePending } from '../../../lib/ethiopianReschedule.js';
 import { trackThai } from '../../../lib/thai.js';
@@ -485,6 +486,11 @@ async function dedicatedOfficial(mawb,options={}){
       debug:{stage:'GULF_AIR_PARCELS_AND_CHAMP_FAILED',parcels:parcels.debug||{},champ:official.debug||{}}};
   }
   if(mawb.startsWith('141-')) return trackFlydubai(mawb);
+  if(mawb.startsWith('057-')){
+    const result=await trackKlm(mawb);
+    if(result?.ok&&result.shipment?.klmLiveVerifiedAt)return {...result,shipment:guardAirFranceArrival(result.shipment)};
+    return result;
+  }
   if(mawb.startsWith('074-')){
     // Run the KLM-only official AWB reader directly in this Vercel function.
     // A signed request back to this very deployment used to stall for 120s
@@ -741,7 +747,8 @@ async function handle(mawb,fallback={}){
   const malaysiaFastPath=mawb.startsWith('232-');
   const turkishFastPath=mawb.startsWith('235-');
   const indigoFastPath=mawb.startsWith('312-');
-  const klmFastPath=mawb.startsWith('074-');
+  const airFranceFastPath=mawb.startsWith('057-');
+  const klmFastPath=mawb.startsWith('074-')||airFranceFastPath;
   const ethiopianFastPath=mawb.startsWith('071-');
   const etihadFastPath=mawb.startsWith('607-');
   const omanFastPath=mawb.startsWith('910-');
@@ -856,7 +863,7 @@ async function handle(mawb,fallback={}){
   const cathayResult=null;
   let ocrResult=null;
   const browserShipment=browserResult?.shipment||{};
-  const skipGenericOcr=mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('141-')||mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('607-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-')||mawb.startsWith('072-');
+  const skipGenericOcr=airFranceFastPath||mawb.startsWith('071-')||mawb.startsWith('074-')||mawb.startsWith('141-')||mawb.startsWith('065-')||mawb.startsWith('098-')||mawb.startsWith('125-')||mawb.startsWith('157-')||mawb.startsWith('160-')||mawb.startsWith('176-')||mawb.startsWith('217-')||mawb.startsWith('229-')||mawb.startsWith('232-')||mawb.startsWith('235-')||mawb.startsWith('312-')||mawb.startsWith('514-')||mawb.startsWith('607-')||mawb.startsWith('738-')||mawb.startsWith('910-')||mawb.startsWith('932-')||mawb.startsWith('072-');
   const needsOcr=!skipGenericOcr&&Boolean(browserResult?.screenshotBase64)&&(!concrete(browserShipment)||!browserShipment.bookingDate||browserShipment.status==='DELAYED'||browserShipment.status==='TRACKING');
   if(needsOcr)ocrResult=await readTrackingScreenshot({mawb,screenshotBase64:browserResult.screenshotBase64});
 
@@ -2002,6 +2009,7 @@ async function handle(mawb,fallback={}){
     }
   }
 
+  if(airFranceFastPath&&direct)shipment=guardAirFranceArrival(shipment);
   const verifiedStatus=shipment.status&&shipment.status!=='TRACKING';
   const directScreenshot=Boolean(directResult?.screenshotCaptured);
   const directOcr=Boolean(directResult?.screenshotOcrUsed);
@@ -2033,12 +2041,31 @@ async function handle(mawb,fallback={}){
       // manual refresh that can leave two stale 8-piece flight-history rows.
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.warn('saudia_verified_split_db_save_failed',mawb,e?.message||String(e));}
+    }else if(airFranceFastPath){
+      // Only write airline-owned evidence. Do not overwrite Mail/Customs or
+      // regress a previously verified master arrival on incomplete evidence.
+      try{
+        const url=trackingDbUrl();
+        if(url){
+          const sql=neon(url),awb=mawb.replace(/\D/g,'');
+          const [row]=await sql`SELECT data,version FROM mayavi_shipments WHERE awb=${awb} LIMIT 1`;
+          const patch=row&&safeAirlineMovementPatch(row.data||{},shipment);
+          if(patch){
+            if(shipment.afFullArrivalUnverified&&row.data?.arrivalIsActual!==true&&!shipment.arrivalEstimate){
+              patch.arrivalDate='';patch.arrivalTime='';patch.arrivalIsActual=false;
+            }
+            if(row.data?.arrivalIsActual!==true&&shipment.pendingPieces!==undefined)patch.pendingPieces=shipment.pendingPieces;
+            const saved=await sql`UPDATE mayavi_shipments SET data=data || ${JSON.stringify({...patch,lastChecked:new Date().toISOString(),trackingError:''})}::jsonb,version=version+1,updated_at=now(),tracking_checked_at=now() WHERE awb=${awb} AND version=${row.version} RETURNING awb`;
+            serverSaved=Boolean(saved?.length);
+          }
+        }
+      }catch(e){console.warn('air_france_verified_save_failed',mawb,e?.message||String(e));}
     }else if((saudiaFastPath&&String(shipment.source||'').includes('SAL complete shipment chronology'))||airIndiaFastPath||qatarFastPath||cathayFastPath||malaysiaFastPath||turkishFastPath||indigoFastPath||klmFastPath||ethiopianFastPath||virginFastPath||vietnamFastPath||kuwaitFastPath||mawb.startsWith('607-')||gulfAirFastPath||flydubaiFastPath||mawb.startsWith('910-')){
       try{serverSaved=(await persistAirIndiaVirginResult(mawb,shipment)).saved===true;}
       catch(e){console.log('mobile_tracking_save_error',mawb,e?.message||String(e));}
     }
     console.log('mawb_tracking_result',mawb,'OK','SCREENSHOT_VERIFIED',shipment.status,'shot',screenshotCaptured,'ocr',screenshotOcrUsed,'bookingDate',shipment.bookingDate||'','arrival',shipment.arrivalDate||'',shipment.arrivalTime||'','parts',Array.isArray(shipment.partShipments)?shipment.partShipments.length:0,'serverSaved',serverSaved);
-    const provider=mawb.startsWith('072-')?(shipment.source||'Gulf Air AWB tracking'):mawb.startsWith('141-')?'flydubai Cargo official Accelya Tracking Details':mawb.startsWith('071-')?'Ethiopian Cargo official Track Your Shipment':mawb.startsWith('074-')?'KLM Cargo AFKLM official Track & Trace':mawb.startsWith('065-')?'Saudia Cargo deep direct track-shipment':mawb.startsWith('098-')?'Air India Cargo Portal':mawb.startsWith('125-')?'British Airways / IAG Cargo official Track & Trace':mawb.startsWith('157-')?'Qatar Cargo dedicated official browser':mawb.startsWith('160-')?'Cathay Cargo Terminal official tracking':mawb.startsWith('176-')?'Emirates eSkyCargo live page':mawb.startsWith('217-')?'THAI Cargo CHORUS public tracking':mawb.startsWith('229-')?'Kuwait Airways Cargo official tracking':mawb.startsWith('232-')?'Malaysia Airlines MASkargo official tracking':mawb.startsWith('235-')?'Turkish Cargo official tracking':mawb.startsWith('312-')?'IndiGo CarGo SmartKargo official form':mawb.startsWith('514-')?'Air Arabia Cargo details-screen screenshot':mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':mawb.startsWith('738-')?'Vietnam Airlines CHAMP Track & Trace':mawb.startsWith('932-')?'Virgin Atlantic Cargo Track Cargo':etihadFastPath?'Etihad Cargo official shipment history':'Official page + screenshot verified';
+    const provider=mawb.startsWith('072-')?(shipment.source||'Gulf Air AWB tracking'):mawb.startsWith('141-')?'flydubai Cargo official Accelya Tracking Details':mawb.startsWith('071-')?'Ethiopian Cargo official Track Your Shipment':airFranceFastPath?'Air France Cargo AFKLM official Track & Trace':mawb.startsWith('074-')?'KLM Cargo AFKLM official Track & Trace':mawb.startsWith('065-')?'Saudia Cargo deep direct track-shipment':mawb.startsWith('098-')?'Air India Cargo Portal':mawb.startsWith('125-')?'British Airways / IAG Cargo official Track & Trace':mawb.startsWith('157-')?'Qatar Cargo dedicated official browser':mawb.startsWith('160-')?'Cathay Cargo Terminal official tracking':mawb.startsWith('176-')?'Emirates eSkyCargo live page':mawb.startsWith('217-')?'THAI Cargo CHORUS public tracking':mawb.startsWith('229-')?'Kuwait Airways Cargo official tracking':mawb.startsWith('232-')?'Malaysia Airlines MASkargo official tracking':mawb.startsWith('235-')?'Turkish Cargo official tracking':mawb.startsWith('312-')?'IndiGo CarGo SmartKargo official form':mawb.startsWith('514-')?'Air Arabia Cargo details-screen screenshot':mawb.startsWith('910-')?'Oman Air Cargo dedicated official tracker':mawb.startsWith('738-')?'Vietnam Airlines CHAMP Track & Trace':mawb.startsWith('932-')?'Virgin Atlantic Cargo Track Cargo':etihadFastPath?'Etihad Cargo official shipment history':'Official page + screenshot verified';
     return Response.json({ok:true,version:VERSION,provider,shipment,serverSaved,screenshotCaptured,screenshotVerified,screenshotOcrUsed,verification:{officialPage:browserResult?.officialTracker||direct?.officialTracker||airline.url||'',browserStage:browserResult?.debug?.stage||directResult?.debug?.stage||'',browserClicked:browserResult?.debug?.attempts?.[0]?.clicked||browserResult?.debug?.setup?.mode||browserResult?.debug?.clicked||directResult?.debug?.nextClicked||'',ocrStatusEvidence:ocr?.statusEvidence||'',ocrSnippet:ocr?.screenshotSnippet||'',bookingDateSource:shipment.bookingDateSource||'',emiratesShipmentId:mawb.startsWith('176-')?(directResult?.debug?.shipmentId||''):'',cathayFlightScreenshot:false,airArabiaNextClicked:mawb.startsWith('514-')?(directResult?.debug?.nextClicked||''):''},debug:{api:apiResult?.debug||null,direct:directResult?.debug||null,browser:browserResult?.debug||null,ocr:ocrResult?.debug||null}});
   }
 
@@ -2062,7 +2089,7 @@ export async function POST(request){
 
 export async function GET(request){
   const q=new URL(request.url).searchParams.get('mawb');
-  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['141 flydubai Mercator SkyChain','020 Lufthansa','074 KLM AFKLM Track & Trace','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','072 Gulf Air CHAMP AWB tracking','232 Malaysia Airlines MASkargo','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','807 AirAsia Cargo SmartKargo','900 Thai AirAsia Cargo SmartKargo','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
+  if(!q)return Response.json({ok:true,version:VERSION,mode:'Every MAWB → official airline page → automatic extraction → shared tracker save',apiProvider:'TrackingMore Air Cargo',apiConfigured:Boolean(process.env.TRACKINGMORE_API_KEY),dedicatedAdapters:['141 flydubai Mercator SkyChain','020 Lufthansa','057 Air France AFKLM Track & Trace','074 KLM AFKLM Track & Trace','065 Saudia deep direct track-shipment','098 Air India Cargo Portal','125 British Airways / IAG Cargo','157 Qatar dedicated official browser','160 Cathay fast terminal','176 Emirates eSkyCargo live page','217 THAI Cargo CHORUS public tracking','229 Kuwait Airways Cargo details table','072 Gulf Air CHAMP AWB tracking','232 Malaysia Airlines MASkargo','235 Turkish Cargo official tracking','312 IndiGo SmartKargo form','807 AirAsia Cargo SmartKargo','900 Thai AirAsia Cargo SmartKargo','514 Air Arabia Cargo details-screen screenshot','738 Vietnam Airlines CHAMP Track & Trace','910 Oman Air Cargo dedicated official tracker','932 Virgin Atlantic Track Cargo'],automaticBrowserCapture:true,automaticScreenshotVerification:true,screenshotOcrFallback:true,bookingDateOcr:true,bookingDateEventBackfill:true,carrierCount:CONFIGURED_PREFIXES.length,configuredPrefixes:CONFIGURED_PREFIXES});
   const mawb=normalizeMawb(q);if(!mawb)return Response.json({ok:false,error:'Enter a valid 11-digit MAWB.'},{status:400});
   if(await privateTrackingBlocked(request,mawb))return Response.json({ok:false,error:'Admin authorization required for this private master.'},{status:403});
   return handle(mawb,{cxFastRefresh:mawb.startsWith('160-')&&
