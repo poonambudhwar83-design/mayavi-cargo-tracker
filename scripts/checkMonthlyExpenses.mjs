@@ -6,7 +6,7 @@ import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
 import {auditOnlyExportShipmentCharge} from '../lib/exportShipmentCharge.js';
 import {exportCategorySummary} from '../lib/exportCategoryBags.js';
 import {branchPayoutForRecord} from '../lib/branchLoads.js';
-import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
+import {importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importHHGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 const importUI=readFileSync('app/ImportProfitSheet.js','utf8');
 const exportUI=readFileSync('app/ExportProfitSheet.js','utf8');
 const api=readFileSync('app/api/monthly-expenses/route.js','utf8');
@@ -21,12 +21,14 @@ const actualImport=sourceCalc(importUI,'function figures(row={}){','function dis
  dataNumber:v=>v===null||v===undefined||v===''?null:Number(v),
  DRIVER_EXPENSE_PER_MAWB:2600,proteinHandlingRate,
  importFreightRegion,importFreightRate,importTotalCost,importNetProfit,
- importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,
+ importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importHHGoodsChargePerBag,
  importGoodsCharge15Percent,importGrossProfit,Number,Math,String
 });
 const examples=[
  {goodsCategory:'HH',origin:'DEL',weight:100,bags:4,totalDuty:1000,rate:500,driverExpense:2600},
  {goodsCategory:'HH',origin:'HKG',weight:100,bags:4,totalDuty:1000,rate:500,driverExpense:2600},
+ {goodsCategory:'HH',origin:'CMB',weight:100,bags:4,totalDuty:1000,rate:500,driverExpense:2600},
+ {goodsCategory:'HH',origin:'Colombo',weight:100,bags:4,totalDuty:1000,rate:500,driverExpense:2600},
  {goodsCategory:'PROTEIN',origin:'DXB',weight:50,bags:2,totalDuty:1000,rate:500,excessWeight:'5'},
  {goodsCategory:'PROTEIN',origin:'SHJ',weight:50,bags:2,totalDuty:1000,rate:500},
  {goodsCategory:'PROTEIN',origin:'AUH',weight:50,bags:2,totalDuty:1000,rate:500},
