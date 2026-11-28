@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completedBars,levels,riskFilter,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
+import {completedBars,levels,riskFilter,openingDirection,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
 const date='2026-11-27',prev='2026-11-26',start=d=>Date.parse(d+'T09:15:00+05:30'),t=start(date),now=t+8*300000+10000;
 const bar=(d,i,o,h,l,c)=>[new Date(start(d)+i*300000).toISOString(),o,h,l,c,100];
 const prior=(o,h,l,c)=>Array.from({length:75},(_,i)=>bar(prev,i,o,h,l,c));
@@ -35,4 +35,26 @@ test('single lot cannot be split; extended trailing is independent',()=>{
  assert.ok(!s.methods.some(m=>m.id==='HALF_CTC'));
  const a=observeExitComparison(s,{bid:200,at:2000});assert.equal(a.methods.find(m=>m.id==='TRAIL_100_60').stop,160);
  const b=observeExitComparison(a,{bid:160,at:3000});assert.equal(comparisonReport(b).find(m=>m.method==='TRAIL_100_60').gross,600);
+});
+
+test('first high-break side stays fixed and later low break locks session',()=>{
+ const l=levels(ce,date,now),p=levels(pe,date,now);
+ assert.equal(openingDirection(l,p).side,'CE');
+ const bad={...l,bars:l.bars.map((b,i)=>i===5?[b[0],118,123,94,119,100]:b)};
+ assert.equal(openingDirection(bad,p).status,'NO_TRADE');
+ const recovered={...bad,bars:[...bad.bars,bar(date,8,130,150,125,145)]};
+ const pnext={...p,bars:[...p.bars,bar(date,8,170,180,160,165)]};
+ assert.equal(openingDirection(recovered,pnext).status,'NO_TRADE');
+});
+test('ambiguous simultaneous high break locks conservatively',()=>{
+ const l=levels(ce,date,now),p=levels(pe,date,now);
+ const both={...p,bars:p.bars.map((b,i)=>i===1?[b[0],240,260,230,245,100]:b)};
+ assert.equal(openingDirection(l,both).ambiguous,true);
+});
+test('opening 40/80 is distinct from second setup and uses premium points',()=>{
+ const twoNow=t+600000+1000;
+ const a=[...prior(150,220,95,150),bar(date,0,100,120,95,115),bar(date,1,115,128,110,125)];
+ const x=scanSunil({...input,now:twoNow,ceRows:a,quotes:{CE:{bid:125,ask:126,time:twoNow-500}}});
+ assert.equal(x.status,'PAPER_CANDIDATE');assert.equal(x.opening40_80.trigger,'FIRST_HIGH_BREAK');
+ assert.equal(x.opening40_80.stop,86);assert.equal(x.opening40_80.target,206);
 });
