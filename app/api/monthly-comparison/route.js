@@ -144,7 +144,7 @@ function importEntries(masters,financials,partDuties,current){
         totalDuty:numberText(isPart?part?.total_duty:saved.total_duty),
         excessWeight:numberText(isPart?part?.excess_weight:saved.excess_weight),
         rate:numberText(saved.rate),goodsCategory:goods==='OTHER'?'':goods,
-        origin,driverExpense:numberText(saved.driver_expense,'2600')
+        origin,clientName:client,driverExpense:numberText(saved.driver_expense,'2600')
       };
       const calc=figures(inputs);
       items.push({

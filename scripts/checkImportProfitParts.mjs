@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {physicalImportProfitRows,selectImportProfitRows} from '../lib/importProfitPhysicalRows.js';
 import {proteinHandlingRate} from '../lib/importProteinDeduction.js';
-import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
+import {IMPORT_FREIGHT_RATES,importFreightRegion,importFreightRate,importTotalCost,importNetProfit,importExcessProfit,importProfitIncludingExcess,importProteinGoodsChargePerBag,importHHGoodsChargePerBag,importGoodsCharge15Percent,importGrossProfit} from '../lib/importFreightCost.js';
 import {readFileSync} from 'node:fs';
 const month='2026-10';
 const mk=(awb,data)=>selectImportProfitRows(data,awb,month,month);
@@ -315,3 +315,13 @@ assert.ok(profitUi.includes("displayAmount(n.averageWeightPerBag)}</td>\n       
   'Gross Profit must be the LAST visible table cell');
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
+
+// Priyanka HH is ₹1,500/bag regardless of origin, including physical parts.
+assert.equal(importHHGoodsChargePerBag('DXB',' Priyanka '),1500);
+assert.equal(importHHGoodsChargePerBag('JFK','PRIYANKA'),1500);
+assert.equal(importHHGoodsChargePerBag('DXB','Other'),340);
+assert.equal(importHHGoodsChargePerBag('HKG','Other'),1500);
+assert.equal(importHHGoodsChargePerBag('DXB','Priyanka Other'),340);
+assert.equal(importGoodsCharge15Percent(4*importHHGoodsChargePerBag('DXB','Priyanka'),1500),900);
+assert.ok(profitUi.includes('importHHGoodsChargePerBag(origin,row.clientName||row.client)'));
+assert.ok(reportApi.includes('origin,clientName:client,driverExpense:'));
