@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} from '../../../lib/stocksPaperPerformance.js';
-import {scanSunil,scanMorningPriceAction,SUNIL_RULES} from '../../../lib/sunilPaperStrategy.mjs';
+import {scanSunil,scanMorningPriceAction,strikeUniverse,compareStrikeSpeed,SUNIL_RULES} from '../../../lib/sunilPaperStrategy.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',BEL:'NSE',HCLTECH:'NSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
@@ -285,7 +285,21 @@ if(q.get('sunil')==='1'){
  try{
   const d=new Date(expiry+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
   const from=new Date(Date.parse(today+'T00:00:00+05:30')-7*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
-  const fetchSide=async side=>cleanCandles((await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:exchange+'-'+symbol+'-'+label+'-'+atm.strike+'-'+side,start_time:from+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}))?.candles);
+  const fetchSide=async (side,strike=atm.strike,fromDate=from)=>cleanCandles((await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:exchange+'-'+symbol+'-'+label+'-'+strike+'-'+side,start_time:fromDate+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}))?.candles);
+  const strikeSide=q.get('strikeSide');
+  if(strikeSide){
+   if(!['CE','PE'].includes(strikeSide))return json({ok:false,error:'Invalid strike side'},400);
+   const strikes=chain.map(x=>x.strike),universe=strikeUniverse(spot,strikes,strikeSide),candidates=[];
+   for(const u of universe){
+    const leg=chain.find(x=>x.strike===u.strike)?.[strikeSide.toLowerCase()];
+    if(!leg?.key)continue;
+    if(!leg.quoteTime)await enrich(exchange,leg);
+    const rows=await fetchSide(strikeSide,u.strike,today);
+    candidates.push({strike:u.strike,side:strikeSide,rows,quote:{ask:leg.ask,bid:leg.bid,time:leg.quoteTime}});
+   }
+   const strikeResearch=compareStrikeSpeed({date:today,now:Date.now(),spot,side:strikeSide,strikes,candidates});
+   return json({...base,strikeResearch,notes:['Strike ranking uses current spot, independently of the fixed opening pair; not an entry recommendation.']});
+  }
   const [ceRows,peRows,indexMinuteRows]=await Promise.all([fetchSide('CE'),fetchSide('PE'),mins<690?provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'1minute'}).then(p=>cleanCandles(p?.candles,1)).catch(()=>[]):Promise.resolve([])]);
   const quote=l=>({ask:l.ask,bid:l.bid,time:l.quoteTime});
   const sunil=scanSunil({date:today,now:Date.now(),indexRows:closed,ceRows,peRows,quotes:{CE:quote(atm.ce),PE:quote(atm.pe)},aligned:indexAligned,contractVerified:true});
