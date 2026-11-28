@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completedBars,levels,riskFilter,openingDirection,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
+import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
 const date='2026-11-27',prev='2026-11-26',start=d=>Date.parse(d+'T09:15:00+05:30'),t=start(date),now=t+8*300000+10000;
 const bar=(d,i,o,h,l,c)=>[new Date(start(d)+i*300000).toISOString(),o,h,l,c,100];
 const prior=(o,h,l,c)=>Array.from({length:75},(_,i)=>bar(prev,i,o,h,l,c));
@@ -57,4 +57,16 @@ test('opening 40/80 is distinct from second setup and uses premium points',()=>{
  const x=scanSunil({...input,now:twoNow,ceRows:a,quotes:{CE:{bid:125,ask:126,time:twoNow-500}}});
  assert.equal(x.status,'PAPER_CANDIDATE');assert.equal(x.opening40_80.trigger,'FIRST_HIGH_BREAK');
  assert.equal(x.opening40_80.stop,86);assert.equal(x.opening40_80.target,206);
+});
+
+test('morning previous close breakdown uses completed minute candles and index units',()=>{
+ const m=(i,o,h,l,c)=>[new Date(t+i*60000).toISOString(),o,h,l,c,100];
+ const minuteRows=[m(0,48100,48120,48090,48110),m(1,48110,48115,48085,48090),m(2,48090,48100,48070,48075),m(3,48075,48080,48048,48055),m(4,48055,48065,48048,48052),m(5,48052,48060,48044,48049),m(6,48049,48052,48035,48039),m(7,48039,48043,48015,48020)];
+ const five=[...prior(48050,48100,47950,48050),bar(date,0,48100,48120,48048,48052)];
+ const args={date,now:t+8*60000+1000,indexRows:five,indexMinuteRows:minuteRows};
+ const result=scanMorningPriceAction(args);
+ assert.equal(result.status,'INDEX_PATTERN');assert.equal(result.pattern,'PREVIOUS_CLOSE_BREAKDOWN');assert.equal(result.units,'INDEX_POINTS');assert.equal(result.spotStop,48060);assert.equal(result.spotTargets[0],47950);
+ assert.equal(scanMorningPriceAction({...args,indexMinuteRows:minuteRows.filter((_,i)=>i!==2)}).status,'WAIT');
+ assert.equal(scanMorningPriceAction({...args,now:Date.parse(date+'T11:30:00+05:30')}).status,'WAIT');
+ assert.equal(scanMorningPriceAction({...args,now:t+7*60000+1000}).status,'WAIT');
 });
