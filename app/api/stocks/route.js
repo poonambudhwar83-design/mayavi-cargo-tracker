@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { readSession } from '../../../lib/mayaviAuth.js';
 import {initPaper,expirePaper,openPaper,observePaper,registerPaper,paperReport} from '../../../lib/stocksPaperPerformance.js';
-import {scanSunil,SUNIL_RULES} from '../../../lib/sunilPaperStrategy.mjs';
+import {scanSunil,scanMorningPriceAction,SUNIL_RULES} from '../../../lib/sunilPaperStrategy.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const instruments={NIFTY:'NSE',BANKNIFTY:'NSE',SENSEX:'BSE',BEL:'NSE',HCLTECH:'NSE',RELIANCE:'NSE',HDFCBANK:'NSE'};
@@ -15,7 +15,7 @@ const ema=(a,n)=>{if(a.length<n)return null;let x=a.slice(0,n).reduce((s,v)=>s+v
 function rsi(a){if(a.length<15)return null;let g=0,l=0;for(let i=1;i<=14;i++){const d=a[i]-a[i-1];g+=Math.max(0,d);l+=Math.max(0,-d);}g/=14;l/=14;for(let i=15;i<a.length;i++){const d=a[i]-a[i-1];g=(13*g+Math.max(0,d))/14;l=(13*l+Math.max(0,-d))/14;}return l===0?(g===0?50:100):100-100/(1+g/l);}
 const istDate=v=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(v));
 const stamp=c=>typeof c==='number'||(/^\d{10,13}$/.test(String(c)))?new Date(Number(c)<1e12?Number(c)*1000:Number(c)).toISOString():/(?:Z|[+-]\d\d:\d\d)$/.test(String(c))?String(c):String(c).replace(' ','T')+'+05:30';
-function cleanCandles(rows){const unique=new Map();for(const c of rows||[]){if(!Array.isArray(c)||c.length<5||!c.slice(1,5).every(v=>num(v)!==null&&num(v)>0))continue;let t;try{t=Date.parse(stamp(c[0]));}catch{continue;}if(!Number.isFinite(t))continue;const a=[new Date(t).toISOString(),...c.slice(1,7).map(num)];if(a[2]<Math.max(a[1],a[4])||a[3]>Math.min(a[1],a[4]))continue;const ist=new Date(t+19800000),minute=ist.getUTCHours()*60+ist.getUTCMinutes();if(minute<555||minute>=930||(minute-555)%5!==0)continue;unique.set(t,a);}return [...unique.values()].sort((a,b)=>Date.parse(a[0])-Date.parse(b[0]));}
+function cleanCandles(rows,intervalMinutes=5){const unique=new Map();for(const c of rows||[]){if(!Array.isArray(c)||c.length<5||!c.slice(1,5).every(v=>num(v)!==null&&num(v)>0))continue;let t;try{t=Date.parse(stamp(c[0]));}catch{continue;}if(!Number.isFinite(t))continue;const a=[new Date(t).toISOString(),...c.slice(1,7).map(num)];if(a[2]<Math.max(a[1],a[4])||a[3]>Math.min(a[1],a[4]))continue;const ist=new Date(t+19800000),minute=ist.getUTCHours()*60+ist.getUTCMinutes();if(minute<555||minute>=930||(minute-555)%intervalMinutes!==0)continue;unique.set(t,a);}return [...unique.values()].sort((a,b)=>Date.parse(a[0])-Date.parse(b[0]));}
 const histCache=new Map();
 async function previousCandles(exchange,symbol,today){const k=exchange+'|'+symbol+'|'+today,hit=histCache.get(k);if(hit&&Date.now()-hit.at<3600000)return hit.rows;const start=new Date(Date.parse(today+'T00:00:00+05:30')-10*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});const end=new Date(Date.parse(today+'T00:00:00+05:30')-86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});const data=await provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:start+' 09:15:00',end_time:end+' 15:30:00',candle_interval:'5minute'});const rows=cleanCandles(data?.candles).filter(c=>istDate(c[0])<today);if(rows.length){if(histCache.size>20)for(const [key,v] of histCache)if(Date.now()-v.at>3600000)histCache.delete(key);histCache.set(k,{at:Date.now(),rows});}return rows;}
 function technical(c){const a=c.map(x=>x[4]);const series=[];let e12=null,e26=null,signal=null;for(let i=0;i<a.length;i++){if(i===11)e12=a.slice(0,12).reduce((s,v)=>s+v,0)/12;else if(i>11)e12+=(a[i]-e12)*2/13;if(i===25)e26=a.slice(0,26).reduce((s,v)=>s+v,0)/26;else if(i>25)e26+=(a[i]-e26)*2/27;if(e12!==null&&e26!==null)series.push(e12-e26);}
@@ -286,10 +286,12 @@ if(q.get('sunil')==='1'){
   const d=new Date(expiry+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
   const from=new Date(Date.parse(today+'T00:00:00+05:30')-7*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
   const fetchSide=async side=>cleanCandles((await provider('/v1/historical/candles',{exchange,segment:'FNO',groww_symbol:exchange+'-'+symbol+'-'+label+'-'+atm.strike+'-'+side,start_time:from+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}))?.candles);
-  const [ceRows,peRows]=await Promise.all([fetchSide('CE'),fetchSide('PE')]);
+  const [ceRows,peRows,indexMinuteRows]=await Promise.all([fetchSide('CE'),fetchSide('PE'),mins<690?provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'1minute'}).then(p=>cleanCandles(p?.candles,1)).catch(()=>[]):Promise.resolve([])]);
   const quote=l=>({ask:l.ask,bid:l.bid,time:l.quoteTime});
   const sunil=scanSunil({date:today,now:Date.now(),indexRows:closed,ceRows,peRows,quotes:{CE:quote(atm.ce),PE:quote(atm.pe)},aligned:indexAligned,contractVerified:true});
-  return json({...base,sunil,notes:['Opening-ATM pair and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
+  const morning=scanMorningPriceAction({date:today,now:Date.now(),indexRows:closed,indexMinuteRows});
+  // Index pattern is informational; separate option confirmation and session lock remain in force.
+  return json({...base,sunil:{...sunil,morning:{...morning,optionGate:sunil.directionLock?.status==='DIRECTION_LOCKED'&&sunil.directionLock.side==='PE'&&sunil.risk?.status==='RESEARCH'?'DIRECTION_ALIGNED':'WAIT_OR_BLOCKED'}},notes:['Opening-ATM pair and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
  }catch{return wait('Sunil option candle data temporarily unavailable.');}
 }
 const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
