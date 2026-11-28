@@ -115,14 +115,16 @@ test('strike speed ranks ATM and ITM, excludes OTM, waits on stale quote',()=>{
  assert.equal(compareStrikeSpeed(args).preferred.strike,52400);
  assert.equal(compareStrikeSpeed({...args,now:tm+31000}).status,'WAIT');
 });
-test('setup selector prioritizes morning only in morning, never overrides risk lock',()=>{
- const scan={status:'PAPER_CANDIDATE',side:'CE',entry:130,stop:110,target1:180,target2:220,plan:{trigger:123},risk:{status:'RESEARCH'},directionLock:{status:'DIRECTION_LOCKED',side:'CE'},opening40_80:{side:'CE',entry:130,stop:90,target:210}};
- assert.equal(selectSunilSetup({scan,now}).setup,'MORNING_OPENING_40_80');
- assert.equal(selectSunilSetup({scan,now}).rewardPoints,80);
- assert.equal(selectSunilSetup({scan,now:Date.parse(date+'T12:00:00+05:30')}).setup,'SECOND_RETEST_CONSOLIDATION');
- assert.equal(selectSunilSetup({scan:{...scan,directionLock:{status:'NO_TRADE'}},now}).status,'NO_TRADE');
- assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT'},now}).status,'WAIT');
- assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT',directionLock:{status:'DIRECTION_LOCKED',side:'PE'}},morning:{status:'INDEX_PATTERN',side:'PE'},now}).status,'WATCH');
+test('selector uses morning price action only in morning and does not invent premium plans',()=>{
+ const scan={status:'WAIT',risk:{status:'RESEARCH'},directionLock:{status:'DIRECTION_LOCKED',side:'PE'},confirmedSide:'PE'};
+ const selected=ce,rank={status:'STRIKE_SPEED_WATCH',side:'PE',preferred:{type:'ATM',strike:48300,ask:131,bid:130,speed:1,quoteTime:now-1000,completedAt:t+8*300000}};
+ const morning={status:'INDEX_PATTERN',side:'PE',signalTime:now-1000};
+ const args={scan,morning,now,date,selectedRows:selected,strikeResearch:rank};
+ assert.equal(selectSunilSetup(args).setup,'MORNING_PRICE_ACTION_20_30');
+ assert.equal(selectSunilSetup(args).targetPoints,30);
+ assert.equal(selectSunilSetup({...args,scan:{...scan,directionLock:{status:'NO_TRADE'}}}).status,'NO_TRADE');
+ assert.equal(selectSunilSetup({...args,strikeResearch:null}).status,'WAIT');
+ assert.equal(selectSunilSetup({...args,now:Date.parse(date+'T12:00:00+05:30')}).status,'WAIT');
 });
 
 test('strike universe excludes OTM and ranks ATM versus nearest ITM by observed speed',()=>{
@@ -135,7 +137,7 @@ test('strike universe excludes OTM and ranks ATM versus nearest ITM by observed 
  assert.equal(compareStrikeSpeed({...args,candidates:args.candidates.slice(0,1)}).status,'WAIT');
 });
 test('automatic setup picks confirmed selected-contract premium levels and blocks risky sessions',()=>{
- const scan=scanSunil(input),rank={status:'STRIKE_SPEED_WATCH',side:'CE',preferred:{type:'ATM',strike:48300,ask:131,bid:130,quoteTime:now-1000,completedAt:t+8*300000}};
+ const scan=scanSunil(input),rank={status:'STRIKE_SPEED_WATCH',side:'CE',preferred:{type:'ATM',strike:48300,ask:131,bid:130,speed:1,quoteTime:now-1000,completedAt:t+8*300000}};
  const args={date,now,scan,strikeResearch:rank,selectedRows:ce,spot:48280};
  const x=selectSunilSetup(args);assert.equal(x.status,'PAPER_PLAN');assert.equal(x.setup,'SECOND_SETUP_4_5');assert.equal(x.stop,111);assert.equal(x.target1,180);assert.equal(x.target2,220);
  assert.equal(selectSunilSetup({...args,scan:{...scan,status:'NO_TRADE'}}).status,'NO_TRADE');
