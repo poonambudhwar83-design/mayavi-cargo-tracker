@@ -124,3 +124,22 @@ test('setup selector prioritizes morning only in morning, never overrides risk l
  assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT'},now}).status,'WAIT');
  assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT',directionLock:{status:'DIRECTION_LOCKED',side:'PE'}},morning:{status:'INDEX_PATTERN',side:'PE'},now}).status,'WATCH');
 });
+
+test('strike universe excludes OTM and ranks ATM versus nearest ITM by observed speed',()=>{
+ const strikes=[48000,48100,48200,48300,48400];
+ assert.equal(strikeUniverse(48260,strikes,'CE').map(v=>v.strike).join(','),'48300,48200');
+ assert.equal(strikeUniverse(48260,strikes,'PE').map(v=>v.strike).join(','),'48300,48400');
+ const fast=ce.map(b=>[b[0],b[1]*2,b[2]*2,b[3]*2,b[4]*2,b[5]]);
+ const args={date,now,spot:48260,side:'CE',strikes,candidates:[{strike:48300,side:'CE',rows:ce,quote:{bid:130,ask:131,time:now-1000}},{strike:48200,side:'CE',rows:fast,quote:{bid:260,ask:261,time:now-1000}}]};
+ const x=compareStrikeSpeed(args);assert.equal(x.status,'STRIKE_SPEED_WATCH');assert.equal(x.preferred.strike,48200);
+ assert.equal(compareStrikeSpeed({...args,candidates:args.candidates.slice(0,1)}).status,'WAIT');
+});
+test('automatic setup picks confirmed selected-contract premium levels and blocks risky sessions',()=>{
+ const scan=scanSunil(input),rank={status:'STRIKE_SPEED_WATCH',side:'CE',preferred:{type:'ATM',strike:48300,ask:131,bid:130,quoteTime:now-1000,completedAt:t+8*300000}};
+ const args={date,now,scan,strikeResearch:rank,selectedRows:ce,spot:48280};
+ const x=selectSunilSetup(args);assert.equal(x.status,'PAPER_PLAN');assert.equal(x.setup,'SECOND_SETUP_4_5');assert.equal(x.stop,111);assert.equal(x.target1,180);assert.equal(x.target2,220);
+ assert.equal(selectSunilSetup({...args,scan:{...scan,status:'NO_TRADE'}}).status,'NO_TRADE');
+ assert.equal(selectSunilSetup({...args,selectedRows:[]}).status,'WAIT');
+ assert.equal(selectSunilSetup({...args,strikeResearch:{...rank,preferred:{...rank.preferred,quoteTime:now-31000}}}).status,'WAIT');
+ assert.equal(selectSunilSetup({...args,strikeResearch:{...rank,preferred:{...rank.preferred,type:'OTM'}}}).status,'WAIT');
+});
