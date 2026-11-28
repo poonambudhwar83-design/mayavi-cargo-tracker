@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
+import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,stallExit,indexLevelBreakout,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
 const date='2026-11-27',prev='2026-11-26',start=d=>Date.parse(d+'T09:15:00+05:30'),t=start(date),now=t+8*300000+10000;
 const bar=(d,i,o,h,l,c)=>[new Date(start(d)+i*300000).toISOString(),o,h,l,c,100];
 const prior=(o,h,l,c)=>Array.from({length:75},(_,i)=>bar(prev,i,o,h,l,c));
@@ -69,4 +69,23 @@ test('morning previous close breakdown uses completed minute candles and index u
  assert.equal(scanMorningPriceAction({...args,indexMinuteRows:minuteRows.filter((_,i)=>i!==2)}).status,'WAIT');
  assert.equal(scanMorningPriceAction({...args,now:Date.parse(date+'T11:30:00+05:30')}).status,'WAIT');
  assert.equal(scanMorningPriceAction({...args,now:t+7*60000+1000}).status,'WAIT');
+});
+
+test('three failed highs produce early exit research and a fresh high resets count',()=>{
+ const a=[bar(date,0,100,120,95,115),bar(date,1,115,119,110,116),bar(date,2,116,120,112,115),bar(date,3,115,118,110,114)];
+ const args={rows:a,date,now:t+4*300000+1000,entryAt:t};
+ assert.equal(stallExit(args).status,'EARLY_EXIT_RESEARCH');
+ assert.equal(stallExit({...args,now:t+3*300000+1000}).failedBars,2);
+ assert.equal(stallExit({...args,rows:[...a,bar(date,4,114,125,113,124)],now:t+5*300000+1000}).failedBars,0);
+ assert.equal(stallExit({...args,rows:a.filter((_,i)=>i!==1)}).status,'WAIT');
+});
+test('index breakout needs a known level base and opposite premium confirmation',()=>{
+ const a=[...prior(48150,48230,48000,48150),bar(date,0,48200,48230,48190,48210),bar(date,1,48210,48228,48200,48220),bar(date,2,48220,48230,48205,48224),bar(date,3,48224,48229,48200,48220),bar(date,4,48220,48265,48215,48260)];
+ const now5=t+5*300000+1000;
+ const ce5=[...prior(100,140,90,110),...Array.from({length:5},(_,i)=>bar(date,i,100+i*5,112+i*5,95+i*5,110+i*5))];
+ const pe5=[...prior(200,250,100,200),...Array.from({length:5},(_,i)=>bar(date,i,200-i*5,205-i*5,185-i*5,190-i*5))];
+ const args={date,now:now5,indexRows:a,ceRows:ce5,peRows:pe5};
+ assert.equal(indexLevelBreakout(args).status,'INDEX_PREMIUM_PATTERN');
+ assert.equal(indexLevelBreakout({...args,ceRows:pe5}).status,'WAIT');
+ assert.equal(indexLevelBreakout({...args,indexRows:a.map((b,i)=>i===77?[b[0],48220,48230,48100,48224,100]:b)}).status,'WAIT');
 });
