@@ -316,12 +316,9 @@ assert.ok(profitUi.includes("displayAmount(n.averageWeightPerBag)}</td>\n       
 
 console.log('Import Profit active/cleared part-row reconciliation passed.');
 
-// Priyanka HH is ₹1,500/bag regardless of origin, including physical parts.
-assert.equal(importHHGoodsChargePerBag('DXB',' Priyanka '),1500);
-assert.equal(importHHGoodsChargePerBag('JFK','PRIYANKA'),1500);
-assert.equal(importHHGoodsChargePerBag('DXB','Other'),340);
-assert.equal(importHHGoodsChargePerBag('HKG','Other'),1500);
-assert.equal(importHHGoodsChargePerBag('DXB','Priyanka Other'),340);
-assert.equal(importGoodsCharge15Percent(4*importHHGoodsChargePerBag('DXB','Priyanka'),1500),900);
-assert.ok(profitUi.includes('importHHGoodsChargePerBag(origin,row.clientName||row.client)'));
-assert.ok(reportApi.includes('origin,clientName:client,driverExpense:'));
+// Colombo / Sri Lanka HH special origin tariff; client name and transit are irrelevant.
+for(const origin of ['CMB','Colombo','Sri Lanka','SRILANKA','Colombo (CMB)','HKG','Hong Kong'])assert.equal(importHHGoodsChargePerBag(origin),1500,origin);
+for(const origin of ['DXB','JFK','LHR','','CMBX'])assert.equal(importHHGoodsChargePerBag(origin),340,origin);
+assert.equal(importHHGoodsChargePerBag('DXB','Priyanka'),340);
+assert.equal(importGoodsCharge15Percent(4*importHHGoodsChargePerBag('CMB'),1500),900);
+assert.ok(profitUi.includes('importHHGoodsChargePerBag(origin)'));
