@@ -242,7 +242,7 @@ if(retired.has(symbol)){if(!paperAvailable)return json({ok:false,error:'Paper hi
 await accessToken();
 const [dates,candleData,historical]=await Promise.all([provider('/v1/historical/expiries',{exchange,underlying_symbol:symbol,year}),provider('/v1/historical/candles',{exchange,segment:'CASH',groww_symbol:exchange+'-'+symbol,start_time:today+' 09:15:00',end_time:today+' 15:30:00',candle_interval:'5minute'}),previousCandles(exchange,symbol,today).catch(()=>[])]);
 const expiries=[...new Set((dates?.expiries||[]).filter(e=>typeof e==='string'&&e>=today))].sort();
-const expiry=q.get('expiry')||(paperActive&&expiries.includes(paperActive.expiry_text)?paperActive.expiry_text:expiries[0]);if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
+const expiry=q.get('sunil')==='1'?expiries.find(e=>e>today):(q.get('expiry')||(paperActive&&expiries.includes(paperActive.expiry_text)?paperActive.expiry_text:expiries[0]));if(!expiry||!expiries.includes(expiry))return json({ok:false,error:'No upcoming expiry returned by Groww for this index.'},422);
 const [raw,liveIndex]=await Promise.all([provider('/v1/option-chain/exchange/'+exchange+'/underlying/'+symbol,{expiry_date:expiry}),provider('/v1/live-data/ltp',{segment:'CASH',exchange_symbols:Object.entries(instruments).filter(([k])=>!retired.has(k)).map(([k,v])=>v+'_'+k).join(',')}).catch(()=>null)]);
 const indexReceivedAt=new Date().toISOString();
 const indexLtp=num(liveIndex?.[exchange+'_'+symbol]);
@@ -265,7 +265,10 @@ let cchg=null,pchg=null;
 const maxOI=(leg,rows)=>rows.filter(x=>x[leg].oi!==null&&x[leg].oi>0).sort((a,b)=>b[leg].oi-a[leg].oi)[0]?.strike??null;
 const support=maxOI('pe',chain.filter(x=>x.strike<=spot)),resistance=maxOI('ce',chain.filter(x=>x.strike>=spot));
 const maxPain=chain.every(x=>x.ce.oi!==null&&x.pe.oi!==null)?chain.map(x=>({strike:x.strike,pain:chain.reduce((v,y)=>v+Math.max(x.strike-y.strike,0)*y.ce.oi+Math.max(y.strike-x.strike,0)*y.pe.oi,0)})).sort((a,b)=>a.pain-b.pain)[0]?.strike:null;
-const atm=chain.reduce((a,b)=>Math.abs(a.strike-spot)<=Math.abs(b.strike-spot)?a:b);
+// Sunil scan anchors the comparison pair to opening spot, not moving live ATM.
+const sunilOpening=todayClosed.find(x=>Date.parse(x[0])===Date.parse(today+'T09:15:00+05:30'));
+const strikeReference=q.get('sunil')==='1'&&sunilOpening?sunilOpening[1]:spot;
+const atm=chain.reduce((a,b)=>Math.abs(a.strike-strikeReference)<=Math.abs(b.strike-strikeReference)?a:b);
 const watchKey=q.get('watch');const watch=watchKey?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===watchKey):null;
 const paperLeg=paperActive&&paperActive.expiry_text===expiry?chain.flatMap(x=>[x.ce,x.pe]).find(x=>x.key===paperActive.contract_key):null;
 await Promise.all([...new Set([atm.ce,atm.pe,...(watch?[watch]:[]),...(paperLeg?[paperLeg]:[])])].map(x=>enrich(exchange,x)));
@@ -278,7 +281,7 @@ if(q.get('sunil')==='1'){
  const wait=reason=>json({...base,sunil:{status:'WAIT',reason}});
  if(symbol!=='BANKNIFTY')return wait('Initial research limited to BANKNIFTY.');
  if(!inHours||mins>=910||!candleFresh||!indexAligned)return wait('Market closed, late session or fresh aligned data unavailable.');
- if(!atm.ce.key||!atm.pe.key||expiry<=today)return wait('Verified non-expiry-day CE and PE required.');
+ if(!sunilOpening||!atm.ce.key||!atm.pe.key||expiry<=today)return wait('Verified non-expiry-day CE and PE required.');
  try{
   const d=new Date(expiry+'T00:00:00Z'),label=String(d.getUTCDate()).padStart(2,'0')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+String(d.getUTCFullYear()).slice(-2);
   const from=new Date(Date.parse(today+'T00:00:00+05:30')-7*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
@@ -286,7 +289,7 @@ if(q.get('sunil')==='1'){
   const [ceRows,peRows]=await Promise.all([fetchSide('CE'),fetchSide('PE')]);
   const quote=l=>({ask:l.ask,bid:l.bid,time:l.quoteTime});
   const sunil=scanSunil({date:today,now:Date.now(),indexRows:closed,ceRows,peRows,quotes:{CE:quote(atm.ce),PE:quote(atm.pe)},aligned:indexAligned,contractVerified:true});
-  return json({...base,sunil,notes:['ATM is a testing assumption. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
+  return json({...base,sunil,notes:['Opening-ATM pair and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
  }catch{return wait('Sunil option candle data temporarily unavailable.');}
 }
 const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
