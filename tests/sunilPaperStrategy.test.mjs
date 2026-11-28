@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,stallExit,indexLevelBreakout,secondOppositeResearch,secondHoldVariant,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
+import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,stallExit,indexLevelBreakout,secondOppositeResearch,secondHoldVariant,strikeUniverse,compareStrikeSpeed,selectSunilSetup,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
 const date='2026-11-27',prev='2026-11-26',start=d=>Date.parse(d+'T09:15:00+05:30'),t=start(date),now=t+8*300000+10000;
 const bar=(d,i,o,h,l,c)=>[new Date(start(d)+i*300000).toISOString(),o,h,l,c,100];
 const prior=(o,h,l,c)=>Array.from({length:75},(_,i)=>bar(prev,i,o,h,l,c));
@@ -103,4 +103,24 @@ test('six candle hold watch requires consolidation and completed breakout',()=>{
  const rows=[...prior(150,220,95,150),bar(date,0,100,120,95,115),bar(date,1,115,180,110,170),...Array.from({length:6},(_,i)=>bar(date,i+2,119,123,115,120)),bar(date,8,120,133,119,130)];
  const x=secondHoldVariant({date,now:t+9*300000+1000,rows});assert.equal(x.status,'HOLD_BREAKOUT_WATCH');assert.equal(x.baseBars,6);assert.equal(x.target1,180);
  assert.equal(secondHoldVariant({date,now:t+8*300000+1000,rows}).status,'WAIT');
+});
+
+test('strike speed ranks ATM and ITM, excludes OTM, waits on stale quote',()=>{
+ const strikes=[52300,52400,52500,52600,52700],spot=52500;
+ assert.equal(strikeUniverse(spot,strikes,'CE')[1].strike,52400);
+ assert.equal(strikeUniverse(spot,strikes,'PE')[1].strike,52600);
+ const tm=t+4*300000+1000;
+ const candidates=[{strike:52500,side:'CE',rows:Array.from({length:4},(_,i)=>bar(date,i,100+i*5,110+i*5,95+i*5,105+i*5)),quote:{bid:119,ask:120,time:tm-1000}},{strike:52400,side:'CE',rows:Array.from({length:4},(_,i)=>bar(date,i,200+i*10,215+i*10,195+i*10,210+i*10)),quote:{bid:239,ask:240,time:tm-1000}},{strike:52600,side:'CE',rows:[],quote:null}];
+ const args={date,now:tm,spot,side:'CE',strikes,candidates};
+ assert.equal(compareStrikeSpeed(args).preferred.strike,52400);
+ assert.equal(compareStrikeSpeed({...args,now:tm+31000}).status,'WAIT');
+});
+test('setup selector prioritizes morning only in morning, never overrides risk lock',()=>{
+ const scan={status:'PAPER_CANDIDATE',side:'CE',entry:130,stop:110,target1:180,target2:220,plan:{trigger:123},risk:{status:'RESEARCH'},directionLock:{status:'DIRECTION_LOCKED',side:'CE'},opening40_80:{side:'CE',entry:130,stop:90,target:210}};
+ assert.equal(selectSunilSetup({scan,now}).setup,'MORNING_OPENING_40_80');
+ assert.equal(selectSunilSetup({scan,now}).rewardPoints,80);
+ assert.equal(selectSunilSetup({scan,now:Date.parse(date+'T12:00:00+05:30')}).setup,'SECOND_RETEST_CONSOLIDATION');
+ assert.equal(selectSunilSetup({scan:{...scan,directionLock:{status:'NO_TRADE'}},now}).status,'NO_TRADE');
+ assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT'},now}).status,'WAIT');
+ assert.equal(selectSunilSetup({scan:{...scan,status:'WAIT',directionLock:{status:'DIRECTION_LOCKED',side:'PE'}},morning:{status:'INDEX_PATTERN',side:'PE'},now}).status,'WATCH');
 });
