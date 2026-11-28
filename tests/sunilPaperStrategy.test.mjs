@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,stallExit,indexLevelBreakout,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
+import {completedBars,levels,riskFilter,openingDirection,scanMorningPriceAction,stallExit,indexLevelBreakout,secondOppositeResearch,secondHoldVariant,scanSunil,createExitComparison,observeExitComparison,comparisonReport} from '../lib/sunilPaperStrategy.mjs';
 const date='2026-11-27',prev='2026-11-26',start=d=>Date.parse(d+'T09:15:00+05:30'),t=start(date),now=t+8*300000+10000;
 const bar=(d,i,o,h,l,c)=>[new Date(start(d)+i*300000).toISOString(),o,h,l,c,100];
 const prior=(o,h,l,c)=>Array.from({length:75},(_,i)=>bar(prev,i,o,h,l,c));
@@ -88,4 +88,19 @@ test('index breakout needs a known level base and opposite premium confirmation'
  assert.equal(indexLevelBreakout(args).status,'INDEX_PREMIUM_PATTERN');
  assert.equal(indexLevelBreakout({...args,ceRows:pe5}).status,'WAIT');
  assert.equal(indexLevelBreakout({...args,indexRows:a.map((b,i)=>i===77?[b[0],48220,48230,48100,48224,100]:b)}).status,'WAIT');
+});
+
+test('second opposite research is separate from strict same-day no-trade lock',()=>{
+ const lead=[...prior(150,220,90,150),bar(date,0,100,120,95,115),bar(date,1,115,180,110,170),...Array.from({length:5},(_,i)=>bar(date,i+2,98,102,95,99)),bar(date,7,99,100,88,90)];
+ const other=[...pe.slice(0,-1),bar(date,7,180,210,178,205)];
+ const ix=[...index.slice(0,-1),bar(date,7,48270,48275,48230,48240)];
+ const args={date,now,indexRows:ix,ceRows:lead,peRows:other};
+ const x=secondOppositeResearch(args);assert.equal(x.status,'OPPOSITE_WATCH');assert.equal(x.side,'PE');
+ assert.equal(scanSunil({...args,aligned:true,contractVerified:true}).status,'NO_TRADE');
+ assert.equal(secondOppositeResearch({...args,peRows:pe}).status,'WAIT');
+});
+test('six candle hold watch requires consolidation and completed breakout',()=>{
+ const rows=[...prior(150,220,95,150),bar(date,0,100,120,95,115),bar(date,1,115,180,110,170),...Array.from({length:6},(_,i)=>bar(date,i+2,119,123,115,120)),bar(date,8,120,133,119,130)];
+ const x=secondHoldVariant({date,now:t+9*300000+1000,rows});assert.equal(x.status,'HOLD_BREAKOUT_WATCH');assert.equal(x.baseBars,6);assert.equal(x.target1,180);
+ assert.equal(secondHoldVariant({date,now:t+8*300000+1000,rows}).status,'WAIT');
 });
