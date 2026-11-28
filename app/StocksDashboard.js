@@ -62,7 +62,9 @@ function SunilResearchPanel(){
  {failure&&<p role="alert" style={{color:'#b91c1c'}}>{failure}</p>}
  {x&&<div style={{marginTop:12}}><strong style={{color:x.status==='PAPER_CANDIDATE'?'#15803d':x.status==='NO_TRADE'?'#b91c1c':'#a16207'}}>{x.status}</strong><p>{x.reason||'Experimental candidate only'} · {result.expiry} · ATM {result.strike}</p>
  {x.risk&&<p>Opening gap: {fmt(x.risk.gap)} · {x.risk.setup} · {x.risk.reasons?.join('; ')}</p>}
- {x.status==='PAPER_CANDIDATE'&&<p>{x.side} · Entry ₹{fmt(x.entry)} · SL ₹{fmt(x.stop)} · T1 ₹{fmt(x.target1)} · T2 ₹{fmt(x.target2)}</p>}
+ {x.directionLock&&<p><strong>Session direction: {x.directionLock.side||'Not decided'} · {x.directionLock.status}</strong> {x.directionLock.reason||''}</p>}
+ {x.status==='PAPER_CANDIDATE'&&<p>{x.side} · Entry ₹{fmt(x.entry)} · SL ₹{fmt(x.stop)} · T1 ₹{fmt(x.target1)} · T2 {x.target2==null?'—':'₹'+fmt(x.target2)}</p>}
+ {x.opening40_80&&<p><strong>40/80 separate setup</strong> · {x.opening40_80.trigger} · Entry ₹{fmt(x.opening40_80.entry)} · SL ₹{fmt(x.opening40_80.stop)} · Target ₹{fmt(x.opening40_80.target)}</p>}
  <details><summary>Source rules and incomplete setups</summary>{(result.rules||[]).map(rule=><p key={rule.id}><strong>{rule.id} — {rule.status}</strong>: {rule.source}</p>)}</details>
  {(result.notes||[]).map(note=><small key={note} style={{display:'block'}}>{note}</small>)}</div>}
  <p style={{fontSize:12}}>Snapshot only. The comparison engine is not connected to the persistent trade log yet.</p></section>;
