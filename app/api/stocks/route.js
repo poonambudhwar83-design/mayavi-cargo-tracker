@@ -321,7 +321,7 @@ if(q.get('sunil')==='1'){
   }
   const automatic=selectSunilSetup({scan:sunil,morning,strikeResearch,selectedRows,date:today,now:Date.now(),spot});
   // Index pattern is informational; separate option confirmation and session lock remain in force.
-  return json({...base,sunil:{...sunil,selectedSetup:selectSunilSetup({scan:sunil,morning,now:Date.now()}),morning:{...morning,optionGate:sunil.directionLock?.status==='DIRECTION_LOCKED'&&sunil.directionLock.side==='PE'&&sunil.risk?.status==='RESEARCH'?'DIRECTION_ALIGNED':'WAIT_OR_BLOCKED'}},notes:['Fixed opening-ATM direction pair, current ATM/nearest ITM speed ranking and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
+  return json({...base,sunil:{...sunil,automatic,strikeResearch,morning:{...morning,optionGate:sunil.directionLock?.status==='DIRECTION_LOCKED'&&sunil.directionLock.side==='PE'&&sunil.risk?.status==='RESEARCH'?'DIRECTION_ALIGNED':'WAIT_OR_BLOCKED'}},notes:['Fixed opening-ATM direction pair, current ATM/nearest ITM speed ranking and nearest non-expiry-day expiry are testing assumptions. Quote age uses last-trade time, not a verified order-book timestamp. Candidates are not recorded or executed.']});
  }catch{return wait('Sunil option candle data temporarily unavailable.');}
 }
 const higher=group15(closed),higherCloses=higher.map(c=>c[4]),h9=ema(higherCloses,9),h21=ema(higherCloses,21);
