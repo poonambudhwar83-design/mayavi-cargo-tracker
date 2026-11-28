@@ -47,6 +47,7 @@ export default function MayaviSidebar({session,selectedDashboard,cargoNav,onSele
         page('import-customer-allocation','Import Customer P&L','IMPORT_CUSTOMER_ALLOCATION'),
         page('import-customer-summary','Monthly Customer Summary','IMPORT_CUSTOMER_SUMMARY'),
         page('personal-accounts','Personal Accounts','PERSONAL_ACCOUNTS'),
+        page('personal-daily-expenses','Personal Daily Expenses','PERSONAL_DAILY_EXPENSES'),
         page('export-profit','Export Profit Sheet','EXPORT_PROFIT'),
         page('salary','Salary','SALARY'),
         page('monthly-expenses','Monthly Expenses','MONTHLY_EXPENSES'),

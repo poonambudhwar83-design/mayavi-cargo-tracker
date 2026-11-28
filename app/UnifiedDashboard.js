@@ -9,6 +9,7 @@ import SaudiaAssist from './SaudiaAssist.js';
 import ImportFinanceSection from './ImportFinanceSection.js';
 import ImportCustomerAllocation from './ImportCustomerAllocation.js';
 import PersonalAccountsDashboard from './PersonalAccountsDashboard.js';
+import PersonalDailyExpensesDashboard from './PersonalDailyExpensesDashboard.js';
 import StocksDashboard from './StocksDashboard.js';
 import CommodityDashboard from './CommodityDashboard.js';
 import SalaryDashboard from './SalaryDashboard.js';
@@ -245,6 +246,8 @@ export default function UnifiedDashboard(){
       ?<CommodityDashboard/>
     :session?.role==='admin'&&selectedDashboard==='PERSONAL_ACCOUNTS'
       ?<PersonalAccountsDashboard/>
+    :session?.role==='admin'&&selectedDashboard==='PERSONAL_DAILY_EXPENSES'
+      ?<PersonalDailyExpensesDashboard/>
     :session?.role==='admin'&&selectedDashboard==='EXPORT_PROFIT'
       ?<ExportFinanceSection/>
     :session?.role==='admin'&&selectedDashboard==='SALARY'
